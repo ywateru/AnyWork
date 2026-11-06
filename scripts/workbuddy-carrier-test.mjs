@@ -33,6 +33,7 @@ try{
     const record=(id,text,state='completed')=>({id,state,timestamp:1700000000000,finishTimestamp:state==='completed'?1700000000001:undefined,userMessage:{content:[{type:'text',text}]},systemMessage:{content:[{type:'text',text:'PRIVATE_SYSTEM_CONTEXT'}]},assistantMessage:{content:[{type:'text',text:'native seed response'},{type:'tool',toolCallId:'same-call',status:'completed',_meta:{'codebuddy.ai/toolName':'read_file'},rawInput:{path:document},rawOutput:'native tool result',content:[{type:'content',content:{type:'resource_link',uri:document,name:'notes.txt'}},{type:'content',content:{type:'image',uri:image}}]}]}});
     const s={infos:{one:info('one'),two:info('two')},records:{one:[record('seed-turn','native seed')],two:[]},pending:{},errors:{},calls:[],sendCount:0,answers:0,ready:0};
     const finish=(id,state='completed')=>{const r=s.records[id].at(-1);r.state=state;r.finishTimestamp=Date.now();r.assistantMessage={content:[{type:'text',text:`native response ${r.id}`}]};s.infos[id].state='idle';delete s.pending[id];};
+    window.fixtureAdvanceApproval=()=>{const original=s.pending.one;finish('one');s.records.one.push(record('native-desktop-turn-'+Date.now(),'native desktop approval','streaming'));s.infos.one.state='working';s.pending.one=original;};
     window.workbuddyDesktop={appVersion:'5.9.3',configDir};window.__wbEventBridge=()=>()=>{};window.fixture=s;
     window.__wbInvoke=async(channel,_context,...args)=>{
       s.calls.push({channel,args});const id=args[0];
@@ -104,6 +105,13 @@ try{
   await api(`/sessions/${id}/respond`,{request_id:fresh.request_id,accept:true},409);assert.equal(await page.evaluate(()=>fixture.answers),1);
   await api(`/sessions/${id}/respond`,{request_id:repeated.request_id,accept:true});assert.equal(await page.evaluate(()=>fixture.answers),2);
   await api(`/sessions/${id}/messages`,{text:'question'});const question=await until(()=>pending(id),'question');await api(`/sessions/${id}/respond`,{request_id:question.request_id,result:{answers:{q:{answers:['A']}}}});assert.equal(await page.evaluate(()=>fixture.answers),3);
+  // Desktop can change owning turns between polls without a null observation.
+  await until(async()=>(await api(`/sessions/${id}`)).session.status==='idle','question completion');
+  await api(`/sessions/${id}/messages`,{text:'approval'});const beforeSwap=await until(()=>pending(id),'before desktop turn swap');const beforeSwapAnswers=await page.evaluate(()=>fixture.answers);
+  await page.evaluate(()=>fixtureAdvanceApproval());
+  await api(`/sessions/${id}/respond`,{request_id:beforeSwap.request_id,accept:true},409);assert.equal(await page.evaluate(()=>fixture.answers),beforeSwapAnswers);
+  const afterSwap=await until(async()=>{const p=await pending(id);return p&&p.request_id!==beforeSwap.request_id?p:false},'new owning turn approval');
+  await api(`/sessions/${id}/respond`,{request_id:afterSwap.request_id,accept:true});assert.equal(await page.evaluate(()=>fixture.answers),beforeSwapAnswers+1);
   const imageUpload=await fetch(base+`/api/sessions/${id}/uploads`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:(()=>{const f=new FormData();f.append('files',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64')],{type:'image/png'}),'test.png');return f;})()});const uploaded=await imageUpload.json();assert(imageUpload.ok,JSON.stringify(uploaded));await api(`/sessions/${id}/messages`,{text:'image roundtrip',attachments:[uploaded.files[0].path]});await until(async()=>(await api(`/sessions/${id}`)).session.status==='idle','image completion');
   const imageHistory=await api(`/sessions/${id}/history?paged=true&limit=20`);assert(imageHistory.events.some(e=>e.params.attachments?.length));
   const imageResponse=await fetch(base+`/api/sessions/${id}/image?path=${encodeURIComponent(image)}`,{headers:{Authorization:`Bearer ${token}`}});assert.equal(imageResponse.status,200);

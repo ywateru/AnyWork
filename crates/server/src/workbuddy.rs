@@ -515,7 +515,7 @@ struct Projection {
     generation: String,
     seen: HashMap<String, String>,
     lifecycle: HashMap<String, String>,
-    pending: Option<(String, Value)>,
+    pending: Option<(String, Value, Option<String>)>,
     clients: HashMap<String, String>,
     active: Option<String>,
     last_status: Option<String>,
@@ -718,10 +718,14 @@ impl Projection {
         Ok(())
     }
     fn pending(&mut self, native: Value, tx: &mpsc::UnboundedSender<Value>) -> Result<()> {
-        if self.pending.as_ref().is_some_and(|(_, p)| p == &native) {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|(_, p, owner)| p == &native && owner == &self.active)
+        {
             return Ok(());
         }
-        if let Some((id, _)) = self.pending.take() {
+        if let Some((id, _, _)) = self.pending.take() {
             self.emit(
                 tx,
                 "serverRequest/resolved",
@@ -764,11 +768,11 @@ impl Projection {
             )
         };
         self.emit(tx, method, params, None, None, Some(json!(local)))?;
-        self.pending = Some((local, native));
+        self.pending = Some((local, native, self.active.clone()));
         Ok(())
     }
     fn disconnect(&mut self, tx: &mpsc::UnboundedSender<Value>) -> Result<()> {
-        if let Some((id, _)) = self.pending.take() {
+        if let Some((id, _, _)) = self.pending.take() {
             self.emit(
                 tx,
                 "serverRequest/resolved",
@@ -1096,20 +1100,24 @@ async fn handle(
         let id = v["id"]
             .as_str()
             .context("WorkBuddy response identity missing")?;
-        let (local, pending) = state
+        // A desktop can resolve an interaction and start another turn between
+        // polls, reusing the exact native pending value. Refresh owner identity
+        // before accepting the local button, not only the native tool call ID.
+        snapshot(app, session, host, state, tx, false).await?;
+        let (local, pending, owner) = state
             .pending
             .as_ref()
             .context("WorkBuddy interaction is no longer pending")?;
         ensure!(
-            local == id,
-            "Stale WorkBuddy interaction; refresh this conversation"
+            local == id && owner == &state.active,
+            "Stale WorkBuddy pending interaction; refresh this conversation"
         );
         let current = host
             .invoke("wb:conversations:getPendingInfo", json!([state.thread]))
             .await?;
         ensure!(
             current == *pending,
-            "WorkBuddy interaction changed; refresh before answering"
+            "WorkBuddy pending interaction changed; refresh before answering"
         );
         let result = if pending["category"] == "question" {
             let mut answers = serde_json::Map::new();
@@ -1639,6 +1647,32 @@ mod tests {
         let second = drain(&mut rx)[0]["id"].clone();
         assert_ne!(first, second);
         assert_eq!(p.pending.as_ref().unwrap().0, second.as_str().unwrap());
+    }
+    #[test]
+    fn unchanged_permission_value_is_invalidated_when_owning_turn_changes() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut p = Projection::new("same-peer".into());
+        let native = json!({"id":"reused-tool-call", "category":"tool", "options":[]});
+        p.records(&[record("first", "pending")], &tx).unwrap();
+        drain(&mut rx);
+        p.pending(native.clone(), &tx).unwrap();
+        let old = drain(&mut rx)[0]["id"].clone();
+        // No intervening null pending observation. Desktop completed the first
+        // turn and entered a second permission with the exact same tool ID/data.
+        p.records(
+            &[record("first", "completed"), record("second", "pending")],
+            &tx,
+        )
+        .unwrap();
+        drain(&mut rx);
+        p.pending(native.clone(), &tx).unwrap();
+        let changed = drain(&mut rx);
+        assert_eq!(changed[0]["method"], "serverRequest/resolved");
+        assert_eq!(changed[0]["params"]["requestId"], old);
+        assert_ne!(changed[1]["id"], old);
+        assert_eq!(p.pending.as_ref().unwrap().2.as_deref(), Some("second"));
+        p.pending(native, &tx).unwrap();
+        assert!(drain(&mut rx).is_empty());
     }
     #[test]
     fn endpoint_and_target_checks_reject_untrusted_urls_without_echoing_them() {

@@ -48,3 +48,5 @@ ANYWORK_TEST_WORKBUDDY_ERROR_THREAD=previously-failed-native-id \
 ```
 
 It requires the operator's independently isolated desktop fixture and asserts only the adapter's safe operation/code/setup guidance, never printing raw native error messages or objects.
+
+Owner identity follow-up: a pending interaction is deduplicated only when both the full native value and its active native request ID are unchanged. The adapter resolves/reissues the local interaction if the desktop changes turns between polls, even when no null pending state was observed. Before responding it refreshes the canonical records/pending snapshot and rejects the old local ID as a pending conflict. Unit and real-CDP fixture coverage includes a desktop turn switch with byte-for-byte identical pending data and immediate stale-button submission; a new button remains available and authorizes once. The upstream resolve method itself accepts only a native pending ID, so these are fresh-snapshot guards, not a claim of a transactional native expected-turn API.
