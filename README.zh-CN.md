@@ -37,14 +37,16 @@ Rust 桌面管理器负责启动本地服务、管理连接地址、访问密钥
 | 平台 | 下载内容 | 安装要求 |
 | --- | --- | --- |
 | macOS Apple Silicon / Intel | 含 `AnyWork.app` 的 `.zip` | macOS 14+；临时签名，尚未公证 |
-| Windows x64 | 便携 `.zip` | Windows 10/11、Microsoft Edge WebView2；未做发行商签名 |
-| Linux x64 / ARM64 | 便携 `.tar.gz` | GTK 3、WebKitGTK 4.1；x64 基于 Ubuntu 22.04，ARM64 基于 Ubuntu 24.04 构建 |
+| Windows x64 | 当前用户安装版或便携 `.zip` | Windows 10/11、Microsoft Edge WebView2；未做发行商签名 |
+| Linux x64 / ARM64 | AppImage 或便携 `.tar.gz` | GTK 3、WebKitGTK 4.1；x64 基于 Ubuntu 22.04，ARM64 基于 Ubuntu 24.04 构建 |
 | Android | 持久签名的通用 `.apk` | Android 8.0+，较新的 Android System WebView |
 | Web / 源码 | `.tar.gz` | 自托管部署 / 开发 |
 
 1. 在**执行工作的电脑**安装并登录 [Codex CLI](https://github.com/openai/codex)，执行期间保持电脑唤醒。
 2. 打开 AnyWork 桌面管理器，选择工作目录并启动服务。
 3. 在其他设备打开管理器显示的地址，输入访问密钥。需要外网访问时开启隧道，或使用自有 HTTPS/VPN。
+
+桌面端 0.1.1 起支持静默检查下载，确认后安装重启。Windows 请用安装版，Linux 请用 AppImage；便携目录手动更新。0.1.0 需要先手动升级一次。[更新说明](docs/updates.md)。
 
 Android App 连接电脑，不在手机上运行 Codex。Linux/Windows 便携程序必须与 `resources` 目录放在一起。macOS 下载后可能需要在核对来源后前往**系统设置 → 隐私与安全性 → 仍要打开**。完整依赖、命令行用法与故障排查见[安装与连接指南](docs/getting-started.zh-CN.md)。
 

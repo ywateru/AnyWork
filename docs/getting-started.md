@@ -11,6 +11,8 @@ Download from [GitHub Releases](https://github.com/ywateru/AnyWork/releases/late
 - **Linux:** extract the archive and run `./anywork-desktop`. x64 is built on Ubuntu 22.04 (glibc 2.35+); ARM64 on Ubuntu 24.04 (glibc 2.39+). Install runtime libraries: `sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 libsecret-1-0`. Other distributions need equivalent packages.
 - **Android 8+:** install `anywork-android.apk`, allowing installation from the source you selected. It is a signed universal APK, not a Play Store distribution. Older local debug builds with the same application ID use another signer and must be uninstalled first (export needed connection settings before doing so). Use an up-to-date Android System WebView.
 
+Automatic desktop updates are available from 0.1.1. Use the Windows per-user installer or Linux AppImage to enable them. Keep AppImages writable (on recent Ubuntu, install `libfuse2t64`, or use `--appimage-extract-and-run` if FUSE is unavailable). Version 0.1.0 needs one manual upgrade. [Update behavior and supported packages](updates.md).
+
 ## Start the host
 
 Install and sign into Codex first. Verify `codex login status` in the host user's shell. If Codex is not on the desktop application's PATH, set `CODEX_BIN` to its absolute executable path before launching AnyWork. The Codex account authenticates model calls; the AnyWork access key authenticates remote devices.

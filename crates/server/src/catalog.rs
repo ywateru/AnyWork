@@ -100,7 +100,7 @@ impl Catalog {
             .context("Codex plugin not installed")?;
         let (rpc, mut events) = RpcProcess::spawn(manifest).await?;
         tokio::spawn(async move { while events.recv().await.is_some() {} });
-        if let Err(e) = rpc.call("initialize", json!({"clientInfo":{"name":"anywork_catalog","version":"0.1.0"},"capabilities":{"experimentalApi":true}})).await {
+        if let Err(e) = rpc.call("initialize", json!({"clientInfo":{"name":"anywork_catalog","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await {
             rpc.close().await; return Err(e);
         }
         rpc.send(json!({"method":"initialized","params":{}}))

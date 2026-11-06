@@ -34,7 +34,7 @@ public final class MainActivity extends Activity {
         web.setOnApplyWindowInsetsListener((view, insets) -> { view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom()); return insets; });
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
-        settings.setUserAgentString(settings.getUserAgentString() + " AnyWork-Android/0.1.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " AnyWork-Android/" + BuildConfig.VERSION_NAME);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);

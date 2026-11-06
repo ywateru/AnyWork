@@ -77,3 +77,12 @@ node scripts/site-test.mjs
 ```
 
 公开社交分享图 `site/assets/social.png` 使用原创示意界面，不包含真实用户会话。它是唯一新增的公开 PNG 例外，连同应用图标显式进入对应源码包。参考应用提取头像已由原创几何 SVG 替换；公开历史从已审查文件建立，不推送私人开发备份。
+
+
+## Signed desktop updates / 桌面签名更新
+
+See [updates.md](updates.md) for the update lifecycle and key requirements. Configure `TAURI_SIGNING_PRIVATE_KEY` before running the release workflow. All five native desktop targets are required to publish `latest.json`. Windows now also builds a per-user NSIS installer; Linux builds AppImages. Portable downloads remain available for manual updates.
+
+For a new release, run **Release new version** in Actions (patch/minor/major). It increments every embedded version plus Android versionCode, commits and dispatches the build. Or run `npm run version:patch`, commit, and push the matching tag. Never reuse a published tag or overwrite its artifacts: the preflight rejects duplicate/backwards releases. The signing CLI binds each signature to its application version.
+
+正式发布需要先配置 `TAURI_SIGNING_PRIVATE_KEY`。五个原生桌面目标全部成功后，才发布 `latest.json`；签名绑定应用版本。可以使用 Actions 的 **Release new version** 自动递增、提交并构建；也可用 `npm run version:patch`。不复用已发布版本，不覆盖旧附件。保管好 Git 之外的发行私钥。

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Package the already-built native binaries and their corresponding source."""
 import argparse
+import json
 import os
 import pathlib
 import shutil
@@ -51,7 +52,7 @@ def main():
         shutil.copy2(ROOT / 'artifacts/anywork-source.tar.gz', resources / 'artifacts/anywork-source.tar.gz')
         for name in ['LICENSE', 'NOTICE']:
             shutil.copy2(ROOT / name, resources / name)
-        (folder / 'START-HERE.txt').write_text('AnyWork 0.1.0\n\nEnglish: https://ywateru.github.io/AnyWork/en/\n中文: https://ywateru.github.io/AnyWork/zh/\n\nInstall and sign into Codex on the host first.\nOpen AnyWork.app (macOS) or anywork-desktop (Linux/Windows).\nKeep the resources directory beside the portable executable.\nmacOS: ad-hoc signed, not notarized. Windows: unsigned, requires WebView2.\nLinux: requires GTK 3 and WebKitGTK 4.1; see the installation guide.\nDesktop sharing uses version-dependent local Codex interfaces on Unix.\n\nCLI: cd into the resources directory, then run:\n  ./bin/anywork --web-dir web --workspace /absolute/path/to/projects\nWindows: .\\bin\\anywork.exe --web-dir web --workspace C:\\Projects\n\nThe token is in .anywork/access-token. Keep it private.\nLicense: AGPL-3.0-only. Source is included in resources/artifacts.\n', encoding='utf-8')
+        (folder / 'START-HERE.txt').write_text('AnyWork ' + json.loads((ROOT / 'package.json').read_text())['version'] + '\n\nEnglish: https://ywateru.github.io/AnyWork/en/\n中文: https://ywateru.github.io/AnyWork/zh/\n\nInstall and sign into Codex on the host first.\nOpen AnyWork.app (macOS) or anywork-desktop (Linux/Windows).\nKeep the resources directory beside the portable executable.\nmacOS: ad-hoc signed, not notarized. Windows: unsigned, requires WebView2.\nLinux: requires GTK 3 and WebKitGTK 4.1; see the installation guide.\nDesktop sharing uses version-dependent local Codex interfaces on Unix.\n\nCLI: cd into the resources directory, then run:\n  ./bin/anywork --web-dir web --workspace /absolute/path/to/projects\nWindows: .\\bin\\anywork.exe --web-dir web --workspace C:\\Projects\n\nThe token is in .anywork/access-token. Keep it private.\nLicense: AGPL-3.0-only. Source is included in resources/artifacts.\n', encoding='utf-8')
         if args.platform.startswith('macos'):
             subprocess.run(['codesign', '--force', '--deep', '--sign', '-', str(app)], check=True)
             subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)

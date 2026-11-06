@@ -23,9 +23,14 @@ open = "5"
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service"] }
 tauri = { version = "=2.12.5", features = ["custom-protocol", "image-png"] }
 arboard = "3.7"
+tauri-plugin-updater = "2"
+semver = "1"
 
 [build-dependencies]
-tauri-build = "=2.7.4"
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dev-dependencies]
+tauri = { version = "=2.12.5", features = ["test"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

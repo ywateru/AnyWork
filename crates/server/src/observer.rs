@@ -69,7 +69,7 @@ impl Observer {
                 if socket.is_none() {
                     let stream = UnixStream::connect(socket_path()?).await?;
                     let (mut ws, _) = tokio_tungstenite::client_async("ws://localhost/", stream).await?;
-                    query(&mut ws, self.next_id.fetch_add(1, Ordering::Relaxed), "initialize", json!({"clientInfo":{"name":"anywork_observer","version":"0.1.0"},"capabilities":{"experimentalApi":true}})).await?;
+                    query(&mut ws, self.next_id.fetch_add(1, Ordering::Relaxed), "initialize", json!({"clientInfo":{"name":"anywork_observer","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await?;
                     ws.send(Message::Text(json!({"method":"initialized","params":{}}).to_string().into())).await?;
                     *socket = Some(ws);
                 }

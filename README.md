@@ -37,14 +37,16 @@ Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases
 | Platform | Package | Requirements |
 | --- | --- | --- |
 | macOS Apple Silicon / Intel | `.zip` containing `AnyWork.app` | macOS 14+; ad-hoc signed, not notarized |
-| Windows x64 | Portable `.zip` | Windows 10/11, Microsoft Edge WebView2; unsigned |
-| Linux x64 / ARM64 | Portable `.tar.gz` | GTK 3, WebKitGTK 4.1; x64 built on Ubuntu 22.04, ARM64 on Ubuntu 24.04 |
+| Windows x64 | Per-user installer or portable `.zip` | Windows 10/11, Microsoft Edge WebView2; unsigned |
+| Linux x64 / ARM64 | AppImage or portable `.tar.gz` | GTK 3, WebKitGTK 4.1; x64 built on Ubuntu 22.04, ARM64 on Ubuntu 24.04 |
 | Android | Signed universal `.apk` | Android 8.0+, current Android System WebView |
 | Web / source | `.tar.gz` | Self-hosted deployment / development |
 
 1. Install and sign into the [Codex CLI](https://github.com/openai/codex) **on the host computer**. Keep that computer awake while tasks run.
 2. Open the AnyWork desktop manager, choose your workspace, and start the service.
 3. Open the displayed address on your other device and enter the access key. For internet access, enable a tunnel or use your own HTTPS/VPN setup.
+
+Desktop 0.1.1+ quietly checks and downloads updates, then installs only after confirmation. Use the Windows installer or Linux AppImage for automatic updates; portable directories update manually. Version 0.1.0 requires one manual upgrade. [Update guide](docs/updates.md).
 
 The Android app connects to your host; it does not run Codex on the phone. Linux/Windows portable executables must remain beside their `resources` directory. macOS may require **System Settings → Privacy & Security → Open Anyway** after you verify the download. See the [installation and connection guide](docs/getting-started.md) for dependencies, CLI usage and troubleshooting.
 

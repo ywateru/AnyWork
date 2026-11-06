@@ -76,9 +76,16 @@ pub async fn desktop_install_cloudflared(state: State<'_, DesktopState>) -> Resu
     Ok(path.display().to_string())
 }
 #[tauri::command]
-pub fn desktop_action(state: State<'_, DesktopState>, action: Action) -> Result<(), String> {
+pub fn desktop_action(
+    state: State<'_, DesktopState>,
+    updates: State<'_, crate::updates::Handle>,
+    action: Action,
+) -> Result<(), String> {
     if state.preview.is_some() {
         return Err("界面预览不会修改配置或启动服务。".into());
+    }
+    if updates.snapshot().phase == crate::updates::Phase::Installing {
+        return Err("正在安装更新，请等待 AnyWork 重新启动。".into());
     }
     let command = match action {
         Action::Welcome => Command::Welcome,

@@ -164,6 +164,7 @@ pub enum Command {
     StartRoute(RouteKind, Config, String),
     StopRoute(RouteKind),
     UseCloudflared(PathBuf, oneshot::Sender<Result<(), String>>),
+    PauseForUpdate(oneshot::Sender<()>),
     Shutdown(oneshot::Sender<()>),
 }
 #[derive(Clone)]
@@ -197,6 +198,12 @@ impl Handle {
         let (tx, rx) = oneshot::channel();
         self.send(Command::Shutdown(tx));
         let _ = tokio::time::timeout(Duration::from_secs(14), rx).await;
+    }
+    pub async fn pause_for_update(&self) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(Command::PauseForUpdate(tx))?;
+        tokio::time::timeout(Duration::from_secs(20), rx).await??;
+        Ok(())
     }
 }
 #[derive(Clone)]
@@ -554,6 +561,11 @@ impl Worker {
                 Ok(())
             }
             Command::Shutdown(_) => Ok(()),
+            Command::PauseForUpdate(done) => {
+                self.stop_server().await;
+                let _ = done.send(());
+                Ok(())
+            }
         };
         if let Err(error) = result {
             self.edit(|s| {

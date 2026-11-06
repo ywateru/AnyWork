@@ -105,7 +105,7 @@ pub async fn connect_owner(
             continue;
         };
         let inspect = tokio::time::timeout_at(deadline, async {
-            let initialized = rpc.call("initialize", json!({"clientInfo":{"name":"anywork","version":"0.1.0"},"capabilities":{"experimentalApi":true}})).await?;
+            let initialized = rpc.call("initialize", json!({"clientInfo":{"name":"anywork","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await?;
             if let Some(home) = initialized["codexHome"].as_str() {
                 ensure!(PathBuf::from(home).canonicalize()? == crate::observer::codex_home()?.canonicalize()?, "Codex home does not match the discovered history");
             }

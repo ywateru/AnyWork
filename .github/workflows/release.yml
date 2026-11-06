@@ -11,28 +11,46 @@ on:
       tag:
         description: Release tag (must match the source version)
         type: string
-        default: v0.1.0
+        default: ''
 permissions:
   contents: read
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate embedded versions
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}
+        run: |
+          tag="${RELEASE_TAG:-v$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')}"
+          if [ "$PUBLISH" = true ]; then
+            python3 scripts/check-release-version.py "$tag" --remote
+          else
+            python3 scripts/check-release-version.py "$tag"
+          fi
   desktop:
+    needs: version
     name: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {os: macos-15, platform: macos-arm64}
-          - {os: macos-15-intel, platform: macos-x86_64}
-          - {os: ubuntu-22.04, platform: linux-x86_64}
-          - {os: ubuntu-24.04-arm, platform: linux-arm64}
-          - {os: windows-latest, platform: windows-x86_64}
+          - {os: macos-15, platform: macos-arm64, bundle: app}
+          - {os: macos-15-intel, platform: macos-x86_64, bundle: app}
+          - {os: ubuntu-22.04, platform: linux-x86_64, bundle: appimage}
+          - {os: ubuntu-24.04-arm, platform: linux-arm64, bundle: appimage}
+          - {os: windows-latest, platform: windows-x86_64, bundle: nsis}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
       MACOSX_DEPLOYMENT_TARGET: '14.0'
+      APPIMAGE_EXTRACT_AND_RUN: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,7 +64,7 @@ jobs:
           cache-on-failure: true
       - name: Linux dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libssl-dev patchelf
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libssl-dev patchelf libfuse2
       - run: npm ci
       - run: npm run build
       - run: npm run build:desktop-ui
@@ -58,6 +76,16 @@ jobs:
         run: cargo test --locked --release -p anywork -p anywork-desktop
       - name: Package application and source
         run: python3 scripts/release-package.py --platform ${{ matrix.platform }}
+      - name: Stage resources for native updates
+        run: python3 scripts/updater-artifacts.py prepare
+      - name: Build signed native updater bundle
+        working-directory: crates/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: npx tauri bundle --ci --bundles ${{ matrix.bundle }} --config tauri.bundle.conf.json
+      - name: Collect version-bound update signatures
+        run: python3 scripts/updater-artifacts.py collect --platform ${{ matrix.platform }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}
@@ -65,6 +93,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   android:
+    needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -106,6 +135,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   source-web:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -136,13 +166,16 @@ jobs:
           merge-multiple: true
       - name: Checksums
         working-directory: release
-        run: sha256sum anywork-* > SHA256SUMS
+        run: |
+          python3 ../scripts/updater-artifacts.py manifest
+          sha256sum anywork-* latest.json > SHA256SUMS
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
           RELEASE_COMMIT: ${{ github.sha }}
         run: |
+          RELEASE_TAG="${RELEASE_TAG:-v$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')}"
           python3 scripts/check-release-version.py "$RELEASE_TAG"
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             gh release create "$RELEASE_TAG" release/* --verify-tag --title "AnyWork $RELEASE_TAG" --notes-file docs/release-notes.md

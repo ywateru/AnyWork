@@ -85,7 +85,7 @@ impl App {
         };
         let setup=async {
             if !session.external {
-                rpc.call("initialize",json!({"clientInfo":{"name":"anywork","version":"0.1.0"},"capabilities":{"experimentalApi":true}})).await?;
+                rpc.call("initialize",json!({"clientInfo":{"name":"anywork","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await?;
                 rpc.send(json!({"method":"initialized","params":{}})).await?;
             }
             let mut params=if session.external { json!({"excludeTurns":true}) } else { remote_agent_codex::thread_options(&session.cwd,session.model.as_deref(),&session.policy) };

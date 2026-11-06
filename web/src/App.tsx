@@ -1,3 +1,4 @@
+import { version as appVersion } from "../package.json";
 import NotificationCenter from "./components/NotificationCenter";
 import { useSessionNotifications } from "./hooks/useSessionNotifications";
 import type { ComposerAttachment } from "./imageAnnotations";
@@ -1988,7 +1989,7 @@ export default function App() {
                 断开服务器连接
               </button>
               <p className="license">
-                AnyWork v0.1.0 · AGPL-3.0-only
+                AnyWork v{appVersion} · AGPL-3.0-only
                 <br />
                 部分界面代码来自 tiann/hapi。
                 <a href={api.url("/source")} target="_blank" rel="noreferrer">

@@ -2,11 +2,19 @@ AnyWork brings a local Codex workspace to browsers and Android, with a Rust desk
 
 AnyWork 将本机 Codex 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
+**New in 0.1.1 / 本次更新**
+
+Signed desktop updates now download quietly in the background, retain completed packages across restarts, offer a 24-hour reminder deferral, and install/restart only after confirmation. Native updates include the server and Web; manager-owned services and tunnels resume after restart. New Windows per-user installers and Linux AppImages support automatic updates. Every release requires a newer version and Android versionCode.
+
+新增签名自动更新：后台静默下载、完整缓存跨重启保留、稍后 24 小时提醒，确认后安装重启。Server 与 Web 一起升级，应用管理的服务和隧道重启后恢复。新增 Windows 当前用户安装版和 Linux AppImage。发行流程拒绝重复或倒退版本。
+
+**Upgrade from 0.1.0 / 从旧版升级：** Install this version manually once, retaining the user data directory. / 0.1.0 没有更新器，请先手动安装本版并保留数据目录。See [updates / 更新说明](https://github.com/ywateru/AnyWork/blob/main/docs/updates.md).
+
 **Downloads / 下载**
 
 - macOS 14+ Apple Silicon / Intel: ad-hoc signed app, not notarized / 临时签名，尚未公证。
-- Windows x64: unsigned portable package, requires WebView2 / 未做发行商签名，需 WebView2。
-- Linux x64 / ARM64: portable packages, require GTK 3 and WebKitGTK 4.1 / 需安装运行库。
+- Windows x64: per-user installer or portable ZIP; requires WebView2, unsigned / 当前用户安装版或便携包；需 WebView2，未做发行商签名。
+- Linux x64 / ARM64: AppImages or portable archives; compatible desktop libraries required / AppImage 或便携包，需兼容运行库。
 - Android 8+: signed universal APK / 持久签名通用 APK。
 - Web client and corresponding source / Web 资源与对应源码。
 

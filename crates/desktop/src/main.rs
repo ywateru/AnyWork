@@ -3,6 +3,7 @@ use anywork_desktop::{
     bridge::{self, DesktopState},
     config,
     manager::{self, Phase, Snapshot},
+    updates,
 };
 use std::sync::{
     Arc,
@@ -32,7 +33,17 @@ fn run() -> anyhow::Result<()> {
         .build()?;
     let _enter = runtime.enter();
     tauri::async_runtime::set(runtime.handle().clone());
-    let options = manager::Options::default();
+    let context = tauri::generate_context!();
+    let mut options = manager::Options::default();
+    if std::env::var_os("ANYWORK_RESOURCES").is_none()
+        && let Ok(resources) =
+            tauri::utils::platform::resource_dir(context.package_info(), &Default::default())
+        && resources.join("bin").is_dir()
+    {
+        options.resources = resources;
+    }
+    let updater = updates::Handle::new(&options.support, updates::supported(preview.is_some()));
+    let update_service = preview.is_none();
     let _lock = if preview.is_none() {
         Some(manager::manager_lock(&options.support)?)
     } else {
@@ -59,6 +70,8 @@ fn run() -> anyhow::Result<()> {
     let finished_event = finished.clone();
     let quit_handle = handle.clone();
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater.clone())
         .manage(DesktopState {
             handle: handle.clone(),
             preview,
@@ -75,9 +88,21 @@ fn run() -> anyhow::Result<()> {
             bridge::desktop_generate_token,
             bridge::desktop_lan,
             bridge::desktop_open,
-            bridge::desktop_pairing
+            bridge::desktop_pairing,
+            updates::desktop_update_snapshot,
+            updates::desktop_update_check,
+            updates::desktop_update_preferences,
+            updates::desktop_update_defer,
+            updates::desktop_update_install,
+            updates::desktop_update_open_releases
         ])
         .setup(move |app| {
+            if update_service {
+                updater.start(
+                    app.handle().clone(),
+                    app.state::<DesktopState>().handle.clone(),
+                );
+            }
             if args.iter().any(|a| a == "--minimum-size")
                 && let Some(window) = app.get_webview_window("main")
             {
@@ -103,7 +128,7 @@ fn run() -> anyhow::Result<()> {
             });
             Ok(())
         })
-        .build(tauri::generate_context!())?;
+        .build(context)?;
     app.run(move |app, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event
             && !finished_event.load(Ordering::SeqCst)

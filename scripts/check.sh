@@ -20,4 +20,6 @@ python3 scripts/goal-editor-test.py
 python3 scripts/goal-mode-test.py
 python3 scripts/review-test.py
 python3 scripts/source-archive-test.py
+python3 scripts/release-version-test.py
 npm run test:e2e
+node scripts/desktop-updater-test.mjs

@@ -11,6 +11,8 @@
 - **Linux：** 解压并运行 `./anywork-desktop`。x64 基于 Ubuntu 22.04（glibc 2.35+），ARM64 基于 Ubuntu 24.04（glibc 2.39+）。安装运行库：`sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 libsecret-1-0`。其他发行版使用等价软件包。
 - **Android 8+：** 安装 `anywork-android.apk`，按系统提示允许所选来源安装。本包使用持久签名，不是 Play 商店发行。旧本地 Debug 版使用其他签名，相同应用 ID 会导致无法覆盖安装；请先导出需要保留的配置再卸载旧版。保持 Android System WebView 更新。
 
+0.1.1 起支持桌面自动更新。Windows 推荐当前用户安装版，Linux 推荐 AppImage，并放在可写位置。较新 Ubuntu 可安装 `libfuse2t64`；无 FUSE 时可尝试 `--appimage-extract-and-run`。0.1.0 需先手动升级一次。[更新行为与支持的安装方式](updates.md)。
+
 ## 启动电脑端
 
 先安装并登录 Codex，在同一系统用户下运行 `codex login status` 检查。如果桌面程序的 PATH 找不到 Codex，启动前设置 `CODEX_BIN` 为其可执行文件绝对路径。Codex 账号用于模型调用；AnyWork 访问密钥用于验证远程设备，两者互相独立。

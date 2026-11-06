@@ -159,7 +159,7 @@ public final class ConnectionActivity extends Activity {
     private JSONObject requestInfo(ConnectionProfile profile) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(profile.server + "/api/info").openConnection();
         connection.setConnectTimeout(10000); connection.setReadTimeout(10000); connection.setInstanceFollowRedirects(false);
-        connection.setRequestProperty("Authorization", "Bearer " + profile.token); connection.setRequestProperty("User-Agent", "AnyWork-Android/0.1.0");
+        connection.setRequestProperty("Authorization", "Bearer " + profile.token); connection.setRequestProperty("User-Agent", "AnyWork-Android/" + BuildConfig.VERSION_NAME);
         String id = store.deviceId();
         connection.setRequestProperty("X-AnyWork-Client-Id", id);
         try {

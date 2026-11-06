@@ -30,6 +30,8 @@ import {
   X,
 } from "lucide-react";
 import "./style.css";
+import { version as appVersion } from "../package.json";
+import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
 type Kind = "quick" | "named" | "relay";
 type Phase =
   | "off"
@@ -139,6 +141,7 @@ const invoke = <T,>(command: string, args?: Record<string, unknown>) =>
     ? window.__TAURI__.core.invoke<T>(command, args)
     : Promise.reject(new Error("请从 AnyWork 桌面应用打开此页面。"));
 function App() {
+  const updates = useDesktopUpdates();
   const [state, setState] = useState<Snapshot | null>(null),
     [config, setConfig] = useState<Config | null>(null),
     [token, setToken] = useState(""),
@@ -485,11 +488,26 @@ function App() {
                 phase={state.authorized ? "running" : "off"}
               />
               <button onClick={() => setWelcome(true)}>使用说明</button>
-              <small>AnyWork · 0.1.0</small>
+              <button
+                className="version-button"
+                onClick={() => setPage("updates")}
+                aria-label="软件更新"
+              >
+                AnyWork · {appVersion}
+                {updates.state?.showNotice && <span className="update-dot" />}
+              </button>
             </div>
           </aside>
           <main className="workspace">
-            {page === "service" ? (
+            {page !== "updates" && (
+              <UpdateNotice
+                controller={updates}
+                open={() => setPage("updates")}
+              />
+            )}
+            {page === "updates" ? (
+              <UpdatePage controller={updates} />
+            ) : page === "service" ? (
               <>
                 <header>
                   <div>
