@@ -1,4 +1,5 @@
 import { toolInvocation, toolPresentation } from "../../toolPresentation";
+import { TOOL_TITLES, argumentSummary } from "./tool-metadata";
 import type { ToolRowState } from "./ToolRow";
 
 /** Narrow presentation adapter. Never derive a tool action by executing/parsing shell. */
@@ -36,7 +37,9 @@ export function toolRowModel(item: Record<string, any> = {}) {
   const invocation = toolInvocation(item);
   const title =
     item.type === "dynamicToolCall"
-      ? item.title || invocation.tool || titles.tool
+      ? (item.title && item.title !== invocation.tool
+          ? item.title
+          : TOOL_TITLES[invocation.tool] || invocation.tool) || titles.tool
       : titles[view.kind];
   const actions = Array.isArray(item.commandActions) ? item.commandActions : [];
   const actionSummary = actions
@@ -46,6 +49,7 @@ export function toolRowModel(item: Record<string, any> = {}) {
   const summary = String(
     item.description ||
       item.summary ||
+      argumentSummary(invocation.tool, invocation.arguments) ||
       actionSummary ||
       item.command ||
       item.query ||

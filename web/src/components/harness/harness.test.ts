@@ -49,6 +49,44 @@ describe("extracted Harness conversation adapter", () => {
       }),
     ).toEqual({ title: "读取", summary: "/tmp/report.txt", state: "ok" });
   });
+  it("adapts actual Harness metadata without requiring prelocalized fixture fields", () => {
+    expect(
+      toolRowModel({
+        type: "dynamicToolCall",
+        tool: "read",
+        title: "read",
+        arguments: { path: "/tmp/example.txt" },
+        status: "completed",
+      }),
+    ).toEqual({ title: "读取", summary: "/tmp/example.txt", state: "ok" });
+    expect(
+      toolRowModel({
+        type: "dynamicToolCall",
+        tool: "bash",
+        title: "bash",
+        arguments: { description: "检查快照", command: "diskutil list" },
+        status: "inProgress",
+      }),
+    ).toEqual({ title: "运行命令", summary: "检查快照", state: "running" });
+    expect(
+      toolRowModel({
+        type: "dynamicToolCall",
+        tool: "job_output",
+        title: "job_output",
+        arguments: { job_id: "bash-42" },
+        status: "completed",
+      }),
+    ).toEqual({ title: "读取任务输出", summary: "bash-42", state: "ok" });
+    expect(
+      toolRowModel({
+        type: "dynamicToolCall",
+        tool: "read",
+        title: "读取项目说明",
+        arguments: '{"path":"README.md"}',
+        status: "completed",
+      }),
+    ).toEqual({ title: "读取项目说明", summary: "README.md", state: "ok" });
+  });
   it("uses declared tool names for glyphs rather than shell source", () => {
     expect(
       toolGlyph({ type: "dynamicToolCall", tool: "bash", command: "cat file" }),
