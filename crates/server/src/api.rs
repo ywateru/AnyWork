@@ -19,7 +19,7 @@ pub async fn info(State(app): State<Arc<App>>) -> Json<Value> {
 }
 pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"plugins":app.plugins.values().map(|p|json!({"id":p.id,"name":p.name,"capabilities":p.capabilities,"protocol_version":p.protocol_version})).collect::<Vec<_>>()}),
+        json!({"plugins":app.plugins.values().filter(|p|p.id != crate::harness::AGENT || app.harness.as_ref().is_some_and(|h|h.available())).map(|p|json!({"id":p.id,"name":p.name,"capabilities":p.capabilities,"protocol_version":p.protocol_version})).collect::<Vec<_>>()}),
     )
 }
 /// Read stored state only: an update check must not start discovery or attach engines.
@@ -95,8 +95,16 @@ fn local_service_control_allowed(
 pub async fn sessions(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
     let mut catalog = app.catalog.lock().await;
     catalog.sync(&app).await;
-    let discovery_error = catalog.error.clone();
+    let mut discovery_error = catalog.error.clone();
     drop(catalog);
+    if let Err(error) = crate::harness::sync(&app).await {
+        discovery_error = Some(format!(
+            "{}Harness 会话同步失败：{error}",
+            discovery_error
+                .map(|e| format!("{e}；"))
+                .unwrap_or_default()
+        ));
+    }
     let mut sessions = app.store.sessions()?;
     #[cfg(unix)]
     {
@@ -120,7 +128,7 @@ pub async fn session(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let session = app.session(&id)?;
-    let session = if session.external {
+    let session = if session.external && session.agent == "codex" {
         app.catalog
             .lock()
             .await
@@ -150,6 +158,10 @@ pub async fn create(
     let agent = body.agent.unwrap_or_else(|| "codex".into());
     if !app.plugins.contains_key(&agent) {
         return Err(anyhow::anyhow!("Plugin is not installed").into());
+    }
+    if agent == crate::harness::AGENT {
+        let session = crate::harness::create(&app, &cwd.to_string_lossy(), body.title).await?;
+        return Ok(Json(json!({"session": session})));
     }
     let policy = body.policy.unwrap_or_else(|| "manual".into());
     validate_policy(&policy)?;
@@ -198,7 +210,9 @@ pub async fn update(
     let _lock = gate.lock().await;
     let current = app.session(&id)?;
     if current.external {
-        return Err(anyhow::anyhow!("此会话来自 Codex，请在原客户端管理名称、归档和配置。").into());
+        return Err(
+            anyhow::anyhow!("此会话由外部 Agent 管理，请在原客户端管理名称、归档和配置。").into(),
+        );
     }
     if body.model.is_some() && ["running", "waiting", "starting"].contains(&current.status.as_str())
     {
@@ -234,7 +248,9 @@ pub async fn remove(
     let gate = app.gate(&id).await;
     let _lock = gate.lock().await;
     if app.session(&id)?.external {
-        return Err(anyhow::anyhow!("此会话来自 Codex，请在原客户端管理名称、归档和配置。").into());
+        return Err(
+            anyhow::anyhow!("此会话由外部 Agent 管理，请在原客户端管理名称、归档和配置。").into(),
+        );
     }
     if let Some(rt) = app.runtimes.lock().await.remove(&id) {
         rt.rpc.close().await;
@@ -329,6 +345,10 @@ fn validate_message(app: &App, id: &str, body: &Message) -> Result<()> {
         );
     }
     let session = app.session(id)?;
+    anyhow::ensure!(
+        !body.goal || session.agent != crate::harness::AGENT,
+        "Harness 目标控制暂未接入，未发送消息"
+    );
     for path in &body.attachments {
         attachment_path(app, &session, path)?;
     }
@@ -372,6 +392,9 @@ pub(crate) async fn deliver(
     validate_message(app, id, &body)?;
     let rt = app.ensure_runtime(&s).await?;
     if body.goal {
+        if s.agent == crate::harness::AGENT {
+            return Err(anyhow::anyhow!("Harness 目标控制暂未接入，未发送消息").into());
+        }
         crate::composer::require_goal_control(&rt, false)?;
     }
     if !s.external
@@ -422,6 +445,8 @@ pub(crate) async fn deliver(
         });
         if image {
             input.push(json!({"type":"localImage","path":path}));
+        } else if s.agent == crate::harness::AGENT {
+            input.push(json!({"type":"localFile","path":path}));
         } else {
             input.push(
                 json!({"type":"text","text":format!("Attached local file: {}",path.display())}),
@@ -817,7 +842,7 @@ pub async fn models(
     let gate = app.gate(&id).await;
     let _lock = gate.lock().await;
     let s = app.session(&id)?;
-    if s.external {
+    if s.external && s.agent == "codex" {
         drop(_lock);
         return Ok(Json(
             app.catalog

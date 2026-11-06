@@ -176,6 +176,18 @@ pub async fn read(
     let s = app.session(&id)?;
     // Reading the composer must never cold-resume a thread. An unrelated CLI
     // can hold its writer while metadata and saved history remain readable.
+    if s.agent == crate::harness::AGENT {
+        let rt = app.ensure_runtime(&s).await?;
+        drop(_lock);
+        let settings = rt.rpc.call("anywork/harness/settings", json!({})).await?;
+        *rt.settings.lock().await = settings.clone();
+        let catalog = models(&rt).await?;
+        let mut result = controls(&settings, &catalog, true, None, &Value::Null, None);
+        result["plan_available"] = json!(false);
+        result["goal"] = Value::Null;
+        result["goal_capabilities"] = json!({"create":false,"edit":false,"resume":false,"clear":false,"pause":false,"reason":"Harness 目标控制暂未接入"});
+        return Ok(Json(result));
+    }
     let existing = app.runtimes.lock().await.get(&id).cloned();
     if s.external && existing.is_none() || s.archived {
         // Metadata reads must not keep message submission behind slow catalog IO.
@@ -318,6 +330,53 @@ pub async fn update(
         && (objective.trim().is_empty() || objective.len() > 20 * 1024 * 1024)
     {
         return Err(anyhow::anyhow!("目标不能为空，且不能超过 20 MiB").into());
+    }
+    if s.agent == crate::harness::AGENT {
+        let Update::Settings {
+            model,
+            effort,
+            service_tier,
+        } = body
+        else {
+            return Err(
+                anyhow::anyhow!("Harness 暂不支持目标或计划模式；未发送任何控制命令").into(),
+            );
+        };
+        if service_tier.is_some() {
+            return Err(anyhow::anyhow!("Harness does not support service tiers").into());
+        }
+        let rt = app.ensure_runtime(&s).await?;
+        require_idle(&app, &s, &rt).await?;
+        let before = rt.rpc.call("anywork/harness/settings", json!({})).await?;
+        let selected = model
+            .as_deref()
+            .or_else(|| current_model(&before))
+            .context("Select a Harness model")?;
+        let catalog = models(&rt).await?;
+        let entry = catalog
+            .iter()
+            .find(|entry| entry["model"] == selected)
+            .context("Model is not in the Harness catalog")?;
+        if let Some(effort) = &effort
+            && !entry["supportedReasoningEfforts"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item["reasoningEffort"] == *effort))
+        {
+            return Err(
+                anyhow::anyhow!("Harness model does not support this reasoning effort").into(),
+            );
+        }
+        rt.rpc
+            .call(
+                "thread/settings/update",
+                json!({"model":selected,"effort":effort}),
+            )
+            .await?;
+        let settings = rt.rpc.call("anywork/harness/settings", json!({})).await?;
+        *rt.settings.lock().await = settings.clone();
+        let mut result = controls(&settings, &catalog, true, None, &Value::Null, None);
+        result["plan_available"] = json!(false);
+        return Ok(Json(result));
     }
     let rt = app.ensure_runtime(&s).await?;
     let s = app.session(&id)?;

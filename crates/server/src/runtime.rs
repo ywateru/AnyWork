@@ -37,6 +37,12 @@ impl App {
             .clone()
     }
     pub fn emit(&self, id: &str, method: &str, mut params: Value, request_id: Option<Value>) {
+        if method == "user/message" && params["harnessClientId"].is_string() {
+            let item = json!({"type":"userMessage","clientId":params["harnessClientId"]});
+            if let Ok(Some(composer)) = self.store.composer_metadata_for_item(id, &item) {
+                params["composer"] = composer;
+            }
+        }
         if method == "user/message" && !params["display_text"].is_string() {
             if let Some(text) = params["text"].as_str() {
                 params["display_text"] = json!(crate::user_text::rendered_body(text));
@@ -70,7 +76,9 @@ impl App {
             .plugins
             .get(&session.agent)
             .context("Plugin is not installed")?;
-        let (rpc, mut events, desktop) = if session.external {
+        let (rpc, mut events, desktop) = if session.agent == crate::harness::AGENT {
+            crate::harness::attach(self, session).await?
+        } else if session.external {
             #[cfg(unix)]
             {
                 crate::control::connect_owner(self, session).await?
@@ -124,6 +132,7 @@ impl App {
         let app = self.clone();
         let id = session.id.clone();
         let rt = runtime.clone();
+        let harness = session.agent == crate::harness::AGENT;
         tokio::spawn(async move {
             while let Some(event) = events.recv().await {
                 let method = event["method"].as_str().unwrap_or("unknown");
@@ -162,6 +171,10 @@ impl App {
                             *rt.turn.lock().await = None;
                         }
                         let _ = app.store.set_status(&id, status);
+                    }
+                    "connection/interrupted" if harness => {
+                        *rt.turn.lock().await = None;
+                        let _ = app.store.set_status(&id, "disconnected");
                     }
                     "serverRequest/resolved" => {
                         if rt.turn.lock().await.is_some() {

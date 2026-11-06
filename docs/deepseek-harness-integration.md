@@ -57,3 +57,19 @@ Match Harness typography, spacing, tool disclosures and live status from source.
 4. UI extraction is traceable to upstream files and correctly licensed; browser checks cover desktop/mobile tools, status, attachments and unchanged composer behavior.
 5. Development and independent review use different agents. Blocking protocol gaps or fake integration remain unfinished until fixed; record exact verification limits honestly.
 
+
+## Native local carrier contract (backend implementation)
+
+Pinned official revision: `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159` (0.2.2-rc.1). Contracts are read from `packages/client/connection/src/{browser-auth,client/rpc}.ts`, `packages/api/gateway/src/stream-protocol.ts`, `packages/api/session-controller/src/{types,index}.ts`, and `packages/core/session/src/types.ts`.
+
+The explicit local configuration supplies a loopback HTTP host and its launch token (prefer a token file). `GET /connect?token=…&interactions=answer` yields a signed API cookie; an authenticated `/api/remote.mux` WebSocket owns that API peer. HTTP `POST /api/<namespace>/<method>` uses `{type:"client-request",rpcId,method,payload:{args:{…}}}` and returns the correlated `{rpcId,result:{ok,value|error}}`. The adapter never starts Harness and never stops it. Closing its socket only releases that API peer. It reconnects reads with a fresh peer and snapshot, but never replays an uncertain prompt.
+
+Mux messages are exact `open/item/end/cancel` frames with a `streamId`; business streams use `workspace/follow` and `session/follow` with a native session address. A follow opening is a snapshot at `cursor`, with chronological durable `records`, `hasMore` and process-local assistant stream state; older pages use `session/page` at that fixed cursor. Durable seq plus normalized-event kind is the replay identity. Prompts preserve the original host session and use a newly minted requestId, mode queue/steer, text or base64 image parts. The same host's `session/create` creates new sessions; importing existing ones never invokes create/resume.
+
+Harness sessions are `external: true`, agent `deepseek-harness`; this means shared execution ownership, not Codex provenance. All Codex catalog paths must additionally check the agent. Existing local scope rules continue to restrict discovery to the configured AnyWork workspace. Host permissions remain authoritative; AnyWork never silently installs auto approval. Model metadata comes from `session/modelCatalog`; goal/plan/fork/edit controls are disabled until their own native contracts are implemented.
+
+### Cancellation and interaction generations
+
+Native `turn/end` reasons follow `packages/core/session/src/types.ts`: all `aborted` causes (`user`, `parent`, `hook`, `disposed`, `legacy`), crash `interrupted`, and fork boundary `forked` are projected as interrupted; `error` is failed. Completed, blocked and max-tokens are terminal completed states, with the native reason retained for inspection. Unknown extensions fail explicitly rather than reporting success.
+
+The gateway removes an old peer's waterfall deliveries on disconnect, but retains a pending native event and may deliver the same eventId to a new client generation (`packages/api/gateway/src/index.ts`, `removeRemoteEventClient` / `openRemoteEvents`). AnyWork resolves each old local request with `reason: connection_lost` before reporting the interruption, discards the old client identity, and never replays a response. A local request ID includes the client generation and native eventId; native cancellation is translated to the current local ID. A newly delivered request can be answered once, while an old page's button cannot answer the new delivery. The session becomes disconnected until an authoritative snapshot restores running/idle; active pending requests take precedence over the catalog's coarse running boolean.

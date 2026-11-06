@@ -179,7 +179,12 @@ impl Catalog {
         if !persisted_complete {
             // A healthy live daemon is not evidence that its list contains all
             // persisted CLI threads. Retain earlier history on partial failure.
-            for mut previous in app.store.sessions()?.into_iter().filter(|s| s.external) {
+            for mut previous in app
+                .store
+                .sessions()?
+                .into_iter()
+                .filter(|s| s.external && s.agent == "codex")
+            {
                 if app.session_directory(&previous.cwd, true).is_ok()
                     && !previous
                         .thread_id
@@ -432,7 +437,7 @@ fn defer_history_details(session: &Session, events: &mut [Event]) {
                 summary[field] = value.clone();
             }
         }
-        summary["history_detail"] = if session.external {
+        summary["history_detail"] = if session.external && session.agent == "codex" {
             json!({"turn_id":event.params["history_turn_id"],"item_id":item["id"]})
         } else {
             json!({"seq":event.seq})
@@ -468,7 +473,7 @@ pub async fn history_item(
     Query(q): Query<DetailQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let session = app.session(&id)?;
-    if !session.external {
+    if !session.external || session.agent != "codex" {
         let seq = q.seq.context("Missing history item sequence")?;
         let event = app
             .store
@@ -628,8 +633,13 @@ pub async fn read_history(
     Query(q): Query<HistoryQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let s = app.session(&id)?;
+    if s.agent == crate::harness::AGENT {
+        let gate = app.gate(&id).await;
+        let _lock = gate.lock().await;
+        app.ensure_runtime(&s).await?;
+    }
     let limit = q.limit.unwrap_or(5).clamp(1, 20);
-    if !s.external {
+    if !s.external || s.agent != "codex" {
         let before = q
             .cursor
             .as_deref()
@@ -966,7 +976,7 @@ async fn references_in_history(
             }
         }
     }
-    if !session.external {
+    if !session.external || session.agent != "codex" {
         return Ok(false);
     }
     #[cfg(unix)]
