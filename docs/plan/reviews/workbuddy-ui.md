@@ -1,0 +1,35 @@
+# WorkBuddy identity and launcher independent review
+
+Verdict: **PASS for the committed UI and source-launcher scope**, with one non-blocking loading UX finding. This is not acceptance of native WorkBuddy interoperability or authorization to release/deploy.
+
+Candidate: `8e17536934ecafb315d50011aa82f41cb995d7f0`, branch `codex/workbuddy-ui`, independently reviewed on 2026-11-07. Contract: [WorkBuddy integration](../../workbuddy-integration.md), [launcher setup](../../workbuddy-launcher.md), and task `/Users/water/work/2026/any-work/docs/plan/tasks/workbuddy-ui.md` from main (the task postdates this candidate's base). The reviewer did not implement product changes.
+
+## Code and ownership review
+
+The launcher executes the selected bundle's original executable after checking bundle identifier, supported 5.9.3 version and executable path. Its code contains no installed-app writes, patch/re-sign operation, credential read, process termination or lock removal. An occupied `SingletonLock` or existing descriptor prevents launch; early desktop exit and timeout provide setup guidance and do not terminate the launched desktop. Launcher signals clean discovery only; desktop work remains independent.
+
+Discovery is published through a 0600 temporary regular file, fsync and atomic no-replace hard link inside a current-user-owned 0700 directory. Lexical setup ancestors are checked for symbolic links; unsafe existing directory permissions are rejected without chmod. Cleanup checks instance identity, file mode/owner and inode/device, preserving another instance's replacement. This is a private local-user trust boundary, not protection against a malicious process running as the same user and racing filesystem operations.
+
+The launcher requires a changed DevToolsActivePort identity, validates port and browser UUID, requests only fixed loopback HTTP endpoints without proxy or redirect handling, binds the returned browser WebSocket identity to the active-port record, and checks the original renderer file URL. Bundle plist identity is not code-signature attestation. The backend must independently enforce descriptor, target/preload and capability validation; launcher fixture success does not establish that actual native APIs are compatible.
+
+The UI adds WorkBuddy through existing identity and presentation-only filtering. The locally bundled original teal SVG has provenance/checksum and no executable/external content; dark mode does not invert it. Unknown Agents retain generic marks and original identities. Creation choices come from registered backend plugins, not brand existence. Auxiliary WorkBuddy sessions gate composer/requests before mounting their controls; ordinary Codex/Harness sessions retain their existing input behavior. Backend mutation refusal remains necessary for routes outside the composer and untrusted clients.
+
+## Independent verification
+
+All verification used this isolated worktree, temporary application/profile directories, ephemeral loopback fixtures, or fake-agent AnyWork servers on ports **3237/3238**. Installed WorkBuddy, Codex, real profiles, credentials, production port 3210 and production Web output were not used or changed.
+
+- `python3 scripts/workbuddy-launch-test.py`: **11 passed**, including original-executable environment, private descriptor, launcher/desktop exit ownership, replacement preservation, occupied profile, existing entry, unsafe directory, symlink paths, unsupported version, second-instance exit and stale/remote/redirect/mismatched-browser/wrong-renderer failures.
+- Independent adversarial launcher script `/private/tmp/anywork-workbuddy-ui-extra-review.py`: **passed**. Sixteen simultaneous writers produced exactly one descriptor with no overwrite or temporary leftovers; final-path symlink publication and cleanup left the target untouched; out-of-range ports, malformed UUID/active files were rejected; deliberately invalid proxy environment did not affect direct requests; redirects and responses over 1 MiB were refused. This adds boundaries absent from the developer's fixture suite.
+- `npm run typecheck`: **passed**. Focused identity/asset units: **6 passed**. Changed TypeScript/TSX/e2e files pass Prettier; `git diff --check` passes.
+- Built candidate Vite/PWA output into `/private/tmp/anywork-workbuddy-ui-review-dist` and used it for Chrome desktop/Pixel 7 tests. `e2e/sidebar-agent-filter.spec.ts`: **14 passed**, covering both themes, mobile menus, filtering/search/archive/directory order, unavailable identity versus create availability, exact native Agent payload, live chat/draft retention and child read-only rendering. Independently inspected the mobile dark-theme screenshot: teal mark and controls remain legible and contained in the sidebar.
+- Independent browser script `/private/tmp/anywork-workbuddy-ui-browser-review.cjs`: **passed**. With no registered backend, Enter cannot create a session; a direct auxiliary WorkBuddy deep-link exposes no editor or writes even when `/composer` omits a read-only flag; returning to Codex restores its exact draft. With only WorkBuddy registered, creation defaults to `workbuddy` and POSTs exactly `{cwd:"/review/native",agent:"workbuddy",model:null,policy:"manual"}`.
+
+Browser evidence is under `/private/tmp/anywork-workbuddy-ui-review-results`. Test servers were stopped after verification; temporary dependency/build symlinks created by the reviewer were unlinked without deleting their targets. The root npm build script does not forward `--outDir` to Vite; the initial invocation wrote only this isolated worktree's ignored `web/dist` and failed in PWA generation. The successful build invoked Vite with the explicit temporary output directory, followed by PWA generation. No production build directory was touched.
+
+## Non-blocking finding
+
+**Late plugin loading retains an empty create selection** — `web/src/App.tsx`, `CreateSession` state initialization around line 2187. Opening the new-chat modal before `/plugins` resolves initializes `agent` to `""`. If WorkBuddy arrives afterwards, its option appears but the empty “暂无可连接的 Agent” selection and disabled creation button remain until the user explicitly selects WorkBuddy. Independent delayed-response browser reproduction is `/private/tmp/anywork-workbuddy-ui-late-plugin-review.cjs`. Explicit selection immediately recovers and no incorrect request is sent, so this does not block the current integration contract. A follow-up can choose a default after successful plugin loading when the current selection is empty/invalid, without overwriting a valid user choice.
+
+## Acceptance limits
+
+No actual installed WorkBuddy was launched by this review; native renderer schema, account-backed create/send/streaming, permission handling, model mapping, native profile locking and backend reconnect ownership require the separate native-host/backend review. No version, release, deployment or runtime capability claim is made here. No blocking findings remain in this UI/launcher scope.
