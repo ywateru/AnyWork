@@ -389,7 +389,7 @@ pub async fn sync(app: &Arc<App>) -> Result<()> {
                 external: true,
                 auxiliary: false,
             };
-            app.store.save(&s)?;
+            app.store.save_shared_observation(&s)?;
         }
     }
     Ok(())
@@ -502,7 +502,8 @@ pub async fn attach(
                         let frame=match incoming {
                             Ok(frame)=>frame,
                             Err(error)=>{
-                                app.emit(&id,"connection/interrupted",json!({"message":error.to_string(),"agent":AGENT}),None);
+                                state.invalidate_interactions(&bridge.responses,"connection_lost")?;
+                                state.emit(&bridge.responses,"connection/interrupted",json!({"message":error.to_string(),"agent":AGENT}),None)?;
                                 // Never replay mutations. Reads reconnect with a new peer and fixed-cut history.
                                 loop {
                                     tokio::select! {
@@ -518,7 +519,6 @@ pub async fn attach(
                                 }
                                 host.open("session","session/follow",json!({"request":{"address":address(&thread),"maxMessages":100,"assistantStream":true}})).await?;
                                 host.open("events","$events",json!({})).await?;
-                                state.pending.clear();state.event_client=None;
                                 continue;
                             }
                         };
@@ -530,6 +530,7 @@ pub async fn attach(
                                 let records=history_records(&host,&thread,value).await?;
                                 for mut record in records {materialize_images(&app,&app.store.session(&id)?,&host,&mut record["event"]).await?;state.event(&record["event"],&bridge.responses)?;}
                                 state.baseline(&value["assistantStream"],&bridge.responses)?;
+                                state.emit(&bridge.responses,"thread/status/changed",json!({"status":{"type":if state.turn.is_some(){"active"}else{"idle"}}}),None)?;
                             } else if value["type"]=="event" {let mut event=value["event"].clone();materialize_images(&app,&app.store.session(&id)?,&host,&mut event).await?;state.event(&event,&bridge.responses)?;}
                             else if value["type"]=="assistant-stream"{state.live(&value["frame"],&bridge.responses)?;}
                         } else if frame["streamId"]=="events" && frame["type"]=="item" {
@@ -555,9 +556,12 @@ pub async fn attach(
             }
             Ok::<(),anyhow::Error>(())
         }.await;
+        // Close every local interaction even when stream setup or a protocol
+        // failure terminates the actor, without answering the native waterfall.
+        let _ = state.invalidate_interactions(&bridge.responses, "connection_lost");
         if let Err(error) = result {
-            app.emit(
-                &id,
+            let _ = state.emit(
+                &bridge.responses,
                 "connection/interrupted",
                 json!({"message":error.to_string(),"agent":AGENT}),
                 None,
@@ -765,14 +769,15 @@ impl Projection {
                     .or_else(|| d["reason"].as_str())
                     .unwrap_or("")
                 {
-                    "cancelled" | "interrupted" => "interrupted",
+                    "aborted" | "cancelled" | "interrupted" | "forked" => "interrupted",
                     "error" | "failed" => "failed",
-                    _ => "completed",
+                    "completed" | "blocked" | "max-tokens" => "completed",
+                    kind => bail!("Unsupported Harness turn/end reason: {kind}"),
                 };
                 emit(
                     self,
                     "turn/completed",
-                    json!({"turn":{"id":turn,"status":status},"turnId":turn}),
+                    json!({"turn":{"id":turn,"status":status,"harnessReason":d["reason"]},"turnId":turn}),
                 )?;
                 self.turn = None;
             }
@@ -956,6 +961,37 @@ impl Projection {
         }
         Ok(())
     }
+    fn invalidate_interactions(
+        &mut self,
+        out: &mpsc::UnboundedSender<Value>,
+        reason: &str,
+    ) -> Result<()> {
+        self.event_client = None;
+        for (id, _) in std::mem::take(&mut self.pending) {
+            self.emit(
+                out,
+                "serverRequest/resolved",
+                json!({"requestId":id,"reason":reason}),
+                None,
+            )?;
+        }
+        Ok(())
+    }
+    fn interaction_id(&self, event: &str) -> Result<String> {
+        let client = self
+            .event_client
+            .as_ref()
+            .context("Harness interaction has no live client generation")?;
+        Ok(format!("{client}:{event}"))
+    }
+    fn begin_interaction(&mut self, frame: &Value) -> Result<String> {
+        let event = frame["eventId"]
+            .as_str()
+            .context("Missing Harness interaction id")?;
+        let id = self.interaction_id(event)?;
+        self.pending.insert(id.clone(), frame.clone());
+        Ok(id)
+    }
     async fn interaction(
         &mut self,
         frame: &Value,
@@ -981,8 +1017,8 @@ impl Projection {
                 .await?;
                 return Ok(());
             }
+            let request_id = self.begin_interaction(frame)?;
             if frame["event"] == "approval/request" {
-                self.pending.insert(event.into(), frame.clone());
                 let call = frame["request"]["callId"].as_str().unwrap_or(event);
                 let command = self
                     .tools
@@ -993,17 +1029,22 @@ impl Projection {
                             .as_str()
                             .unwrap_or("Harness tool")
                     });
-                out.send(json!({"id":event,"method":"item/commandExecution/requestApproval","params":{"threadId":self.thread,"turnId":self.turn,"itemId":self.tools.get(call).and_then(|item|item["id"].as_str()).unwrap_or(call),"command":command,"reason":frame["request"]["reason"],"availableDecisions":["accept","decline"],"source":AGENT}})).map_err(|_|anyhow::anyhow!("Harness adapter closed"))?;
+                out.send(json!({"id":request_id,"method":"item/commandExecution/requestApproval","params":{"threadId":self.thread,"turnId":self.turn,"itemId":self.tools.get(call).and_then(|item|item["id"].as_str()).unwrap_or(call),"command":command,"reason":frame["request"]["reason"],"availableDecisions":["accept","decline"],"source":AGENT}})).map_err(|_|anyhow::anyhow!("Harness adapter closed"))?;
                 return Ok(());
             }
             let questions=frame["request"]["questions"].as_array().context("Invalid Harness question batch")?.iter().map(|q|json!({"id":q["id"],"header":q["header"].as_str().unwrap_or("Harness"),"question":format!("{}{}",q["question"].as_str().unwrap_or(""),q["detail"].as_str().map(|s|format!("\n{s}")).unwrap_or_default()),"options":q["options"],"isOther":q["intent"]["kind"]!="approval","isSecret":false})).collect::<Vec<_>>();
-            self.pending.insert(event.into(), frame.clone());
-            out.send(json!({"id":event,"method":"item/tool/requestUserInput","params":{"threadId":self.thread,"turnId":self.turn,"itemId":event,"questions":questions,"source":AGENT}})).map_err(|_|anyhow::anyhow!("Harness adapter closed"))?;
+            out.send(json!({"id":request_id,"method":"item/tool/requestUserInput","params":{"threadId":self.thread,"turnId":self.turn,"itemId":event,"questions":questions,"source":AGENT}})).map_err(|_|anyhow::anyhow!("Harness adapter closed"))?;
         } else if frame["type"] == "cancel"
             && let Some(id) = frame["eventId"].as_str()
         {
-            self.pending.remove(id);
-            self.emit(out, "serverRequest/resolved", json!({"requestId":id}), None)?;
+            let request_id = self.interaction_id(id)?;
+            self.pending.remove(&request_id);
+            self.emit(
+                out,
+                "serverRequest/resolved",
+                json!({"requestId":request_id}),
+                None,
+            )?;
         }
         Ok(())
     }
@@ -1025,7 +1066,7 @@ impl Projection {
                     matches!(decision, "accept" | "decline"),
                     "Harness only accepts a one-time grant or rejection"
                 );
-                let result=host.call("$events/result",json!({"clientId":self.event_client,"eventId":id,"outcome":{"kind":"result","value":if decision=="accept"{"allowed-once"}else{"rejected"}}})).await?;
+                let result=host.call("$events/result",json!({"clientId":self.event_client,"eventId":pending["eventId"],"outcome":{"kind":"result","value":if decision=="accept"{"allowed-once"}else{"rejected"}}})).await?;
                 self.pending.remove(id);
                 return Ok(result);
             }
@@ -1054,7 +1095,7 @@ impl Projection {
                 }
                 answers.push(json!({"id":qid,"selected":selected}));
             }
-            let result=host.call("$events/result",json!({"clientId":self.event_client,"eventId":id,"outcome":{"kind":"result","value":{"answers":answers}}})).await?;
+            let result=host.call("$events/result",json!({"clientId":self.event_client,"eventId":pending["eventId"],"outcome":{"kind":"result","value":{"answers":answers}}})).await?;
             self.pending.remove(id);
             return Ok(result);
         }
@@ -1304,6 +1345,107 @@ mod tests {
         assert_eq!(events[2]["params"]["item"]["tool"], "bash");
         assert_eq!(events[3]["params"]["item"]["status"], "failed");
         assert_eq!(events[4]["params"]["turn"]["status"], "interrupted");
+    }
+    #[test]
+    fn native_turn_end_reasons_preserve_cancellation_and_reject_unknown_variants() {
+        let (mut p, out, mut rx) = frames();
+        for cause in ["user", "parent", "hook", "disposed", "legacy"] {
+            let reason = json!({"kind":"aborted","reason":{"kind":cause}});
+            p.event(
+                &json!({"seq":1,"type":"turn/end","data":{"turn":1,"reason":reason}}),
+                &out,
+            )
+            .unwrap();
+            let event = rx.try_recv().unwrap();
+            assert_eq!(event["params"]["turn"]["status"], "interrupted");
+            assert_eq!(event["params"]["turn"]["harnessReason"], reason);
+        }
+        for (kind, expected) in [
+            ("interrupted", "interrupted"),
+            ("forked", "interrupted"),
+            ("error", "failed"),
+            ("completed", "completed"),
+            ("blocked", "completed"),
+            ("max-tokens", "completed"),
+        ] {
+            p.event(
+                &json!({"seq":2,"type":"turn/end","data":{"turn":1,"reason":{"kind":kind}}}),
+                &out,
+            )
+            .unwrap();
+            assert_eq!(rx.try_recv().unwrap()["params"]["turn"]["status"], expected);
+        }
+        assert!(p.event(&json!({"seq":3,"type":"turn/end","data":{"turn":1,"reason":{"kind":"future-variant"}}}), &out).is_err());
+    }
+    #[test]
+    fn lost_peer_resolves_persisted_requests_and_redelivery_has_a_new_identity() {
+        let (mut p, out, mut rx) = frames();
+        let frame = json!({"eventId":"same-native-event","event":"approval/request"});
+        assert!(p.begin_interaction(&frame).is_err());
+        p.event_client = Some("old-client".into());
+        let old = p.begin_interaction(&frame).unwrap();
+        let store = crate::store::Store::open(std::path::Path::new(":memory:")).unwrap();
+        store
+            .save(&Session {
+                id: "session".into(),
+                thread_id: Some("native-session".into()),
+                title: "fixture".into(),
+                cwd: "/tmp".into(),
+                agent: AGENT.into(),
+                model: None,
+                policy: "manual".into(),
+                status: "running".into(),
+                archived: false,
+                created_at: 0,
+                updated_at: 0,
+                external: true,
+                auxiliary: false,
+            })
+            .unwrap();
+        store
+            .event(
+                "session",
+                "item/commandExecution/requestApproval",
+                json!({}),
+                Some(json!(old)),
+            )
+            .unwrap();
+        assert!(store.request("session", &json!(old)).is_ok());
+        p.invalidate_interactions(&out, "connection_lost").unwrap();
+        let resolved = rx.try_recv().unwrap();
+        assert_eq!(resolved["params"]["requestId"], old);
+        assert_eq!(resolved["params"]["reason"], "connection_lost");
+        store
+            .event(
+                "session",
+                resolved["method"].as_str().unwrap(),
+                resolved["params"].clone(),
+                None,
+            )
+            .unwrap();
+        assert!(store.request("session", &json!(old)).is_err());
+        assert!(p.event_client.is_none());
+        assert!(p.pending.is_empty());
+        p.event_client = Some("new-client".into());
+        let current = p.begin_interaction(&frame).unwrap();
+        assert_ne!(current, old);
+        assert!(!p.pending.contains_key(&old));
+        assert_eq!(p.pending[&current]["eventId"], "same-native-event");
+        store
+            .event(
+                "session",
+                "item/commandExecution/requestApproval",
+                json!({}),
+                Some(json!(current)),
+            )
+            .unwrap();
+        assert!(store.request("session", &json!(current)).is_ok());
+        assert!(store.request("session", &json!(old)).is_err());
+        // Repeating invalidation must never emit an answer or leave a request.
+        p.invalidate_interactions(&out, "connection_lost").unwrap();
+        assert_eq!(rx.try_recv().unwrap()["params"]["requestId"], current);
+        p.invalidate_interactions(&out, "connection_lost").unwrap();
+        assert!(rx.try_recv().is_err());
     }
     #[test]
     fn live_and_durable_assistant_use_same_item_without_reasoning_as_answer() {

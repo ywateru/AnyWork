@@ -132,6 +132,7 @@ impl App {
         let app = self.clone();
         let id = session.id.clone();
         let rt = runtime.clone();
+        let harness = session.agent == crate::harness::AGENT;
         tokio::spawn(async move {
             while let Some(event) = events.recv().await {
                 let method = event["method"].as_str().unwrap_or("unknown");
@@ -170,6 +171,10 @@ impl App {
                             *rt.turn.lock().await = None;
                         }
                         let _ = app.store.set_status(&id, status);
+                    }
+                    "connection/interrupted" if harness => {
+                        *rt.turn.lock().await = None;
+                        let _ = app.store.set_status(&id, "disconnected");
                     }
                     "serverRequest/resolved" => {
                         if rt.turn.lock().await.is_some() {

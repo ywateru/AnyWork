@@ -91,6 +91,8 @@ with tempfile.TemporaryDirectory(prefix='anywork-harness-integration-') as tempo
         api('sessions/'+sid+'/messages',{'text':'verify-approval'})
         request=wait(lambda: next((e for e in api('sessions/'+sid+'/events/poll')['events'] if e['method'].endswith('/requestApproval')),None))
         assert request['params']['availableDecisions']==['accept','decline']
+        time.sleep(2.1)  # Force another actual host catalog refresh while waiting.
+        assert next(row for row in api('sessions')['sessions'] if row['id']==sid)['status']=='waiting'
         api('sessions/'+sid+'/respond',{'request_id':request['request_id'],'accept':True})
         events=wait(lambda: completed(api('sessions/'+sid+'/events/poll')['events'],2))
         assert any(e['method']=='serverRequest/resolved' for e in events)
@@ -111,8 +113,16 @@ with tempfile.TemporaryDirectory(prefix='anywork-harness-integration-') as tempo
         api('sessions/'+sid+'/messages',{'text':'verify-tool-image'})
         events=wait(lambda: completed(api('sessions/'+sid+'/events/poll')['events'],4))
         assert any(block.get('type')=='localImage' for event in events for block in event['params'].get('item',{}).get('content',[])),events
+        # Native cancellation is durable aborted/user, not a completed answer.
+        api('sessions/'+sid+'/messages',{'text':'verify-slow'})
+        wait(lambda: any(e['method']=='user/message' and e['params'].get('text')=='verify-slow' for e in api('sessions/'+sid+'/events/poll')['events']))
+        api('sessions/'+sid+'/interrupt',{})
+        events=wait(lambda: completed(api('sessions/'+sid+'/events/poll')['events'],5))
+        cancelled=[e for e in events if e['method']=='turn/completed'][-1]
+        assert cancelled['params']['turn']['status']=='interrupted',cancelled
+        assert cancelled['params']['turn']['harnessReason']=={'kind':'aborted','reason':{'kind':'user'}},cancelled
         assert api('sessions/'+sid+'/composer')['plan_available'] is False
-        print('PASS: actual Harness discovery, native shared-session traffic, fixed-cut history/replay, host creation, tools, one-time approval, prompt images, tool images, capability boundaries')
+        print('PASS: actual Harness discovery, native shared-session traffic, fixed-cut history/replay, host creation, tools, one-time approval across catalog refresh, prompt images, tool images, native cancellation, capability boundaries')
     finally:
         server.terminate()
         try: server.wait(timeout=10)

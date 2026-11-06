@@ -426,6 +426,37 @@ impl Store {
         self.0.lock().unwrap().execute("INSERT INTO sessions(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data", params![session.id, serde_json::to_string(session)?])?;
         Ok(())
     }
+    /// A shared host's catalog only reports a coarse running flag. Preserve the
+    /// current peer's disconnected state and unresolved interactions atomically
+    /// with the catalog write; neither is superseded by that coarse observation.
+    pub fn save_shared_observation(&self, session: &Session) -> Result<()> {
+        let db = self.0.lock().unwrap();
+        let mut observed = session.clone();
+        let previous: Option<String> = db
+            .query_row(
+                "SELECT json_extract(data,'$.status') FROM sessions WHERE id=?1",
+                [&session.id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let pending: bool = db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM events request WHERE request.session_id=?1
+              AND json_extract(request.data,'$.request_id') IS NOT NULL
+              AND NOT EXISTS(SELECT 1 FROM events resolution
+                WHERE resolution.session_id=request.session_id AND resolution.seq>request.seq
+                AND (json_extract(resolution.data,'$.method') IN ('turn/completed','plugin/exited','connection/interrupted')
+                  OR (json_extract(resolution.data,'$.method')='serverRequest/resolved'
+                    AND json_extract(resolution.data,'$.params.requestId')=json_extract(request.data,'$.request_id')))))",
+            [&session.id], |row| row.get(0),
+        )?;
+        if previous.as_deref() == Some("disconnected") {
+            observed.status = "disconnected".into();
+        } else if pending {
+            observed.status = "waiting".into();
+        }
+        db.execute("INSERT INTO sessions(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data", params![observed.id, serde_json::to_string(&observed)?])?;
+        Ok(())
+    }
     pub fn refresh_imports(&self, sessions: &[Session]) -> Result<()> {
         let mut db = self.0.lock().unwrap();
         let tx = db.transaction()?;
@@ -714,6 +745,74 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn shared_catalog_preserves_only_current_pending_interactions() {
+        let store = Store::open(Path::new(":memory:")).unwrap();
+        let mut observed = composer_session("shared");
+        observed.status = "running".into();
+        store.save(&observed).unwrap();
+        store
+            .event(
+                "shared",
+                "item/commandExecution/requestApproval",
+                json!({}),
+                Some(json!("old:request")),
+            )
+            .unwrap();
+        store.save_shared_observation(&observed).unwrap();
+        assert_eq!(store.session("shared").unwrap().status, "waiting");
+        store
+            .event(
+                "shared",
+                "serverRequest/resolved",
+                json!({"requestId":"another-request"}),
+                None,
+            )
+            .unwrap();
+        store.save_shared_observation(&observed).unwrap();
+        assert_eq!(store.session("shared").unwrap().status, "waiting");
+        store
+            .event(
+                "shared",
+                "serverRequest/resolved",
+                json!({"requestId":"old:request"}),
+                None,
+            )
+            .unwrap();
+        store.save_shared_observation(&observed).unwrap();
+        assert_eq!(store.session("shared").unwrap().status, "running");
+        store
+            .event(
+                "shared",
+                "item/tool/requestUserInput",
+                json!({}),
+                Some(json!("new:request")),
+            )
+            .unwrap();
+        store
+            .event("shared", "connection/interrupted", json!({}), None)
+            .unwrap();
+        store.set_status("shared", "disconnected").unwrap();
+        store.save_shared_observation(&observed).unwrap();
+        assert_eq!(store.session("shared").unwrap().status, "disconnected");
+        store.set_status("shared", "running").unwrap();
+        store.save_shared_observation(&observed).unwrap();
+        assert_eq!(store.session("shared").unwrap().status, "running");
+        // Terminal events also invalidate an unresolved historical request.
+        store
+            .event(
+                "shared",
+                "item/tool/requestUserInput",
+                json!({}),
+                Some(json!("third:request")),
+            )
+            .unwrap();
+        store
+            .event("shared", "turn/completed", json!({}), None)
+            .unwrap();
+        store.save_shared_observation(&observed).unwrap();
+        assert_eq!(store.session("shared").unwrap().status, "running");
+    }
     #[test]
     fn control_replay_excludes_message_payloads_and_preserves_native_id_types() {
         let store = Store::open(Path::new(":memory:")).unwrap();
