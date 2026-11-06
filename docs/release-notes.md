@@ -2,7 +2,13 @@ AnyWork brings a local Codex workspace to browsers and Android, with a Rust desk
 
 AnyWork 将本机 Codex 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.3 / 本次更新**
+**New in 0.1.4 / 本次更新**
+
+AnyWork has a new product logo: a dark rounded hexagon with two white ring eyes, redrawn as a transparent SVG. The Web client, desktop manager, macOS/Windows/Linux application icons, Android launcher and bilingual website now share the same mark. Platform assets are generated from one canonical SVG to keep future changes consistent.
+
+AnyWork 更换为新的产品标志：深色圆角六边形与双圆环眼睛，使用透明背景 SVG 重新绘制。Web 界面、桌面管理器、macOS/Windows/Linux 应用图标、Android 启动图标与双语官网同步更新。各平台资源统一从一份主 SVG 生成，便于持续保持一致。
+
+**Included from 0.1.3 / 延续上一版本**
 
 macOS downloads are now DMG installers for Apple Silicon and Intel. Open the image, drag AnyWork into Applications, and follow the included bilingual `INSTALL-macOS.txt`. It includes `sudo xattr -cr "/Applications/AnyWork.app"` for the current ad-hoc signed app. Release builds mount each DMG read-only and verify its application signature, processor architecture, resources and exact agreement with the signed automatic-update app.
 

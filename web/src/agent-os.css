@@ -1281,7 +1281,7 @@ summary:focus-visible {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: #8b4ee8;
+  background: transparent;
   color: white;
 }
 .login-art .brand-light {
@@ -2211,7 +2211,7 @@ summary:focus-visible {
   );
 }
 .login-art .brand-icon {
-  background: var(--accent);
+  background: transparent;
   color: var(--accent-text);
 }
 .image-load-trigger {

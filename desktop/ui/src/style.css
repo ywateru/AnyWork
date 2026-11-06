@@ -104,19 +104,12 @@ aside {
   letter-spacing: -0.6px;
   white-space: nowrap;
 }
-.brand > span {
-  width: 29px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
-  background: var(--blue);
-  color: white;
-  font-size: 22px;
-  line-height: 1;
-  font-weight: 500;
-  letter-spacing: -2px;
-  padding-right: 2px;
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: block;
+  object-fit: contain;
 }
 nav {
   display: flex;

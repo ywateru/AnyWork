@@ -66,7 +66,6 @@ import {
   ShieldCheck,
   PanelLeft,
   PanelRightClose,
-  Layers,
 } from "lucide-react";
 import { Api } from "./api";
 import type {
@@ -1292,7 +1291,7 @@ export default function App() {
                 title="工作空间总览"
                 onClick={() => select("")}
               >
-                <Layers size={15} />
+                <img src="/icon.svg" width="18" height="18" alt="" />
                 <span>AnyWork</span>
                 <span className="sidebar-version">v0.1</span>
               </button>
@@ -1328,7 +1327,7 @@ export default function App() {
             {!session && (
               <header className="topbar">
                 <span className="overview-title">
-                  <Layers size={16} /> AnyWork
+                  <img src="/icon.svg" width="20" height="20" alt="" /> AnyWork
                 </span>
                 <button
                   className="icon-button"
@@ -2049,7 +2048,7 @@ function Login({ onConnect }: { onConnect: (connection: Connection) => void }) {
       <div className="login-art">
         <div className="brand">
           <div className="brand-icon">
-            <Layers size={23} />
+            <img src="/icon.svg" width="40" height="40" alt="" />
           </div>
           <span>
             Any<span className="brand-light">Work</span>

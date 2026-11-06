@@ -32,6 +32,8 @@ import {
 import "./style.css";
 import { version as appVersion } from "../package.json";
 import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
+const anyworkLogo = new URL("../../../web/public/icon.svg", import.meta.url)
+  .href;
 type Kind = "quick" | "named" | "relay";
 type Phase =
   | "off"
@@ -1134,7 +1136,14 @@ function App() {
 function Brand() {
   return (
     <div className="brand">
-      <span>W</span>AnyWork
+      <img
+        src={anyworkLogo}
+        className="brand-mark"
+        width="34"
+        height="34"
+        alt=""
+      />
+      AnyWork
     </div>
   );
 }

@@ -1,1 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="12" fill="#183B56"/><path d="M10 28 19 11h3l8 17M14 22h12" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="29" cy="11" r="3" fill="#8BBFF4"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <title>AnyWork</title>
+  <defs>
+    <linearGradient id="body" x1="210" y1="100" x2="820" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#303238"/>
+      <stop offset="0.5" stop-color="#26292f"/>
+      <stop offset="1" stop-color="#191c22"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="512" y1="80" x2="512" y2="944" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#64666b" stop-opacity="0.7"/>
+      <stop offset="0.42" stop-color="#34363c"/>
+      <stop offset="1" stop-color="#080a0d"/>
+    </linearGradient>
+    <linearGradient id="eye-rim" x1="512" y1="270" x2="512" y2="478" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#51535a"/>
+      <stop offset="0.5" stop-color="#16181c"/>
+      <stop offset="1" stop-color="#42444b"/>
+    </linearGradient>
+    <radialGradient id="left-pupil" cx="354" cy="352" r="83" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2d3037"/>
+      <stop offset="0.7" stop-color="#23262d"/>
+      <stop offset="1" stop-color="#101319"/>
+    </radialGradient>
+    <radialGradient id="right-pupil" cx="642" cy="352" r="83" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2d3037"/>
+      <stop offset="0.7" stop-color="#23262d"/>
+      <stop offset="1" stop-color="#101319"/>
+    </radialGradient>
+  </defs>
+  <path d="M319 80H705C731 80 750 91 764 114L981 454C995 476 996 496 984 518L784 895C765 929 744 944 709 944H315C282 944 258 931 241 900L44 532C28 505 28 485 42 460L258 120C276 91 291 80 319 80Z" fill="url(#body)" stroke="#101216" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M319 80H705C731 80 750 91 764 114L981 454C995 476 996 496 984 518L784 895C765 929 744 944 709 944H315C282 944 258 931 241 900L44 532C28 505 28 485 42 460L258 120C276 91 291 80 319 80Z" stroke="url(#edge)" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="369" cy="375" r="101" fill="#111318" fill-opacity="0.65"/>
+  <circle cx="657" cy="375" r="101" fill="#111318" fill-opacity="0.65"/>
+  <circle cx="369" cy="373" r="101" fill="#111318" stroke="url(#eye-rim)" stroke-width="2"/>
+  <circle cx="657" cy="373" r="101" fill="#111318" stroke="url(#eye-rim)" stroke-width="2"/>
+  <circle cx="369" cy="373" r="93" fill="#ffffff"/>
+  <circle cx="657" cy="373" r="93" fill="#ffffff"/>
+  <circle cx="369" cy="373" r="59" fill="url(#left-pupil)" stroke="#17191e" stroke-width="2"/>
+  <circle cx="657" cy="373" r="59" fill="url(#right-pupil)" stroke="#17191e" stroke-width="2"/>
+  <circle cx="369" cy="373" r="55" stroke="#565961" stroke-opacity="0.35" stroke-width="1.5"/>
+  <circle cx="657" cy="373" r="55" stroke="#565961" stroke-opacity="0.35" stroke-width="1.5"/>
+</svg>
