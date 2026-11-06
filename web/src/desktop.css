@@ -1458,6 +1458,15 @@ summary:focus-visible {
   height: 100%;
   object-fit: contain;
 }
+.agent-select-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.agent-select-field select {
+  flex: 1;
+  min-width: 0;
+}
 .agent-mark-dark {
   display: none;
 }

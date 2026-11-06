@@ -1,6 +1,12 @@
 import { Bot } from "lucide-react";
 
 export default function AgentIcon({ agent }: { agent: string }) {
+  if (agent === "workbuddy")
+    return (
+      <span className="agent-mark" aria-hidden="true" data-agent-icon={agent}>
+        <img src="/agents/workbuddy.svg" alt="" />
+      </span>
+    );
   const basename =
     agent === "codex"
       ? "codex"

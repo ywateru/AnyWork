@@ -24,4 +24,14 @@ Unmodified light/dark SVG favicons copied from the official `deepseek-ai/deepsee
 | `deepseek-harness-light.svg` | [apps/web/public/favicon.svg](https://github.com/deepseek-ai/deepseek-harness/blob/fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159/apps/web/public/favicon.svg) | `9e983b4f649c25c6ca0623a50be1a6e705fd8f49f756638b980fa13b40575ab6` |
 | `deepseek-harness-dark.svg` | [apps/web/public/favicon-dark.svg](https://github.com/deepseek-ai/deepseek-harness/blob/fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159/apps/web/public/favicon-dark.svg) | `dde7db781f41e7aeb4709ff5485af2bdcf7f4b4ea81b4500cfd5df44efdbd817` |
 
-All assets are bundled locally. The SVGs have only path geometry and contain no scripts, external references or executable content. PNGs are explicitly allowlisted for source archives and Git; reference checkouts remain excluded. Unknown agents use the existing Lucide `Bot` glyph and retain their own IDs/names.
+All assets are bundled locally. The SVGs contain static local geometry/effects and no scripts, external references or executable content. PNGs are explicitly allowlisted for source archives and Git; reference checkouts remain excluded. Unknown agents use the existing Lucide `Bot` glyph and retain their own IDs/names.
+
+## WorkBuddy
+
+Primary source: Tencent's [third-party integration documentation](https://open.workbuddy.cn/docs/third-party-app) links the official [WorkBuddy / CodeBuddy brand center](https://5864e0de6f1f4cf1a9444ae3ebb70ce2.app.codebuddy.work/). The mark is used only to identify the connected WorkBuddy Agent, with no endorsement or affiliation implied. WorkBuddy and CodeBuddy are Tencent trademarks; these marks are not relicensed under AnyWork’s AGPL or the Agent Harness package’s MIT license.
+
+| Bundled file | Official asset (retrieved 2026-11-07) | Original and bundled SHA-256 |
+| --- | --- | --- |
+| `workbuddy.svg` | [WorkBuddy icon SVG](https://5864e0de6f1f4cf1a9444ae3ebb70ce2.app.codebuddy.work/assets/workbuddy-icon.svg) | `7aabffe18a9714f0452fc4ceb8c22731f26a1570bb2e7f6cf200e8a3cdefc16e` |
+
+The unmodified 280×280 SVG retains the official teal symbol, original proportions, gradients and local filters. Both light and dark themes use this same asset with no inversion or recoloring. Static validation permits only geometry/gradient/filter elements and local `url(#...)` references; no scripts, event handlers, foreign objects, external links, CSS imports or embedded media are included. This is an identification asset, separate from AnyWork’s own product logo. The brand center’s use rules apply; the share integration permission is not represented as a general trademark license.

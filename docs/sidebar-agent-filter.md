@@ -19,7 +19,7 @@ Retain existing sidebar colors, type and spacing. Use a compact filter control a
 
 ## Behavior and state
 
-- Default to All Agents. Always offer All Agents, Codex and DeepSeek Harness, including when a standard Agent has no configured plugin or sessions. Extend these with the union of configured plugins and agents present in loaded sessions, with stable Codex / DeepSeek Harness names. Unknown agents retain their own ID/name and a generic icon; never label them Codex.
+- Default to All Agents. Always offer All Agents, Codex, DeepSeek Harness and WorkBuddy, including when a standard Agent has no configured plugin or sessions. Extend these with the union of configured plugins and agents present in loaded sessions, with stable Codex / DeepSeek Harness / WorkBuddy names. Unknown agents retain their own ID/name and a generic icon; never label them Codex.
 - Match the actual `Session.agent` value. Apply the filter only inside sidebar presentation, intersecting existing search/project/archive filters before grouping and sorting. Directory ordering uses the newest matching session.
 - Keep the full session collection for caches, live streams, notifications, links and the selected conversation. Filtering out the selected row must not close or replace its conversation, draft or split panels. The filter must not launch, cancel or create any session.
 - Persist the selected Agent per connection/server. A saved selection remains intelligible while loading or if its plugin is unavailable. Show the existing loading/error UI first, then an explicit empty filtered state with a way back to All Agents.

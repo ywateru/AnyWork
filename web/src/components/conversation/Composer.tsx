@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import type { Api } from "../../api";
 import type { Session } from "../../types";
+import { agentName } from "../../sidebarAgents";
 import ImagePreview from "../ImagePreview";
 import ComposerAdd from "../ComposerAdd";
 import PromptEditor, { type PromptEditorHandle } from "./PromptEditor";
@@ -319,7 +320,7 @@ export default function Composer({
               ? "此会话已归档"
               : goalMode
                 ? "描述要达成的目标"
-                : "使用 Codex"
+                : `使用 ${agentName(session.agent)}`
           }
           value={draft}
           disabled={sending || session.archived}

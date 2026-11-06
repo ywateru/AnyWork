@@ -18,12 +18,14 @@ import { useConversationPanels } from "./hooks/useConversationPanels";
 import { useFloatingMenus } from "./hooks/useFloatingMenus";
 import { useSidebarAgent } from "./hooks/useSidebarAgent";
 import SidebarAgentFilter from "./components/SidebarAgentFilter";
+import AgentIcon from "./components/AgentIcon";
 import { agentName } from "./sidebarAgents";
 import { useSessionDraft } from "./hooks/useSessionDraft";
 import { useGoalComposerMode } from "./hooks/useGoalComposerMode";
 import { useMessageEditing } from "./hooks/useMessageEditing";
 import { appendPromptHistory } from "./promptHistory";
 import Composer from "./components/conversation/Composer";
+import ComposerAccess from "./components/ComposerAccess";
 import ThreadLinkNavigation from "./components/ThreadLinkNavigation";
 import ReviewPanel from "./components/ReviewPanel";
 import type { ReviewRequest } from "./reviewDiff";
@@ -1850,7 +1852,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                    <div className="composer-area">
+                    <ComposerAccess session={session}>
                       <div
                         className="composer-requests"
                         aria-label="待处理请求"
@@ -1927,7 +1929,7 @@ export default function App() {
                             .catch(fail);
                         }}
                       />
-                    </div>
+                    </ComposerAccess>
                   </>
                 </section>
               </SplitPane>
@@ -1961,7 +1963,7 @@ export default function App() {
               {plugins.map((p) => (
                 <div className="plugin-card" key={p.id}>
                   <div className="plugin-logo">
-                    <TerminalSquare size={22} />
+                    <AgentIcon agent={p.id} />
                   </div>
                   <div>
                     <strong>{p.name}</strong>
@@ -2182,14 +2184,20 @@ function CreateSession({
   onError: (e: unknown) => void;
 }) {
   const [cwd, setCwd] = useState(workspace),
-    [agent, setAgent] = useState("codex"),
+    [agent, setAgent] = useState(
+      plugins.find((plugin) => plugin.id === "codex")?.id ||
+        plugins[0]?.id ||
+        "",
+    ),
     [model, setModel] = useState(""),
     [policy, setPolicy] = useState("manual"),
     [busy, setBusy] = useState(false);
+  const available = plugins.some((plugin) => plugin.id === agent);
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
+        if (!available) return;
         setBusy(true);
         try {
           const data = await api.post("/sessions", {
@@ -2210,17 +2218,25 @@ function CreateSession({
       <p className="muted">选择 Agent 和工作目录，开始新的构建。</p>
       <label>
         Agent
-        <select
-          aria-label="Agent"
-          value={agent}
-          onChange={(e) => setAgent(e.target.value)}
-        >
-          {plugins.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <span className="agent-select-field">
+          <AgentIcon agent={agent} />
+          <select
+            aria-label="Agent"
+            value={agent}
+            onChange={(e) => setAgent(e.target.value)}
+          >
+            {!available && (
+              <option value="" disabled>
+                暂无可连接的 Agent
+              </option>
+            )}
+            {plugins.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </span>
       </label>
       <label>
         工作目录
@@ -2255,7 +2271,7 @@ function CreateSession({
           <option value="auto">自动批准 — 在工作区内自动执行</option>
         </select>
       </label>
-      <Button disabled={busy} className="full-width">
+      <Button disabled={busy || !available} className="full-width">
         {busy ? "正在启动 Agent…" : "创建会话"}
         <ArrowUpRight size={16} />
       </Button>

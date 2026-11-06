@@ -3,7 +3,14 @@ import { fillPromptText } from "./prompt-editor-helpers";
 
 async function fixture(
   page: Page,
-  options: { saved?: string; delay?: boolean; empty?: boolean } = {},
+  options: {
+    saved?: string;
+    delay?: boolean;
+    empty?: boolean;
+    workbuddy?: boolean;
+    workbuddyOnly?: boolean;
+    readOnly?: boolean;
+  } = {},
 ) {
   const now = Date.now();
   const session = (
@@ -49,6 +56,11 @@ async function fixture(
         ),
         session("Other history", "unknown-agent", "/work/gamma", 30000),
       ];
+  if (options.workbuddy)
+    sessions.push({
+      ...session("WorkBuddy original", "workbuddy", "/work/buddy", 3000),
+      auxiliary: !!options.readOnly,
+    });
   let release!: () => void;
   const pending = new Promise<void>((resolve) => {
     release = resolve;
@@ -72,6 +84,16 @@ async function fixture(
     } else if (path === "/plugins")
       data = {
         plugins: [
+          ...(options.workbuddy
+            ? [
+                {
+                  id: "workbuddy",
+                  name: "WorkBuddy",
+                  protocol_version: 1,
+                  capabilities: ["chat", "models"],
+                },
+              ]
+            : []),
           {
             id: "codex",
             name: "Codex",
@@ -90,7 +112,9 @@ async function fixture(
             protocol_version: 1,
             capabilities: ["chat"],
           },
-        ],
+        ].filter(
+          (plugin) => !options.workbuddyOnly || plugin.id === "workbuddy",
+        ),
       };
     else if (path === "/info")
       data = {
@@ -138,7 +162,17 @@ async function fixture(
     else if (path.endsWith("/events/poll")) data = { events: [] };
     else if (path.endsWith("/queue")) data = { items: [], paused: false };
     else if (path.endsWith("/composer"))
-      data = { settings_available: false, models: [], goal: null };
+      data = {
+        settings_available: false,
+        models: [],
+        goal: null,
+        ...(options.readOnly && id === "workbuddy-original"
+          ? {
+              read_only: true,
+              read_only_reason: "WorkBuddy 子 Agent 仅支持查看",
+            }
+          : {}),
+      };
     else if (path.endsWith("/models")) data = { data: [] };
     else if (path.endsWith("/feedback")) data = { feedback: [] };
     else if (/^\/sessions\/[^/]+$/.test(path))
@@ -159,7 +193,7 @@ async function fixture(
     localStorage.setItem("sidebar-fixture-initialized", "true");
   }, options);
   await page.goto("/#codex-newest");
-  return { release, streamRelease, writes };
+  return { release, streamRelease, writes, sessions };
 }
 async function openSidebar(page: Page, mobile: boolean) {
   if (!mobile) return;
@@ -388,4 +422,158 @@ test("All Agents shows explicit empty states in directory and status views and u
   await expect(nav).toContainText("还没有会话，点击 + 开始");
   await choose(page, "Codex");
   await expect(nav).toContainText("没有符合当前筛选的 Codex 会话");
+});
+
+test("WorkBuddy filter remains available when disconnected, without becoming a new-chat backend", async ({
+  page,
+}, info) => {
+  const { writes } = await fixture(page);
+  await expect(page.locator('[contenteditable="true"]').first()).toBeVisible();
+  await openSidebar(page, info.project.name === "android-web");
+  const filter = page.locator(".sidebar-agent-filter");
+  await filter.locator("summary").click();
+  await expect(
+    filter.getByRole("button", { name: "WorkBuddy 暂不可用" }),
+  ).toBeVisible();
+  await filter.getByRole("button", { name: "WorkBuddy 暂不可用" }).click();
+  const nav = page.getByRole("navigation", { name: "工作目录与会话" });
+  await expect(nav).toContainText("没有符合当前筛选的 WorkBuddy 会话");
+  await page.getByRole("button", { name: "新建会话", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新建会话" });
+  await expect(
+    dialog
+      .getByLabel("Agent", { exact: true })
+      .locator('option[value="workbuddy"]'),
+  ).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
+test("connected WorkBuddy keeps its original teal icon in both themes and submits the native Agent id", async ({
+  page,
+}, info) => {
+  const { sessions } = await fixture(page, {
+    workbuddy: true,
+    workbuddyOnly: true,
+  });
+  const prompt = page.locator('[contenteditable="true"]').first();
+  await expect(prompt).toBeVisible();
+  await fillPromptText(prompt, "WorkBuddy 筛选保留草稿");
+  await openSidebar(page, info.project.name === "android-web");
+  await choose(page, "WorkBuddy");
+  const nav = page.getByRole("navigation", { name: "工作目录与会话" });
+  const row = nav.getByRole("button", {
+    name: "WorkBuddy original",
+    exact: true,
+  });
+  await expect(row).toBeVisible();
+  await expect(
+    nav.getByRole("button", { name: "Codex newest", exact: true }),
+  ).toHaveCount(0);
+  for (const theme of ["light", "dark"]) {
+    if (theme === "dark") {
+      if (info.project.name === "android-web")
+        await page
+          .getByRole("button", { name: "关闭会话列表", exact: true })
+          .click();
+      await page.getByLabel("会话操作", { exact: true }).click();
+      await page.getByTitle("切换主题", { exact: true }).click();
+      await openSidebar(page, info.project.name === "android-web");
+    }
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const image = row.locator('[data-agent-icon="workbuddy"] img');
+    await expect(image).toBeVisible();
+    await expect(image).toHaveAttribute("src", "/agents/workbuddy.svg");
+    await expect
+      .poll(() =>
+        image.evaluate(
+          (node: HTMLImageElement) => node.complete && node.naturalWidth > 0,
+        ),
+      )
+      .toBe(true);
+    expect(await image.evaluate((node) => getComputedStyle(node).filter)).toBe(
+      "none",
+    );
+    await expect
+      .poll(() =>
+        page
+          .locator("aside.sidebar")
+          .evaluate((node) => Math.round(node.getBoundingClientRect().x)),
+      )
+      .toBe(0);
+    await page.screenshot({
+      path: info.outputPath(`workbuddy-${theme}.png`),
+      animations: "disabled",
+    });
+  }
+  if (info.project.name === "android-web")
+    await page
+      .getByRole("button", { name: "关闭会话列表", exact: true })
+      .click();
+  await expect(prompt).toHaveText("WorkBuddy 筛选保留草稿");
+  await openSidebar(page, info.project.name === "android-web");
+  await page.getByRole("button", { name: "新建会话", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新建会话" });
+  await expect(dialog.getByLabel("Agent", { exact: true })).toHaveValue(
+    "workbuddy",
+  );
+  await expect(
+    dialog.locator('[data-agent-icon="workbuddy"] img'),
+  ).toBeVisible();
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const created = {
+      ...sessions[0],
+      id: "workbuddy-new",
+      thread_id: "native-new",
+      agent: "workbuddy",
+      title: "Native new",
+      cwd: "/work/alpha",
+      status: "idle",
+    };
+    sessions.push(created);
+    await route.fulfill({ json: { session: created } });
+  });
+  const sent = page.waitForRequest(
+    (request) =>
+      new URL(request.url()).pathname === "/api/sessions" &&
+      request.method() === "POST",
+  );
+  await dialog.getByRole("button", { name: "创建会话", exact: true }).click();
+  expect((await sent).postDataJSON()).toMatchObject({
+    agent: "workbuddy",
+    cwd: "/work/alpha",
+  });
+  await expect(
+    page.locator(
+      '[contenteditable="true"] [data-placeholder="使用 WorkBuddy"]',
+    ),
+  ).toBeVisible();
+});
+
+test("full WorkBuddy child conversation exposes native read-only reason without composer mutations", async ({
+  page,
+}, info) => {
+  const { writes } = await fixture(page, { workbuddy: true, readOnly: true });
+  await openSidebar(page, info.project.name === "android-web");
+  await choose(page, "WorkBuddy");
+  await page.getByRole("button", { name: /辅助会话/ }).click();
+  await page
+    .getByRole("button", { name: "WorkBuddy original", exact: true })
+    .click();
+  await expect(
+    page.getByText("WorkBuddy 子 Agent 仅支持查看", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('[contenteditable="true"]')).toHaveCount(0);
+  await expect(page.locator(".composer")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await expect(page.getByTitle("中断", { exact: true })).toHaveCount(0);
+  expect(writes).toEqual([]);
+  // Native child capabilities must not leak into another Agent's input.
+  await openSidebar(page, info.project.name === "android-web");
+  await choose(page, "Codex");
+  await page.getByRole("button", { name: "Codex newest", exact: true }).click();
+  await expect(page.locator('[contenteditable="true"]').first()).toBeVisible();
 });
