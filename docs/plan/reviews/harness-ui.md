@@ -1,0 +1,32 @@
+# Independent review: Harness conversation extraction
+
+Reviewed commit: `7343d47e4871fffa37cb5981fe151d0282b27a20`, developer worktree `.worktrees/harness-ui`.
+
+Result: **pass for the committed UI extraction scope; no blocking UI finding**. This report does not pass the still-unreviewed backend or companion integration.
+
+## Source and license
+
+Compared extracted components with the actual local official checkout at `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`, rather than accepting a CSS imitation. `DisclosureRow.tsx`, `TextShimmer.tsx`, and `ToolRow.module.css` retain substantial upstream content (text similarity 0.944, 0.922, 0.994 respectively), with explicit AnyWork adapter slots and source comments. The extracted MIT license exactly matches upstream `LICENSE`. Root and public third-party notices and `docs/harness-ui-provenance.md` record revision, files and adaptations.
+
+The diff for both `Composer.tsx` and `PromptEditor.tsx` is empty. Conversation presentation changes remain in the body and activity adaptation; existing authenticated Markdown, rich tool output, preview and editing paths are retained. Reasoning display is explicitly enabled only for Harness; the Codex renderer retains its existing visibility contract.
+
+## Independent execution evidence
+
+Commands executed in the developer worktree, without changing its source:
+
+```sh
+npm run typecheck -w web
+npm exec -w web -- vite build --outDir /private/tmp/anywork-harness-verifier-ui-dist
+ANYWORK_E2E_PORT=3237 ANYWORK_E2E_WEB_DIR=/private/tmp/anywork-harness-verifier-ui-dist ANYWORK_E2E_OUTPUT_DIR=/private/tmp/anywork-harness-verifier-ui-results PLAYWRIGHT_CHANNEL=chrome npx playwright test e2e/harness-conversation.spec.ts e2e/tool-activity.spec.ts
+ANYWORK_E2E_PORT=3237 ANYWORK_E2E_WEB_DIR=/private/tmp/anywork-harness-verifier-ui-dist ANYWORK_E2E_OUTPUT_DIR=/private/tmp/anywork-harness-verifier-ui-regression PLAYWRIGHT_CHANNEL=chrome npx playwright test e2e/workspace.spec.ts --grep 'pasting an image|imageView and queued images|document links open|expanded image activities|expanded activity uses individual'
+```
+
+Typecheck/build passed. The first browser run passed all 10 cases; the regression run passed all 10 cases. Both runs cover desktop and Android viewport projects. No production `web/dist` build or real Codex call occurred.
+
+The independent browser checks exercise live duration and tool states, keyboard disclosures, failed/interrupted tool rows, agent-switch reasoning isolation, subagent entries, lazy historical output, raw-output modal focus/copy/dismissal, narrow/dark scrolling, image paste and preview, queued image admission, document side-panel rendering with draft retention, image gallery, and individual Codex activity rows.
+
+Visually inspected the independently captured desktop and Android running-conversation screenshots. Tool icons, compact secondary rows, live blue elapsed status, user bubble, available draft composer and viewport containment are consistent with the extraction design. Long descriptions remain accessible through the disclosure's full accessible label and expanded body.
+
+## Limits
+
+These isolated UI fixtures prove the view contract and retained interaction paths. They do not prove that actual upstream Harness image references, tool events, approval ownership or reconnect cursors reach that contract correctly. Those are explicit separate backend and integrated acceptance gates. Arbitrary TUI carrier availability is not a UI defect and must be described accurately by connection documentation.
