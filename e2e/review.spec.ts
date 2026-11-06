@@ -618,7 +618,7 @@ test("real Git commit submenu and HTTP review agree while local modifications re
       localStorage.setItem(
         "ra.connection",
         JSON.stringify({
-          url: "http://127.0.0.1:3219",
+          url: location.origin,
           token: "browser-integration-test-token",
         }),
       );
@@ -730,8 +730,9 @@ test("commit tooltip requires truncated subject, waits on hover, opens immediate
   const rows = menu.locator("button[data-commit]"),
     tooltip = page.getByRole("tooltip");
   await expect(rows).toHaveCount(3);
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  const clockStart = new Date("2026-11-06T08:00:00Z");
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 60_000));
   await rows.first().dispatchEvent("pointerover", { pointerType: "mouse" });
   await page.clock.runFor(250);
   await expect(tooltip).toHaveCount(0);

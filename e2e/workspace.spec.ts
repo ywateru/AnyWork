@@ -321,7 +321,9 @@ test("recent messages load first, older pages show loading and preserve reading 
     await route.continue();
   });
   await page.goto(`/#${session.id}`);
-  await expect(page.getByRole("status")).toContainText("正在加载最近消息");
+  await expect(
+    page.getByRole("status").filter({ hasText: "正在加载最近消息" }),
+  ).toBeVisible();
   await expect(page.getByText("准备好了。开始构建吧。")).toHaveCount(0);
   releaseInitial();
   await expect(page.locator(".message, .tool-card")).toHaveCount(5);

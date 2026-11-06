@@ -59,6 +59,21 @@ test("service speed saves catalog IDs, clears native overrides and preserves rej
     name: /^fixture-standard /,
   });
   await expect(current).toBeFocused();
+  // Font wrapping and focus can resize/reposition the portalled menu. Assert
+  // the settled layout rather than measuring the first intermediate frame.
+  await expect
+    .poll(async () => {
+      const bounds = await flyout.boundingBox();
+      const viewport = page.viewportSize()!;
+      return (
+        !!bounds &&
+        bounds.x >= 12 &&
+        bounds.y >= 12 &&
+        bounds.x + bounds.width <= viewport.width - 11 &&
+        bounds.y + bounds.height <= viewport.height - 11
+      );
+    })
+    .toBe(true);
   const rect = (await flyout.boundingBox())!;
   expect(rect.width).toBeCloseTo(233, 0);
   expect(rect.x).toBeGreaterThanOrEqual(12);
