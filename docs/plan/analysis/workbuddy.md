@@ -1,6 +1,6 @@
 # WorkBuddy integration investigation
 
-Status: research in progress; no production adapter or runtime support is claimed yet. Goal: add WorkBuddy as an Agent while preserving the existing desktop's session and execution ownership. The installed application remains unchanged.
+Status: implementation candidates are committed and undergoing independent review; isolated installed preload and native reads have passed, while native writing remains open. No production adapter or runtime support is claimed yet. Goal: add WorkBuddy as an Agent while preserving the existing desktop's session and execution ownership. The installed application remains unchanged.
 
 ## Artifact and primary evidence
 
@@ -58,6 +58,8 @@ The first native list call returned `No handler registered for 'wb:invoke'`: sta
 The outer restrictions were separately exercised by the actual Electron runtime and a native child: owned temporary writes succeed; outside writes, lsregister execution and lsd.modifydb/cfprefsd/securityd access are denied. A unique throwaway scheme remained without an owner after the denied registration call. Test processes were cleaned by their owned process groups; no production desktop was stopped.
 
 ## Completion gates
+
+The independent runtime check also found two native error forms: `__wbError: true` wrappers and API `errorCode` objects. An explicit-local, stable-ID creation diagnostic narrows the isolated profile's failure to `[LocalConversationsImpl] create failed: no user id`; a subsequent unknown-ID get instead produces aggregate incomplete-provider-lookup. This distinguishes repository identity setup from a generic transport failure. No real account credentials were read or fabricated. A supported offline identity route is not yet established. All native projections and mutations must recognize errors before accepting success, and an uncertain create must never trigger an automatic retry.
 
 1. Record the actual supported native envelopes and version compatibility check.
 2. Verify safe attachment to an isolated desktop runtime with a second local client and no independent runner.

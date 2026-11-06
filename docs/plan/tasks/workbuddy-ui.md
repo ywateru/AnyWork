@@ -1,6 +1,6 @@
 # WorkBuddy identity and launch setup
 
-State: developing after native-envelope research in `.worktrees/workbuddy-ui`, branch `codex/workbuddy-ui`, base `a6f0943`. Develop agent: harness_ui; independent reviewer: harness_verify after a committed candidate exists.
+State: initial candidate `8e17536` independently passed UI/launcher review in `.worktrees/workbuddy-ui`, branch `codex/workbuddy-ui`, base `a6f0943`. A follow-up fixes the empty Agent selection when plugins arrive after the create dialog opens; preserve any explicit selection if it becomes unavailable. Develop agent: harness_ui; independent reviewer: workbuddy_ui_verify. Follow-up exact-commit verification remains required before merge.
 
 Contract: [shared desktop integration](../../workbuddy-integration.md), [investigation](../analysis/workbuddy.md).
 

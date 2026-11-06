@@ -1,6 +1,6 @@
 # WorkBuddy backend
 
-State: developing in `.worktrees/workbuddy-backend`, branch `codex/workbuddy-backend`, base `a6f0943`. Develop agent: harness_backend; independent verifier: harness_verify after a committed candidate exists.
+State: candidate `cd6699a` committed in `.worktrees/workbuddy-backend`, branch `codex/workbuddy-backend`, base `a6f0943`. Follow-ups address the installed application's native error envelope and approval IDs reused across turns; independent review and native writing acceptance remain open. Develop agent: harness_backend; independent verifier: harness_verify.
 
 Contract: [shared desktop integration](../../workbuddy-integration.md), [investigation](../analysis/workbuddy.md). Implement only observed native contracts; unknown capability is a gate, not permission to fabricate a fallback.
 
