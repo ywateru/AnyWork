@@ -32,8 +32,7 @@ import {
 import "./style.css";
 import { version as appVersion } from "../package.json";
 import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
-const anyworkLogo = new URL("../../../web/public/icon.svg", import.meta.url)
-  .href;
+import { anyworkLogo } from "./brand";
 type Kind = "quick" | "named" | "relay";
 type Phase =
   | "off"

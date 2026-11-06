@@ -8,6 +8,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { version as appVersion } from "../package.json";
+import { anyworkLogo } from "./brand";
 
 export type UpdateSnapshot = {
   currentVersion: string;
@@ -143,7 +144,13 @@ export function UpdatePage({ controller }: { controller: Controller }) {
       </header>
       <section className="update-overview" aria-label="更新状态">
         <div className="update-product">
-          <span className="update-mark">W</span>
+          <img
+            src={anyworkLogo}
+            className="update-mark"
+            width="48"
+            height="48"
+            alt=""
+          />
           <div>
             <h2>AnyWork</h2>
             <p>当前版本 {state?.currentVersion || appVersion}</p>
