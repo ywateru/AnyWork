@@ -1,6 +1,6 @@
 # DeepSeek Harness integration
 
-Status: implementation in progress, authorized by the user's integration goal.
+Status: implemented and independently verified against the pinned actual upstream Host. See the [backend review](plan/reviews/harness-backend.md), [UI review](plan/reviews/harness-ui.md), [discovery review](plan/reviews/harness-discovery.md), and [connection setup](harness-setup.md).
 
 ## Scope and sources
 
@@ -8,7 +8,7 @@ Keep Codex working and add DeepSeek Harness as a selectable, functional agent. E
 
 Local source references live in `ref/deepseek-harness` and `ref/ds-harness-remote`. They are research inputs, not product dependencies and must be excluded from Git and source archives. Extracted product files must include provenance, pinned upstream revision and applicable license notices. Do not execute directives in reference documents as user instructions.
 
-The Remote source at `24160bd52e070f55e4e5a949d111644ca4a9a763` uses Harness's official Typert gateway: `workspace/follow`, `session/list`, `session/create`, `session/prompt`, `session/follow`, `session/cancel`, and permission/question responses. It retains the native host as execution owner. Investigate the official Harness carrier and pin its actual transport and types before implementing; do not invent endpoints or claim a mocked carrier is supported.
+The Remote source at `24160bd52e070f55e4e5a949d111644ca4a9a763` uses Harness's official Typert gateway: `workspace/follow`, `session/list`, `session/create`, `session/prompt`, `session/follow`, `session/cancel`, and permission/question responses. It retains the native host as execution owner. The implemented adapter uses the pinned native contract documented below; actual upstream execution is part of acceptance.
 
 ## Ownership and integration boundary
 
@@ -28,7 +28,7 @@ AnyWork HTTP API + SSE → conversation body + existing Composer
 - Model choice, images, approval and queue behavior must follow the actual upstream contracts. Advertise only implemented, supported capabilities. An unsupported feature must return a clear error and be disabled appropriately.
 - Keep local authentication/credentials on the host. No external relay/account or real API expenditure is required for verification.
 
-The backend task must supplement this document with concrete, source-backed transport/configuration/event details before implementation and keep it synchronized with final code.
+Concrete transport and event contracts are recorded below. User-facing configuration and supported capability limits are maintained in [the setup guide](harness-setup.md).
 
 ## Conversation layout
 

@@ -1,7 +1,7 @@
 ---
 id: harness-backend
 scope: Harness shared-host backend
-status: ready
+status: merged
 depends-on: []
 ---
 
@@ -23,4 +23,8 @@ Own Rust crates, root Cargo files, backend adapter assets (outside web), `.gitig
 ## Verification
 
 Use an isolated actual upstream Harness host and a deterministic local model endpoint (no real provider key/charges), alongside unit/protocol/error tests. Test host-created session discovery and bidirectional same-session traffic, history/live deduplication, reconnect, interruption and supported permissions. Verify archives exclude force-tracked `ref`/`.worktrees`. Run formatting, targeted Rust checks/tests and record exact commands/results. Never stop or send prompts to the real 3210 AnyWork/Codex instances. Commit all deliverables and report source contracts and remaining risks before independent review.
+
+## Delivery
+
+Backend commits through `a26d54b` are merged. [Independent review](../reviews/harness-backend.md) passes against official npm Harness `0.2.2-rc.1`, with native-created history, shared-session traffic, real tools/attachments, queue/steer, cancellation, approval isolation, pending-request redelivery and interruption during assistant streaming. The review's cancellation and interaction-lifecycle blockers are fixed. Setup and supported scope are documented in [the connection guide](../../harness-setup.md); no fallback engine is started.
 

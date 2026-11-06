@@ -1,6 +1,6 @@
 # Harness desktop connection discovery
 
-Status: authorized implementation, complements the native carrier in [Harness integration](deepseek-harness-integration.md).
+Status: implemented and [independently verified](plan/reviews/harness-discovery.md), complements the native carrier in [Harness integration](deepseek-harness-integration.md). Installation instructions are in the [companion README](../integrations/harness-discovery/README.md).
 
 ## Purpose and source contract
 
