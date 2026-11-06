@@ -1442,3 +1442,113 @@ summary:focus-visible {
 .message.user .message-body {
   font-size: var(--font-ui-size, 15px);
 }
+
+/* Agent identity and the sidebar-only presentation filter. */
+.agent-mark {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.agent-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.agent-mark-dark {
+  display: none;
+}
+:root[data-theme="dark"] .agent-mark-light {
+  display: none;
+}
+:root[data-theme="dark"] .agent-mark-dark {
+  display: block;
+}
+.sidebar-agent-filter {
+  position: relative;
+  flex-shrink: 0;
+  margin: 3px 0 8px;
+}
+.sidebar-agent-filter > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sidebar-agent-filter > summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar-agent-filter > summary > span:not(.agent-mark) {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-agent-filter > summary:hover,
+.sidebar-agent-filter[open] > summary {
+  background: var(--raised);
+  color: var(--text);
+}
+.sidebar-agent-menu {
+  position: absolute;
+  z-index: 45;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: min(340px, 50dvh);
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 8px 26px #0002;
+}
+.sidebar-agent-menu button {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 7px;
+  font-size: 12px;
+  text-align: left;
+}
+.sidebar-agent-menu button > span:not(.agent-mark) {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.sidebar-agent-menu button:hover,
+.sidebar-agent-menu button[aria-pressed="true"] {
+  background: var(--raised);
+}
+.sidebar-agent-menu small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 2px;
+}
+.sidebar-clear-agent {
+  color: var(--text);
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-top: 6px;
+}
+.session-row .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

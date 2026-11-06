@@ -62,6 +62,21 @@ class SourceExport(unittest.TestCase):
         self.assertNotEqual(self.export(check=False).returncode, 0)
         self.assertFalse((self.root / 'artifacts/anywork-source.tar.gz').exists())
 
+    def test_only_exact_codex_identification_images_are_public(self):
+        public = ['web/public/agents/codex-light.png', 'web/public/agents/codex-dark.png']
+        private = ['web/public/agents/unreviewed.png', 'ref/codex-light.png']
+        for name in public + private:
+            path = self.root / name
+            path.parent.mkdir(exist_ok=True, parents=True)
+            path.write_bytes(b'asset fixture')
+            subprocess.run(['git', '-C', str(self.root), 'add', '-f', name], check=True)
+        self.export()
+        with tarfile.open(self.root / 'artifacts/anywork-source.tar.gz') as archive:
+            for name in public:
+                self.assertIn('anywork/' + name, archive.getnames())
+            for name in private:
+                self.assertNotIn('anywork/' + name, archive.getnames())
+
     def test_symlink_to_private_content_is_rejected(self):
         outside = pathlib.Path(self.temp.name) / 'private.txt'
         outside.write_text('not public')

@@ -96,3 +96,7 @@ Thumbs.db
 # Local research sources and isolated development checkouts
 /ref/
 /.worktrees/
+
+# Verified product identification marks (exact public assets).
+!/web/public/agents/codex-light.png
+!/web/public/agents/codex-dark.png

@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import type { GroupMode } from "./NavigationHeader";
 import type { Session, WorkspaceInfo } from "../types";
+import { agentName, sidebarSessions } from "../sidebarAgents";
+import AgentIcon from "./AgentIcon";
 
 export default function SessionSidebar({
   sessions,
@@ -20,6 +22,9 @@ export default function SessionSidebar({
   filter,
   project,
   group,
+  agent = "",
+  agentLabel,
+  onClearAgent,
   onSelect,
   onCreate,
 }: {
@@ -32,6 +37,9 @@ export default function SessionSidebar({
   filter: string;
   project?: string;
   group?: GroupMode;
+  agent?: string;
+  agentLabel?: string;
+  onClearAgent?: () => void;
   onSelect: (id: string) => void;
   onCreate: (path: string) => void;
 }) {
@@ -39,9 +47,12 @@ export default function SessionSidebar({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [helpers, setHelpers] = useState<Record<string, boolean>>({});
   const term = filter.trim().toLowerCase();
-  const visible = sessions
-    .filter((s) => s.archived === archived && (!project || s.cwd === project))
-    .sort((a, b) => b.updated_at - a.updated_at || a.id.localeCompare(b.id));
+  const visible = sidebarSessions(sessions, {
+    agent,
+    archived,
+    project,
+    search: filter,
+  });
   const paths = new Map<string, WorkspaceInfo & { updated_at: number }>();
   for (const s of visible) {
     const directory = paths.get(s.cwd);
@@ -61,16 +72,15 @@ export default function SessionSidebar({
       <button
         key={s.id}
         className={`session-row${s.id === selected ? " active" : ""}`}
-        title={`${s.title} · ${s.cwd}`}
+        title={`${s.title} · ${agentName(s.agent)} · ${s.cwd} · ${statusText(s.status)}`}
         aria-label={s.title}
         aria-current={s.id === selected ? "page" : undefined}
         onClick={() => onSelect(s.id)}
       >
-        <i
-          className={`session-state-dot ${s.status}`}
-          title={statusText(s.status)}
-          aria-hidden="true"
-        />
+        <AgentIcon agent={s.agent} />
+        <span className="sr-only">
+          {agentName(s.agent)} · {statusText(s.status)}
+        </span>
         <span className="session-info">
           <strong>{s.title}</strong>
         </span>
@@ -115,6 +125,27 @@ export default function SessionSidebar({
             <>
               会话加载失败 <button onClick={onRetry}>重试</button>
             </>
+          )}
+        </div>
+      </nav>
+    );
+  if (!visible.length)
+    return (
+      <nav className="session-list" aria-label="工作目录与会话">
+        <div className="sidebar-empty">
+          {agent ? (
+            <>
+              <p>没有符合当前筛选的 {agentLabel || agentName(agent)} 会话</p>
+              <button className="sidebar-clear-agent" onClick={onClearAgent}>
+                查看所有 Agent
+              </button>
+            </>
+          ) : term || project ? (
+            "没有找到匹配的目录或会话"
+          ) : archived ? (
+            "没有已归档会话"
+          ) : (
+            "还没有会话，点击 + 开始"
           )}
         </div>
       </nav>

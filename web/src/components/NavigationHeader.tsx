@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { Session } from "../types";
+import type { ReactNode } from "react";
 export type GroupMode = "status" | "directory";
 export default function NavigationHeader({
   sessions,
@@ -26,6 +27,7 @@ export default function NavigationHeader({
   onCreate,
   onClose,
   onCollapse,
+  agentFilter,
 }: {
   sessions: Session[];
   filter: string;
@@ -39,6 +41,7 @@ export default function NavigationHeader({
   onCreate: () => void;
   onClose: () => void;
   onCollapse: () => void;
+  agentFilter?: ReactNode;
 }) {
   const paths = [
     ...new Set(
@@ -93,6 +96,7 @@ export default function NavigationHeader({
           )}
         </label>
       </div>
+      {agentFilter}
       <div className="navigation-view">
         <span>{archived ? "已归档" : "会话"}</span>
         <details className="navigation-options" data-floating-menu>
