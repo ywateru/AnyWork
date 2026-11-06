@@ -34,3 +34,7 @@ These isolated UI fixtures prove the view contract and retained interaction path
 ## Incremental native-metadata review
 
 Reviewed follow-up commit `593f6a1c74adef362f594194d76538f6ad135c4a`: **pass**. The adapter now consumes native `title == tool wire name` plus parsed/string arguments, using pinned upstream tool variants and Chinese labels; explicit upstream presentation titles remain authoritative. This closes the difference between prelocalized fixtures and actual Harness call metadata without classifying shell source. Independently ran the six Harness adapter unit cases, rebuilt to the verifier's isolated output, and reran all four Harness conversation browser cases across desktop/Android; all passed. The browser fixture now supplies native `read`/`bash`/`job_output` names and arguments rather than synthetic Chinese titles.
+
+### Correction: incremental typecheck gate
+
+The initial incremental PASS above was incomplete: it ran unit tests, Vite and browsers, but did not rerun TypeScript's separate checker. The orchestrator subsequently found **blocking TS18046** in commit `593f6a1`, `tool-metadata.ts` catch branch, where mutable `args: unknown` is no longer narrowed to string. Vite is a transpilation/build check and does not satisfy this gate. The incremental result is **blocked until a committed fix passes an independent standalone `npm run typecheck -w web` with its own checked exit status**. The earlier main extraction typecheck remains valid for `7343d47`; it does not cover this follow-up.
