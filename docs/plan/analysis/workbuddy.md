@@ -49,6 +49,14 @@ An isolated application startup also has a potential global effect: WorkBuddy re
 - Version-bound public SDK [server assembly](https://unpkg.com/@tencent-ai/agent-harness@0.2.0-beta.15/docs/server.md), [ACP v2 protocol](https://unpkg.com/@tencent-ai/agent-harness@0.2.0-beta.15/docs/acp-v2.md), [authentication](https://unpkg.com/@tencent-ai/agent-harness@0.2.0-beta.15/docs/authentication-guide.md). The older stable 0.1.6 statement that WorkBuddy is not integrated must not be generalized to the installed newer package.
 - [WorkBuddy brand center](https://5864e0de6f1f4cf1a9444ae3ebb70ce2.app.codebuddy.work/), [original icon SVG](https://5864e0de6f1f4cf1a9444ae3ebb70ce2.app.codebuddy.work/assets/workbuddy-icon.svg). Preserve its teal color and aspect ratio; software package licensing does not grant broad trademark rights.
 
+## Independent runtime preflight
+
+The original installed executable was launched with a private configuration and userData under a tested outer macOS sandbox. A normal nested Chromium sandbox could not initialize in that test environment. A test-only `--no-sandbox` launch, while keeping the verified outer restrictions, reached the actual file renderer and confirmed `__wbInvoke` / `__wbEventBridge` functions, a working event-unsubscribe function, native appVersion 5.9.3 and the exact isolated configDir. This flag is not part of the product launcher or a claim about default runtime behavior.
+
+The first native list call returned `No handler registered for 'wb:invoke'`: startup had aborted before IPC registration because BrowserRuntimeHost chmodded its shared UID temporary directory. This is an environment failure, not an empty successful catalog. The native path is `/tmp/wb-browser-<uid>/<main-pid>-<random12hex>.sock` (`main-bootstrap.js:26700–26706`). Further verification can allow only the new test process's own PID-prefixed socket and idempotent 0700 directory mode, while continuing to deny other processes' sockets, real profiles, external writes, persistent LaunchServices changes and external network access. Full native list/history/send interoperability remains unverified at this stage.
+
+The outer restrictions were separately exercised by the actual Electron runtime and a native child: owned temporary writes succeed; outside writes, lsregister execution and lsd.modifydb/cfprefsd/securityd access are denied. A unique throwaway scheme remained without an owner after the denied registration call. Test processes were cleaned by their owned process groups; no production desktop was stopped.
+
 ## Completion gates
 
 1. Record the actual supported native envelopes and version compatibility check.
