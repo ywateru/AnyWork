@@ -252,6 +252,256 @@ test("single fast tier uses a checkbox and keeps focus after native saves", asyn
   ).toHaveCount(0);
 });
 
+interface RenderTaskWindow extends Window {
+  modelPickerTasks: {
+    hold: boolean;
+    pending: (() => void)[];
+    release: () => void;
+  };
+}
+
+// A browser can deliver an animation frame before React's MessageChannel task.
+// Hold that task for two frames after the save response, without changing focus
+// APIs, requestAnimationFrame, React or the actual native settings request.
+async function controlledRenderTasks(page: Page) {
+  await page.addInitScript(() => {
+    const pending: (() => void)[] = [];
+    const state = {
+      hold: false,
+      pending,
+      release: () => {
+        state.hold = false;
+        for (const run of pending.splice(0)) run();
+      },
+    };
+    Object.assign(window, { modelPickerTasks: state });
+    const NativeChannel = window.MessageChannel;
+    const onmessage = Object.getOwnPropertyDescriptor(
+      MessagePort.prototype,
+      "onmessage",
+    )!;
+    window.MessageChannel = class extends NativeChannel {
+      constructor() {
+        super();
+        Object.defineProperty(this.port1, "onmessage", {
+          set(handler: (event: MessageEvent) => void) {
+            onmessage.set!.call(this, (event: MessageEvent) => {
+              const run = () => handler.call(this, event);
+              if (state.hold) pending.push(run);
+              else run();
+            });
+          },
+        });
+      }
+    };
+  });
+}
+
+for (const rejected of [false, true]) {
+  test(`fast-tier focus follows the enabled commit after ${rejected ? "rejected" : "successful"} saves`, async ({
+    page,
+  }) => {
+    await controlledRenderTasks(page);
+    const { session, picker, menu } = await fixture(page);
+    let release: (() => void) | undefined;
+    await page.route(
+      `**/api/sessions/${session.id}/composer`,
+      async (route) => {
+        if (route.request().method() === "POST") {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          if (rejected) {
+            await route.fulfill({
+              status: 500,
+              json: { error: "受控保存失败" },
+            });
+            return;
+          }
+        }
+        const response = await route.fetch(),
+          data = await response.json();
+        data.models[0].serviceTiers = [
+          {
+            id: "fixture-priority",
+            name: "Fast",
+            description: "Native fast tier",
+          },
+        ];
+        await route.fulfill({ response, json: data });
+      },
+    );
+    await picker.click();
+    const fast = menu.getByRole("menuitemcheckbox", {
+      name: "快速",
+      exact: true,
+    });
+    await fast.click();
+    await expect(fast).toBeDisabled();
+    await expect.poll(() => Boolean(release)).toBe(true);
+    await page.evaluate(() => {
+      (window as RenderTaskWindow).modelPickerTasks.hold = true;
+    });
+    const response = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/sessions/${session.id}/composer`) &&
+        response.request().method() === "POST",
+    );
+    release!();
+    await response;
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as RenderTaskWindow).modelPickerTasks.pending.length,
+        ),
+      )
+      .toBeGreaterThan(0);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await expect(fast).toBeDisabled();
+    await page.evaluate(() => {
+      (window as RenderTaskWindow).modelPickerTasks.release();
+    });
+    await expect(fast).toBeEnabled();
+    await expect(fast).toHaveAttribute("aria-checked", String(!rejected));
+    await expect(fast).toBeFocused();
+    if (rejected)
+      await expect(menu.getByRole("alert")).toHaveText("受控保存失败");
+  });
+}
+
+for (const rejected of [false, true]) {
+  for (const intent of [
+    "another control",
+    "outside",
+    "Escape",
+    "Escape then outside",
+    "another session",
+    "Escape then another session",
+  ] as const) {
+    test(`a ${rejected ? "rejected" : "successful"} speed save respects focus moved to ${intent}`, async ({
+      page,
+    }) => {
+      const { session, picker, menu } = await fixture(page);
+      const other =
+        intent === "another session" || intent === "Escape then another session"
+          ? (
+              await (
+                await page.request.post("/api/sessions", {
+                  headers,
+                  data: {
+                    cwd: session.cwd,
+                    agent: "fixture",
+                    title: "焦点独立会话",
+                  },
+                })
+              ).json()
+            ).session
+          : null;
+      let release: (() => void) | undefined;
+      await page.route(
+        `**/api/sessions/${session.id}/composer`,
+        async (route) => {
+          if (route.request().method() === "POST") {
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            if (rejected) {
+              await route.fulfill({
+                status: 500,
+                json: { error: "受控保存失败" },
+              });
+              return;
+            }
+          }
+          const response = await route.fetch(),
+            data = await response.json();
+          data.models[0].serviceTiers = [
+            {
+              id: "fixture-priority",
+              name: "Fast",
+              description: "Native fast tier",
+            },
+          ];
+          await route.fulfill({ response, json: data });
+        },
+      );
+      await picker.click();
+      const fast = menu.getByRole("menuitemcheckbox", {
+        name: "快速",
+        exact: true,
+      });
+      await fast.click();
+      await expect(fast).toBeDisabled();
+      await expect.poll(() => Boolean(release)).toBe(true);
+      const prompt = page.getByLabel("消息", { exact: true });
+      const destination =
+        intent === "another control" || other
+          ? menu.getByRole("slider")
+          : intent === "Escape"
+            ? picker
+            : prompt;
+      if (intent === "another control") await destination.focus();
+      else if (intent === "Escape") await page.keyboard.press("Escape");
+      else {
+        if (intent.startsWith("Escape then")) {
+          await page.keyboard.press("Escape");
+          await expect(menu).toHaveCount(0);
+        }
+        if (other) {
+          await page.evaluate((id) => {
+            location.hash = id;
+          }, other.id);
+          await expect(page).toHaveURL(new RegExp(`#${other.id}$`));
+          await expect(picker).toHaveAttribute("title", /思考强度：中/);
+          await fillPromptText(prompt, "保留焦点及独立草稿");
+          await picker.click();
+          await expect(menu).toHaveAttribute("aria-busy", "false");
+          await destination.focus();
+        } else {
+          await prompt.focus();
+          await expect(menu).toHaveCount(0);
+        }
+      }
+      const saved = page.waitForResponse(
+        (response) =>
+          response.url().endsWith(`/sessions/${session.id}/composer`) &&
+          response.request().method() === "POST",
+      );
+      release!();
+      await saved;
+      // Drain the old frame-based completion too, so a stale callback cannot
+      // pass simply because the assertion ran before its scheduled focus.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      if (other) {
+        await expect(menu.getByRole("alert")).toHaveCount(0);
+        await expect(menu.getByRole("slider")).toHaveAttribute(
+          "aria-valuenow",
+          "1",
+        );
+        await expectPromptText(prompt, "保留焦点及独立草稿");
+      } else {
+        await expect(picker).toBeEnabled();
+        if (intent === "another control") {
+          await expect(menu).toHaveAttribute("aria-busy", "false");
+          if (rejected)
+            await expect(menu.getByRole("alert")).toHaveText("受控保存失败");
+        } else await expect(menu).toHaveCount(0);
+      }
+      await expect(destination).toBeFocused();
+    });
+  }
+}
+
 test("a delayed model error cannot overwrite another session or its draft", async ({
   page,
 }) => {
