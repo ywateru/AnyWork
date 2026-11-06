@@ -1102,6 +1102,10 @@ test("imageView and queued images load only after clicking their labels", async 
   await viewer
     .getByRole("button", { name: "关闭图片查看器", exact: true })
     .click();
+  for (const dismiss of await page
+    .getByRole("button", { name: "关闭提醒", exact: true })
+    .all())
+    await dismiss.click();
   await queue.locator('summary[aria-label="排队消息选项"]').click();
   await page.screenshot({
     path: `artifacts/queue-images-${testInfo.project.name}.png`,
@@ -1966,6 +1970,10 @@ test("native goal banner pauses, resumes, opens the goal tab and clears without 
   await expect(banner).toContainText("进行中的目标");
   await expect(banner.locator(".goal-banner-objective")).toHaveText(objective);
   await fillPromptText(input, "暂停和查看目标时保留草稿");
+  for (const dismiss of await page
+    .getByRole("button", { name: "关闭提醒", exact: true })
+    .all())
+    await dismiss.click();
   const statusRequest = page.waitForRequest(
     (request) =>
       request.url().endsWith("/composer") &&
