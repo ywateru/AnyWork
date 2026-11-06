@@ -87,6 +87,22 @@ async function manager(
               notice: "",
             };
           if (command === "desktop_preview") return null;
+          // Status polling is read-only, like desktop_snapshot above. Keep the
+          // operation log strict so an unintended install/start still fails.
+          if (command === "desktop_update_snapshot")
+            return {
+              currentVersion: "0.1.2",
+              version: "",
+              phase: "idle",
+              enabled: false,
+              supported: true,
+              showNotice: false,
+              downloaded: 0,
+              total: null,
+              lastChecked: null,
+              notes: "",
+              error: "",
+            };
           calls.push(
             command === "desktop_action"
               ? `${args?.action?.type}:${args?.action?.kind}`

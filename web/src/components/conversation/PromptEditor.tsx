@@ -1142,6 +1142,21 @@ const PromptEditor = forwardRef<PromptEditorHandle, PromptEditorProps>(
         else view.current?.focus();
       }
     }
+    function preventThreadMiddlePaste(event: {
+      button: number;
+      target: EventTarget;
+      preventDefault: () => void;
+    }) {
+      if (event.button !== 1 || !(event.target instanceof Element)) return;
+      const element = event.target.closest<HTMLElement>(
+        "[rich-link-href]:not([rich-link-loading])",
+      );
+      if (
+        element &&
+        promptThreadHref(element.getAttribute("rich-link-href") ?? "")
+      )
+        event.preventDefault();
+    }
     function openLink(event: Event) {
       const editor = view.current;
       if (
@@ -1960,20 +1975,10 @@ const PromptEditor = forwardRef<PromptEditorHandle, PromptEditorProps>(
         <div
           className="prompt-editor-mount"
           ref={mount}
-          onMouseDownCapture={(event) => {
-            // Linux pastes the primary selection on middle-button down. A
-            // conversation link opens a tab and must leave the draft intact.
-            if (event.button !== 1 || !(event.target instanceof Element))
-              return;
-            const element = event.target.closest<HTMLElement>(
-              "[rich-link-href]:not([rich-link-loading])",
-            );
-            if (
-              element &&
-              promptThreadHref(element.getAttribute("rich-link-href") ?? "")
-            )
-              event.preventDefault();
-          }}
+          // Cancel both default phases: Linux primary-selection paste can run
+          // on mouseup, before auxclick opens the conversation in a new tab.
+          onMouseDownCapture={preventThreadMiddlePaste}
+          onMouseUpCapture={preventThreadMiddlePaste}
           onClickCapture={(event) => {
             openLink(event.nativeEvent);
           }}

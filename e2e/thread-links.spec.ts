@@ -334,6 +334,20 @@ for (const gesture of ["middle", "modifier"] as const)
   }) => {
     const { input, state } = await fixture(context, page);
     const link = await insertLink(input);
+    if (gesture === "middle") {
+      for (const type of ["mousedown", "mouseup"]) {
+        const prevented = await link.evaluate((element, eventType) => {
+          const event = new MouseEvent(eventType, {
+            button: 1,
+            bubbles: true,
+            cancelable: true,
+          });
+          element.dispatchEvent(event);
+          return event.defaultPrevented;
+        }, type);
+        expect(prevented).toBe(true);
+      }
+    }
     const popup = page.waitForEvent("popup");
     await link.click(
       gesture === "middle"

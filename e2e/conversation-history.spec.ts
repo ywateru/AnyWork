@@ -114,7 +114,13 @@ test("history ticks preview user and assistant text, jump immediately and follow
   const { nav, reads } = await fixture(page);
   const first = nav.getByRole("button", { name: /^第 1 条对话/ });
   if (info.project.name === "desktop") await first.hover();
-  else await first.tap();
+  else {
+    await first.tap();
+    // Touch leaving the rail and compatibility mouseleave must not dismiss the
+    // preview before the user can read it or choose its jump action.
+    await nav.dispatchEvent("pointerleave", { pointerType: "touch" });
+    await nav.dispatchEvent("mouseout", { relatedTarget: null });
+  }
   const preview = page.locator(".history-preview");
   await expect(preview).toContainText("问题 1：");
   await expect(preview).toContainText("回答 1：");

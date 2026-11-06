@@ -44,3 +44,13 @@ Workspace Rust tests: 109 passed; four opt-in tests remained ignored in the ordi
 **Boundary:** the real package smoke driver invokes the production update core using MockRuntime. It does not click Install inside a running published 0.1.1 GUI or invoke `app.request_restart()`. Confirmation is tested separately in the browser fixture; the updated executable and GUI startup are actually exercised. Windows/Linux packages build and test in CI, but their cross-version GUI installations were not dynamically exercised on this macOS host. Do not describe these as a fully clicked-through GUI restart test on every platform.
 
 **边界：**真实包测试使用 MockRuntime 驱动更新核心，没有在运行中的正式 0.1.1 GUI 内手动点击安装并观察自动重启。确认交互另由浏览器 fixture 验证；新版程序及 GUI 启动经过实际运行。Windows/Linux 的跨版本 GUI 安装未在本机实测。测试未修改或重启原 Codex，也未停止真实 3210 服务；所有测试服务和 GUI 均使用独立临时目录。
+
+## Post-release regression fixes / 发版后的回归修补
+
+The old tunnel IPC fixture logged `desktop_update_snapshot` as an operation, unlike its existing exemption for `desktop_snapshot`. The new background status poll therefore broke exact tunnel-operation assertions. The fixture now returns a complete inert update snapshot without counting that read-only call; unexpected installation and service actions still enter the strict operation log.
+
+旧隧道测试把新增的只读更新状态轮询计入隧道操作列表，导致严格断言失败；现提供完整的隔离更新状态，继续严格检查安装及服务操作。另对历史CI中的会话链接中键重复粘贴、触屏定位预览消失分别补充鼠标抬起默认行为拦截和按pointerType区分的离开处理。前者在本机未复现Linux系统粘贴，但已补充按下/抬起取消默认行为的确定性断言，Linux端需由CI回归确认。
+
+After these changes, all 74 desktop/mobile tests in `desktop-tunnel.spec.ts`, `thread-links.spec.ts`, and `conversation-history.spec.ts` passed locally, along with the Web TypeScript/production build and changed-file formatting checks. The independent raw-output modal pass is documented in `docs/anywork-tool-activity-contract.md`. These frontend/fixture changes are subsequent main-branch work and are **not included in already-published v0.1.2 assets**.
+
+修补后三组桌面/移动浏览器测试共74项在本机通过，Web类型检查、生产构建和变更文件格式检查通过。工具原始输出弹窗另有独立契约及验收记录。上述后续前端/fixture修补位于main源码，**不在已经发布的v0.1.2附件中**。

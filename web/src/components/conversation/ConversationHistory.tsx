@@ -178,7 +178,11 @@ export default function ConversationHistory({
       className="conversation-history"
       aria-label="对话记录定位"
       ref={rail}
-      onMouseLeave={() => setPreview(null)}
+      onPointerLeave={(event) => {
+        // A tap can generate compatibility mouseleave after jumping moves the
+        // rail. Keep touch previews open until an explicit dismissal.
+        if (event.pointerType !== "touch") setPreview(null);
+      }}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node))
           setPreview(null);
