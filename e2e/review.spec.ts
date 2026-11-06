@@ -117,6 +117,7 @@ async function fixture(
         }),
       );
       localStorage.setItem("ra.sidebar-pinned", "false");
+      localStorage.setItem("ra.theme", "system");
       if (source) localStorage.setItem("anywork.review.source", source);
     },
     { source },

@@ -172,6 +172,7 @@ async function fixture(page: Page, longOutput = false) {
       JSON.stringify({ url: location.origin, token: "tool-activity-fixture" }),
     );
     localStorage.setItem("ra.sidebar-pinned", "false");
+    localStorage.setItem("ra.theme", "system");
   });
   await page.goto(`/#${session.id}`);
   await expect(page.getByText("检查完成。", { exact: true })).toBeVisible();

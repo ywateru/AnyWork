@@ -25,6 +25,7 @@ async function fixture(page: Page) {
       }),
     );
     localStorage.setItem("ra.sidebar-pinned", "false");
+    localStorage.setItem("ra.theme", "system");
   });
   await page.goto(`/#${session.id}`);
   await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
