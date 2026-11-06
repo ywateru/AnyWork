@@ -629,7 +629,17 @@ mod tests {
         let mut updates = Handle::new(&support, true);
         updates.executable_path = Some(installed.join("Contents/MacOS").join(&old_name));
         updates.edit(|data| data.snapshot.current_version = from.clone());
-        updates.check(app.handle(), true).await.unwrap();
+        let download = updates.check(app.handle(), true);
+        tokio::pin!(download);
+        loop {
+            tokio::select! {
+                result = &mut download => { result.unwrap(); break; }
+                _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                    let state = updates.snapshot();
+                    println!("Published update: {:?}, {:.1} MB downloaded", state.phase, state.downloaded as f64 / 1_048_576.0);
+                }
+            }
+        }
         assert_eq!(updates.snapshot().phase, Phase::Ready);
         assert_eq!(updates.snapshot().version, to);
         assert_eq!(
