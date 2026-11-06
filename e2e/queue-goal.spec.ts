@@ -160,7 +160,9 @@ test("queue preview uses delayed hover, keyboard entry and normal action navigat
     data: { action: "edit", id: first.id, text: "第一行\n需要预览的第二行" },
   });
   await open();
-  await page.clock.install();
+  const clockStart = new Date("2026-11-06T00:00:00Z");
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 60_000));
   const trigger = page.getByRole("group", { name: /^预览排队消息 1：/ });
   const preview = page.getByRole("dialog", {
     name: "排队消息预览",

@@ -17,6 +17,10 @@ async function create(page: Page) {
   await page.getByRole("button", { name: "创建会话" }).click();
   await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
 }
+async function dismissReminders(page: Page) {
+  const reminders = page.getByRole("button", { name: "关闭提醒", exact: true });
+  while (await reminders.count()) await reminders.first().click();
+}
 async function clickWorkspaceTool(page: Page, name: string) {
   const action = page.getByRole("button", { name, exact: true });
   if (!(await action.isVisible()))
@@ -58,6 +62,7 @@ test("authentication, chat, approval, questions, files, terminal, and archive", 
   await expect(page.getByText("回答已收到。")).toBeVisible();
   if (testInfo.project.name === "android-web")
     await page.screenshot({ path: "artifacts/web-mobile.png", fullPage: true });
+  await dismissReminders(page);
   await clickWorkspaceTool(page, "文件");
   await page.getByRole("treeitem", { name: /README.md/ }).click();
   await page.getByRole("button", { name: "编辑文档", exact: true }).click();
@@ -1090,10 +1095,7 @@ test("imageView and queued images load only after clicking their labels", async 
   ).toBeVisible();
   await expect(queue.locator("img")).toHaveCount(0);
   expect(imageRequests).toBe(1);
-  for (const dismiss of await page
-    .getByRole("button", { name: "关闭提醒", exact: true })
-    .all())
-    await dismiss.click();
+  await dismissReminders(page);
   await queue.getByRole("button", { name: "查看图片", exact: true }).click();
   await expect(viewer.locator("img")).toBeVisible();
   await expect
@@ -1106,10 +1108,7 @@ test("imageView and queued images load only after clicking their labels", async 
   await viewer
     .getByRole("button", { name: "关闭图片查看器", exact: true })
     .click();
-  for (const dismiss of await page
-    .getByRole("button", { name: "关闭提醒", exact: true })
-    .all())
-    await dismiss.click();
+  await dismissReminders(page);
   await queue.locator('summary[aria-label="排队消息选项"]').click();
   await page.screenshot({
     path: `artifacts/queue-images-${testInfo.project.name}.png`,
@@ -1974,10 +1973,7 @@ test("native goal banner pauses, resumes, opens the goal tab and clears without 
   await expect(banner).toContainText("进行中的目标");
   await expect(banner.locator(".goal-banner-objective")).toHaveText(objective);
   await fillPromptText(input, "暂停和查看目标时保留草稿");
-  for (const dismiss of await page
-    .getByRole("button", { name: "关闭提醒", exact: true })
-    .all())
-    await dismiss.click();
+  await dismissReminders(page);
   const statusRequest = page.waitForRequest(
     (request) =>
       request.url().endsWith("/composer") &&
