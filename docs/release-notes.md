@@ -2,7 +2,13 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.9 / 本次更新**
+**New in 0.1.10 / 本次更新**
+
+Restores keyboard focus after model-speed settings finish saving and the control becomes available again. Delayed saves respect deliberate focus changes, menu dismissal and session switches.
+
+修复模型速度设置保存后偶发丢失键盘焦点的问题，在控件恢复可用后归还焦点。迟到的保存响应尊重用户主动移焦、关闭菜单与切换会话的操作。
+
+**Message consistency fixed in 0.1.9 / 消息一致性修复**
 
 Fixes an intermittent duplicate-answer race when a compact history snapshot arrives before older live events. Replayed deltas and snapshots now converge to the canonical message while preserving legitimate repeated text and ongoing updates.
 
