@@ -1090,6 +1090,10 @@ test("imageView and queued images load only after clicking their labels", async 
   ).toBeVisible();
   await expect(queue.locator("img")).toHaveCount(0);
   expect(imageRequests).toBe(1);
+  for (const dismiss of await page
+    .getByRole("button", { name: "关闭提醒", exact: true })
+    .all())
+    await dismiss.click();
   await queue.getByRole("button", { name: "查看图片", exact: true }).click();
   await expect(viewer.locator("img")).toBeVisible();
   await expect
