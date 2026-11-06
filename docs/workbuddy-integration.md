@@ -29,7 +29,7 @@ Use an in-process Rust adapter and `RpcProcess::bridge`, retaining existing norm
 
 ```text
 New chat / Agent chooser
-  [Codex] [DeepSeek Harness] [WorkBuddy]  (only connected backends selectable)
+  [Codex] [DeepSeek Harness] [WorkBuddy]  (only configured/discoverable backends offered)
 Sidebar
   [Agent filter: All Agents v]
     All Agents
