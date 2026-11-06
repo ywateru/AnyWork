@@ -46,12 +46,27 @@ for (const [width, height] of [
         .locator("html")
         .evaluate((el) => getComputedStyle(el).backgroundColor),
     ).toBe("rgb(255, 255, 255)");
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
     if (width >= 800) {
-      const hub = await page.locator(".host-node").boundingBox();
-      const stop = await page
-        .getByRole("button", { name: "停止服务", exact: true })
-        .boundingBox();
-      expect(stop!.y + stop!.height).toBeLessThanOrEqual(hub!.y + hub!.height);
+      await expect(
+        page.getByRole("button", { name: "停止服务", exact: true }),
+      ).toBeVisible();
+      // A font-display:swap reflow between separate protocol calls can mix two
+      // layouts. Read both rectangles synchronously after font readiness instead.
+      const { hub, stop } = await page
+        .locator(".host-node")
+        .evaluate((node) => {
+          const control = node.querySelector<HTMLButtonElement>(".host-power");
+          if (!control) throw new Error("Missing host service control");
+          return {
+            hub: node.getBoundingClientRect().toJSON(),
+            stop: control.getBoundingClientRect().toJSON(),
+          };
+        });
+      expect(stop.left).toBeGreaterThanOrEqual(hub.left);
+      expect(stop.top).toBeGreaterThanOrEqual(hub.top);
+      expect(stop.right).toBeLessThanOrEqual(hub.right);
+      expect(stop.bottom).toBeLessThanOrEqual(hub.bottom);
       await expect(page.locator(".network-lines > path")).toHaveCount(4);
     }
     expect(
