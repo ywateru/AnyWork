@@ -91,8 +91,8 @@ async function fixture(page: Page, status = "running") {
           id: "read",
           type: "dynamicToolCall",
           tool: "read",
-          title: "读取",
-          description: "/tmp/report.txt",
+          title: "read",
+          arguments: { path: "/tmp/report.txt" },
           status: "completed",
           result: {
             content: [{ type: "text", text: "fixture report\n".repeat(60) }],
@@ -120,9 +120,9 @@ async function fixture(page: Page, status = "running") {
           {
             id: "live",
             type: "dynamicToolCall",
-            tool: "read_task_output",
-            title: "读取任务输出",
-            description: "bash-42 · 检查数据卷容量与本地快照",
+            tool: "job_output",
+            title: "job_output",
+            arguments: { job_id: "bash-42 · 检查数据卷容量与本地快照" },
             status: "running",
           },
           "item/started",
