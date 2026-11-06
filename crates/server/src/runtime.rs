@@ -9,6 +9,7 @@ pub struct Runtime {
     pub rpc: Arc<RpcProcess>,
     /// The bridge hydrates its owner's snapshot; it never resumes another engine.
     pub desktop: bool,
+    pub shared_host: bool,
     pub turn: Mutex<Option<String>>,
     pub settings: Mutex<Value>,
 }
@@ -37,8 +38,10 @@ impl App {
             .clone()
     }
     pub fn emit(&self, id: &str, method: &str, mut params: Value, request_id: Option<Value>) {
-        if method == "user/message" && params["harnessClientId"].is_string() {
-            let item = json!({"type":"userMessage","clientId":params["harnessClientId"]});
+        if method == "user/message"
+            && (params["clientUserMessageId"].is_string() || params["harnessClientId"].is_string())
+        {
+            let item = json!({"type":"userMessage","clientId":params.get("clientUserMessageId").unwrap_or(&params["harnessClientId"])});
             if let Ok(Some(composer)) = self.store.composer_metadata_for_item(id, &item) {
                 params["composer"] = composer;
             }
@@ -76,8 +79,8 @@ impl App {
             .plugins
             .get(&session.agent)
             .context("Plugin is not installed")?;
-        let (rpc, mut events, desktop) = if session.agent == crate::harness::AGENT {
-            crate::harness::attach(self, session).await?
+        let (rpc, mut events, desktop) = if crate::shared_host::is_shared(&session.agent) {
+            crate::shared_host::attach(self, session).await?
         } else if session.external {
             #[cfg(unix)]
             {
@@ -122,6 +125,7 @@ impl App {
         let runtime = Arc::new(Runtime {
             rpc,
             desktop,
+            shared_host: crate::shared_host::is_shared(&session.agent),
             turn: Mutex::new(None),
             settings: Mutex::new(settings),
         });
@@ -132,7 +136,7 @@ impl App {
         let app = self.clone();
         let id = session.id.clone();
         let rt = runtime.clone();
-        let harness = session.agent == crate::harness::AGENT;
+        let shared = crate::shared_host::is_shared(&session.agent);
         tokio::spawn(async move {
             while let Some(event) = events.recv().await {
                 let method = event["method"].as_str().unwrap_or("unknown");
@@ -166,13 +170,16 @@ impl App {
                         });
                     }
                     "thread/status/changed" => {
+                        if shared && params.get("turnId").is_some() {
+                            *rt.turn.lock().await = params["turnId"].as_str().map(str::to_owned);
+                        }
                         let status = crate::catalog::external_status(&params["status"]);
                         if matches!(status, "idle" | "error" | "external") {
                             *rt.turn.lock().await = None;
                         }
                         let _ = app.store.set_status(&id, status);
                     }
-                    "connection/interrupted" if harness => {
+                    "connection/interrupted" if shared => {
                         *rt.turn.lock().await = None;
                         let _ = app.store.set_status(&id, "disconnected");
                     }
@@ -250,6 +257,11 @@ fn session_thread_mismatch(app: &App, id: &str, params: &Value) -> bool {
 }
 
 pub async fn active_turn(rt: &Runtime, thread: &str) -> Result<Option<String>> {
+    if rt.shared_host {
+        return Ok(session_state(rt, thread).await?["turnId"]
+            .as_str()
+            .map(str::to_owned));
+    }
     if rt.desktop {
         let result = rt
             .rpc
@@ -271,6 +283,23 @@ pub async fn active_turn(rt: &Runtime, thread: &str) -> Result<Option<String>> {
         .find(|t| t["status"] == "inProgress")
         .and_then(|t| t["id"].as_str())
         .map(str::to_string))
+}
+
+pub async fn session_state(rt: &Runtime, thread: &str) -> Result<Value> {
+    if rt.shared_host {
+        return rt
+            .rpc
+            .call("anywork/session/state", json!({"threadId":thread}))
+            .await;
+    }
+    let s = rt
+        .rpc
+        .call(
+            "thread/read",
+            json!({"threadId":thread,"includeTurns":false}),
+        )
+        .await?;
+    Ok(json!({"status":crate::catalog::external_status(&s["thread"]["status"])}))
 }
 
 #[cfg(test)]

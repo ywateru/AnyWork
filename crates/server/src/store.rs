@@ -59,6 +59,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS events_session_seq ON events(session_id,seq);
+            CREATE UNIQUE INDEX IF NOT EXISTS source_replay_identity ON events(session_id,json_extract(data,'$.params.sourceEventKey')) WHERE json_extract(data,'$.params.sourceEventKey') IS NOT NULL;
             CREATE UNIQUE INDEX IF NOT EXISTS harness_replay_identity ON events(session_id,json_extract(data,'$.params.harnessEventKey')) WHERE json_extract(data,'$.params.harnessEventKey') IS NOT NULL;
             CREATE TABLE IF NOT EXISTS message_queue(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS queue_settings(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, paused INTEGER NOT NULL DEFAULT 0);
@@ -457,12 +458,16 @@ impl Store {
         db.execute("INSERT INTO sessions(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data", params![observed.id, serde_json::to_string(&observed)?])?;
         Ok(())
     }
-    pub fn refresh_imports(&self, sessions: &[Session]) -> Result<()> {
+    pub fn refresh_imports(&self, agent: &str, sessions: &[Session]) -> Result<()> {
+        anyhow::ensure!(
+            sessions.iter().all(|s| s.external && s.agent == agent),
+            "Import Agent mismatch"
+        );
         let mut db = self.0.lock().unwrap();
         let tx = db.transaction()?;
         tx.execute(
-            "DELETE FROM sessions WHERE json_extract(data,'$.external')=1 AND id NOT IN (SELECT value FROM json_each(?1))",
-            [serde_json::to_string(&sessions.iter().map(|s| &s.id).collect::<Vec<_>>())?],
+            "DELETE FROM sessions WHERE json_extract(data,'$.external')=1 AND json_extract(data,'$.agent')=?2 AND id NOT IN (SELECT value FROM json_each(?1))",
+            params![serde_json::to_string(&sessions.iter().map(|s| &s.id).collect::<Vec<_>>())?, agent],
         )?;
         for s in sessions {
             tx.execute(
@@ -535,8 +540,11 @@ impl Store {
         request_id: Option<Value>,
     ) -> Result<Event> {
         let db = self.0.lock().unwrap();
-        if let Some(key) = data["harnessEventKey"].as_str() {
-            let saved: Option<(i64, String)> = db.query_row("SELECT seq,data FROM events WHERE session_id=?1 AND json_extract(data,'$.params.harnessEventKey')=?2", params![id,key], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
+        if let Some(key) = data["sourceEventKey"]
+            .as_str()
+            .or_else(|| data["harnessEventKey"].as_str())
+        {
+            let saved: Option<(i64, String)> = db.query_row("SELECT seq,data FROM events WHERE session_id=?1 AND coalesce(json_extract(data,'$.params.sourceEventKey'),json_extract(data,'$.params.harnessEventKey'))=?2", params![id,key], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
             if let Some((seq, raw)) = saved {
                 let mut event: Event = serde_json::from_str(&raw)?;
                 event.seq = seq;
@@ -547,7 +555,9 @@ impl Store {
             seq: 0,
             session_id: id.into(),
             method: method.into(),
-            created_at: data["harnessEventTime"]
+            created_at: data
+                .get("sourceEventTime")
+                .unwrap_or(&data["harnessEventTime"])
                 .as_i64()
                 .filter(|time| *time > 0)
                 .unwrap_or_else(now),
@@ -586,7 +596,7 @@ impl Store {
     }
     pub fn control_events(&self, id: &str, after: i64, limit: usize) -> Result<Vec<Event>> {
         let db = self.0.lock().unwrap();
-        let mut stmt = db.prepare("SELECT seq,data FROM events WHERE session_id=?1 AND seq>?2 AND (json_extract(data,'$.request_id') IS NOT NULL OR json_extract(data,'$.method') IN ('serverRequest/resolved','turn/started','turn/completed','thread/status/changed','plugin/exited')) ORDER BY seq LIMIT ?3")?;
+        let mut stmt = db.prepare("SELECT seq,data FROM events WHERE session_id=?1 AND seq>?2 AND (json_extract(data,'$.request_id') IS NOT NULL OR json_extract(data,'$.method') IN ('serverRequest/resolved','turn/started','turn/completed','thread/status/changed','plugin/exited','connection/interrupted')) ORDER BY seq LIMIT ?3")?;
         stmt.query_map(params![id, after, limit.min(5000)], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })?
@@ -745,6 +755,73 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn scoped_import_refresh_is_atomic_and_preserves_other_agents_and_managed_rows() {
+        let db = Store::open(Path::new(":memory:")).unwrap();
+        for (id, agent, external) in [
+            ("c", "codex", true),
+            ("h", "deepseek-harness", true),
+            ("w", "workbuddy", true),
+            ("owned", "codex", false),
+        ] {
+            let mut row = composer_session(id);
+            row.agent = agent.into();
+            row.external = external;
+            db.save(&row).unwrap();
+            db.event(id, "user/message", json!({"text":id}), None)
+                .unwrap();
+        }
+        let invalid = db.session("h").unwrap();
+        assert!(db.refresh_imports("codex", &[invalid]).is_err());
+        assert_eq!(db.sessions().unwrap().len(), 4);
+        let invalid = db.session("owned").unwrap();
+        assert!(db.refresh_imports("codex", &[invalid]).is_err());
+        assert_eq!(db.sessions().unwrap().len(), 4);
+        db.refresh_imports("codex", &[]).unwrap();
+        assert!(db.session("c").is_err());
+        for id in ["h", "w", "owned"] {
+            assert!(db.session(id).is_ok());
+            assert_eq!(db.events(id, 0, 10).unwrap().len(), 1);
+        }
+    }
+    #[test]
+    fn generic_shared_event_identity_deduplicates_without_changing_old_harness_keys() {
+        let db = Store::open(Path::new(":memory:")).unwrap();
+        db.save(&composer_session("s")).unwrap();
+        let first = db
+            .event(
+                "s",
+                "item/completed",
+                json!({"sourceEventKey":"wb:r:i","sourceEventTime":1234}),
+                None,
+            )
+            .unwrap();
+        let repeat = db
+            .event(
+                "s",
+                "item/completed",
+                json!({"sourceEventKey":"wb:r:i","sourceEventTime":5678}),
+                None,
+            )
+            .unwrap();
+        assert_eq!(first.seq, repeat.seq);
+        assert_eq!(repeat.created_at, 1234);
+        db.event(
+            "s",
+            "item/completed",
+            json!({"harnessEventKey":"h:1"}),
+            None,
+        )
+        .unwrap();
+        db.event(
+            "s",
+            "item/completed",
+            json!({"harnessEventKey":"h:1"}),
+            None,
+        )
+        .unwrap();
+        assert_eq!(db.events("s", 0, 10).unwrap().len(), 2);
+    }
     #[test]
     fn shared_catalog_preserves_only_current_pending_interactions() {
         let store = Store::open(Path::new(":memory:")).unwrap();
@@ -1246,7 +1323,7 @@ mod tests {
         imported.external = true;
         db.save(&imported).unwrap();
         let before = db.events("s", 0, 100).unwrap().len();
-        db.refresh_imports(&[imported]).unwrap();
+        db.refresh_imports("codex", &[imported]).unwrap();
         assert_eq!(db.events("s", 0, 100).unwrap().len(), before);
         db.delete("s").unwrap();
         assert!(db.events("s", 0, 100).unwrap().is_empty());

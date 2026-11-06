@@ -138,7 +138,17 @@ fn present_nullable<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<Str
     Option::<String>::deserialize(d).map(Some)
 }
 async fn require_idle(app: &App, session: &Session, rt: &Runtime) -> Result<()> {
-    let busy = if session.external {
+    let busy = if rt.shared_host {
+        crate::runtime::session_state(
+            rt,
+            session
+                .thread_id
+                .as_deref()
+                .context("Missing shared conversation")?,
+        )
+        .await?["status"]
+            != "idle"
+    } else if session.external {
         crate::runtime::active_turn(
             rt,
             session
@@ -176,16 +186,24 @@ pub async fn read(
     let s = app.session(&id)?;
     // Reading the composer must never cold-resume a thread. An unrelated CLI
     // can hold its writer while metadata and saved history remain readable.
-    if s.agent == crate::harness::AGENT {
+    if s.agent == crate::workbuddy::AGENT && s.auxiliary {
+        return Ok(Json(
+            json!({"model":null,"models":[],"settings_available":false,"read_only":true,"read_only_reason":"WorkBuddy 子 Agent 仅支持查看","settings_error":"WorkBuddy child conversations are read-only","plan_available":false,"service_tier_available":false,"goal":null,"goal_capabilities":{"create":false,"edit":false,"resume":false,"clear":false,"pause":false}}),
+        ));
+    }
+    if crate::shared_host::is_shared(&s.agent) {
         let rt = app.ensure_runtime(&s).await?;
         drop(_lock);
-        let settings = rt.rpc.call("anywork/harness/settings", json!({})).await?;
+        let settings = rt
+            .rpc
+            .call(crate::shared_host::settings_method(&s.agent), json!({}))
+            .await?;
         *rt.settings.lock().await = settings.clone();
         let catalog = models(&rt).await?;
         let mut result = controls(&settings, &catalog, true, None, &Value::Null, None);
         result["plan_available"] = json!(false);
         result["goal"] = Value::Null;
-        result["goal_capabilities"] = json!({"create":false,"edit":false,"resume":false,"clear":false,"pause":false,"reason":"Harness 目标控制暂未接入"});
+        result["goal_capabilities"] = json!({"create":false,"edit":false,"resume":false,"clear":false,"pause":false,"reason":"当前 Agent 目标控制暂未接入"});
         return Ok(Json(result));
     }
     let existing = app.runtimes.lock().await.get(&id).cloned();
@@ -331,7 +349,10 @@ pub async fn update(
     {
         return Err(anyhow::anyhow!("目标不能为空，且不能超过 20 MiB").into());
     }
-    if s.agent == crate::harness::AGENT {
+    if s.agent == crate::workbuddy::AGENT && s.auxiliary {
+        return Err(anyhow::anyhow!("WorkBuddy child conversations are read-only").into());
+    }
+    if crate::shared_host::is_shared(&s.agent) {
         let Update::Settings {
             model,
             effort,
@@ -339,31 +360,34 @@ pub async fn update(
         } = body
         else {
             return Err(
-                anyhow::anyhow!("Harness 暂不支持目标或计划模式；未发送任何控制命令").into(),
+                anyhow::anyhow!("当前 Agent 暂不支持目标或计划模式；未发送任何控制命令").into(),
             );
         };
         if service_tier.is_some() {
-            return Err(anyhow::anyhow!("Harness does not support service tiers").into());
+            return Err(anyhow::anyhow!("当前 Agent does not support service tiers").into());
         }
         let rt = app.ensure_runtime(&s).await?;
         require_idle(&app, &s, &rt).await?;
-        let before = rt.rpc.call("anywork/harness/settings", json!({})).await?;
+        let before = rt
+            .rpc
+            .call(crate::shared_host::settings_method(&s.agent), json!({}))
+            .await?;
         let selected = model
             .as_deref()
             .or_else(|| current_model(&before))
-            .context("Select a Harness model")?;
+            .context("Select a 当前 Agent model")?;
         let catalog = models(&rt).await?;
         let entry = catalog
             .iter()
             .find(|entry| entry["model"] == selected)
-            .context("Model is not in the Harness catalog")?;
+            .context("Model is not in the 当前 Agent catalog")?;
         if let Some(effort) = &effort
             && !entry["supportedReasoningEfforts"]
                 .as_array()
                 .is_some_and(|items| items.iter().any(|item| item["reasoningEffort"] == *effort))
         {
             return Err(
-                anyhow::anyhow!("Harness model does not support this reasoning effort").into(),
+                anyhow::anyhow!("当前 Agent model does not support this reasoning effort").into(),
             );
         }
         rt.rpc
@@ -372,7 +396,10 @@ pub async fn update(
                 json!({"model":selected,"effort":effort}),
             )
             .await?;
-        let settings = rt.rpc.call("anywork/harness/settings", json!({})).await?;
+        let settings = rt
+            .rpc
+            .call(crate::shared_host::settings_method(&s.agent), json!({}))
+            .await?;
         *rt.settings.lock().await = settings.clone();
         let mut result = controls(&settings, &catalog, true, None, &Value::Null, None);
         result["plan_available"] = json!(false);
