@@ -1,3 +1,4 @@
+import { RunningStatus } from "./components/harness/RunningStatus";
 import { version as appVersion } from "../package.json";
 import NotificationCenter from "./components/NotificationCenter";
 import { useSessionNotifications } from "./hooks/useSessionNotifications";
@@ -1737,6 +1738,9 @@ export default function App() {
                                 <TurnView
                                   key={turn.id}
                                   turn={turn}
+                                  showReasoning={
+                                    session.agent === "deepseek-harness"
+                                  }
                                   timestamp={turnTimestamps[index]}
                                   storageKey={`${api.connection.url}:${session.id}:${turn.id}`}
                                   latestWorking={
@@ -1746,6 +1750,9 @@ export default function App() {
                                     <MessageView
                                       key={message.id}
                                       message={message}
+                                      showReasoning={
+                                        session.agent === "deepseek-harness"
+                                      }
                                       api={api}
                                       sessionId={session.id}
                                       cwd={session.cwd}
@@ -1776,14 +1783,10 @@ export default function App() {
                                 />
                               )}
                               {working && !pendingRequests.length && (
-                                <div className="working" role="status">
-                                  <span className="working-dots">
-                                    <i />
-                                    <i />
-                                    <i />
-                                  </span>
-                                  {workingActivity(view.turns)}
-                                </div>
+                                <RunningStatus
+                                  startTime={view.turns.at(-1)?.startedAt}
+                                  activity={workingActivity(view.turns)}
+                                />
                               )}
                             </>
                           )}
@@ -1946,8 +1949,8 @@ export default function App() {
                 </div>
               ))}
               <p className="hint">
-                通过服务端 plugins 目录安装新的 Agent 适配器。DeepSeek
-                Harness、Claude Code、Cursor 的适配规范见项目文档。
+                DeepSeek Harness 通过本机共享入口连接原有会话。连接设置及其他
+                Agent 的适配规范见项目文档。
               </p>
               <div className="settings-row">
                 <span>完成、权限与确认通知</span>

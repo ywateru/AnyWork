@@ -1,20 +1,11 @@
 import { createContext, Fragment, useContext, type ReactNode } from "react";
-import {
-  BookOpen,
-  ChevronRight,
-  MessageCircle,
-  Network,
-  TerminalSquare,
-  Users,
-} from "lucide-react";
+import { ChevronRight, MessageCircle, Users } from "lucide-react";
 import type { Message } from "../types";
 import {
-  activitySummary,
   agentActionLabel,
   agentActivityTargets,
   agentPathName,
   groupToolActivities,
-  toolPresentation,
 } from "../toolPresentation";
 import { SubagentAvatar } from "./SubagentsPanel";
 import "./activity.css";
@@ -199,29 +190,10 @@ export default function ActivityList({
       if ((first.item?.tool ?? first.item?.action) === "wait") return null;
       return <MultiAgentActivity key={first.id} message={first} />;
     }
-    if (group.kind === "tools" && group.messages.length > 1) {
-      const integrated = group.messages.some((message) =>
-        ["mcpToolCall", "dynamicToolCall"].includes(message.item?.type),
-      );
-      const explored = group.messages.some((message) =>
-        ["read", "list", "search"].includes(
-          toolPresentation(message.item).kind,
-        ),
-      );
-      const Icon = integrated ? Network : explored ? BookOpen : TerminalSquare;
-      return (
-        <details className="activity-group" key={first.id}>
-          <summary>
-            <Icon size={16} aria-hidden="true" />
-            <span>{activitySummary(group.messages)}</span>
-            <ChevronRight size={12} aria-hidden="true" />
-          </summary>
-          <div className="activity-group-body">
-            {group.messages.map(render)}
-          </div>
-        </details>
-      );
-    }
+    // Harness renders each tool in sequence, preserving its description and state.
+    // Keep rich result/subagent renderers; do not hide individual tools in an aggregate.
+    if (group.kind === "tools")
+      return <Fragment key={first.id}>{group.messages.map(render)}</Fragment>;
     return <Fragment key={first.id}>{render(first)}</Fragment>;
   });
 }

@@ -179,16 +179,20 @@ async function fixture(page: Page, longOutput = false) {
   return requests;
 }
 
-test("native activity groups, lazy MCP output and subagent events remain flat and readable", async ({
+test("Harness activity rows, lazy MCP output and subagent events remain flat and readable", async ({
   page,
 }, info) => {
   const requests = await fixture(page);
   await page.locator(".turn-disclosure").click();
-  const group = page
-    .locator(".activity-group")
-    .filter({ hasText: "使用了 Notes 集成，读取了文件，运行了命令" });
-  await expect(group).toHaveCount(1);
-  await group.locator(":scope > summary").click();
+  await expect(
+    page.locator(".activity-group").filter({ hasText: "使用了 Notes 集成" }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('[data-message-id="read"] > summary'),
+  ).toContainText("读取");
+  await expect(
+    page.locator('[data-message-id="command"] > summary'),
+  ).toContainText("cargo test");
   expect(requests).toHaveLength(0);
   const notes = page.locator('[data-message-id="notes"]');
   await notes.locator(":scope > summary").click();
@@ -239,11 +243,6 @@ test("native activity groups, lazy MCP output and subagent events remain flat an
 async function openRawOutput(page: Page, longOutput = false) {
   await fixture(page, longOutput);
   await page.locator(".turn-disclosure").click();
-  await page
-    .locator(".activity-group")
-    .first()
-    .locator(":scope > summary")
-    .click();
   const notes = page.locator('[data-message-id="notes"]');
   await notes.locator(":scope > summary").click();
   const trigger = notes.getByRole("button", {

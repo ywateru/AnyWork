@@ -1,0 +1,160 @@
+/* Extracted running chrome from upstream ChatView.module.css (MIT). */
+.running {
+  display: none;
+}
+
+/* Steering rows keep their full layout from insertion. Only the status moves:
+   it enters its new slot below them from one slot higher, independent of how
+   many admitted rows it passes or how tall they are. The start therefore sits
+   below the status's previous position by the admitted rows' height; the
+   fade-in covers that difference, so this entrance approximates the move. */
+@media (prefers-reduced-motion: no-preference) {
+  :where(
+      .column
+        > :global([data-slot="conversation.chat.flow"])
+        > .flowItem[data-chat-flow-kind="steering"]
+    )
+    + .running {
+    animation: running-enters-slot 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* An input fold runs the entrance at zero duration. The switch only changes
+     the duration of an entrance its structural change already created, as if
+     the entrance had it from its start: lifting the switch never replays an
+     entrance older than its duration, and setting it completes a running one.
+     The structural rule is wrapped in :where() so this rule outranks it. */
+  .column[data-input-fold] .running {
+    animation-duration: 0s;
+  }
+}
+
+@keyframes running-enters-slot {
+  from {
+    opacity: 0;
+    translate: 0 calc(-44px - var(--dsh-content-font-delta, 0px));
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* Empty Seats, including retained empty slot anchors, preserve Turn lookup
+   without contributing height or the sibling gap. */
+.flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty)) {
+  height: 0;
+}
+
+.callRow {
+  border-radius: var(--dsw-radius-sm);
+}
+
+/* Selection still sets data-selected for details linkage; no outline —
+   tool rows match Think chrome (no selected ring). */
+
+.hint {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(18px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+.running {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  --dsh-chat-flow-gap: 12px;
+  --dsw-alias-label-shimmer: var(--dsw-alias-label-deep-diving-shimmer);
+  color: var(--dsw-alias-label-deep-diving);
+  font-size: calc(var(--dsh-content-font-size, 14px) - 2px);
+  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+}
+
+/* After the Session stops running and before the Turn's actions row arrives, the status keeps its slot
+   unseen so the tail does not shrink for that interval. */
+.running[data-holding] {
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* The last visible row before the status must contain output, not an input.
+   Hidden and empty seats do not separate a user message from the status, and
+   the steering/Inbox echoes after the status are outside the count. */
+:is(.column, :global([data-slot="conversation.chat.flow"]))
+  > :nth-last-child(
+    2
+      of
+      :not([hidden]):not([data-pending-steering]):not(
+        .flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty))
+      )
+  ):is(
+    .flowItem:not([data-chat-flow-kind="user"]):not(
+        [data-chat-flow-kind="steering"]
+      ):not([data-chat-flow-kind="turn-trigger"]),
+    [data-chat-group-key]
+  )
+  ~ .running
+  > .runningDivider {
+  opacity: 1;
+}
+
+/* Drawn inside the 16px offset above the status row, so showing or hiding it
+   never changes the tail slot's height. */
+.runningDivider {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 0.5px;
+  background: color-mix(
+    in srgb,
+    var(--dsw-alias-border-l1) 75%,
+    var(--dsw-alias-border-l2)
+  );
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .runningDivider {
+    transition: opacity 160ms ease;
+  }
+}
+
+/* Same offset and height as the completed Turn's tail actions row. */
+.runningContent {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  margin-top: 4px;
+  height: calc(28px + var(--dsh-content-font-delta, 0px));
+}
+
+.runningText {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.runningIcon {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: calc(14px + var(--dsh-content-font-delta, 0px));
+  height: calc(14px + var(--dsh-content-font-delta, 0px));
+  /* The fixed footprint contains the animation's layout and paint. */
+  contain: strict;
+  overflow: hidden;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.activity {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+}

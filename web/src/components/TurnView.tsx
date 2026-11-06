@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { TurnProcess } from "./harness/TurnProcess";
+import "./harness/conversation.css";
 import type { ConversationTurn, Message } from "../types";
 import ActivityList from "./ActivityList";
 import { splitTurn, turnWorkLabel } from "../transcript";
@@ -10,12 +11,14 @@ export default function TurnView({
   storageKey,
   render,
   timestamp,
+  showReasoning = false,
 }: {
   turn: ConversationTurn;
   latestWorking: boolean;
   storageKey: string;
   render: (message: Message) => ReactNode;
   timestamp?: number | null;
+  showReasoning?: boolean;
 }) {
   const [expanded, setExpanded] = useState(() => {
     try {
@@ -50,6 +53,7 @@ export default function TurnView({
   const { user, final, activity, after, errors, collapsible } = splitTurn(
     turn,
     latestWorking,
+    showReasoning,
   );
   const label = turnWorkLabel(turn, activity);
   return (
@@ -59,16 +63,18 @@ export default function TurnView({
       {activity.length > 0 && (
         <>
           {collapsible && (
-            <button
-              className="turn-disclosure"
-              aria-label={`${expanded ? "收起" : "展开"}工作过程：${label}`}
-              aria-expanded={expanded}
-              aria-controls={`activity-${turn.id}`}
-              onClick={toggle}
-            >
-              <span>{label}</span>
-              <ChevronRight size={16} />
-            </button>
+            <TurnProcess
+              open={expanded}
+              label={
+                turn.status === "interrupted"
+                  ? "已停止"
+                  : turn.status === "failed"
+                    ? "执行失败"
+                    : label
+              }
+              controls={`activity-${turn.id}`}
+              onToggle={toggle}
+            />
           )}
           <div
             className="turn-activity"

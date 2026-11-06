@@ -1,15 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import {
-  TerminalSquare,
-  BookOpen,
-  FolderOpen,
-  Search,
-  FileText,
-  Images,
-  Wrench,
-  ChevronRight,
-  Network,
-} from "lucide-react";
+import { TerminalSquare, FileText } from "lucide-react";
 import type { Api } from "../../api";
 import type { Message } from "../../types";
 import type { FileTarget } from "../../fileLinks";
@@ -22,6 +12,16 @@ import UserMessageActions from "./UserMessageActions";
 import UserMessageText from "./UserMessageText";
 import UserMessageEditor from "./UserMessageEditor";
 import ToolResult from "./ToolResult";
+import { ReasoningRow } from "../harness/ReasoningRow";
+import { ToolIcon } from "../harness/ToolIcon";
+import { ToolRow } from "../harness/ToolRow";
+import { toolRowModel } from "../harness/toolRowModel";
+import {
+  UserContent,
+  assistantBodyClass,
+  assistantMarkdownClass,
+  assistantActionsClass,
+} from "../harness/MessageContent";
 export default memo(function ConversationMessage({
   message,
   api,
@@ -37,6 +37,7 @@ export default memo(function ConversationMessage({
   editorError,
   editorReadOnly,
   editorSubmitLabel,
+  showReasoning = false,
   onEditingChange,
   onEditDraftChange,
 }: {
@@ -54,6 +55,7 @@ export default memo(function ConversationMessage({
   editorError?: string;
   editorReadOnly?: boolean;
   editorSubmitLabel?: string;
+  showReasoning?: boolean;
   onEditingChange?: (editing: boolean) => void;
   onEditDraftChange?: (text: string) => void;
 }) {
@@ -144,19 +146,6 @@ export default memo(function ConversationMessage({
   }, [expanded, detailQuery, detail, api, sessionId, retryDetail]);
 
   const tool = toolPresentation(message.item);
-  const ToolIcon = ["mcpToolCall", "dynamicToolCall"].includes(
-    message.item?.type,
-  )
-    ? Network
-    : {
-        command: TerminalSquare,
-        read: BookOpen,
-        list: FolderOpen,
-        search: Search,
-        files: FileText,
-        image: Images,
-        tool: Wrench,
-      }[tool.kind];
   if (message.item?.type === "imageView" && (message.item.path || detail?.path))
     return (
       <ImageActivity
@@ -170,16 +159,13 @@ export default memo(function ConversationMessage({
     );
   if (message.role === "tool")
     return (
-      <details
-        className={`tool-card${tool.running ? " tool-running" : ""}`}
-        data-message-id={message.id}
-        onToggle={(e) => setExpanded(e.currentTarget.open)}
+      <ToolRow
+        id={message.id}
+        icon={<ToolIcon item={message.item} />}
+        {...toolRowModel(message.item)}
+        open={expanded}
+        onOpenChange={setExpanded}
       >
-        <summary>
-          <ToolIcon size={15} />
-          <strong>{tool.label}</strong>
-          <ChevronRight size={13} />
-        </summary>
         {expanded &&
           (detailLoading ? (
             <div className="tool-loading" role="status">
@@ -208,9 +194,22 @@ export default memo(function ConversationMessage({
               />
             </div>
           ))}
-      </details>
+      </ToolRow>
     );
-  if (message.role === "reasoning") return null;
+  if (message.role === "reasoning")
+    return showReasoning ? (
+      <div data-message-id={message.id}>
+        <ReasoningRow key={identity} text={message.text} running={tool.running}>
+          <Markdown
+            text={message.text}
+            api={api}
+            sessionId={sessionId}
+            cwd={cwd}
+            onOpenFile={onOpenFile}
+          />
+        </ReasoningRow>
+      </div>
+    ) : null;
   if (message.role === "error")
     return (
       <div className="message-error" role="alert">
@@ -241,65 +240,80 @@ export default memo(function ConversationMessage({
         />
       </article>
     );
+  const attachments = message.attachments?.length ? (
+    <>
+      {message.attachments?.length ? (
+        <div className="message-images">
+          {message.attachments
+            .filter(
+              (path) =>
+                /\.(png|jpe?g|webp|gif)$/i.test(path) ||
+                path.startsWith("data:image/"),
+            )
+            .map((path) => (
+              <ImagePreview
+                key={path}
+                api={api}
+                sessionId={sessionId}
+                path={path}
+              />
+            ))}
+        </div>
+      ) : null}
+      {message.attachments
+        ?.filter(
+          (path) =>
+            !/\.(png|jpe?g|webp|gif)$/i.test(path) &&
+            !path.startsWith("data:image/"),
+        )
+        .map((path) => (
+          <button
+            className="message-file-attachment"
+            key={path}
+            onClick={() => onOpenFile({ path })}
+          >
+            <FileText size={15} />
+            {path.split("/").pop()}
+          </button>
+        ))}
+    </>
+  ) : undefined;
   return (
     <article
       ref={article}
       className={`message ${message.role}`}
       data-message-id={message.id}
     >
-      <div className="message-avatar">
-        {message.role === "user" ? "你" : <TerminalSquare size={16} />}
-      </div>
-      <div
-        className="message-body"
-        data-user-message-bubble={message.role === "user" || undefined}
-      >
-        {message.attachments?.length ? (
-          <div className="message-images">
-            {message.attachments
-              .filter(
-                (path) =>
-                  /\.(png|jpe?g|webp|gif)$/i.test(path) ||
-                  path.startsWith("data:image/"),
-              )
-              .map((path) => (
-                <ImagePreview
-                  key={path}
-                  api={api}
-                  sessionId={sessionId}
-                  path={path}
-                />
-              ))}
-          </div>
-        ) : null}
-        {message.attachments
-          ?.filter(
-            (path) =>
-              !/\.(png|jpe?g|webp|gif)$/i.test(path) &&
-              !path.startsWith("data:image/"),
-          )
-          .map((path) => (
-            <button
-              className="message-file-attachment"
-              key={path}
-              onClick={() => onOpenFile({ path })}
-            >
-              <FileText size={15} />
-              {path.split("/").pop()}
-            </button>
-          ))}
-        {message.role === "user" ? (
-          <UserMessageText
+      {message.role === "user" ? (
+        <>
+          <UserContent attachments={attachments}>
+            <UserMessageText
+              key={`${sessionId}/${message.id}`}
+              text={message.text}
+              api={api}
+              sessionId={sessionId}
+              cwd={cwd}
+              onOpenFile={onOpenFile}
+              contentRef={markdownContent}
+            />
+          </UserContent>
+          <UserMessageActions
             key={`${sessionId}/${message.id}`}
-            text={message.text}
-            api={api}
             sessionId={sessionId}
-            cwd={cwd}
-            onOpenFile={onOpenFile}
-            contentRef={markdownContent}
+            messageId={message.id}
+            text={message.text}
+            createdAtMs={message.createdAtMs}
+            content={markdownContent}
+            onEdit={canEdit ? () => changeEditing(true) : undefined}
           />
-        ) : (
-          <div className="markdown" ref={markdownContent}>
+        </>
+      ) : (
+        <div className={`message-body ${assistantBodyClass}`}>
+          {attachments}
+          <div
+            className={`markdown ${assistantMarkdownClass}`}
+            ref={markdownContent}
+          >
             <Markdown
               text={message.text}
               api={api}
@@ -308,27 +322,16 @@ export default memo(function ConversationMessage({
               onOpenFile={onOpenFile}
             />
           </div>
-        )}
-        {message.role === "assistant" && (
-          <MessageActions
-            api={api}
-            sessionId={sessionId}
-            messageId={message.id}
-            markdown={message.text}
-            content={markdownContent}
-          />
-        )}
-      </div>
-      {message.role === "user" && (
-        <UserMessageActions
-          key={`${sessionId}/${message.id}`}
-          sessionId={sessionId}
-          messageId={message.id}
-          text={message.text}
-          createdAtMs={message.createdAtMs}
-          content={markdownContent}
-          onEdit={canEdit ? () => changeEditing(true) : undefined}
-        />
+          <div className={assistantActionsClass}>
+            <MessageActions
+              api={api}
+              sessionId={sessionId}
+              messageId={message.id}
+              markdown={message.text}
+              content={markdownContent}
+            />
+          </div>
+        </div>
       )}
     </article>
   );
