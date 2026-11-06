@@ -6,7 +6,7 @@
 
 **任何时候、任何地方，完成任何工作。**
 
-从浏览器和 Android 手机继续本机的 Codex 会话。<br />工作目录和 Agent 执行进程，始终留在自己的电脑上。
+从浏览器和 Android 手机继续本机的 Codex 或 DeepSeek Harness 会话。<br />工作目录和 Agent 执行进程，始终留在自己的电脑上。
 
 [产品官网](https://ywateru.github.io/AnyWork/zh/) · [下载](https://github.com/ywateru/AnyWork/releases/latest) · [English](README.md) · [使用指南](docs/getting-started.zh-CN.md)
 
@@ -18,7 +18,7 @@
 
 ## 离开桌面，工作继续
 
-AnyWork 为电脑上的 Codex 提供远程工作界面：流式对话、权限审批、工具活动、子 Agent、文件、差异和终端。换一个屏幕继续同一项工作，补充指令，在 Agent 需要你时及时回应。
+AnyWork 为电脑上的 Agent 提供远程工作界面：流式对话、权限审批、工具活动、文件和预览。Codex 还集成子 Agent、差异和终端。换一个屏幕继续同一项工作，补充指令，在 Agent 需要你时及时回应。
 
 Rust 桌面管理器负责启动本地服务、管理连接地址、访问密钥和在线设备。浏览器与原生 Android App 都能连接。无需 AnyWork 云端账号，也无需强制经过 AnyWork 云端中继；模型调用继续使用你自己的 Codex 账号和模型服务。
 
@@ -44,7 +44,7 @@ Rust 桌面管理器负责启动本地服务、管理连接地址、访问密钥
 | Android | 持久签名的通用 `.apk` | Android 8.0+，较新的 Android System WebView |
 | Web / 源码 | `.tar.gz` | 自托管部署 / 开发 |
 
-1. 在**执行工作的电脑**安装并登录 [Codex CLI](https://github.com/openai/codex)，执行期间保持电脑唤醒。
+1. 在**执行工作的电脑**配置 [Codex CLI](https://github.com/openai/codex)，或已有的[兼容 Harness 主机](docs/harness-setup.md)，执行期间保持电脑唤醒。
 2. 打开 AnyWork 桌面管理器，选择工作目录并启动服务。
 3. 在其他设备打开管理器显示的地址，输入访问密钥。需要外网访问时开启隧道，或使用自有 HTTPS/VPN。
 
@@ -54,7 +54,7 @@ Android App 连接电脑，不在手机上运行 Codex。Linux/Windows 便携程
 
 ## 从源码运行
 
-需要 Node.js 22+、支持 edition 2024 的 Rust stable、Git，以及已登录的 Codex CLI。桌面构建还需要 [Tauri 系统依赖](https://v2.tauri.app/start/prerequisites/)。
+需要 Node.js 22+、支持 edition 2024 的 Rust stable 和 Git。按所用 Agent 配置 Codex CLI 或兼容 Harness 主机；Harness 0.2.2-rc.1 自身另需 Node.js 24.9+。桌面构建还需要 [Tauri 系统依赖](https://v2.tauri.app/start/prerequisites/)。
 
 ```bash
 git clone https://github.com/ywateru/AnyWork.git
@@ -94,7 +94,9 @@ AnyWork 面向个人与可信设备，使用宿主系统用户的文件和终端
 
 ### 当前能力边界
 
-v0.1 的正式 Agent 适配器为 **Codex**，其他 Agent 需要额外适配。已有桌面的共享协作依赖版本相关的 Unix 本地接口，已验证 Codex CLI 0.163/0.164 及调研记录中的桌面版本；Windows 不支持桌面热接入，可使用 CLI 会话。
+Agent 适配器支持 **Codex** 和官方 **DeepSeek Harness 0.2.2-rc.1** 本机 HTTP gateway。Harness 沿用原有主机和原生会话，安装配套发现插件或显式配置主机地址即可接入。Harness 暂不支持目标/计划、分叉及消息编辑，也无法控制没有共享入口的独立 TUI。详见 [Harness 接入与验收范围](docs/harness-setup.md)。
+
+Codex 已有桌面的共享协作依赖版本相关的 Unix 本地接口，已验证 Codex CLI 0.163/0.164 及调研记录中的桌面版本；Windows 不支持桌面热接入，可使用 CLI 会话。
 
 完整目标创建、恢复、编辑和删除需要兼容的共享引擎；桌面 follower 路径支持读取和暂停目标。界面会在发送前检查能力。跨客户端原生排队列表同步、语音听写/朗读，以及关闭浏览器后的推送不在当前实现承诺中。部署前请阅读[功能与限制](docs/getting-started.zh-CN.md#功能与限制)。
 
@@ -116,6 +118,7 @@ node scripts/site-test.mjs       # 官网浏览器检查
 | --- | --- |
 | API、持久化、事件流、文件和终端 | `crates/server/` |
 | Agent 协议与 Codex 适配器 | `crates/agent-sdk/`、`crates/agent-codex/` |
+| Harness 共享主机适配器和发现插件 | `crates/server/src/harness.rs`、`integrations/harness-discovery/` |
 | Rust/Tauri 桌面管理器 | `crates/desktop/`、`desktop/ui/` |
 | 浏览器 / Android 共享界面 | `web/`、`android/` |
 | 双语产品官网 | `site/`、`scripts/build-site.py` |

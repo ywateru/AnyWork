@@ -6,7 +6,7 @@
 
 **Your local agents. Anywhere.**
 
-Continue a Codex chat from your browser or Android phone.<br />Your workspace and agent process stay on your own computer.
+Continue Codex or DeepSeek Harness from your browser or Android phone.<br />Your workspace and agent process stay on your own computer.
 
 [Website](https://ywateru.github.io/AnyWork/en/) · [Download](https://github.com/ywateru/AnyWork/releases/latest) · [中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md)
 
@@ -18,7 +18,7 @@ Continue a Codex chat from your browser or Android phone.<br />Your workspace an
 
 ## Leave the desk. Keep the context.
 
-AnyWork gives the Codex running on your computer a remote workspace: streaming conversations, approvals, tool activity, subagents, files, diffs and a terminal. Open the same work on another screen, send a follow-up, or respond when the agent needs you.
+AnyWork gives agents running on your computer a remote workspace: streaming conversations, approvals, tool activity, files and previews. Codex also integrates subagents, diffs and a terminal. Open the same work on another screen, send a follow-up, or respond when the agent needs you.
 
 The Rust desktop manager starts the local service and manages connection addresses, access keys and connected devices. Use a browser or the native Android app. There is no AnyWork-hosted account or mandatory AnyWork cloud relay; your Codex model calls still use your own account and model provider.
 
@@ -44,7 +44,7 @@ Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases
 | Android | Signed universal `.apk` | Android 8.0+, current Android System WebView |
 | Web / source | `.tar.gz` | Self-hosted deployment / development |
 
-1. Install and sign into the [Codex CLI](https://github.com/openai/codex) **on the host computer**. Keep that computer awake while tasks run.
+1. Set up the [Codex CLI](https://github.com/openai/codex) or an existing [supported Harness host](docs/harness-setup.md) **on the host computer**. Keep that computer awake while tasks run.
 2. Open the AnyWork desktop manager, choose your workspace, and start the service.
 3. Open the displayed address on your other device and enter the access key. For internet access, enable a tunnel or use your own HTTPS/VPN setup.
 
@@ -54,7 +54,7 @@ The Android app connects to your host; it does not run Codex on the phone. Linux
 
 ## Run from source
 
-Requires Node.js 22+, Rust stable with edition 2024 support, Git, and a logged-in Codex CLI. Desktop builds also need the [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/).
+Requires Node.js 22+, Rust stable with edition 2024 support, and Git. Configure Codex CLI or a supported Harness host for the agent you use; Harness 0.2.2-rc.1 separately requires Node.js 24.9+. Desktop builds also need the [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/).
 
 ```bash
 git clone https://github.com/ywateru/AnyWork.git
@@ -94,7 +94,9 @@ AnyWork is a personal, trusted-device tool with the host user's file and termina
 
 ### Current scope
 
-The production agent adapter in v0.1 is **Codex**. Other agents require adapters. Existing desktop sharing relies on version-dependent Unix interfaces, tested against Codex CLI 0.163/0.164 and the desktop versions recorded in the research notes; Windows desktop hot attach is not supported. CLI-backed work is available separately.
+Agent adapters support **Codex** and the official **DeepSeek Harness 0.2.2-rc.1** loopback HTTP gateway. Harness shares the original native host/session; install its optional discovery companion or configure the host address explicitly. Goal/plan, fork and message editing are not supported for Harness, and independent TUI processes without a shared carrier cannot be controlled. See [Harness setup and tested scope](docs/harness-setup.md).
+
+Codex desktop sharing relies on version-dependent Unix interfaces, tested against Codex CLI 0.163/0.164 and the desktop versions recorded in the research notes; Windows desktop hot attach is not supported. CLI-backed work is available separately.
 
 Full goal creation/resume/edit/delete needs a compatible shared engine; the desktop follower path supports reading and pausing goals. The interface checks these capabilities before sending. Cross-client native queues, voice dictation/read-aloud, and push after the browser has been closed are not claimed as implemented. See [capabilities and limits](docs/getting-started.md#capabilities-and-limits) before choosing a deployment.
 
@@ -116,6 +118,7 @@ Tests use isolated fixtures and temporary services; they do not send tasks to yo
 | --- | --- |
 | Local API, persistence, event streams, files and terminal | `crates/server/` |
 | Agent protocol and Codex adapter | `crates/agent-sdk/`, `crates/agent-codex/` |
+| Harness shared-host adapter and discovery companion | `crates/server/src/harness.rs`, `integrations/harness-discovery/` |
 | Rust/Tauri desktop manager | `crates/desktop/`, `desktop/ui/` |
 | Shared browser / Android interface | `web/`, `android/` |
 | Bilingual product website | `site/`, `scripts/build-site.py` |
