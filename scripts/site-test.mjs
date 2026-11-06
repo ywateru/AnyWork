@@ -25,14 +25,14 @@ try {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const asset = 'anywork-macos-arm64.zip';
-    const release = {tag_name:'v0.1.0',assets:[{name:asset,size:104857600,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v0.1.0/${asset}`}]};
+    const release = {tag_name:'v99.0.0',assets:[{name:asset,size:104857600,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${asset}`}]};
     await page.route('https://api.github.com/**', route => route.fulfill({json:release}));
     await page.goto(`${base}/${locale}/`, {waitUntil:'networkidle'});
     assert.equal(await page.locator('html').getAttribute('lang'),locale==='zh'?'zh-CN':'en');
     assert(await page.title());
     assert.equal(await page.locator('h1').count(),1);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${locale}/${width}: horizontal overflow`);
-    assert((await page.locator(`[data-asset="${asset}"]`).getAttribute('href')).endsWith('/v0.1.0/'+asset));
+    assert((await page.locator(`[data-asset="${asset}"]`).getAttribute('href')).endsWith('/v99.0.0/'+asset));
     // Both connection switches are independent, work from the keyboard, and
     // only change the explicitly labelled product illustration.
     const quick = page.locator('[data-demo-switch="quick"]');
@@ -103,6 +103,26 @@ try {
     await page.screenshot({path:'site/assets/social.png'});
   }
   await page.close();
+  // Whichever response arrives last, older metadata cannot downgrade downloads.
+  for (const delayed of ['baseline', 'live']) {
+    const page = await browser.newPage();
+    const asset = 'anywork-macos-arm64.zip';
+    const fresh = {tag_name:'v99.0.0', assets:[{name:asset,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${asset}`}]};
+    const stale = {tag_name:'v1.0.0', assets:[{name:asset,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v1.0.0/${asset}`}]};
+    await page.route('**/release.json', async route => {
+      if (delayed === 'baseline') await new Promise(resolve => setTimeout(resolve, 200));
+      await route.fulfill({json:delayed === 'baseline' ? stale : fresh});
+    });
+    await page.route('https://api.github.com/**', async route => {
+      if (delayed === 'live') await new Promise(resolve => setTimeout(resolve, 200));
+      await route.fulfill({json:delayed === 'live' ? stale : fresh});
+    });
+    await page.goto(`${base}/en/`, {waitUntil:'networkidle'});
+    assert((await page.locator(`[data-asset="${asset}"]`).getAttribute('href')).endsWith('/v99.0.0/'+asset));
+    assert((await page.locator('#release-status').textContent()).includes('v99.0.0'));
+    await page.close();
+    console.log(`Passed release ordering: late ${delayed} cannot downgrade downloads`);
+  }
   const fallback = await browser.newPage({javaScriptEnabled:false});
   await fallback.goto(`${base}/`);
   assert.equal(await fallback.locator('html').getAttribute('lang'), 'en');

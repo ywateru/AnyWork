@@ -68,6 +68,7 @@ def main():
 })();
 </script>''' if root else ''
             values['appVersion'] = html.escape(release['tag_name'] if release else 'v' + json.loads((ROOT / 'package.json').read_text())['version'])
+            values['releaseVersion'] = html.escape(release['tag_name'] if release else '', quote=True)
             values['releaseStatus'] = html.escape(raw['releaseAvailable'] + ': ' + release['tag_name'] if release else raw['releaseLoading'])
             assets = {asset['name']: asset for asset in release['assets']} if release else {}
             def url(name):

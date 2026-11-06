@@ -47,8 +47,22 @@ document.querySelector('a.language').addEventListener('click', event => {
   try { localStorage.setItem('anywork-site-preferred-language', language); } catch {}
 });
 const releaseURL = 'https://api.github.com/repos/ywateru/AnyWork/releases/latest';
+function versionParts(tag) {
+  return typeof tag === 'string' && /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)
+    ? tag.replace(/^v/, '').split('.').map(BigInt) : null;
+}
+let appliedVersion = versionParts(document.body.dataset.releaseVersion);
 function applyRelease(release) {
   if (!release || !Array.isArray(release.assets) || release.draft || release.prerelease) return;
+  const version = versionParts(release.tag_name);
+  if (!version) return;
+  if (appliedVersion) {
+    for (let index = 0; index < 3; index++) {
+      if (version[index] < appliedVersion[index]) return;
+      if (version[index] > appliedVersion[index]) break;
+    }
+  }
+  appliedVersion = version;
   const assets = new Map(release.assets.map(asset => [asset.name, asset]));
   for (const link of document.querySelectorAll('[data-asset]')) {
     const asset = assets.get(link.dataset.asset);
