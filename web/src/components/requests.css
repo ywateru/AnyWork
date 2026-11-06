@@ -1,0 +1,461 @@
+/* Structure and spacing observed in Codex 26.1027.51404's approval surface. */
+.codex-request.request-card {
+  container: approval-card / inline-size;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: min(65dvh, 640px);
+  margin: 0 0 8px;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 2px 8px #00000005;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.codex-request .request-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+  padding: 16px 16px 12px;
+}
+.codex-request[data-codex-approval-surface] {
+  overflow: hidden;
+}
+/* Respect the desktop/mobile request area's height budget so its own scrolling
+   cannot conceal the card's action footer. */
+.composer-requests > .codex-request[data-codex-approval-surface] {
+  max-height: inherit;
+  margin-bottom: 0;
+}
+.codex-request[data-codex-approval-surface] .request-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.codex-request .request-key {
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.65;
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+}
+.codex-request .request-details a,
+.codex-request .request-heading a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.codex-request .request-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.codex-request .request-heading > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.codex-request .request-heading > div {
+  min-width: 0;
+  flex: 1;
+}
+.codex-request .request-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+}
+.codex-request .request-heading .request-identity,
+.codex-request .request-scope {
+  color: var(--muted);
+  font-size: 12px;
+}
+.codex-request .request-identity {
+  display: block;
+  margin-bottom: 4px;
+}
+.codex-request .request-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.codex-request .request-details {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.codex-request .request-details > div {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.codex-request .request-details dt {
+  flex: 0 0 64px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.codex-request .request-details dd {
+  min-width: 0;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.codex-request .request-details code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 12px;
+}
+.codex-request .request-description {
+  margin: 0;
+}
+.codex-request .request-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 16px 16px;
+}
+.codex-request .request-action-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.codex-request .request-approve-group {
+  display: inline-flex;
+  min-width: 0;
+}
+.codex-request .request-split > button:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.codex-request .request-split > .request-options-trigger {
+  flex: 0 0 32px;
+  padding: 5px 8px;
+  border-left: 1px solid color-mix(in srgb, var(--surface) 25%, transparent);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.request-approval-menu {
+  z-index: 160;
+  padding: 4px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 30px #0000001a;
+  font-size: 13px;
+}
+.request-approval-menu > button {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.request-approval-menu > button:hover,
+.request-approval-menu > button:focus-visible {
+  background: var(--raised);
+  outline: none;
+}
+.request-approval-menu small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.codex-request .request-file-changes {
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.codex-request .request-file-change {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.codex-request .request-file-change + .request-file-change {
+  margin-top: 4px;
+}
+.codex-request .request-file-change > summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.codex-request .request-file-change > summary > span {
+  float: right;
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.codex-request .request-file-diff {
+  max-height: 200px;
+  margin: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  padding: 8px;
+  overflow: auto;
+  background: var(--panel);
+  font-size: 12px;
+}
+.codex-request .request-file-diff .added {
+  color: var(--diff-added-text, #23823d);
+}
+.codex-request .request-file-diff .removed {
+  color: var(--diff-removed-text, #bd3434);
+}
+.codex-request button.request-deny,
+.codex-request button.request-approve {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  max-width: 100%;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.codex-request button.request-deny:hover {
+  background: var(--raised);
+}
+.codex-request button.request-approve {
+  border-color: transparent;
+  background: var(--text);
+  color: var(--surface);
+}
+.codex-request button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.codex-request .request-question-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.codex-request .request-questions {
+  padding: 0 16px;
+}
+.codex-request fieldset {
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.codex-request fieldset legend {
+  width: 100%;
+  margin: 0 0 4px;
+  font-weight: 500;
+}
+.codex-request fieldset legend > span {
+  float: right;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 12px;
+}
+.codex-request fieldset > p {
+  margin: 0 0 8px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.codex-request fieldset > small {
+  color: var(--muted);
+}
+.codex-request .request-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.codex-request button.answer {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.codex-request button.answer:hover {
+  background: var(--panel);
+}
+.codex-request button.answer.selected {
+  border-color: var(--text);
+  background: var(--panel);
+}
+.codex-request .request-option-number {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.codex-request button.answer.selected .request-option-number {
+  background: var(--text);
+  color: var(--surface);
+  border-color: var(--text);
+}
+.codex-request button.answer strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.codex-request button.answer small {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.codex-request fieldset input,
+.codex-request .request-custom textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 8px 0 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.codex-request .request-custom {
+  padding: 0 16px;
+}
+.codex-request .request-custom label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.codex-request .request-custom textarea {
+  min-height: 80px;
+  resize: vertical;
+  font-family: monospace;
+}
+.codex-request .request-raw {
+  color: var(--muted);
+  font-size: 12px;
+}
+.codex-request .request-raw summary {
+  cursor: pointer;
+}
+.codex-request .request-raw pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  max-height: 160px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.codex-request .request-error,
+.codex-request .request-submitted {
+  flex-shrink: 0;
+  padding: 0 16px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+.codex-request .request-error {
+  color: var(--app-badge-error-text, #c43b3b);
+}
+.codex-request .request-submitted {
+  color: var(--muted);
+}
+.codex-request .request-spinner {
+  animation: request-spin 1s linear infinite;
+}
+@keyframes request-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@container approval-card (width < 28rem) {
+  .codex-request .request-key {
+    display: none;
+  }
+  .codex-request .request-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .codex-request .request-action-group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    margin-left: 0;
+  }
+  .codex-request .request-approve-group {
+    width: 100%;
+  }
+  .codex-request .request-approve-group > button:first-child {
+    flex: 1;
+  }
+  .codex-request .request-scope {
+    text-align: center;
+  }
+  .codex-request .request-details > div {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .codex-request .request-details dt {
+    flex-basis: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .codex-request .request-spinner {
+    animation: none;
+  }
+}
+
+.request-detail-load {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.request-detail-load > button {
+  justify-self: start;
+}

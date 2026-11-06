@@ -1,0 +1,215 @@
+/* Native activity headers are flat inline rows, never a feed of cards. */
+.anywork-workbench .activity-group > summary,
+.anywork-workbench .agent-event-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 23px;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--app-chat-font-size, 14px);
+  line-height: 1.625;
+  text-align: start;
+  border: 0;
+  background: transparent;
+}
+.anywork-workbench .activity-group > summary {
+  width: fit-content;
+}
+.anywork-workbench .activity-group > summary > span,
+.anywork-workbench .agent-event-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anywork-workbench .activity-group > summary > svg,
+.activity-agent-avatar {
+  flex-shrink: 0;
+}
+.anywork-workbench .activity-group > summary > svg:last-child {
+  opacity: 0;
+  transition:
+    transform 150ms ease,
+    opacity 150ms ease;
+}
+.anywork-workbench .activity-group:hover > summary > svg:last-child,
+.anywork-workbench .activity-group:focus-within > summary > svg:last-child,
+.anywork-workbench .activity-group[open] > summary > svg:last-child {
+  opacity: 1;
+}
+.anywork-workbench .activity-group[open] > summary > svg:last-child {
+  transform: rotate(90deg);
+}
+.anywork-workbench .activity-group > summary:hover,
+.anywork-workbench .agent-event-button:hover {
+  color: var(--text);
+}
+.anywork-workbench .agent-event-button {
+  cursor: pointer;
+  width: fit-content;
+}
+.anywork-workbench .activity-group-body {
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 22px;
+  border: 0;
+}
+.anywork-workbench .agent-action-details {
+  color: var(--muted);
+  font-size: var(--app-chat-font-size, 14px);
+}
+.agent-action-target {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.agent-action-target .activity-agent-avatar {
+  align-self: center;
+}
+.agent-action-content {
+  min-width: 0;
+}
+.agent-action-description {
+  overflow-wrap: anywhere;
+}
+.anywork-workbench .activity-agent-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.anywork-workbench .activity-agent-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.agent-action-prompt {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+.agent-action-prompt > span,
+.agent-action-model {
+  opacity: 0.8;
+}
+.agent-action-prompt p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.agent-action-model {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.agent-event-button:focus-visible,
+.activity-agent-link:focus-visible {
+  outline: 2px solid var(--accent, #2680eb);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.anywork-workbench .tool-card > summary {
+  width: fit-content;
+  max-width: 100%;
+  gap: 6px;
+}
+.anywork-workbench .tool-card > summary > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anywork-workbench .tool-card[open] > summary > svg:last-child {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+.tool-result-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.anywork-workbench .tool-result-content pre {
+  margin: 0;
+  max-height: 192px;
+  overflow: auto;
+  font-size: var(--app-code-font-size, 12px);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.anywork-workbench .tool-result-content .tool-text-output {
+  font-family: inherit;
+  font-size: inherit;
+}
+.anywork-workbench .command-tool-result .tool-text-output {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--app-code-font-size, 12px);
+}
+.anywork-workbench .tool-result-content .tool-resource-link,
+.tool-resource-reference {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+.anywork-workbench .tool-result-content .tool-resource-link {
+  cursor: pointer;
+}
+.tool-resource-link:hover {
+  text-decoration: underline;
+}
+.tool-result-image {
+  max-width: 320px;
+}
+.tool-result-error {
+  color: var(--danger, #b42318);
+  white-space: pre-wrap;
+}
+.tool-empty-output {
+  margin: 0;
+}
+.tool-raw-output {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.anywork-workbench .tool-card .tool-raw-output > summary {
+  display: list-item;
+  width: fit-content;
+  min-height: 0;
+  font-size: 12px;
+  padding: 0;
+  color: var(--muted);
+}
+.tool-raw-output pre {
+  margin-top: 8px !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anywork-workbench .activity-group > summary > svg:last-child {
+    transition: none;
+  }
+}
+
+.activity-agent-avatar {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  overflow: visible !important;
+}
+.activity-agent-avatar .subagent-avatar {
+  width: 16px;
+  height: 16px;
+}

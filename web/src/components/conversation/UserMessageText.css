@@ -1,0 +1,57 @@
+.user-message-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+  font-family: var(--font-ui-family);
+  font-size: var(--app-chat-font-size, 13px);
+  line-height: var(--chat-line-height, 1.625);
+}
+.user-message-text-clip {
+  min-width: 0;
+}
+.user-message-text[data-collapsed] .user-message-text-clip {
+  overflow: hidden;
+}
+.user-message-text-content {
+  display: flow-root;
+}
+.user-message-ellipsis {
+  display: block;
+}
+.user-message-disclosure {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+.user-message-disclosure:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.user-message-disclosure:focus-visible {
+  outline: 2px solid var(--app-link, currentColor);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.user-message-disclosure[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+@media print {
+  .user-message-text .user-message-text-clip {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .user-message-ellipsis,
+  .user-message-disclosure {
+    display: none !important;
+  }
+}

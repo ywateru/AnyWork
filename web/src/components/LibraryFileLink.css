@@ -1,0 +1,70 @@
+/* ABo -> B2 inline-flow geometry from fd9b7fd80db1.css. */
+.anywork-workbench .markdown a.library-file-link,
+.library-file-link {
+  color: inherit;
+  text-decoration: none;
+}
+.library-file-mention {
+  color: var(
+    --color-text-composer-file-reference,
+    var(--color-text-composer-reference, var(--text))
+  );
+  font-family: var(--font-content, inherit);
+  font-weight: 500;
+  padding-inline: 0;
+  white-space: nowrap;
+  display: inline;
+  cursor: pointer;
+}
+.library-file-icon-slot {
+  box-sizing: content-box;
+  vertical-align: middle;
+  align-items: center;
+  width: 16px;
+  height: 1em;
+  padding-inline-end: 3px;
+  display: inline-flex;
+  position: relative;
+  transform: translateY(calc(0.5ex - 0.5cap));
+}
+.library-file-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.library-file-label {
+  overflow-wrap: break-word;
+  min-width: 0;
+  white-space: normal;
+}
+.library-file-icon-text,
+.library-file-icon-document {
+  color: var(--color-file-document, #0285ff);
+}
+.library-file-icon-pdf {
+  color: var(--color-file-pdf, #fa423e);
+}
+.library-file-icon-csv,
+.library-file-icon-xls {
+  color: var(--color-file-spreadsheet, #04b84c);
+}
+.library-file-icon-ppt,
+.library-file-icon-slides {
+  color: var(--color-file-presentation, #fa423e);
+}
+.library-file-icon-photo {
+  color: var(--color-file-image, #ff66ad);
+}
+.library-file-icon-audio,
+.library-file-icon-file-video {
+  color: var(--color-file-audio, #924ff7);
+}
+@media (hover: hover) {
+  .library-file-link:hover .library-file-mention {
+    text-decoration-line: underline;
+    text-underline-offset: 2px;
+    text-decoration-style: dashed;
+    text-decoration-color: currentColor;
+    text-decoration-thickness: 0.5px;
+  }
+}

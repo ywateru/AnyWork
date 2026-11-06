@@ -1,0 +1,6 @@
+# Build exclusively from the reviewed source export, never the developer workspace.
+**
+!Dockerfile
+!artifacts/
+artifacts/*
+!artifacts/anywork-source.tar.gz

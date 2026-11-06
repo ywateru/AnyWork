@@ -1,0 +1,13 @@
+services:
+  anywork:
+    build: .
+    restart: unless-stopped
+    ports: ["127.0.0.1:3210:3210"]
+    volumes:
+      - agent-data:/data
+      - ./workspace:/workspace
+      - codex-auth:/home/agent/.codex
+      - ./plugins:/app/plugins:ro
+volumes:
+  agent-data:
+  codex-auth:

@@ -1,0 +1,75 @@
+.prompt-link-popover {
+  position: fixed;
+  z-index: 100;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 28px #00000018;
+  font-family: inherit;
+  font-size: 14px;
+  max-width: calc(100vw - 16px);
+}
+.prompt-link-popover[data-mode="actions"] {
+  display: flex;
+  width: max-content;
+  overflow: hidden;
+  padding: 0;
+  border-radius: 8px;
+}
+.prompt-link-popover[data-mode="actions"] button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  min-height: 28px;
+  padding: 0 6px;
+  border-radius: 0;
+  text-align: start;
+}
+.prompt-link-popover[data-mode="actions"] button + button {
+  border-inline-start: 1px solid var(--line);
+}
+.prompt-link-popover[data-mode="actions"] button:hover,
+.prompt-link-popover[data-mode="actions"] button:focus-visible {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  outline: none;
+}
+.prompt-link-popover:not([data-mode="actions"]) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 432px;
+  padding: 4px 4px 4px 14px;
+  border-radius: 9999px;
+}
+.prompt-link-popover input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+.prompt-link-popover:has(input[aria-invalid="true"]) {
+  border-color: #e5484d;
+}
+.prompt-link-popover .prompt-link-save {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--panel);
+}
+.prompt-link-popover .prompt-link-save:disabled {
+  opacity: 0.3;
+}
+.prompt-link-popover button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

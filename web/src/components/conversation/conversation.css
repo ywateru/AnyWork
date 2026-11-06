@@ -1,0 +1,1197 @@
+/* Session surface reconstructed from the selected Codex 26.1027.51404 modules.
+   Measured tokens and source identities: docs/anywork-reference-contract.md. */
+:root {
+  --thread-width: 768px;
+  --thread-content-margin: 16px;
+  --composer-radius: 22px;
+  --conversation-item-gap: 16px;
+  --user-chat-width: 70%;
+}
+.codex-shell.has-session,
+.codex-shell {
+  overflow: hidden;
+}
+.codex-shell > .main.has-session > .window-tabbar {
+  display: none;
+}
+.anywork-workbench {
+  display: flex;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.anywork-workbench .split-conversation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.anywork-workbench.has-inspector .split-conversation {
+  flex: 0 0 var(--split-left);
+}
+.anywork-workbench .session-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.anywork-workbench .conversation-header {
+  height: 43px;
+  min-height: 43px;
+  padding: 0 12px;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.anywork-workbench .conversation-header .session-header h1 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.anywork-workbench .conversation-header .tabs button {
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+}
+.anywork-workbench .conversation-header .tabs button span {
+  display: none;
+}
+.anywork-workbench .conversation-header .tabs button.selected {
+  background: transparent;
+}
+.anywork-workbench .conversation-header .tabs button:hover {
+  background: var(--raised);
+}
+.anywork-workbench .chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.anywork-workbench .transcript {
+  width: 100%;
+  max-width: calc(var(--thread-width) + 2 * var(--thread-content-margin));
+  margin: 0 auto;
+  padding: 24px var(--thread-content-margin) 16px;
+}
+.anywork-workbench .message {
+  display: flex;
+  min-width: 0;
+  margin: 0 0 var(--conversation-item-gap);
+  gap: 0;
+}
+.anywork-workbench .message-avatar {
+  display: none;
+}
+.anywork-workbench .message.user {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  margin-bottom: 16px;
+}
+.anywork-workbench .message.user .message-body {
+  width: fit-content;
+  min-width: 0;
+  max-width: var(--user-chat-width);
+  padding: 10px var(--thread-content-margin);
+  border: 0;
+  border-radius: 22px;
+  background: var(--app-chat-user-bg);
+  color: var(--text);
+  overflow: hidden;
+}
+.anywork-workbench .message.assistant .message-body {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+}
+.anywork-workbench .user-message-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 4px;
+  color: var(--muted);
+  opacity: 0;
+}
+.anywork-workbench .message.user:hover .user-message-footer,
+.anywork-workbench .message.user:focus-within .user-message-footer {
+  opacity: 1;
+}
+.anywork-workbench .user-message-time {
+  color: var(--muted);
+  font-size: 12px;
+  opacity: 0;
+}
+.anywork-workbench .message.user:hover .user-message-time,
+.anywork-workbench .message.user:focus-within .user-message-time {
+  opacity: 1;
+}
+.anywork-workbench .user-message-footer button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.anywork-workbench .user-message-footer button:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+.anywork-workbench .user-message-footer button:focus-visible {
+  outline: 2px solid var(--app-link);
+  outline-offset: 0;
+}
+.anywork-workbench .user-message-copy-error {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--app-danger, #b42318);
+}
+.anywork-workbench .conversation-timestamp {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  user-select: none;
+}
+.anywork-workbench .conversation-timestamp time > span {
+  font-weight: 500;
+}
+@media (hover: none) {
+  .anywork-workbench .user-message-footer {
+    opacity: 1;
+  }
+}
+.anywork-workbench .markdown {
+  color: var(--text);
+  font-family: var(--font-ui-family);
+  font-size: var(--app-chat-font-size, 13px);
+  line-height: var(--chat-line-height, 1.625);
+  overflow-wrap: anywhere;
+}
+.anywork-workbench .message.user .markdown {
+  font-size: var(--app-chat-font-size, 13px);
+  line-height: var(--chat-line-height, 1.625);
+  white-space: normal;
+}
+.anywork-workbench .markdown .md-paragraph {
+  margin: 0 0 0.25em;
+}
+.anywork-workbench .markdown .md-paragraph + .md-paragraph {
+  margin-top: 1em;
+}
+.anywork-workbench .message.user .markdown .md-paragraph {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.anywork-workbench .message.user .markdown .md-paragraph + .md-paragraph {
+  margin-top: 20px;
+}
+.anywork-workbench .markdown h1 {
+  font-size: 1.5em;
+  line-height: 1.3333;
+}
+.anywork-workbench .markdown h2 {
+  font-size: 1.25em;
+  line-height: 1.4;
+}
+.anywork-workbench .markdown h3 {
+  font-size: 1.125em;
+  line-height: 1.5556;
+}
+.anywork-workbench .markdown h1,
+.anywork-workbench .markdown h2,
+.anywork-workbench .markdown h3 {
+  margin: 1em 0 0.25em;
+  font-weight: 600;
+}
+.anywork-workbench .markdown ul,
+.anywork-workbench .markdown ol {
+  padding-left: 24px;
+  margin: 0.25em 0 1em;
+}
+.anywork-workbench .markdown li {
+  margin: 0.25em 0;
+}
+.anywork-workbench .markdown pre {
+  margin: 1em 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: var(--font-code-size, 12px);
+  line-height: 1.5;
+}
+.anywork-workbench .markdown :not(pre) > code {
+  border: 0;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 0.92em;
+  background: var(--raised);
+}
+.anywork-workbench .markdown a {
+  color: var(--app-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.anywork-workbench .message-actions {
+  margin-top: 12px;
+  gap: 2px;
+}
+.anywork-workbench .message-actions button {
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  color: var(--muted);
+  opacity: 1;
+}
+.anywork-workbench .turn-disclosure {
+  margin: 0 0 16px;
+  padding: 8px 0;
+  font-size: var(--app-chat-font-size, 13px);
+  border-bottom: 1px solid var(--line);
+}
+.anywork-workbench .turn-activity {
+  padding-bottom: 0;
+}
+.anywork-workbench .turn-activity .message.assistant {
+  margin-bottom: 16px;
+}
+.anywork-workbench .tool-card {
+  border: 0;
+  background: transparent;
+  margin: 4px 0;
+}
+.anywork-workbench .tool-card summary,
+.anywork-workbench .activity-group > summary {
+  font-size: var(--app-chat-font-size, 13px);
+  line-height: 1.625;
+}
+.anywork-workbench .tool-card summary strong {
+  font-size: inherit;
+  font-weight: 400;
+}
+.anywork-workbench .composer-area {
+  width: 100%;
+  max-width: calc(var(--thread-width) + 2 * var(--thread-content-margin));
+  flex-shrink: 0;
+  margin: 0 auto;
+  padding: 16px var(--thread-content-margin)
+    max(16px, env(safe-area-inset-bottom));
+  background: var(--surface);
+}
+.anywork-workbench .composer {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
+  border-radius: var(--composer-radius);
+  padding: 9px 8px 8px;
+  background: var(--surface);
+  box-shadow:
+    0 2px 8px #00000005,
+    0 6px 24px #00000003;
+}
+.anywork-workbench .composer:focus-within {
+  border-color: color-mix(in srgb, var(--text) 12%, transparent);
+  box-shadow:
+    0 2px 8px #00000005,
+    0 6px 24px #00000003;
+}
+.anywork-workbench .composer .prompt-editor {
+  min-height: 44px;
+  max-height: min(240px, 35dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  --composer-editor-placeholder-opacity: 1;
+  padding: 4px 4px 4px 4px;
+  margin: 0 4px;
+  width: calc(100% - 8px);
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  font-size: var(--font-ui-size, 13px);
+  line-height: 20px;
+  background: transparent;
+  box-shadow: none;
+}
+.anywork-workbench .composer .prompt-editor p.placeholder::before {
+  color: color-mix(in srgb, var(--text) 28%, var(--surface));
+}
+.anywork-workbench .composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  margin-top: 8px;
+}
+.anywork-workbench .composer-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.anywork-workbench .composer-add-trigger {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 4px;
+}
+.anywork-workbench .composer-add-trigger > svg {
+  width: 20px;
+  height: 20px;
+}
+.anywork-workbench .composer-model {
+  margin-left: auto;
+  min-width: 0;
+  max-width: 45%;
+}
+.anywork-workbench .composer-model select {
+  max-width: 100%;
+  height: 28px;
+  padding: 2px 18px 2px 4px;
+  background: transparent;
+  border: 0;
+  font-size: 13px;
+  color: var(--text);
+  text-overflow: ellipsis;
+}
+.anywork-workbench .composer-left > select {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+}
+.composer-permissions {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+  border-radius: 50%;
+}
+.composer-permissions:hover {
+  background: var(--raised);
+}
+.composer-permissions select {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.anywork-workbench .composer .send-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 4px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--surface);
+  background: var(--text);
+}
+.anywork-workbench .composer .send-button.stop {
+  background: var(--text);
+  color: var(--surface);
+}
+.anywork-workbench .composer .send-button.stop svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+  border-radius: 2px;
+}
+.anywork-workbench .composer .send-button:disabled {
+  opacity: 0.45;
+}
+.anywork-workbench .composer-footnote {
+  display: none;
+}
+.anywork-workbench .attachments {
+  display: flex;
+  gap: 8px;
+  margin: 2px 4px 8px;
+  max-height: 160px;
+  overflow: auto;
+  padding: 0;
+}
+.anywork-workbench .attachments .image-attachment {
+  display: block;
+  position: relative;
+  flex: 0 0 120px;
+  width: 120px;
+  height: 120px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.anywork-workbench .image-attachment .inline-image,
+.anywork-workbench .image-attachment .image-load-trigger {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.anywork-workbench .image-attachment .loaded-image-thumbnail {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.anywork-workbench .image-attachment .attachment-name {
+  display: none;
+}
+.anywork-workbench .image-attachment > button {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  border-radius: 50%;
+  color: var(--surface);
+  background: var(--text);
+}
+.anywork-workbench .composer-context {
+  margin: 0 13px -4px;
+  padding-bottom: 4px;
+  border-radius: 16px 16px 0 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.anywork-workbench .composer-context:empty {
+  display: none;
+}
+.anywork-workbench .composer-context .message-queue {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 16px 16px 0 0;
+  background: transparent;
+  max-height: min(240px, 30dvh);
+  overflow: auto;
+}
+.anywork-workbench .composer-context .queue-item {
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 10px;
+  box-sizing: border-box;
+}
+.anywork-workbench .composer-context .queue-item[data-status="sending"] {
+  opacity: 0.6;
+}
+.anywork-workbench .composer-context .queue-item > [hidden] {
+  display: none;
+}
+.anywork-workbench .composer-context .queue-item summary[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+.anywork-workbench .queue-item-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.anywork-workbench .composer-context .queue-item > button,
+.anywork-workbench .composer-context .queue-item summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-height: 28px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 20px;
+}
+.anywork-workbench
+  .composer-context
+  .queue-item
+  summary::-webkit-details-marker {
+  display: none;
+}
+.anywork-workbench .queue-copy .queue-text {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--app-chat-font-size, 13px);
+  line-height: 20px;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anywork-workbench .composer-context .queue-copy .queue-text:hover {
+  background: transparent;
+}
+.anywork-workbench .queue-copy .queue-text {
+  cursor: text;
+  user-select: text;
+}
+.anywork-workbench .queue-copy .queue-text:focus-visible,
+.queue-message-preview:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.queue-message-preview {
+  position: fixed;
+  z-index: 100;
+  width: 432px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 0.5px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 30px #0002;
+  font-family: var(--app-font-family, inherit);
+  font-size: var(--app-chat-font-size, 13px);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+}
+.anywork-workbench .composer-context .queue-paused {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: auto;
+  height: auto;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.anywork-workbench .composer-context .queue-paused button {
+  padding: 4px;
+  background: transparent;
+  color: var(--text);
+}
+.anywork-workbench .composer-context .message-queue + .goal-banner-area {
+  border-top: 1px solid var(--line);
+}
+.anywork-workbench .composer-context .goal-banner-area {
+  margin: 0;
+}
+.anywork-workbench .composer-context .goal-banner {
+  height: auto;
+  min-height: 32px;
+  gap: 8px;
+  padding: 2px 10px;
+  font-size: var(--app-chat-font-size, 13px);
+}
+.anywork-workbench .composer-context .goal-banner-actions {
+  gap: 4px;
+}
+.anywork-workbench .composer-context .goal-banner-actions button {
+  width: 24px;
+  height: 28px;
+}
+.anywork-workbench .composer-context .goal-banner-objective {
+  flex: 1;
+  margin-inline-start: -4px;
+}
+.goal-banner-elapsed {
+  flex-shrink: 0;
+  margin-inline-start: -2px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.queue-edit-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.queue-edit-notice button {
+  padding: 2px 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.composer-requests:empty {
+  display: none;
+}
+.composer-requests {
+  display: grid;
+  gap: 8px;
+  max-height: min(55dvh, 480px);
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+.anywork-workbench .split-handle {
+  position: absolute;
+  inset: 0 auto 0 calc(var(--split-left) - 6px);
+  flex: none;
+  width: 12px;
+  height: auto;
+  z-index: 8;
+  background: transparent;
+  touch-action: none;
+  cursor: col-resize;
+  outline-offset: -3px;
+}
+.anywork-workbench .split-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 6px;
+  width: 1px;
+  background: var(--line);
+}
+.anywork-workbench .split-handle:hover::after,
+.anywork-workbench .split-handle:focus-visible::after,
+.is-resizing .split-handle::after {
+  background: var(--muted);
+}
+.anywork-workbench.is-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+.anywork-workbench .workspace-inspector {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  position: relative;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  border: 0;
+  background: var(--surface);
+  overflow: hidden;
+}
+.panel-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 43px;
+  min-width: 0;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.preview-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  height: 32px;
+  min-width: 70px;
+  max-width: 240px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  flex-shrink: 1;
+}
+.preview-tab.active {
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 2px #00000009;
+}
+.preview-tab > button[role="tab"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 20px 0 0;
+  height: 100%;
+  background: transparent;
+}
+.preview-tab > button span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.preview-tab svg {
+  flex-shrink: 0;
+}
+.close-preview-tab {
+  position: absolute;
+  right: 5px;
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 4px;
+}
+.close-preview-tab:hover {
+  background: var(--raised);
+}
+.panel-tabs .panel-close {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.anywork-workbench .document-toolbar {
+  min-height: 48px;
+  padding: 7px 2px;
+  border: 0;
+  gap: 8px;
+}
+.anywork-workbench .document-breadcrumb {
+  width: fit-content;
+  max-width: 65%;
+  flex: 0 1 auto;
+  border-color: color-mix(in srgb, var(--text) 6%, transparent);
+  padding: 7px 10px;
+  border-radius: 22px;
+  box-shadow: 0 2px 10px #00000005;
+}
+.anywork-workbench .inspector-actions {
+  margin-left: auto;
+}
+.anywork-workbench .codex-file-panel {
+  flex: 1;
+  height: auto;
+}
+.anywork-workbench .document-content {
+  min-height: 0;
+}
+.terminal-split-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.split-panel-heading {
+  display: none;
+}
+@media (max-width: 720px) {
+  .anywork-workbench .composer .prompt-editor {
+    font-size: 16px;
+  }
+  .anywork-workbench .message.user .message-body {
+    max-width: 85%;
+  }
+  .anywork-workbench .conversation-header {
+    padding: 0 8px;
+  }
+  .anywork-workbench.has-inspector .split-conversation {
+    flex: 1;
+    visibility: hidden;
+  }
+  .anywork-workbench.has-inspector .split-conversation > .conversation-header {
+    visibility: visible;
+    position: relative;
+    z-index: 21;
+  }
+  .anywork-workbench .split-handle {
+    display: none;
+  }
+  .anywork-workbench.has-inspector .workspace-inspector {
+    display: flex;
+    position: absolute;
+    inset: 43px 0 0;
+    width: 100%;
+    max-width: none;
+    height: calc(100% - 43px);
+    z-index: 20;
+    background: var(--surface);
+  }
+  .anywork-workbench .composer-area {
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+  }
+  .anywork-workbench .transcript {
+    padding: 20px 16px 16px;
+  }
+  .anywork-workbench .composer-requests {
+    max-height: 48dvh;
+  }
+  .anywork-workbench .document-breadcrumb {
+    max-width: 72%;
+  }
+  .anywork-workbench .composer .send-button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anywork-workbench * {
+    scroll-behavior: auto;
+    transition: none;
+    animation: none;
+  }
+}
+
+/* Session navigation shares the native header row with the split document tabs. */
+.anywork-workbench .session-header {
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+.anywork-workbench .session-tabs-bar {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  gap: 2px;
+}
+.anywork-workbench .session-tabs {
+  min-width: 0;
+  height: 42px;
+}
+.anywork-workbench .session-tab {
+  height: 32px;
+  min-width: 75px;
+  max-width: 230px;
+  border: 0;
+  background: transparent;
+}
+.anywork-workbench .session-tab.active {
+  background: transparent;
+  box-shadow: none;
+}
+.anywork-workbench .session-tab > button[role="tab"] {
+  font-size: 14px;
+  font-weight: 600;
+}
+.anywork-workbench .session-tab > button[role="tab"] > svg {
+  display: none;
+}
+.anywork-workbench
+  .session-tabs:has(.session-tab:only-child)
+  .close-session-tab {
+  display: none;
+}
+.anywork-workbench .session-tabs:has(.session-tab:only-child) .session-tab {
+  max-width: none;
+  width: 100%;
+}
+.anywork-workbench .conversation-header > .icon-button {
+  width: 26px;
+  min-width: 26px;
+  height: 28px;
+  padding: 4px;
+}
+@media (min-width: 721px) {
+  .codex-shell:not(.sidebar-collapsed) .conversation-sidebar-toggle {
+    display: none;
+  }
+}
+.anywork-workbench .terminal-toolbar {
+  white-space: nowrap;
+}
+.anywork-workbench .terminal-toolbar > span {
+  flex-shrink: 0;
+}
+@media (max-width: 720px) {
+  .codex-shell > .sidebar.open + .main .conversation-sidebar-toggle,
+  .codex-shell > .sidebar.open + .main .window-tabbar .mobile-menu {
+    display: none;
+  }
+  .anywork-workbench .conversation-header {
+    gap: 2px;
+  }
+  .anywork-workbench .session-tab {
+    min-width: 74px;
+    max-width: 150px;
+  }
+  .anywork-workbench .conversation-header .tabs {
+    gap: 0;
+  }
+  .anywork-workbench .conversation-header .tabs .tab-chat {
+    display: none;
+  }
+}
+
+.binary-document-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.binary-document-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.binary-document-actions span,
+.binary-document-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.binary-document-actions span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.binary-document-actions a {
+  flex-shrink: 0;
+  color: var(--app-link);
+}
+.pdf-document-frame {
+  width: 100%;
+  flex: 1;
+  min-height: 280px;
+  border: 0;
+  background: var(--panel);
+}
+
+@media (max-width: 720px) {
+  .anywork-workbench .topbar .session-header > .session-tabs-bar {
+    display: flex;
+  }
+  .panel-tabs .panel-close {
+    margin-left: 0;
+  }
+}
+
+/* Conversation and panel headers share one launcher. */
+.anywork-workbench .header-tools-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+.header-tools-menu > summary {
+  list-style: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.header-tools-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.header-tools-menu > summary:hover,
+.header-tools-menu[open] > summary {
+  background: var(--raised);
+}
+.header-tools-options {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 90;
+  min-width: 160px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px #00000018;
+}
+.header-tools-options > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+}
+.header-tools-options > button:hover,
+.header-tools-options > button[aria-pressed="true"] {
+  background: var(--raised);
+}
+.anywork-workbench .conversation-header {
+  overflow: visible;
+}
+.anywork-workbench .session-menu {
+  display: block;
+  flex-shrink: 0;
+}
+.anywork-workbench
+  .session-tabs:has(.session-tab:only-child)
+  .session-tab
+  > [role="tab"] {
+  padding: 0 8px;
+}
+
+/* Document actions align with the title instead of creating an extra toolbar row. */
+.anywork-workbench .document-file-actions {
+  height: 0;
+  min-height: 0;
+  padding: 0 12px;
+  overflow: visible;
+}
+.anywork-workbench .document-file-actions > button {
+  height: 28px;
+  flex-shrink: 0;
+  transform: translateY(8px);
+}
+.anywork-workbench .document-markdown {
+  padding: 8px 16px 40px;
+}
+.anywork-workbench .document-markdown h1 {
+  font-size: 24px;
+  line-height: 1.3333;
+  padding-right: 46px;
+}
+.anywork-workbench .document-markdown h2 {
+  font-size: 21px;
+}
+.anywork-workbench .document-markdown h3 {
+  font-size: 18px;
+}
+.anywork-workbench .document-markdown h1:first-child {
+  margin-top: 0;
+}
+.anywork-workbench .document-toolbar .inspector-actions > button:first-child {
+  border: 1px solid var(--line);
+  padding: 7px 12px;
+  box-shadow: 0 2px 8px #00000005;
+}
+.composer-goal-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+}
+.composer-goal-mode:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+.composer-goal-mode .goal-mode-clear {
+  display: none;
+}
+.composer-goal-mode:hover .goal-mode-clear {
+  display: block;
+}
+.composer-goal-mode:hover .goal-mode-icon {
+  display: none;
+}
+.queue-goal-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Each conversation owns its inspector tabs; the main heading stays in place. */
+.anywork-workbench .conversation-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  background: transparent;
+  padding: 0 4px;
+  height: 32px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+}
+.anywork-workbench .conversation-title span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.anywork-workbench .conversation-title svg {
+  flex-shrink: 0;
+}
+.anywork-workbench .panel-tabs {
+  background: var(--surface);
+  overflow: visible;
+}
+.anywork-workbench .panel-tabs .panel-close {
+  margin-left: auto;
+}
+.anywork-workbench .panel-tabs > .panel-launcher {
+  margin-left: 0;
+}
+.anywork-workbench .panel-tabs .session-tabs-bar {
+  height: 34px;
+}
+.anywork-workbench .panel-tabs .session-tabs {
+  height: 34px;
+}
+.anywork-workbench .inspector-tab-bar .session-tab {
+  min-width: 100px;
+  max-width: 220px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+.anywork-workbench .inspector-tab-bar .session-tab.active {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: 0 1px 2px #00000005;
+}
+.anywork-workbench .inspector-tab-bar .session-tab > button[role="tab"] {
+  font-weight: 400;
+  font-size: 14px;
+  padding-right: 25px;
+}
+.anywork-workbench .inspector-tab-bar .session-tab > button[role="tab"] > svg {
+  display: block;
+}
+.anywork-workbench .inspector-tab-bar .session-tab:first-child {
+  min-width: 30px;
+  width: 30px;
+}
+.anywork-workbench .inspector-tab-bar .session-tab:first-child > button {
+  padding: 5px;
+  justify-content: center;
+}
+.anywork-workbench .inspector-tab-bar .session-tab:first-child > button span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}

@@ -1,0 +1,422 @@
+{
+  "source": {
+    "asset": "app-initial-61c1d0e6137e.js",
+    "sha256": "7a8d8b711bf2eb1adbfab04818a63bf6517935d11bb4d0d4c9d6602d1e3fe6f2",
+    "helpers": "JEe/YEe/XEe/ZEe/QEe",
+    "parser": {
+      "package": "mdast-util-from-markdown",
+      "version": "2.1.0",
+      "source": "Existing workspace node_modules, already declared directly in web/package.json and locked by package-lock.json",
+      "substitution": "Supplied fromMarkdown as the native h/gfe parser parameter; reference inspected gfe and found default CommonMark AST construction without reference resolution.",
+      "limits": "This oracle isolates the native helper algorithms with a replacement parser. It does not execute bundled gfe or prove identical parsing for every malformed Markdown or lone UTF-16 surrogate."
+    },
+    "execution": "Only the extracted JEe/YEe/XEe/ZEe/QEe pure function definitions were evaluated with a supplied parser in an isolated Node Function; no application process or complete module runtime was started."
+  },
+  "cases": [
+    {
+      "name": "plain whitespace",
+      "text": "  plain 中🙂\n",
+      "serialized": {
+        "type": "text",
+        "text": "  plain 中🙂\n",
+        "text_elements": []
+      },
+      "restored": "  plain 中🙂\n"
+    },
+    {
+      "name": "inline link",
+      "text": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/文件?a=1&b=2",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 34
+            },
+            "placeholder": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          }
+        ]
+      },
+      "restored": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "multiple unicode offsets",
+      "text": "中🙂[文档](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2) and [second](chatgpt-library-file://file?asUrl=1&sourceUrl=HTTPS%3A%2F%2FEXAMPLE.COM%2F%E4%BA%8C) 尾\n",
+      "serialized": {
+        "type": "text",
+        "text": "中🙂https://example.com/文件?a=1&b=2 and HTTPS://EXAMPLE.COM/二 尾\n",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 7,
+              "end": 41
+            },
+            "placeholder": "[文档](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          },
+          {
+            "byteRange": {
+              "start": 46,
+              "end": 69
+            },
+            "placeholder": "[second](chatgpt-library-file://file?asUrl=1&sourceUrl=HTTPS%3A%2F%2FEXAMPLE.COM%2F%E4%BA%8C)"
+          }
+        ]
+      },
+      "restored": "中🙂[文档](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2) and [second](chatgpt-library-file://file?asUrl=1&sourceUrl=HTTPS%3A%2F%2FEXAMPLE.COM%2F%E4%BA%8C) 尾\n"
+    },
+    {
+      "name": "autolink",
+      "text": "<chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2>",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/文件?a=1&b=2",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 34
+            },
+            "placeholder": "<chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2>"
+          }
+        ]
+      },
+      "restored": "<chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2>"
+    },
+    {
+      "name": "nested label",
+      "text": "[nested [label]](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/文件?a=1&b=2",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 34
+            },
+            "placeholder": "[nested [label]](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          }
+        ]
+      },
+      "restored": "[nested [label]](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "escaped label",
+      "text": "[escaped \\[label\\]](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/文件?a=1&b=2",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 34
+            },
+            "placeholder": "[escaped \\[label\\]](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          }
+        ]
+      },
+      "restored": "[escaped \\[label\\]](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "formatted label",
+      "text": "[**bold** &amp; `code`](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/文件?a=1&b=2",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 34
+            },
+            "placeholder": "[**bold** &amp; `code`](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          }
+        ]
+      },
+      "restored": "[**bold** &amp; `code`](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "title",
+      "text": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2 \"a title\")",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/文件?a=1&b=2",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 34
+            },
+            "placeholder": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2 \"a title\")"
+          }
+        ]
+      },
+      "restored": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2 \"a title\")"
+    },
+    {
+      "name": "entity href",
+      "text": "[file](<chatgpt-library-file://file?asUrl=1&amp;sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2>)",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/文件?a=1&b=2",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 34
+            },
+            "placeholder": "[file](<chatgpt-library-file://file?asUrl=1&amp;sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2>)"
+          }
+        ]
+      },
+      "restored": "[file](<chatgpt-library-file://file?asUrl=1&amp;sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2>)"
+    },
+    {
+      "name": "image label",
+      "text": "[![alt](https://example.com/image.png)](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/文件?a=1&b=2",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 34
+            },
+            "placeholder": "[![alt](https://example.com/image.png)](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          }
+        ]
+      },
+      "restored": "[![alt](https://example.com/image.png)](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "image suppressed",
+      "text": "![file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "![file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+        "text_elements": []
+      },
+      "restored": "![file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "image children suppressed",
+      "text": "![alt [inner](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)](https://example.com/image.png)",
+      "serialized": {
+        "type": "text",
+        "text": "![alt [inner](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)](https://example.com/image.png)",
+        "text_elements": []
+      },
+      "restored": "![alt [inner](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)](https://example.com/image.png)"
+    },
+    {
+      "name": "ordinary outer link children opaque",
+      "text": "[![alt](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)](https://example.com/ordinary)",
+      "serialized": {
+        "type": "text",
+        "text": "[![alt](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)](https://example.com/ordinary)",
+        "text_elements": []
+      },
+      "restored": "[![alt](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)](https://example.com/ordinary)"
+    },
+    {
+      "name": "inline code",
+      "text": "`[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)`",
+      "serialized": {
+        "type": "text",
+        "text": "`[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)`",
+        "text_elements": []
+      },
+      "restored": "`[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)`"
+    },
+    {
+      "name": "fenced code",
+      "text": "```md\n[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)\n```",
+      "serialized": {
+        "type": "text",
+        "text": "```md\n[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)\n```",
+        "text_elements": []
+      },
+      "restored": "```md\n[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)\n```"
+    },
+    {
+      "name": "reference full",
+      "text": "[ref][id]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2",
+      "serialized": {
+        "type": "text",
+        "text": "[ref][id]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2",
+        "text_elements": []
+      },
+      "restored": "[ref][id]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2"
+    },
+    {
+      "name": "reference collapsed",
+      "text": "[id][]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2",
+      "serialized": {
+        "type": "text",
+        "text": "[id][]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2",
+        "text_elements": []
+      },
+      "restored": "[id][]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2"
+    },
+    {
+      "name": "reference shortcut",
+      "text": "[id]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2",
+      "serialized": {
+        "type": "text",
+        "text": "[id]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2",
+        "text_elements": []
+      },
+      "restored": "[id]\n\n[id]: chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2"
+    },
+    {
+      "name": "blockquote list crlf",
+      "text": "> - [file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)\r\n> - [two](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2Ftwo)\r\n",
+      "serialized": {
+        "type": "text",
+        "text": "> - https://example.com/文件?a=1&b=2\r\n> - https://example.com/two\r\n",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 4,
+              "end": 38
+            },
+            "placeholder": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          },
+          {
+            "byteRange": {
+              "start": 44,
+              "end": 67
+            },
+            "placeholder": "[two](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2Ftwo)"
+          }
+        ]
+      },
+      "restored": "> - [file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)\r\n> - [two](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2Ftwo)\r\n"
+    },
+    {
+      "name": "heading multiline title",
+      "text": "# [file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)\n\n[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2\n  'title')\n",
+      "serialized": {
+        "type": "text",
+        "text": "# https://example.com/文件?a=1&b=2\n\nhttps://example.com/文件?a=1&b=2\n",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 2,
+              "end": 36
+            },
+            "placeholder": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          },
+          {
+            "byteRange": {
+              "start": 38,
+              "end": 72
+            },
+            "placeholder": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2\n  'title')"
+          }
+        ]
+      },
+      "restored": "# [file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)\n\n[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2\n  'title')\n"
+    },
+    {
+      "name": "invalid first asUrl",
+      "text": "[file](chatgpt-library-file://file?asUrl=0&asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "[file](chatgpt-library-file://file?asUrl=0&asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+        "text_elements": []
+      },
+      "restored": "[file](chatgpt-library-file://file?asUrl=0&asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "first sourceUrl wins",
+      "text": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2Ffirst&sourceUrl=https%3A%2F%2Fother.example%2F)",
+      "serialized": {
+        "type": "text",
+        "text": "https://example.com/first",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 0,
+              "end": 25
+            },
+            "placeholder": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2Ffirst&sourceUrl=https%3A%2F%2Fother.example%2F)"
+          }
+        ]
+      },
+      "restored": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2Ffirst&sourceUrl=https%3A%2F%2Fother.example%2F)"
+    },
+    {
+      "name": "invalid library case",
+      "text": "[file](CHATGPT-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "[file](CHATGPT-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+        "text_elements": []
+      },
+      "restored": "[file](CHATGPT-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "invalid source protocol",
+      "text": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=file%3A%2F%2Fexample.com%2Ffile)",
+      "serialized": {
+        "type": "text",
+        "text": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=file%3A%2F%2Fexample.com%2Ffile)",
+        "text_elements": []
+      },
+      "restored": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=file%3A%2F%2Fexample.com%2Ffile)"
+    },
+    {
+      "name": "invalid host",
+      "text": "[file](chatgpt-library-file://?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com)",
+      "serialized": {
+        "type": "text",
+        "text": "[file](chatgpt-library-file://?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com)",
+        "text_elements": []
+      },
+      "restored": "[file](chatgpt-library-file://?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com)"
+    },
+    {
+      "name": "partial link text",
+      "text": "prefix [file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2) suffix",
+      "serialized": {
+        "type": "text",
+        "text": "prefix https://example.com/文件?a=1&b=2 suffix",
+        "text_elements": [
+          {
+            "byteRange": {
+              "start": 7,
+              "end": 41
+            },
+            "placeholder": "[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+          }
+        ]
+      },
+      "restored": "prefix [file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2) suffix"
+    },
+    {
+      "name": "escaped markup",
+      "text": "\\[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+      "serialized": {
+        "type": "text",
+        "text": "\\[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)",
+        "text_elements": []
+      },
+      "restored": "\\[file](chatgpt-library-file://file?asUrl=1&sourceUrl=https%3A%2F%2Fexample.com%2F%E6%96%87%E4%BB%B6%3Fa%3D1%26b%3D2)"
+    },
+    {
+      "name": "empty input",
+      "text": "",
+      "serialized": {
+        "type": "text",
+        "text": "",
+        "text_elements": []
+      },
+      "restored": ""
+    }
+  ]
+}

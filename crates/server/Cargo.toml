@@ -1,0 +1,29 @@
+[package]
+name = "anywork"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+remote-agent-sdk = { path = "../agent-sdk" }
+remote-agent-codex = { path = "../agent-codex" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.8", features = ["ws", "multipart"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "trace", "limit"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures-util = "0.3"
+async-stream = "0.3"
+portable-pty = "0.9"
+subtle = "2"
+
+tokio-tungstenite = "0.29"
+url = "2.5.8"
+pulldown-cmark = { version = "0.13.4", default-features = false }
+regex = "1"

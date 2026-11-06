@@ -1,0 +1,21 @@
+<resources>
+    <style name="RemoteAgentBaseTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#B6EF76</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#111518</item>
+        <item name="android:navigationBarColor">#111518</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#15191C</item>
+    </style>
+    <style name="AppTheme" parent="RemoteAgentBaseTheme"/>
+    <style name="ConnectionBaseTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#007AFF</item>
+        <item name="android:windowBackground">#FFFFFF</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+    <style name="ConnectionTheme" parent="ConnectionBaseTheme"/>
+</resources>

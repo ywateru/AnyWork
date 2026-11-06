@@ -1,0 +1,25 @@
+name: Bug / 问题
+description: Report a reproducible problem / 报告可复现的问题
+body:
+  - type: markdown
+    attributes:
+      value: 'Remove access keys, credentials, personal chats and private paths. 请移除密钥、凭据、真实会话和私有路径。'
+  - type: input
+    id: version
+    attributes:
+      label: Version and platform / 版本与平台
+      placeholder: 'v0.1.0 · macOS 14 arm64 · Chrome'
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps and expected result / 复现步骤与预期
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result / 实际结果
+    validations:
+      required: true

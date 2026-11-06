@@ -1,0 +1,242 @@
+.goal-banner-area {
+  min-width: 0;
+  margin: 0 14px 4px;
+}
+.goal-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  box-sizing: border-box;
+  height: 33px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+}
+.goal-banner-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.goal-banner-body > svg {
+  flex-shrink: 0;
+}
+.goal-banner .goal-banner-status {
+  flex-shrink: 0;
+  color: var(--text);
+  font-weight: 500;
+}
+.goal-banner .goal-banner-objective {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.goal-banner .goal-banner-elapsed {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.goal-banner .goal-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.goal-banner .goal-banner-actions button,
+.goal-editor-panel button,
+.goal-editor-fallback-heading button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+.goal-banner .goal-banner-actions button {
+  width: 25px;
+  height: 25px;
+}
+.goal-banner .goal-banner-actions button:hover,
+.goal-editor-panel button:hover,
+.goal-editor-fallback-heading button:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+.goal-banner button:disabled,
+.goal-editor-panel button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.goal-banner-error,
+.goal-editor-error {
+  margin: 0;
+  padding: 4px 0 8px;
+  color: var(--app-badge-error-text, #c43b3b);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.goal-editor-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(
+    --font-ui-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif
+  );
+  font-size: 13px;
+  line-height: 1.5;
+}
+.goal-editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.goal-editor-updated {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+.goal-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.goal-editor-panel .goal-editor-revert {
+  width: 28px;
+  height: 28px;
+}
+.goal-editor-panel .goal-editor-save {
+  height: 28px;
+  min-width: 48px;
+  padding: 0 10px;
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 500;
+}
+.goal-editor-panel .goal-editor-save:hover {
+  background: var(--text);
+  color: var(--surface);
+  filter: brightness(0.9);
+}
+.goal-editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+}
+.goal-editor-scroll .prompt-editor-mount,
+.goal-editor-scroll .prompt-editor {
+  min-height: 100%;
+}
+.goal-editor-scroll .prompt-editor {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.goal-editor-panel .goal-editor-state {
+  padding: 20px;
+  color: var(--muted);
+}
+.goal-editor-error {
+  padding: 8px 20px 0;
+}
+.goal-editor-error button {
+  margin-left: 8px;
+  text-decoration: underline;
+}
+.goal-editor-fallback {
+  position: fixed;
+  z-index: 250;
+  inset: 0 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: min(50vw, 720px);
+  min-width: 320px;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: -4px 0 16px #0001;
+}
+.goal-editor-fallback-heading,
+.goal-editor-fallback-heading > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.goal-editor-fallback-heading {
+  justify-content: space-between;
+  flex-shrink: 0;
+  height: 43px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: 13px;
+}
+.goal-editor-fallback-heading button {
+  width: 28px;
+  height: 28px;
+}
+.goal-banner-spinner {
+  animation: goal-banner-spin 1s linear infinite;
+}
+@keyframes goal-banner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 600px) {
+  .goal-banner-area {
+    margin-inline: 10px;
+  }
+  .goal-banner,
+  .goal-banner-body {
+    gap: 5px;
+    font-size: 11px;
+  }
+  .goal-editor-fallback {
+    width: 100%;
+    min-width: 0;
+  }
+  .goal-editor-scroll .prompt-editor {
+    font-size: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal-banner-spinner {
+    animation: none;
+  }
+}

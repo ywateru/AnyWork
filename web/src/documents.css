@@ -1,0 +1,691 @@
+/* Independent implementation of the desktop document and turn disclosures. */
+.md-paragraph {
+  margin: 0 0 1em;
+}
+.md-paragraph:last-child {
+  margin-bottom: 0;
+}
+.local-file-link {
+  display: inline;
+  overflow-wrap: anywhere;
+}
+.local-file-link > svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.conversation-turn {
+  min-width: 0;
+}
+.turn-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 0 10px;
+  margin: 0 0 18px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+}
+.turn-disclosure:hover {
+  color: var(--text);
+  background: transparent;
+}
+.turn-disclosure svg {
+  transition: transform 0.15s;
+}
+.turn-disclosure[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.turn-activity {
+  padding: 0 0 9px;
+}
+.turn-activity > .message.assistant .message-actions {
+  display: none;
+}
+.turn-activity[hidden],
+.image-activity-thumbnails[hidden] {
+  display: none;
+}
+.turn-activity .tool-card {
+  margin: 8px 0 14px;
+}
+.image-tool-label {
+  border: 0;
+  padding: 0;
+  margin: 4px 0 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+}
+.image-tool-label:hover {
+  background: transparent;
+  color: var(--text);
+}
+.image-tool-label[aria-expanded="false"] > svg:last-child {
+  transform: rotate(-90deg);
+}
+.image-activity-thumbnails {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 0 8px;
+}
+.thumbnail-image .image-load-trigger,
+.image-message .inline-image.thumbnail-image .image-load-trigger {
+  width: 80px;
+  height: 80px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.thumbnail-image .loaded-image-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.thumbnail-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 10px;
+}
+.workspace-inspector {
+  position: relative;
+  width: min(var(--inspector-width, 560px), 75%);
+  flex: 0 0 min(var(--inspector-width, 560px), 75%);
+  max-width: none;
+  min-width: 0;
+}
+.inspector-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  z-index: 8;
+  cursor: col-resize;
+  touch-action: none;
+}
+.inspector-resizer:hover,
+.inspector-resizer:focus-visible {
+  background: var(--accent-ring);
+}
+.codex-file-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.document-toolbar {
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+  padding: 8px;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.document-breadcrumb {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  border-radius: 28px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.document-breadcrumb > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.document-breadcrumb > span:not(:last-child) {
+  max-width: 105px;
+}
+.document-breadcrumb > span > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.document-breadcrumb .current {
+  color: var(--text);
+  font-weight: 600;
+}
+.document-breadcrumb > span:last-child {
+  flex-shrink: 1;
+}
+.document-toolbar .inspector-actions {
+  flex-shrink: 0;
+  gap: 3px;
+}
+.document-toolbar .inspector-actions > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border-radius: 20px;
+}
+.document-toolbar .inspector-actions > button > span {
+  font-size: 12px;
+}
+.document-toolbar .inspector-actions > button.active {
+  background: var(--raised);
+}
+.document-options {
+  position: relative;
+}
+.document-options > summary {
+  list-style: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.document-options > summary::-webkit-details-marker {
+  display: none;
+}
+.document-options > div {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  z-index: 12;
+  min-width: 155px;
+  padding: 5px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.document-options button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  white-space: nowrap;
+  text-align: left;
+  font-size: 12px;
+}
+.document-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.document-layout.with-tree {
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 37%);
+}
+.document-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.document-placeholder {
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.document-file-actions {
+  position: sticky;
+  top: 0;
+  min-height: 36px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px 14px;
+  background: var(--surface);
+  z-index: 2;
+}
+.document-file-actions > button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  color: var(--muted);
+  border: 0;
+  background: transparent;
+}
+.document-file-actions > button:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+.document-markdown {
+  padding: 8px 22px 40px;
+  font-size: var(--font-ui-size, 15px);
+}
+.document-markdown h1 {
+  font-size: 24px;
+}
+.document-markdown h2 {
+  font-size: 21px;
+}
+.document-markdown h3 {
+  font-size: 18px;
+}
+.document-markdown [id] {
+  scroll-margin-top: 42px;
+}
+.document-content .file-editor {
+  flex: 1;
+  min-height: 250px;
+  margin: 0;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  resize: none;
+  font-family: monospace;
+  font-size: var(--font-code-size, 13px);
+  line-height: 20px;
+  box-shadow: none;
+}
+.document-file-tree {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  padding: 8px;
+}
+.file-tree-search {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  gap: 6px;
+  flex-shrink: 0;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  color: var(--muted);
+}
+.file-tree-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  font-size: 12px;
+  box-shadow: none;
+}
+.file-tree-scroll {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.file-tree-level {
+  min-width: 0;
+}
+.file-tree-level [role="group"] {
+  padding-left: 12px;
+}
+.file-tree-level button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 3px;
+  margin: 0;
+  border: 0;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 12px;
+}
+.file-tree-level button > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-tree-level svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.file-tree-level button[aria-selected="true"] {
+  background: var(--raised);
+}
+.tree-indent {
+  width: 12px;
+  flex-shrink: 0;
+}
+.tree-empty,
+.file-tree-error {
+  display: block;
+  font-size: 11px;
+  padding: 8px;
+  color: var(--muted);
+}
+.document-image {
+  padding: 20px;
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+}
+.document-image .thumbnail-image .image-load-trigger {
+  width: min(280px, 100%);
+  height: 200px;
+}
+.document-image .thumbnail-image .loaded-image-thumbnail {
+  object-fit: contain;
+}
+@media (max-width: 1000px) and (min-width: 721px) {
+  .document-toolbar .inspector-actions > button > span {
+    display: none;
+  }
+  .document-layout.with-tree {
+    grid-template-columns: minmax(0, 1fr) 145px;
+  }
+}
+@media (max-width: 720px) {
+  .workspace-inspector {
+    width: 100%;
+    flex-basis: 100%;
+  }
+  .inspector-resizer {
+    display: none;
+  }
+  .document-toolbar .inspector-actions > button > span {
+    display: none;
+  }
+  .document-layout.with-tree {
+    grid-template-columns: minmax(0, 1fr) 135px;
+  }
+  .document-markdown {
+    padding: 8px 14px 30px;
+  }
+  .document-toolbar {
+    min-height: 48px;
+  }
+  .document-breadcrumb > span:not(:last-child) {
+    display: none;
+  }
+  .document-toolbar .inspector-actions {
+    gap: 0;
+  }
+}
+
+.document-toolbar .inspector-actions > button {
+  width: auto;
+  min-width: 30px;
+  height: 32px;
+  white-space: nowrap;
+  flex-direction: row;
+}
+.document-toolbar .inspector-actions > button svg {
+  flex-shrink: 0;
+}
+.document-options > div button {
+  width: 100%;
+  height: auto;
+  display: flex;
+  justify-content: flex-start;
+}
+.markdown a {
+  color: var(--app-link, var(--accent));
+}
+.document-markdown h1:first-child {
+  margin-top: 0;
+}
+.inspector-resizer {
+  outline-offset: -3px;
+}
+@media (max-width: 720px) {
+  .image-viewer header {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .image-viewer header > span {
+    flex-basis: auto;
+  }
+  .image-viewer button {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Codex activity units use plain rows, with prose between successive groups. */
+.turn-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 16px;
+}
+.turn-activity > .message,
+.turn-activity .tool-card,
+.turn-activity .image-message {
+  margin: 0;
+}
+.turn-activity .message.assistant {
+  padding: 0;
+}
+.turn-activity .message.assistant .bubble {
+  padding: 0;
+}
+.activity-group > summary,
+.turn-activity .tool-card > summary,
+.turn-activity .image-tool-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--app-chat-font-size, 14px);
+  font-weight: 400;
+  cursor: pointer;
+  list-style: none;
+}
+.activity-group > summary::-webkit-details-marker {
+  display: none;
+}
+.turn-activity .tool-card > summary strong {
+  font: inherit;
+}
+.activity-group > summary > svg:first-child,
+.turn-activity .tool-card > summary > svg:first-child {
+  flex-shrink: 0;
+}
+.activity-group > summary > svg:last-child,
+.turn-activity .tool-card > summary > svg:last-child,
+.turn-activity .image-tool-label > svg:last-child {
+  opacity: 0;
+}
+.activity-group:hover > summary > svg:last-child,
+.turn-activity .tool-card:hover > summary > svg:last-child,
+.turn-activity .image-tool-label:hover > svg:last-child,
+.activity-group:focus-within > summary > svg:last-child,
+.turn-activity .tool-card:focus-within > summary > svg:last-child,
+.turn-activity .image-tool-label:focus-visible > svg:last-child {
+  opacity: 1;
+}
+.activity-group[open] > summary > svg:last-child {
+  transform: rotate(180deg);
+}
+.activity-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0 8px;
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+.image-activity-thumbnails:not([hidden]) {
+  padding-top: 8px;
+}
+
+/* Composer thumbnail geometry and overlay match the packaged composer variant. */
+.attachments {
+  gap: 8px;
+}
+.attachments > .image-attachment {
+  width: 122px;
+  height: 122px;
+  border-radius: 16px;
+  overflow: visible;
+  user-select: none;
+}
+.image-attachment .inline-image,
+.image-attachment .thumbnail-image .image-load-trigger {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+.attachments .image-attachment .image-load-trigger {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: var(--raised);
+  cursor: pointer;
+}
+.image-attachment .image-load-trigger:hover {
+  filter: brightness(0.95);
+}
+.image-attachment .image-load-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.image-attachment .loaded-image-thumbnail {
+  border-radius: 0;
+}
+.image-attachment .attachment-name {
+  display: none;
+}
+.attachments .image-attachment > button {
+  top: -2px;
+  right: -2px;
+  width: 22px;
+  height: 22px;
+  z-index: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  box-shadow: 0 1px 4px #0002;
+}
+.image-attachment .attachment-pending {
+  pointer-events: none;
+  border-radius: 16px;
+}
+.image-viewer {
+  background: rgb(0 0 0 / 90%);
+}
+.image-viewer header {
+  background: transparent;
+  padding: 16px 20px;
+}
+.image-viewer button {
+  border-radius: 50%;
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: 0 2px 8px #0002;
+  border: 1px solid #0001;
+}
+.image-viewer button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.image-viewport {
+  touch-action: none;
+  margin: 0 20px;
+}
+.image-canvas img {
+  border-radius: 8px;
+}
+.image-gallery-nav {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 1;
+}
+.image-gallery-nav > button {
+  pointer-events: auto;
+}
+.image-viewer footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 16px max(32px, env(safe-area-inset-bottom));
+}
+.image-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.image-zoom-controls > output {
+  color: #fff;
+}
+@media (max-width: 720px) {
+  .image-viewport {
+    margin: 0 16px;
+  }
+  .image-viewer header {
+    padding: 12px 16px;
+  }
+}
+
+.activity-group[open] > summary > svg:last-child,
+.turn-activity .tool-card[open] > summary > svg:last-child,
+.turn-activity .image-tool-label[aria-expanded="true"] > svg:last-child {
+  opacity: 1;
+}
+.activity-group > summary,
+.turn-activity .tool-card > summary,
+.turn-activity .image-tool-label {
+  gap: 6px;
+}
+@media (hover: hover) {
+  .attachments .image-attachment > button {
+    opacity: 0;
+  }
+  .attachments .image-attachment:hover > button,
+  .attachments .image-attachment:focus-within > button {
+    opacity: 1;
+  }
+}

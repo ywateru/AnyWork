@@ -1,0 +1,392 @@
+.prompt-editor-mount {
+  min-width: 0;
+}
+.prompt-editor.ProseMirror {
+  position: relative;
+  min-width: 0;
+  outline: none;
+  overflow-wrap: break-word;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0;
+}
+.prompt-editor.ProseMirror p {
+  margin: 0;
+  position: relative;
+}
+.prompt-editor.ProseMirror p.placeholder::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  inset: 0 0 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  opacity: var(--composer-editor-placeholder-opacity, 0.5);
+  pointer-events: none;
+}
+.prompt-editor.ProseMirror pre {
+  white-space: pre-wrap;
+}
+.prompt-editor.ProseMirror a {
+  color: inherit;
+  cursor: text;
+}
+.prompt-text-link {
+  color: inherit;
+  white-space: normal;
+}
+.prompt-text-link[data-font-weight="medium"] {
+  font-weight: 500;
+}
+.prompt-text-link[data-interactive],
+.prompt-inline-atom[data-interactive] {
+  cursor: pointer;
+}
+.prompt-text-link[data-interactive]:hover,
+.prompt-inline-atom[data-underline-on-hover]:hover {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.prompt-link-loading {
+  animation: prompt-link-spin 1.25s linear infinite;
+}
+@keyframes prompt-link-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prompt-link-loading {
+    animation: none;
+  }
+}
+.prompt-editor.ProseMirror .prompt-inline-atom {
+  display: inline;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--color-text-composer-file-reference, var(--text));
+}
+.prompt-inline-atom-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 1em;
+  padding-inline-end: 3px;
+  box-sizing: content-box;
+  align-items: center;
+  vertical-align: middle;
+  transform: translateY(calc(0.5ex - 0.5cap));
+}
+.prompt-inline-atom-icon svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.prompt-inline-atom-label {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.prompt-editor.ProseMirror .prompt-inline-atom[data-layout="selection-pill"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 4px;
+  vertical-align: baseline;
+  font-weight: inherit;
+}
+.prompt-inline-atom[data-layout="selection-pill"] .prompt-inline-atom-icon {
+  width: 20px;
+  height: 1lh;
+  padding: 0;
+  transform: none;
+  flex-shrink: 0;
+}
+.prompt-inline-atom[data-layout="selection-pill"] .prompt-inline-atom-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.prompt-inline-atom[data-layout="selection-pill"] .prompt-inline-atom-label {
+  max-width: 256px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  align-self: baseline;
+}
+.prompt-editor .ProseMirror-selectednode {
+  outline: none;
+}
+.prompt-editor.ProseMirror-focused [data-composer-inline-atom-selected] {
+  background: Highlight;
+  color: HighlightText;
+}
+.prompt-editor .ProseMirror-separator {
+  display: inline;
+  border: 0;
+  margin: 0;
+  width: 0;
+  height: 0;
+}
+.prompt-editor .ProseMirror-trailingBreak {
+  display: inline;
+}
+.prompt-file-name {
+  white-space: pre;
+  grid-template-columns: minmax(0, 1fr);
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  display: inline-grid;
+  position: relative;
+  overflow: hidden;
+}
+.prompt-file-name-full {
+  visibility: hidden;
+  width: max-content;
+}
+.prompt-file-name-full::before {
+  content: attr(data-file-name);
+}
+.prompt-file-name-display {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.prompt-file-name-measurement {
+  visibility: hidden;
+  contain: strict;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+/* Native RichTextInput/composer rules, mapped to AnyWork's local tokens. */
+.prompt-editor-rich {
+  --spacing: 4px;
+  --codex-chat-font-size: var(--font-ui-size, 13px);
+  --codex-chat-code-font-size: var(--font-code-size, 12px);
+  --rich-text-quote-rule-width: calc(var(--codex-chat-font-size) / 4);
+  --rich-text-quote-rule-color: var(--line);
+  --color-border: var(--line);
+  --color-border-strong: var(--line);
+  --color-border-subtle: var(--line);
+  --color-surface-secondary: var(--app-code-bg, var(--panel));
+  --color-text: var(--text);
+  --color-background-text-selection: Highlight;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-weight-semibold: 600;
+  --text-sm: 12px;
+  --text-heading-lg: 20px;
+  --text-heading-md: 18px;
+  --text-heading-sm: 16px;
+  --leading-relaxed: 1.625;
+  --radius-sm: 4px;
+  --radius-xl: 12px;
+  --font-content: inherit;
+}
+.prompt-editor-rich {
+  resize: none;
+}
+.prompt-editor-rich:focus-visible {
+  outline: none;
+}
+.prompt-editor-rich p {
+  margin: 0;
+}
+.prompt-editor-rich ul,
+.prompt-editor-rich ol {
+  padding-inline-start: calc(var(--spacing) * 6);
+}
+.prompt-editor-rich ul {
+  list-style-type: disc;
+}
+.prompt-editor-rich ul ul {
+  list-style-type: circle;
+}
+.prompt-editor-rich ul ul ul {
+  list-style-type: square;
+}
+.prompt-editor-rich ol {
+  padding-inline-start: max(
+    calc(var(--spacing) * 6),
+    calc(var(--rich-text-list-marker-width, 1ch) + 0.75em)
+  );
+  list-style-type: decimal;
+}
+.prompt-editor-rich[data-composer-markdown] h1,
+.prompt-editor-rich[data-composer-markdown] h2,
+.prompt-editor-rich[data-composer-markdown] h3,
+.prompt-editor-rich[data-composer-markdown] h4,
+.prompt-editor-rich[data-composer-markdown] h5,
+.prompt-editor-rich[data-composer-markdown] h6 {
+  font-weight: var(--font-weight-semibold);
+}
+.prompt-editor-rich[data-composer-markdown] h1 {
+  font-size: var(--text-heading-lg);
+}
+.prompt-editor-rich[data-composer-markdown] h2 {
+  font-size: var(--text-heading-md);
+}
+.prompt-editor-rich[data-composer-markdown] h3 {
+  font-size: var(--text-heading-sm);
+}
+.prompt-editor-rich[data-composer-markdown] blockquote {
+  padding-inline-start: calc(var(--spacing) * 3);
+}
+.prompt-editor-rich[data-composer-markdown] hr {
+  border-color: var(--color-border);
+}
+.prompt-editor-rich[data-composer-markdown] code {
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-secondary);
+  padding: calc(var(--spacing) / 2) var(--spacing);
+  font-size: var(--text-sm);
+}
+.prompt-editor-rich[data-composer-markdown] pre code {
+  font-size: inherit;
+  background: 0 0;
+  padding: 0;
+}
+.prompt-editor-rich[data-composer-markdown] table {
+  --rich-text-table-space: calc(var(--codex-chat-font-size) / 4);
+  --rich-text-table-font-family: var(--font-content);
+  --rich-text-table-font-size: max(
+    var(--codex-chat-code-font-size),
+    calc(var(--codex-chat-font-size) * 0.875)
+  );
+  --rich-text-table-line-height: calc(
+    var(--codex-chat-font-size) * var(--leading-relaxed)
+  );
+  --rich-text-table-header-font-weight: var(--font-weight-semibold);
+  --rich-text-table-header-border-color: var(--color-border-strong);
+  --rich-text-table-border-color: var(--color-border-subtle);
+}
+.prompt-editor-rich[data-composer-markdown] li[data-task-list-item] {
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 1.5);
+  list-style: none;
+  display: flex;
+}
+.prompt-editor-rich [data-composer-code-block] {
+  contain: inline-size;
+  margin: var(--spacing) 0;
+  width: 100%;
+  min-width: 0;
+}
+.prompt-editor-rich[data-composer-markdown] pre,
+.prompt-editor-rich [data-composer-code-block] {
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-secondary);
+}
+.prompt-editor-rich > [data-composer-code-block] {
+  margin: 0;
+}
+.prompt-editor-rich[data-composer-markdown] pre,
+.prompt-editor-rich pre[data-composer-code-block] {
+  padding: calc(var(--spacing) * 2);
+  font-family: var(--font-mono);
+  font-size: var(--codex-chat-code-font-size);
+  line-height: calc(var(--spacing) * 5);
+  tab-size: 4;
+  white-space: pre;
+  margin: 0;
+  overflow-x: auto;
+}
+.prompt-editor-rich[data-composer-markdown] pre > code,
+.prompt-editor-rich pre[data-composer-code-block] > code {
+  min-width: max-content;
+  display: block;
+}
+.prompt-editor-rich [text-link-href]::selection {
+  color: highlighttext;
+}
+.prompt-editor-rich [rich-link-display-text][rich-link-href]::selection {
+  color: highlighttext;
+}
+.prompt-editor-rich.ProseMirror-focused [data-composer-inline-atom-selected] {
+  --inline-mention-color: var(--color-text);
+  background-color: var(--color-background-text-selection);
+}
+.prompt-editor-rich blockquote {
+  color: inherit;
+  border-inline-start: 4px solid #0000;
+  margin-block: 0;
+  position: relative;
+}
+.prompt-editor-rich blockquote:after {
+  content: "";
+  width: var(--rich-text-quote-rule-width, 4px);
+  background-color: var(--rich-text-quote-rule-color);
+  pointer-events: none;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -4px;
+}
+.prompt-editor-rich
+  > p:not([data-empty-paragraph="true"])
+  + :is(pre, [data-composer-code-block]),
+.prompt-editor-rich
+  > :is(pre, [data-composer-code-block])
+  + p:not([data-empty-paragraph="true"]) {
+  margin-block-start: calc(var(--spacing) * 2);
+}
+.prompt-editor-rich
+  > :is(pre, [data-composer-code-block])
+  + :is(pre, [data-composer-code-block]) {
+  margin-block-start: var(--spacing);
+}
+.prompt-editor-rich[data-composer-markdown] :is(h1, h2, h3, h4, h5, h6) {
+  margin-block: 0;
+}
+.prompt-editor-rich[data-composer-markdown] table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+  text-align: start;
+  width: fit-content;
+  font-family: var(--rich-text-table-font-family);
+  font-size: var(--rich-text-table-font-size);
+  line-height: var(--rich-text-table-line-height);
+  margin: 0;
+}
+.prompt-editor-rich[data-composer-markdown] td,
+.prompt-editor-rich[data-composer-markdown] th {
+  vertical-align: top;
+  white-space: normal;
+  padding-inline-end: calc(var(--rich-text-table-space) * 6);
+}
+.prompt-editor-rich[data-composer-markdown] th {
+  border-bottom: 1px solid var(--rich-text-table-header-border-color);
+  padding-block: calc(var(--rich-text-table-space) * 2);
+  text-align: start;
+  font-weight: var(--rich-text-table-header-font-weight);
+  line-height: calc(var(--rich-text-table-space) * 4);
+}
+.prompt-editor-rich[data-composer-markdown] td {
+  padding-block: calc(var(--rich-text-table-space) * 2.5);
+}
+.prompt-editor-rich[data-composer-markdown] tr:not(:last-child) td {
+  border-bottom: 1px solid var(--rich-text-table-border-color);
+}
+.prompt-editor-rich[data-composer-markdown] th:last-child {
+  padding-inline-end: calc(var(--rich-text-table-space) * 10);
+}
+.prompt-editor-rich[data-composer-markdown] td:last-child {
+  padding-inline-end: 0;
+}
+.prompt-editor-rich[data-composer-markdown] tr:last-child td {
+  padding-block-end: calc(var(--rich-text-table-space) * 6);
+}
+
+.prompt-editor-rich :is(ul, ol) {
+  margin-block: 0;
+}
+.prompt-editor-rich .task-list-item-checkbox {
+  flex: none;
+}
+.prompt-editor-rich .task-list-item-checkbox input {
+  margin: 3px 0 0;
+}
+.prompt-editor-rich .task-list-item-content {
+  min-width: 0;
+  flex: 1;
+}

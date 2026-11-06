@@ -1,0 +1,53 @@
+AnyWork
+Copyright (c) 2026 AnyWork contributors
+Licensed under AGPL-3.0-only. See LICENSE.
+
+This project contains code copied or adapted from HAPI (https://github.com/tiann/hapi),
+revision fa02830a60c2e29c20b1de94f8645174b06492ec, downloaded 2026-11-03.
+HAPI is licensed under AGPL-3.0-only; upstream copyright notices are retained.
+
+Reused sources:
+- web/src/components/ui/button.tsx from HAPI web/src/components/ui/button.tsx
+- web/src/lib/utils.ts from HAPI web/src/lib/utils.ts
+- web/src/lib/useLongPress.ts from HAPI web/src/hooks/useLongPress.ts
+- web/src/components/QuickKeys.tsx from HAPI web/src/components/QuickKeys/QuickKeys.tsx
+  (import path adjusted)
+- web/src/theme.css from HAPI web/src/index.css (light/dark theme variables)
+- android/gradlew, android/gradlew.bat, android/gradle/wrapper/* from HAPI Android
+  (Gradle wrapper is separately licensed Apache-2.0 by Gradle contributors)
+
+The Rust server, protocol transport, Codex adapter, application shell, and Android
+host application are new implementations. HAPI's TypeScript Hub is not required.
+Reference checkouts are excluded from generated release artifacts.
+See scripts/fetch-hapi.sh to reproduce the upstream checkout.
+
+The UI layout and base light/dark palette are adapted from AgentOS
+(https://github.com/saadnvd1/agent-os), revision
+90d520f4a0b9e98c2cb540b9cc5238f3733c6b20, retrieved 2026-11-03.
+Copyright (c) 2025 Saad Naveed. Licensed under MIT; the full license is
+in licenses/agent-os-MIT.txt. The reference checkout is excluded from releases.
+
+The review diff viewer uses unmodified npm packages @pierre/diffs 1.6.2,
+@pierre/highlights 0.3.0, @pierre/theme 2.0.0 and @pierre/theming 1.0.2.
+These packages are licensed under Apache-2.0; their identical license text is
+preserved in licenses/pierre-Apache-2.0.txt. Upstream bundled theme attributions
+are retained verbatim in licenses/pierre-highlights-NOTICE.md and
+licenses/pierre-theme-NOTICE.md. Package versions and integrity are pinned in
+package-lock.json. Diff presentation and syntax theme settings were reconstructed
+from the user-supplied local Codex desktop reference; original compiled app
+modules are excluded from source and release archives. The reference bundle's
+exact Pierre package version has not been established.
+
+AnyWork desktop can bundle cloudflared (Cloudflare, Apache-2.0) and tunwg
+(Nitin Jain and contributors, MIT). Android uses the official WireGuard tunnel
+library 1.0.20260102 (WireGuard LLC, Apache-2.0; embedded wireguard-go components
+retain their MIT notices). See licenses/ and docs/desktop-manager.md.
+
+The Rust/Tauri desktop manager bundles Noto Sans SC Regular from the official
+Noto CJK subset distribution. Copyright and SIL Open Font License 1.1 are
+preserved in licenses/NotoSansSC-OFL.txt.
+
+Subagent avatar SVG resources in the public distribution are original geometric
+illustrations generated for AnyWork, with deterministic light/dark variants.
+The proprietary desktop application's extracted avatars and compiled modules
+are not included in this distribution or its public Git history.

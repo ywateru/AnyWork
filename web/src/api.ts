@@ -1,0 +1,151 @@
+import type { AgentEvent, Connection } from "./types";
+const newClientId = () =>
+  Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+const clientId = (() => {
+  const native = (window as any).RemoteAgentAndroid?.getClientId?.();
+  if (native) return native;
+  try {
+    const key = "anywork.client-id";
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = newClientId();
+      localStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return newClientId();
+  }
+})();
+export class Api {
+  constructor(public connection: Connection) {}
+  url(path: string) {
+    return this.connection.url.replace(/\/$/, "") + path;
+  }
+  async request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+    const headers = new Headers(options.headers);
+    headers.set("Authorization", `Bearer ${this.connection.token}`);
+    headers.set("X-AnyWork-Client-Id", clientId);
+    if (options.body && !(options.body instanceof FormData))
+      headers.set("Content-Type", "application/json");
+    const response = await fetch(this.url("/api" + path), {
+      ...options,
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ error: response.statusText }));
+      throw Object.assign(
+        new Error(error.error || `请求失败 (${response.status})`),
+        { status: response.status },
+      );
+    }
+    return response.json();
+  }
+  async binary(path: string, options: RequestInit = {}): Promise<Blob> {
+    const headers = new Headers(options.headers);
+    headers.set("Authorization", `Bearer ${this.connection.token}`);
+    headers.set("X-AnyWork-Client-Id", clientId);
+    const response = await fetch(this.url("/api" + path), {
+      ...options,
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ error: response.statusText }));
+      throw new Error(error.error || `请求失败 (${response.status})`);
+    }
+    return response.blob();
+  }
+  post<T = any>(path: string, data: unknown = {}) {
+    return this.request<T>(path, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+  async stream(
+    id: string,
+    after: number,
+    onEvent: (e: AgentEvent) => void,
+    signal: AbortSignal,
+  ) {
+    return this.streamPath(`/sessions/${id}/events`, after, onEvent, signal);
+  }
+  async streamAll(
+    after: number,
+    onEvent: (e: AgentEvent) => void,
+    signal: AbortSignal,
+  ) {
+    return this.streamPath("/events", after, onEvent, signal);
+  }
+  private async streamPath(
+    path: string,
+    after: number,
+    onEvent: (e: AgentEvent) => void,
+    signal: AbortSignal,
+  ) {
+    // Accountless Cloudflare tunnels do not support SSE. Keep event cursors and
+    // use bounded JSON responses through that transport instead.
+    if (new URL(this.connection.url).hostname.endsWith(".trycloudflare.com")) {
+      let cursor = after;
+      while (!signal.aborted) {
+        const { events } = await this.request<{ events: AgentEvent[] }>(
+          `${path}/poll?after=${cursor}`,
+          { signal },
+        );
+        for (const event of events) {
+          onEvent(event);
+          cursor = event.seq;
+        }
+        if (events.length === 500) continue;
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", finish);
+            resolve();
+          };
+          const timer = setTimeout(finish, 1000);
+          signal.addEventListener("abort", finish, { once: true });
+          if (signal.aborted) finish();
+        });
+      }
+      return;
+    }
+    const response = await fetch(this.url(`/api${path}?after=${after}`), {
+      headers: {
+        Authorization: `Bearer ${this.connection.token}`,
+        "X-AnyWork-Client-Id": clientId,
+      },
+      signal,
+    });
+    if (!response.ok) throw new Error(`连接失败 (${response.status})`);
+    const reader = response.body!.getReader(),
+      decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder
+          .decode(value, { stream: true })
+          .replace(/\r\n/g, "\n");
+        let end: number;
+        while ((end = buffer.indexOf("\n\n")) >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const data = block
+            .split("\n")
+            .filter((l) => l.startsWith("data:"))
+            .map((l) => l.slice(5).trimStart())
+            .join("\n");
+          if (data) onEvent(JSON.parse(data));
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+}

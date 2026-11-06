@@ -1,0 +1,129 @@
+name: Build releases
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  desktop:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-15, platform: macos-arm64}
+          - {os: macos-15-intel, platform: macos-x86_64}
+          - {os: ubuntu-22.04, platform: linux-x86_64}
+          - {os: ubuntu-24.04-arm, platform: linux-arm64}
+          - {os: windows-latest, platform: windows-x86_64}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.platform }}
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libssl-dev patchelf
+      - run: npm ci
+      - run: npm run build
+      - run: npm run build:desktop-ui
+      - name: Build native applications
+        run: cargo build --locked --release -p anywork -p anywork-desktop
+      - name: Test native applications
+        run: cargo test --locked -p anywork -p anywork-desktop
+      - name: Package application and source
+        run: python3 scripts/release-package.py --platform ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: npm ci && npm run build
+      - name: Restore Android release signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo 'Android release signing secret is required.' >&2; exit 1; fi
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/anywork-release.jks"
+      - name: Build and verify Android
+        working-directory: android
+        env:
+          ANYWORK_ANDROID_KEYSTORE: ${{ runner.temp }}/anywork-release.jks
+          ANYWORK_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANYWORK_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANYWORK_ANDROID_KEY_ALIAS: anywork
+        run: ./gradlew :app:assembleRelease :app:lintRelease :app:testReleaseUnitTest
+      - name: Package Android
+        run: mkdir -p release && cp android/app/build/outputs/apk/release/app-release.apk release/anywork-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: release/anywork-android.apk
+          if-no-files-found: error
+          retention-days: 14
+  source-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - run: python3 scripts/source-archive.py && python3 scripts/source-archive-test.py
+      - run: mkdir -p release && cp artifacts/anywork-source.tar.gz release/ && tar -czf release/anywork-web.tar.gz -C web dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-web
+          path: release/*
+          if-no-files-found: error
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, android, source-web]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release
+        run: sha256sum anywork-* > SHA256SUMS
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release/* --verify-tag --title "AnyWork $RELEASE_TAG" --notes-file docs/release-notes.md

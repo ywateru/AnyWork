@@ -1,0 +1,9 @@
+[package]
+name = "remote-agent-codex"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+remote-agent-sdk = { path = "../agent-sdk" }
+serde_json.workspace = true

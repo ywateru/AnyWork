@@ -1,0 +1,165 @@
+/* Adapted from tiann/hapi, AGPL-3.0-only. */
+:root {
+  --app-bg: var(--tg-theme-bg-color, #ffffff);
+  --app-fg: var(--tg-theme-text-color, #111827);
+  --app-hint: var(--tg-theme-hint-color, #6b7280);
+  --app-link: var(--tg-theme-link-color, #111827);
+  --app-button: var(--tg-theme-button-color, #111827);
+  --app-button-text: var(--tg-theme-button-text-color, #ffffff);
+  --app-banner-bg: var(--tg-theme-button-color, #111827);
+  --app-banner-text: var(--tg-theme-button-text-color, #ffffff);
+  --app-secondary-bg: var(--tg-theme-secondary-bg-color, #f3f4f6);
+
+  --app-dialog-bg: #ffffff;
+  --app-chat-user-bg: #f2f4f6;
+  --app-chat-user-surface-bg: var(--app-chat-user-bg);
+  --app-chat-user-fg: #24292f;
+  --app-chat-user-chip-bg: #dbeafe;
+  --app-chat-user-chip-fg: #1447e6;
+  --app-chat-user-chip-action-bg: #1d4ed8;
+  --app-chat-user-chip-action-fg: #bfdbfe;
+  --app-chat-user-chip-action-hover-fg: #fecaca;
+  --app-tool-card-bg: #f2f4f6;
+  --app-tool-group-bg: var(--app-tool-card-bg);
+  --app-tool-card-hover-bg: #e9edf2;
+  --app-tool-card-accent: #7b8491;
+  --app-tool-card-muted-action-fg: #aeb4bd;
+  --app-tool-card-subtitle: #6b7280;
+  --app-code-header-bg: #eceff2;
+  --app-code-header-fg: #717784;
+  --app-code-copy-hover-bg: rgba(17, 24, 39, 0.06);
+  --app-inline-code-border: transparent;
+  --app-inline-code-fg: #2d333b;
+  --app-md-quote-bg: #f1f3f5;
+  --app-md-quote-border: #c9d0d8;
+  --app-md-quote-fg: #525965;
+  --app-md-table-bg: #f5f6f7;
+  --app-md-table-head-bg: #eceff2;
+  --app-reasoning-bg: #f2f4f6;
+  --app-mermaid-node-fill: #f8fbff;
+  --app-mermaid-node-border: #b8cdfd;
+  --app-mermaid-cluster-fill: #eef4ff;
+  --app-mermaid-text: #2d333b;
+  --app-link-muted: rgba(17, 24, 39, 0.18);
+  --app-scrollbar-thumb: rgba(107, 114, 128, 0.34);
+  --app-scrollbar-thumb-hover: rgba(107, 114, 128, 0.5);
+  --app-search-match-bg: #fef3c7;
+  --app-search-match-fg: #78350f;
+  --app-search-match-outline: #d97706;
+
+  /* Theme-aware colors (light mode defaults) */
+  --app-border: rgba(15, 23, 42, 0.08);
+  --app-divider: rgba(15, 23, 42, 0.08);
+  --app-subtle-bg: rgba(15, 23, 42, 0.04);
+  --app-code-bg: #f5f6f7;
+  --app-inline-code-bg: #ebecef;
+
+  /* Diff colors (light) - from hapi-app */
+  --app-diff-added-bg: #e6ffed;
+  --app-diff-added-text: #24292e;
+  --app-diff-removed-bg: #ffeef0;
+  --app-diff-removed-text: #24292e;
+
+  /* Git status colors (light) */
+  --app-git-staged-color: #34c759;
+  --app-git-unstaged-color: #ff9500;
+  --app-git-deleted-color: #ff3b30;
+  --app-git-renamed-color: #2563eb;
+  --app-git-untracked-color: #8e8e93;
+
+  /* Badge colors (light) */
+  --app-badge-warning-bg: rgba(245, 158, 11, 0.2);
+  --app-badge-warning-text: #b45309;
+  --app-badge-warning-border: rgba(245, 158, 11, 0.3);
+  --app-badge-success-bg: rgba(34, 197, 94, 0.2);
+  --app-badge-success-text: #15803d;
+  --app-badge-success-border: rgba(34, 197, 94, 0.3);
+  --app-badge-error-bg: rgba(239, 68, 68, 0.18);
+  --app-badge-error-text: #b91c1c;
+  --app-badge-error-border: rgba(239, 68, 68, 0.3);
+
+  --app-font-scale: 1;
+  --app-chat-font-size: 0.9375rem;
+  --app-chat-line-height: 1.75rem;
+  --app-message-action-size: 1.125rem;
+}
+
+[data-theme="dark"] {
+  /* Primary colors - override fallbacks for non-Telegram browsers */
+  --app-bg: var(--tg-theme-bg-color, #1c1c1e);
+  --app-fg: var(--tg-theme-text-color, #ffffff);
+  --app-hint: var(--tg-theme-hint-color, #8e8e93);
+  --app-link: var(--tg-theme-link-color, #ffffff);
+  --app-button: var(--tg-theme-button-color, #ffffff);
+  --app-button-text: var(--tg-theme-button-text-color, #111827);
+  --app-banner-bg: var(--tg-theme-button-color, #3a3a3c);
+  --app-banner-text: var(--tg-theme-button-text-color, #ffffff);
+  --app-secondary-bg: var(--tg-theme-secondary-bg-color, #2c2c2e);
+
+  --app-dialog-bg: #202226;
+  --app-chat-user-bg: #2b2f34;
+  --app-chat-user-surface-bg: var(--app-chat-user-bg);
+  --app-chat-user-fg: #f5f7fa;
+  --app-chat-user-chip-bg: rgba(37, 99, 235, 0.22);
+  --app-chat-user-chip-fg: #93c5fd;
+  --app-chat-user-chip-action-bg: #171f32;
+  --app-chat-user-chip-action-fg: #7088aa;
+  --app-chat-user-chip-action-hover-fg: #f87171;
+  --app-tool-card-bg: #2b2f34;
+  --app-tool-group-bg: var(--app-tool-card-bg);
+  --app-tool-card-hover-bg: #343a41;
+  --app-tool-card-accent: #b8c0cb;
+  --app-tool-card-muted-action-fg: #7f8792;
+  --app-tool-card-subtitle: #b3bac5;
+  --app-code-header-bg: #353b43;
+  --app-code-header-fg: #c4cbd6;
+  --app-code-copy-hover-bg: rgba(255, 255, 255, 0.08);
+  --app-inline-code-border: transparent;
+  --app-inline-code-fg: #f5f7fa;
+  --app-md-quote-bg: #31363d;
+  --app-md-quote-border: #6b7481;
+  --app-md-quote-fg: #d7dde6;
+  --app-md-table-bg: #2a2f35;
+  --app-md-table-head-bg: #353b43;
+  --app-reasoning-bg: #2b3036;
+  --app-mermaid-node-fill: #323843;
+  --app-mermaid-node-border: #7aa2ff;
+  --app-mermaid-cluster-fill: #2d3440;
+  --app-mermaid-text: #edf1f5;
+  --app-link-muted: rgba(255, 255, 255, 0.2);
+  --app-scrollbar-thumb: rgba(196, 203, 214, 0.28);
+  --app-scrollbar-thumb-hover: rgba(196, 203, 214, 0.42);
+  --app-search-match-bg: rgba(250, 204, 21, 0.3);
+  --app-search-match-fg: #fef08a;
+  --app-search-match-outline: #facc15;
+
+  --app-border: rgba(255, 255, 255, 0.08);
+  --app-divider: rgba(255, 255, 255, 0.08);
+  --app-subtle-bg: rgba(255, 255, 255, 0.05);
+  --app-code-bg: #2a2f35;
+  --app-inline-code-bg: #383e47;
+
+  /* Diff colors (dark) - from hapi-app */
+  --app-diff-added-bg: #0d2e1f;
+  --app-diff-added-text: #c9d1d9;
+  --app-diff-removed-bg: #3f1b23;
+  --app-diff-removed-text: #c9d1d9;
+
+  /* Git status colors (dark) */
+  --app-git-staged-color: #4ade80;
+  --app-git-unstaged-color: #f59e0b;
+  --app-git-deleted-color: #f87171;
+  --app-git-renamed-color: #60a5fa;
+  --app-git-untracked-color: #9ca3af;
+
+  /* Badge colors (dark) */
+  --app-badge-warning-bg: rgba(251, 191, 36, 0.2);
+  --app-badge-warning-text: #fbbf24;
+  --app-badge-warning-border: rgba(251, 191, 36, 0.3);
+  --app-badge-success-bg: rgba(74, 222, 128, 0.2);
+  --app-badge-success-text: #4ade80;
+  --app-badge-success-border: rgba(74, 222, 128, 0.3);
+  --app-badge-error-bg: rgba(248, 113, 113, 0.2);
+  --app-badge-error-text: #fca5a5;
+  --app-badge-error-border: rgba(248, 113, 113, 0.35);
+}

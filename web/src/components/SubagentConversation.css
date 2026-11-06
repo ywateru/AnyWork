@@ -1,0 +1,82 @@
+.anywork-workbench .subagent-conversation {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--text);
+}
+.anywork-workbench .subagent-conversation-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  min-height: 48px;
+  flex-shrink: 0;
+}
+.anywork-workbench .subagent-conversation-heading > div {
+  flex: 1;
+  min-width: 0;
+}
+.anywork-workbench .subagent-conversation-heading h2 {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+  line-height: 20px;
+}
+.anywork-workbench .subagent-conversation-heading > div > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.anywork-workbench .subagent-conversation-scroll {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  padding: 18px 22px;
+  font-size: 14px;
+}
+.anywork-workbench .subagent-conversation-scroll .conversation-turn {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 768px;
+}
+.anywork-workbench .subagent-conversation-empty {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted);
+  padding: 18px 0;
+}
+.anywork-workbench .subagent-conversation-empty p {
+  margin: 0 0 12px;
+}
+.anywork-workbench .subagent-objective {
+  white-space: pre-wrap;
+  color: var(--text);
+}
+@media (max-width: 720px) {
+  .anywork-workbench .subagent-conversation-scroll {
+    padding: 16px;
+  }
+  .anywork-workbench .subagent-conversation-heading {
+    padding: 10px 12px;
+  }
+}
+
+.anywork-workbench .subagent-composer-area {
+  flex-shrink: 0;
+  padding: 8px 16px 16px;
+}
+.anywork-workbench .subagent-requests {
+  flex-shrink: 0;
+  padding: 0 16px;
+  max-height: 45%;
+  overflow: auto;
+}
+.anywork-workbench .subagent-conversation .composer .prompt-editor {
+  min-height: 72px;
+}

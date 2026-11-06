@@ -1,0 +1,24 @@
+{
+  "name": "anywork-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "workspaces": [
+    "web",
+    "desktop/ui"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w web",
+    "typecheck": "npm run typecheck -w web",
+    "test": "npm run test -w web",
+    "test:e2e": "playwright test",
+    "format": "prettier --write web/src web/scripts web/vite.config.ts e2e playwright.config.ts",
+    "format:check": "prettier --check web/src web/scripts web/vite.config.ts e2e playwright.config.ts",
+    "build:desktop-ui": "npm run build -w anywork-desktop-ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "prettier": "^3.9.10"
+  }
+}

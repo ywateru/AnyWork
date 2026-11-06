@@ -1,0 +1,8 @@
+<resources>
+    <style name="AppTheme" parent="RemoteAgentBaseTheme">
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+    <style name="ConnectionTheme" parent="ConnectionBaseTheme">
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

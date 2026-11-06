@@ -1,0 +1,445 @@
+mod api;
+mod catalog;
+mod clients;
+mod composer;
+mod control;
+#[cfg(unix)]
+mod desktop;
+#[cfg(unix)]
+mod desktop_ipc;
+#[cfg(unix)]
+mod desktop_observer;
+#[cfg(unix)]
+mod desktop_state;
+mod editing;
+mod feedback;
+mod files;
+mod native_app_input;
+mod native_image_context;
+mod observer;
+mod review;
+mod runtime;
+mod store;
+mod terminal;
+mod user_text;
+
+use anyhow::{Context, Result};
+use axum::{
+    Json, Router,
+    extract::{DefaultBodyLimit, State},
+    http::{HeaderValue, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    routing::{get, post},
+};
+use clap::{CommandFactory, FromArgMatches, Parser};
+use remote_agent_sdk::{AgentPlugin, PluginManifest};
+use serde_json::json;
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+use store::{Session, Store};
+use subtle::ConstantTimeEq;
+use tokio::sync::{Mutex, Notify};
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+    trace::TraceLayer,
+};
+
+#[derive(Parser, Debug)]
+#[command(name = "anywork", version, about = "AnyWork — your agents, anywhere")]
+struct Args {
+    #[arg(long, env = "ANYWORK_CODEX_DISCOVERY", default_value_t = true, action = clap::ArgAction::Set)]
+    codex_discovery: bool,
+    /// Discover every local Codex project, or restrict history to --workspace.
+    #[arg(
+        long,
+        env = "ANYWORK_CODEX_SCOPE",
+        value_enum,
+        default_value = "workspace"
+    )]
+    codex_scope: CodexScope,
+    /// Existing desktop owner/follower socket; overrides desktop-host.json.
+    #[arg(long, env = "ANYWORK_DESKTOP_IPC_SOCKET")]
+    desktop_ipc_socket: Option<PathBuf>,
+    #[arg(long, env = "ANYWORK_BIND", default_value = "127.0.0.1:3210")]
+    bind: String,
+    /// Accept Cloudflare client IP only from a loopback proxy.
+    #[arg(long, default_value_t = false)]
+    trust_local_proxy: bool,
+    #[arg(long, env = "ANYWORK_WORKSPACE", default_value = ".")]
+    workspace: PathBuf,
+    #[arg(long, env = "ANYWORK_DATA", default_value = ".anywork")]
+    data_dir: PathBuf,
+    #[arg(long, env = "ANYWORK_WEB", default_value = "web/dist")]
+    web_dir: PathBuf,
+    #[arg(long, env = "ANYWORK_PLUGINS", default_value = "plugins")]
+    plugins_dir: PathBuf,
+    #[arg(long, env = "ANYWORK_TOKEN")]
+    token: Option<String>,
+    #[arg(
+        long,
+        env = "ANYWORK_ORIGINS",
+        value_delimiter = ',',
+        default_value = "http://localhost:5173,http://127.0.0.1:5173,https://appassets.androidplatform.net"
+    )]
+    origins: Vec<String>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+enum CodexScope {
+    Workspace,
+    All,
+}
+impl Args {
+    fn parse_compatible() -> Self {
+        let mut command = Self::command();
+        for (argument, current, legacy) in [
+            (
+                "codex_discovery",
+                "ANYWORK_CODEX_DISCOVERY",
+                "REMOTE_AGENT_CODEX_DISCOVERY",
+            ),
+            ("bind", "ANYWORK_BIND", "REMOTE_AGENT_BIND"),
+            ("workspace", "ANYWORK_WORKSPACE", "REMOTE_AGENT_WORKSPACE"),
+            ("data_dir", "ANYWORK_DATA", "REMOTE_AGENT_DATA"),
+            ("web_dir", "ANYWORK_WEB", "REMOTE_AGENT_WEB"),
+            ("plugins_dir", "ANYWORK_PLUGINS", "REMOTE_AGENT_PLUGINS"),
+            ("token", "ANYWORK_TOKEN", "REMOTE_AGENT_TOKEN"),
+            ("origins", "ANYWORK_ORIGINS", "REMOTE_AGENT_ORIGINS"),
+        ] {
+            if std::env::var_os(current).is_none() && std::env::var_os(legacy).is_some() {
+                command = command.mut_arg(argument, |arg| arg.env(legacy));
+            }
+        }
+        // Reuse the existing database, credentials and uploads without moving user data.
+        if !std::path::Path::new(".anywork").exists()
+            && std::path::Path::new(".remote-agent").is_dir()
+        {
+            command = command.mut_arg("data_dir", |arg| arg.default_value(".remote-agent"));
+        }
+        let matches = command.get_matches();
+        Self::from_arg_matches(&matches).unwrap_or_else(|error| error.exit())
+    }
+}
+pub struct App {
+    catalog: Mutex<catalog::Catalog>,
+    codex_discovery: bool,
+    codex_scope: CodexScope,
+    #[cfg(unix)]
+    desktop_ipc_socket: Option<PathBuf>,
+    #[cfg(unix)]
+    desktop_statuses: Mutex<desktop_observer::Statuses>,
+    store: Store,
+    workspace: PathBuf,
+    data_dir: PathBuf,
+    token: String,
+    clients: clients::Clients,
+    trust_local_proxy: bool,
+    plugins: HashMap<String, PluginManifest>,
+    runtimes: Mutex<HashMap<String, Arc<runtime::Runtime>>>,
+    gates: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    changed: Notify,
+    origins: Vec<String>,
+    stopping: AtomicBool,
+    shutdown: Notify,
+}
+impl App {
+    fn session(&self, id: &str) -> Result<Session> {
+        let s = self.store.session(id)?;
+        self.session_directory(&s.cwd, s.external)?;
+        Ok(s)
+    }
+    fn session_directory(&self, cwd: &str, external: bool) -> Result<PathBuf> {
+        let path = if external && self.codex_scope == CodexScope::All {
+            let path = PathBuf::from(cwd);
+            anyhow::ensure!(path.is_absolute(), "Invalid Codex working directory");
+            match path.canonicalize() {
+                Ok(path) => path,
+                // A removed worktree must not hide its conversation history.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(path),
+                Err(error) => return Err(error.into()),
+            }
+        } else {
+            files::within(&self.workspace, &PathBuf::from(cwd))?
+        };
+        anyhow::ensure!(path.is_dir(), "Workspace must be a directory");
+        Ok(path)
+    }
+    fn authorized(&self, token: &str) -> bool {
+        self.token.as_bytes().ct_eq(token.as_bytes()).into()
+    }
+}
+pub struct ApiError(anyhow::Error);
+impl<E> From<E> for ApiError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(e: E) -> Self {
+        Self(e.into())
+    }
+}
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let message = self.0.to_string();
+        let status = if message.contains("not found") {
+            StatusCode::NOT_FOUND
+        } else if message.contains("outside") {
+            StatusCode::FORBIDDEN
+        } else if message.contains("busy") || message.contains("pending") {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        (status, Json(json!({"error":message}))).into_response()
+    }
+}
+async fn auth(State(app): State<Arc<App>>, req: axum::extract::Request, next: Next) -> Response {
+    let token = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .unwrap_or("");
+    if !app.authorized(token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error":"Invalid access token"})),
+        )
+            .into_response();
+    }
+    if let Some(peer) = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+    {
+        app.clients
+            .record(req.headers(), peer.0, app.trust_local_proxy);
+    }
+    next.run(req).await
+}
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "anywork=info,tower_http=info".into()),
+        )
+        .init();
+    let args = Args::parse_compatible();
+    let workspace = args
+        .workspace
+        .canonicalize()
+        .context("Workspace directory does not exist")?;
+    std::fs::create_dir_all(&args.data_dir)?;
+    let data_dir = args.data_dir.canonicalize()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&data_dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let token_path = data_dir.join("access-token");
+    let token = match args.token {
+        Some(t) => t,
+        None => match std::fs::read_to_string(&token_path) {
+            Ok(t) => t.trim().into(),
+            Err(_) => {
+                let t = format!(
+                    "{}{}",
+                    uuid::Uuid::new_v4().simple(),
+                    uuid::Uuid::new_v4().simple()
+                );
+                use std::io::Write;
+                let mut options = std::fs::OpenOptions::new();
+                options.write(true).create_new(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                let mut f = options.open(&token_path)?;
+                f.write_all(t.as_bytes())?;
+                t
+            }
+        },
+    };
+    anyhow::ensure!(
+        token.len() >= 16,
+        "Access token must contain at least 16 characters"
+    );
+    let mut plugins = HashMap::new();
+    let codex = remote_agent_codex::CodexPlugin.manifest();
+    plugins.insert(codex.id.clone(), codex);
+    if args.plugins_dir.exists() {
+        for file in std::fs::read_dir(&args.plugins_dir)? {
+            let path = file?.path();
+            if path.extension().is_some_and(|e| e == "json") {
+                let manifest: PluginManifest = serde_json::from_slice(&std::fs::read(&path)?)
+                    .with_context(|| format!("Invalid plugin {}", path.display()))?;
+                anyhow::ensure!(
+                    manifest.protocol_version == 1,
+                    "Unsupported plugin version: {}",
+                    manifest.id
+                );
+                anyhow::ensure!(
+                    !manifest.id.is_empty() && !plugins.contains_key(&manifest.id),
+                    "Duplicate or empty plugin id"
+                );
+                plugins.insert(manifest.id.clone(), manifest);
+            }
+        }
+    }
+    let app = Arc::new(App {
+        catalog: Mutex::new(catalog::Catalog::default()),
+        codex_discovery: args.codex_discovery,
+        codex_scope: args.codex_scope,
+        #[cfg(unix)]
+        desktop_ipc_socket: desktop::configured(&data_dir, args.desktop_ipc_socket)?,
+        #[cfg(unix)]
+        desktop_statuses: Default::default(),
+        store: Store::open(&data_dir.join("remote-agent.sqlite"))?,
+        workspace,
+        data_dir,
+        token,
+        clients: Default::default(),
+        trust_local_proxy: args.trust_local_proxy,
+        plugins,
+        runtimes: Mutex::new(HashMap::new()),
+        gates: Mutex::new(HashMap::new()),
+        changed: Notify::new(),
+        stopping: AtomicBool::new(false),
+        shutdown: Notify::new(),
+        origins: args.origins.clone(),
+    });
+    api::start_queue_worker(app.clone());
+    #[cfg(unix)]
+    desktop_observer::start(&app);
+    let api = Router::new()
+        .route("/info", get(api::info))
+        .route("/clients", get(clients::list))
+        .route("/clients/heartbeat", post(clients::heartbeat))
+        .route("/plugins", get(api::plugins))
+        .route("/workspaces", get(catalog::workspaces))
+        .route("/sessions", get(api::sessions).post(api::create))
+        .route("/events", get(api::all_events))
+        .route("/events/poll", get(api::poll_all_events))
+        .route(
+            "/sessions/{id}",
+            get(api::session).patch(api::update).delete(api::remove),
+        )
+        .route("/sessions/{id}/messages", post(api::message))
+        .route("/sessions/{id}/edit", get(editing::get).post(editing::post))
+        .route(
+            "/sessions/{id}/edit/{operation_id}",
+            axum::routing::delete(editing::cancel),
+        )
+        .route(
+            "/sessions/{id}/queue",
+            get(api::queue_get).post(api::queue_action),
+        )
+        .route("/sessions/{id}/history", get(catalog::read_history))
+        .route("/sessions/{id}/history/item", get(catalog::history_item))
+        .route("/sessions/{id}/fork", post(catalog::fork))
+        .route("/sessions/{id}/interrupt", post(api::interrupt))
+        .route("/sessions/{id}/connect", post(api::connect))
+        .route("/sessions/{id}/respond", post(api::respond))
+        .route("/sessions/{id}/events", get(api::events))
+        .route("/sessions/{id}/events/poll", get(api::poll_events))
+        .route("/sessions/{id}/export", get(api::export))
+        .route("/sessions/{id}/models", get(api::models))
+        .route("/sessions/{id}/feedback", get(feedback::list))
+        .route(
+            "/sessions/{id}/feedback/{message_id}",
+            get(feedback::read)
+                .put(feedback::write)
+                .delete(feedback::delete)
+                .layer(DefaultBodyLimit::max(64 * 1024)),
+        )
+        .route(
+            "/sessions/{id}/composer",
+            get(composer::read).post(composer::update),
+        )
+        .route("/sessions/{id}/files", get(files::list).put(files::write))
+        .route("/sessions/{id}/uploads", post(files::upload))
+        .route("/sessions/{id}/image", get(files::image))
+        .route("/sessions/{id}/document", get(files::document))
+        .route("/sessions/{id}/git", get(files::git))
+        .route("/sessions/{id}/review", get(review::read))
+        .route("/sessions/{id}/review/commits", get(review::commits))
+        .layer(middleware::from_fn_with_state(app.clone(), auth));
+    let origins = args
+        .origins
+        .iter()
+        .map(|s| s.parse::<HeaderValue>())
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let cors = CorsLayer::new()
+        .allow_origin(origins)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PATCH,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+        ])
+        .allow_headers([
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderName::from_static("x-anywork-client-id"),
+        ]);
+    let router = Router::new()
+        .nest("/api", api)
+        .route(
+            "/api/health",
+            get(|| async { Json(json!({"status":"ok","version":env!("CARGO_PKG_VERSION")})) }),
+        )
+        .route("/ws/terminal/{id}", get(terminal::upgrade))
+        .route_service("/source", ServeFile::new("artifacts/anywork-source.tar.gz"))
+        .fallback_service(
+            ServeDir::new(&args.web_dir)
+                .not_found_service(ServeFile::new(args.web_dir.join("index.html"))),
+        )
+        .layer(DefaultBodyLimit::max(22 * 1024 * 1024))
+        .layer(cors)
+        .layer(TraceLayer::new_for_http())
+        .with_state(app.clone());
+    let listener = tokio::net::TcpListener::bind(&args.bind).await?;
+    tracing::info!(
+        "AnyWork listening at http://{}; access token file: {}",
+        listener.local_addr()?,
+        token_path.display()
+    );
+    let shutdown_app = app.clone();
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        #[cfg(unix)]
+        {
+            let mut terminate =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("signal handler");
+            tokio::select! {_=tokio::signal::ctrl_c()=>{},_=terminate.recv()=>{}}
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+        shutdown_app.stopping.store(true, Ordering::Relaxed);
+        shutdown_app.shutdown.notify_waiters();
+        shutdown_app.changed.notify_waiters();
+        for rt in shutdown_app.runtimes.lock().await.values() {
+            rt.rpc.close().await;
+        }
+    })
+    .await?;
+    for rt in app.runtimes.lock().await.values() {
+        rt.rpc.close().await;
+    }
+    app.catalog.lock().await.close().await;
+    Ok(())
+}
