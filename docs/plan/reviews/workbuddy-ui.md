@@ -1,6 +1,6 @@
 # WorkBuddy identity and launcher independent review
 
-Verdict: **PASS for the committed UI and source-launcher scope**, with one non-blocking loading UX finding. This is not acceptance of native WorkBuddy interoperability or authorization to release/deploy.
+Initial candidate verdict: **PASS for the committed UI and source-launcher scope**, with one non-blocking loading UX finding. The orchestrator has elected to fix that finding in this delivery; follow-up verification is **pending** until the exact fix commit is reviewed. This is not acceptance of native WorkBuddy interoperability or authorization to release/deploy.
 
 Candidate: `8e17536934ecafb315d50011aa82f41cb995d7f0`, branch `codex/workbuddy-ui`, independently reviewed on 2026-11-07. Contract: [WorkBuddy integration](../../workbuddy-integration.md), [launcher setup](../../workbuddy-launcher.md), and task `/Users/water/work/2026/any-work/docs/plan/tasks/workbuddy-ui.md` from main (the task postdates this candidate's base). The reviewer did not implement product changes.
 
@@ -33,3 +33,7 @@ Browser evidence is under `/private/tmp/anywork-workbuddy-ui-review-results`. Te
 ## Acceptance limits
 
 No actual installed WorkBuddy was launched by this review; native renderer schema, account-backed create/send/streaming, permission handling, model mapping, native profile locking and backend reconnect ownership require the separate native-host/backend review. No version, release, deployment or runtime capability claim is made here. No blocking findings remain in this UI/launcher scope.
+
+## Follow-up status
+
+After this initial review, the orchestrator requested a developer fix for the late-plugin loading finding. Independently re-check the exact follow-up commit for delayed initial plugin loading and preservation of an existing non-empty Agent selection; do not silently choose a different Agent when a deliberate selection disappears. Other initial-candidate evidence above remains valid.
