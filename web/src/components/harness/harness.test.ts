@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatRunDuration } from "./message-chrome";
 import { toolRowModel, toolGlyph } from "./toolRowModel";
+import { toolResultPresentation } from "../../toolPresentation";
 import { splitTurn } from "../../transcript";
 
 const units = {
@@ -86,6 +87,27 @@ describe("extracted Harness conversation adapter", () => {
         status: "completed",
       }),
     ).toEqual({ title: "读取项目说明", summary: "README.md", state: "ok" });
+  });
+  it("keeps authorized local rich result references and suppresses only duplicate Harness text", () => {
+    const item = {
+      source: "deepseek-harness",
+      content: [
+        { type: "text", text: "report" },
+        { type: "localImage", path: "/uploads/view.png" },
+      ],
+      output: "report",
+    };
+    expect(toolResultPresentation(item).output).toBe("");
+    expect(toolResultPresentation(item).blocks[1]).toMatchObject({
+      type: "localImage",
+      path: "/uploads/view.png",
+    });
+    expect(
+      toolResultPresentation({ ...item, output: "additional detail" }).output,
+    ).toBe("additional detail");
+    expect(toolResultPresentation({ ...item, source: "codex" }).output).toBe(
+      "report",
+    );
   });
   it("uses declared tool names for glyphs rather than shell source", () => {
     expect(
