@@ -97,6 +97,11 @@ export default function ModelPicker({
     mutationVersion = useRef(0),
     savingRef = useRef(false),
     restoreTrigger = useRef(false),
+    restoreSpeed = useRef<{
+      session: string;
+      mutation: number;
+      element: HTMLButtonElement;
+    } | null>(null),
     identity = useRef(session.id),
     menuId = useId();
   identity.current = session.id;
@@ -134,6 +139,7 @@ export default function ModelPicker({
     setView("simple");
     setPreviewEffort(null);
     pendingEffort.current = null;
+    restoreSpeed.current = null;
     savingRef.current = false;
     void load(controller.signal);
     return () => {
@@ -211,6 +217,7 @@ export default function ModelPicker({
     selectedTier = tiers.find((tier) => tier.id === currentTier);
 
   const close = useCallback((restoreFocus = false) => {
+    restoreSpeed.current = null;
     setOpen(false);
     setSpeedOpen(false);
     restoreTrigger.current = restoreFocus;
@@ -226,6 +233,47 @@ export default function ModelPicker({
       trigger.current?.focus({ preventScroll: true });
     }
   }, [open, saving]);
+
+  // A frame can run before React commits saving=false. Restore only after the
+  // initiating button is enabled in the DOM, while its interaction still owns
+  // focus. A later user action must never be undone by a save completion.
+  useLayoutEffect(() => {
+    const pending = restoreSpeed.current;
+    if (!pending || saving) return;
+    restoreSpeed.current = null;
+    if (
+      open &&
+      tierEditable &&
+      pending.session === session.id &&
+      pending.mutation === mutationVersion.current &&
+      pending.element === speedTrigger.current &&
+      !pending.element.disabled &&
+      (document.activeElement === document.body ||
+        document.activeElement === pending.element)
+    )
+      pending.element.focus({ preventScroll: true });
+  }, [open, saving, tierEditable, session.id]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const cancel = () => {
+      restoreSpeed.current = null;
+    };
+    const movedFocus = (event: FocusEvent) => {
+      if (event.target !== restoreSpeed.current?.element) cancel();
+    };
+    document.addEventListener("pointerdown", cancel, true);
+    document.addEventListener("keydown", cancel, true);
+    document.addEventListener("focusin", movedFocus, true);
+    window.addEventListener("blur", cancel);
+    return () => {
+      cancel();
+      document.removeEventListener("pointerdown", cancel, true);
+      document.removeEventListener("keydown", cancel, true);
+      document.removeEventListener("focusin", movedFocus, true);
+      window.removeEventListener("blur", cancel);
+    };
+  }, [open, session.id]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -301,6 +349,7 @@ export default function ModelPicker({
       close?: boolean;
       nextView?: "simple" | "advanced";
       slider?: boolean;
+      focusSpeed?: boolean;
     } = {},
   ) {
     if (
@@ -323,6 +372,12 @@ export default function ModelPicker({
     if (options.slider && update.effort) setPreviewEffort(update.effort);
     const requestSession = session.id,
       mutation = ++mutationVersion.current;
+    if (options.focusSpeed && open && speedTrigger.current)
+      restoreSpeed.current = {
+        session: requestSession,
+        mutation,
+        element: speedTrigger.current,
+      };
     loadVersion.current++;
     let succeeded = false;
     try {
@@ -528,13 +583,12 @@ export default function ModelPicker({
                     }
                     onClick={() => {
                       if (fastTier)
-                        void change({
-                          service_tier:
-                            currentTier === fastTier.id ? null : fastTier.id,
-                        }).then(() =>
-                          requestAnimationFrame(() =>
-                            speedTrigger.current?.focus(),
-                          ),
+                        void change(
+                          {
+                            service_tier:
+                              currentTier === fastTier.id ? null : fastTier.id,
+                          },
+                          { focusSpeed: true },
                         );
                       else setSpeedOpen((value) => !value);
                     }}
@@ -697,11 +751,8 @@ export default function ModelPicker({
                 aria-checked={currentTier === tier.id}
                 disabled={!tierEditable}
                 onClick={() => {
-                  void change({ service_tier: tier.id }).then(() =>
-                    requestAnimationFrame(() => speedTrigger.current?.focus()),
-                  );
+                  void change({ service_tier: tier.id }, { focusSpeed: true });
                   setSpeedOpen(false);
-                  speedTrigger.current?.focus();
                 }}
               >
                 <span className="model-picker-option-copy">
