@@ -92,10 +92,11 @@ const SUMMARY_KEYS: Record<string, string[]> = {
 export function argumentSummary(name: string, raw: unknown): string {
   let args = raw;
   if (typeof args === "string") {
+    const source = args;
     try {
-      args = JSON.parse(args);
+      args = JSON.parse(source);
     } catch {
-      return args.split("\n", 1)[0];
+      return source.split("\n", 1)[0];
     }
   }
   if (args === null || typeof args !== "object") return "";
