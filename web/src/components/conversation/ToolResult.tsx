@@ -1,8 +1,9 @@
 import { FileText } from "lucide-react";
 import type { Api } from "../../api";
 import { localFileTarget, type FileTarget } from "../../fileLinks";
-import { toolInvocation, toolResultPresentation } from "../../toolPresentation";
+import { toolResultPresentation } from "../../toolPresentation";
 import ImagePreview from "../ImagePreview";
+import RawToolOutput from "./RawToolOutput";
 
 export default function ToolResult({
   item,
@@ -20,7 +21,6 @@ export default function ToolResult({
   onOpenFile: (target: FileTarget) => void;
 }) {
   const result = toolResultPresentation(item, output);
-  const invocation = toolInvocation(item);
   const mcp = ["mcpToolCall", "dynamicToolCall"].includes(item.type);
   function resource(block: Record<string, any>) {
     const uri = typeof block.uri === "string" ? block.uri : "";
@@ -152,36 +152,7 @@ export default function ToolResult({
               : "工具未返回内容"}
           </p>
         )}
-      {mcp && (
-        <details className="tool-raw-output">
-          <summary>
-            查看原始工具输出
-            {invocation.provider || invocation.tool
-              ? ` · ${[invocation.provider, invocation.tool].filter(Boolean).join(".")}`
-              : ""}
-          </summary>
-          <pre>
-            {JSON.stringify(
-              {
-                callId: item.id ?? item.callId,
-                invocation: item.invocation ?? {
-                  server: item.server ?? item.namespace,
-                  tool: item.tool ?? item.functionName,
-                  arguments: invocation.arguments,
-                },
-                durationMs: item.durationMs,
-                result:
-                  item.result ??
-                  (item.error != null
-                    ? { error: item.error }
-                    : (item.contentItems ?? null)),
-              },
-              null,
-              2,
-            )}
-          </pre>
-        </details>
-      )}
+      {mcp && <RawToolOutput item={item} />}
     </div>
   );
 }

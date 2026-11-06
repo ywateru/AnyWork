@@ -49,7 +49,7 @@
 
 原`mcp-tool-item-content.va`把结果分成content blocks、structuredContent、error和无结果；图片最多48spacing高度并支持查看器；文本保留换行；resource_link与resource单独显示。原`Ta`识别唯一、无annotations、内容是JSON对象/数组的text block，避免与structured JSON重复。原raw output入口独立，展开/打开后才构造`{callId, invocation, durationMs, result}`，普通结果不直接显示整个事件对象。
 
-AnyWork保留history/item按需加载与取消/重试，展开后显示真实content block或错误；JSON单文本去重、纯文本、图片、音频、可打开的本地资源/HTTP链接及structured JSON已实现，raw output另有独立disclosure。原包raw使用模态dialog；当前Web使用内联details。这是明确的交互适配差异。未知MCP自定义URI只显示资源引用，不发起伪造文件读取；未知block显示其结构。MCP App iframe/widget、provider专门输出及全部annotations未在本轮完整移植。
+AnyWork保留history/item按需加载与取消/重试，展开后显示真实content block或错误；JSON单文本去重、纯文本、图片、音频、可打开的本地资源/HTTP链接及structured JSON已实现，raw output通过独立图标按钮打开模态dialog，替换原内联details；只有打开后才序列化原始调用。未知MCP自定义URI只显示资源引用，不发起伪造文件读取；未知block显示其结构。MCP App iframe/widget、provider专门输出及全部annotations未在本轮完整移植。
 
 ## 子Agent调用与活动行
 
@@ -65,6 +65,25 @@ AnyWork的`ActivityNavigationContext`由主界面提供可打开条件与打开�
 
 `web/src/toolPresentation.test.ts`包含相邻分组、prose隔断、live/error分离、provider去重和参数不进入摘要、声明标签、同名Agent身份、路径名称、structured JSON去重、错误和command output检查。`e2e/tool-activity.spec.ts`在隔离fixture中拦截所有API，对任何非heartbeat POST直接失败，验证桌面与移动视口下的聚合摘要、history详情只在展开时加载、JSON无重复、子Agent完成/发送活动、动作展开、错误展示、flat样式与横向不溢出。
 
-验证通过描述仅适用于AnyWork的fixture，不代表原应用运行态或真实provider端到端行为。原包所有provider定制文本、MCP App/widget、工作过程全部自动折叠时序、动画滚动锚定、全部附件annotation、原raw dialog及真实账号对应显示偏好仍是剩余差距，不能把这一轮称作全量1:1验收。
+验证通过描述仅适用于AnyWork的fixture，不代表原应用运行态或真实provider端到端行为。原包所有provider定制文本、MCP App/widget、工作过程全部自动折叠时序、动画滚动锚定、全部附件annotation、原JSON代码组件的完整高亮与真实账号对应显示偏好仍是剩余差距，不能把这一轮称作全量1:1验收。
 
 2026-11-06 本轮实测：TypeScript typecheck通过；工具与transcript专项16条Vitest通过；使用本机已安装Chrome、隔离网页构建与fixture Server的6条Playwright通过（desktop/android-web各覆盖新工具活动、既有历史分页/懒加载、既有工作过程平面分组）。默认Playwright headless缓存不存在，因此没有下载浏览器，改用`PLAYWRIGHT_CHANNEL=chrome`。截图存于`/private/tmp/anywork-tool-activity-desktop.png`及`/private/tmp/anywork-tool-activity-android-web.png`，均为AnyWork fixture，不含真实会话数据。
+
+
+## 2026-11-06 更新验收后的原始输出弹窗修补
+
+复用同一只读ASAR身份后，对 `mcp-tool-item-content-2a8a0f3f9d98.js` 聚焦分析：父 Evidence `ev_1b0977336924f0eaaa31f66441f716569df85552ab28886852bcf0cc4c1b5cda`，摘要 `ev_4f4e57a8007e45cf045e58bcddfb45c1edb2de9cbdb4827f457167d777caaba5`。1个JavaScript成员解析成功、0个parse failure；语义节点6000/unknown500上限导致partial，另有16322个清单文件未选择，不构成负面证据。包内七个无关native完整性矛盾仍按record-and-continue保留，未执行它们。
+
+原模块静态观察：`Ln` 为打开状态；关闭时raw JSON为null，打开后构造 `{callId, invocation, durationMs, result}`（2空格缩进）。触发器为ghost icon button，hover/focus时可见，tooltip为“Show raw tool call output”。打开的是带工具名heading的modal，代码容器 `max-h-128 overflow-auto`，复制动作位于代码组件上方固定区域。这里是包内静态行为，不是原应用动态观察。
+
+补充共享布局成员（独立ASAR字节读取，未声称在该单模块REA语义图内）：`app-shared-52443cbe9ac4.js`，5846882字节，SHA-256 `64e2b99444d28f5a0067e309a56912749763af09f9b27f083fce2d702a2b9fc3`。`jSn/ASn` 默认dialog宽 `w-130`（520px）；`app-shared-dc7535e633d7.css` 的body padding为 `spacing*5`（20px），section间距 `spacing*3`（12px）。圆角、遮罩及具体字体采用AnyWork现有主题实现，不把这些值宣称为截图像素测量。
+
+AnyWork新增 `RawToolOutput.tsx`：图标打开原生dialog并portal到body，默认宽520px、内边距20px、段间距12px、代码区最高512px，窄屏保留两侧16px并在代码区内部滚动。完整载荷优先采用真正的 `callId`，不再用UI item id覆盖它。工具详情仍按需读取，不额外发起执行请求。对触屏保持入口可见并增大按钮点击范围，是移动Web适配选择。
+
+原生modal阻止背景交互；补充Tab边界循环，关闭按钮、Escape和真正的遮罩点击都可关闭，关闭后恢复触发器焦点及body滚动。内容选取拖到遮罩不会误关闭。JSON支持复制及剪贴板不可用提示，弹窗跟随现有外观设置。JSON暂为可选取文本，尚未移植原代码组件的完整语法高亮，也未宣称完成MCP App、provider widget或全部1:1差异。
+
+新增隔离浏览器验收覆盖真实callId/参数/结果、初始不创建dialog、焦点循环、复制成功及失败、三种关闭方式、重复打开、选取拖拽、320px窄屏长输出和深色主题。与原工具分组及子Agent活动fixture一起运行，全部接口拦截且拒绝任何非heartbeat POST，不向真实Codex发送消息。
+
+修补后实测：Web TypeScript及生产构建通过；工具呈现与transcript的16项Vitest通过；工具活动Playwright共6项（两个视口各3项）通过，既有工作过程平面分组回归2项通过。截图为AnyWork隔离fixture，保存在 `/private/tmp/anywork-raw-output-validation/`；没有将原包JavaScript或真实会话数据加入仓库。
+
+此补丁位于后续main源码，**不属于已经发布的v0.1.2附件**；不会覆盖旧发行版本。

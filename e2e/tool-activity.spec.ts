@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function fixture(page: Page) {
+async function fixture(page: Page, longOutput = false) {
   const now = Date.now();
   const session = {
     id: "tools-fixture",
@@ -123,8 +123,15 @@ async function fixture(page: Page) {
       requests.push(path);
       data = {
         item: item("notes", "mcpToolCall", {
+          callId: "provider-call-notes",
           server: "Notes",
           tool: "read_page",
+          durationMs: 125,
+          invocation: {
+            server: "Notes",
+            tool: "read_page",
+            arguments: { page: "fixture" },
+          },
           result: {
             type: "success",
             content: [
@@ -133,7 +140,18 @@ async function fixture(page: Page) {
                 text: '{"title":"Fixture notes","verified":true}',
               },
             ],
-            structuredContent: { title: "Fixture notes", verified: true },
+            structuredContent: {
+              title: "Fixture notes",
+              verified: true,
+              ...(longOutput
+                ? {
+                    lines: Array.from(
+                      { length: 400 },
+                      (_, i) => `line-${i}: ${"output ".repeat(60)}`,
+                    ),
+                  }
+                : {}),
+            },
           },
         }),
       };
@@ -179,8 +197,9 @@ test("native activity groups, lazy MCP output and subagent events remain flat an
   expect(requests).toHaveLength(1);
   await expect(notes.locator(".tool-text-output")).toHaveCount(0);
   await expect(
-    notes.getByText("查看原始工具输出 · Notes.read_page", { exact: true }),
+    notes.getByRole("button", { name: "查看原始工具输出", exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   const event = page.locator('[data-message-id="finished"]');
   await expect(event).toContainText("Native ui research 已完成");
   await expect(page.locator('[data-message-id="sent"]')).toContainText(
@@ -214,4 +233,155 @@ test("native activity groups, lazy MCP output and subagent events remain flat an
     path: info.outputPath(`tool-activity-${info.project.name}.png`),
     fullPage: true,
   });
+});
+
+async function openRawOutput(page: Page, longOutput = false) {
+  await fixture(page, longOutput);
+  await page.locator(".turn-disclosure").click();
+  await page
+    .locator(".activity-group")
+    .first()
+    .locator(":scope > summary")
+    .click();
+  const notes = page.locator('[data-message-id="notes"]');
+  await notes.locator(":scope > summary").click();
+  const trigger = notes.getByRole("button", {
+    name: "查看原始工具输出",
+    exact: true,
+  });
+  await trigger.hover();
+  await trigger.click();
+  return { trigger, dialog: page.getByRole("dialog") };
+}
+
+test("raw output modal preserves payload, traps focus, copies and closes without changing the chat", async ({
+  page,
+}, info) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          if ((window as any).rejectFixtureCopy)
+            throw new Error("fixture clipboard denied");
+          (window as any).copiedFixtureOutput = value;
+        },
+      },
+    });
+  });
+  const { trigger, dialog } = await openRawOutput(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("heading")).toHaveText(
+    "原始 Notes.read_page 工具输出",
+  );
+  const payload = dialog.getByLabel("原始工具调用 JSON");
+  const raw = await payload.textContent();
+  expect(JSON.parse(raw!)).toMatchObject({
+    callId: "provider-call-notes",
+    invocation: {
+      server: "Notes",
+      tool: "read_page",
+      arguments: { page: "fixture" },
+    },
+    durationMs: 125,
+    result: { structuredContent: { title: "Fixture notes", verified: true } },
+  });
+  const close = dialog.getByRole("button", { name: "关闭原始工具输出" });
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(payload).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await dialog
+    .getByRole("button", { name: "复制原始输出", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "已复制原始输出" }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => (window as any).copiedFixtureOutput)).toBe(
+    raw,
+  );
+  await page.screenshot({
+    path: info.outputPath(`raw-output-${info.project.name}.png`),
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe(
+    "hidden",
+  );
+
+  await trigger.click();
+  await expect(
+    dialog.getByRole("button", { name: "复制原始输出", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    (window as any).rejectFixtureCopy = true;
+  });
+  await dialog
+    .getByRole("button", { name: "复制原始输出", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "无法访问剪贴板，请选择下方内容复制。",
+  );
+  await close.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  const bounds = (await payload.boundingBox())!;
+  await page.mouse.move(bounds.x + 20, bounds.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(4, 4);
+  await page.mouse.up();
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(4, 4);
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+test("raw output stays scrollable within a small viewport and follows the dark theme", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  const { dialog } = await openRawOutput(page, true);
+  const geometry = await dialog.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const pre = node.querySelector("pre")!;
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      outputHeight: pre.clientHeight,
+      contentHeight: pre.scrollHeight,
+      outputWidth: pre.clientWidth,
+      contentWidth: pre.scrollWidth,
+    };
+  });
+  expect(geometry.left).toBeGreaterThanOrEqual(16);
+  expect(geometry.right).toBeLessThanOrEqual(304);
+  expect(geometry.top).toBeGreaterThanOrEqual(16);
+  expect(geometry.bottom).toBeLessThanOrEqual(624);
+  expect(geometry.outputHeight).toBeLessThanOrEqual(512);
+  expect(geometry.contentHeight).toBeGreaterThan(geometry.outputHeight);
+  expect(geometry.contentWidth).toBeGreaterThan(geometry.outputWidth);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const colors = await dialog.evaluate((node) => ({
+    background: getComputedStyle(node).backgroundColor,
+    expected: getComputedStyle(document.documentElement)
+      .getPropertyValue("--app-dialog-bg")
+      .trim(),
+  }));
+  expect(colors.expected).toBe("#212121");
+  expect(colors.background).toBe("rgb(33, 33, 33)");
+  await dialog.getByRole("button", { name: "关闭原始工具输出" }).click();
+  await expect(dialog).toHaveCount(0);
 });

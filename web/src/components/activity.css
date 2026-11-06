@@ -182,20 +182,136 @@
 .tool-empty-output {
   margin: 0;
 }
-.tool-raw-output {
-  margin-top: 8px;
-  font-size: 12px;
-}
-.anywork-workbench .tool-card .tool-raw-output > summary {
-  display: list-item;
-  width: fit-content;
-  min-height: 0;
-  font-size: 12px;
+.anywork-workbench .tool-raw-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  width: 28px;
+  height: 28px;
+  margin-top: 4px;
   padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
 }
-.tool-raw-output pre {
-  margin-top: 8px !important;
+.tool-card:hover .tool-raw-trigger,
+.tool-card:focus-within .tool-raw-trigger,
+.anywork-workbench .tool-raw-trigger:focus-visible {
+  opacity: 1;
+}
+.anywork-workbench .tool-raw-trigger:hover {
+  color: var(--text);
+  background: var(--app-subtle-bg);
+}
+/* Portaled into body: use root theme tokens, independent of workbench styles. */
+.tool-raw-dialog {
+  box-sizing: border-box;
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 20px;
+  overflow: auto;
+  border: 0;
+  border-radius: 16px;
+  color: var(--text);
+  background: var(--app-dialog-bg);
+  box-shadow:
+    0 0 0 0.5px var(--app-border),
+    0 16px 64px rgb(0 0 0 / 20%);
+  font: inherit;
+}
+.tool-raw-dialog::backdrop {
+  background: rgb(0 0 0 / 32%);
+  backdrop-filter: blur(3px);
+}
+.tool-raw-dialog h2 {
+  margin: 0;
+  padding-right: 32px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+.tool-raw-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tool-raw-dialog button:hover {
+  color: var(--text);
+  background: var(--app-code-copy-hover-bg);
+}
+.tool-raw-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+.tool-raw-code {
+  min-width: 0;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--app-code-bg);
+}
+.tool-raw-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 8px 2px 12px;
+  color: var(--app-code-header-fg);
+  background: var(--app-code-header-bg);
+  font-size: 12px;
+}
+.tool-raw-code pre {
+  max-height: min(512px, 100dvh - 180px);
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--app-code-font-size, 12px);
+  line-height: 1.6;
+  white-space: pre;
+  tab-size: 2;
+}
+.tool-raw-copy-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--danger, #b42318);
+}
+.tool-raw-dialog :focus-visible,
+.anywork-workbench .tool-raw-trigger:focus-visible {
+  outline: 2px solid var(--accent, #2680eb);
+  outline-offset: 2px;
+}
+@media (hover: none), (pointer: coarse) {
+  .anywork-workbench .tool-raw-trigger {
+    width: 36px;
+    height: 36px;
+    opacity: 1;
+  }
+  .tool-raw-dialog button {
+    width: 36px;
+    height: 36px;
+  }
+  .tool-raw-dialog h2 {
+    padding-right: 40px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .anywork-workbench .activity-group > summary > svg:last-child {
