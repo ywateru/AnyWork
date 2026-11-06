@@ -1112,6 +1112,17 @@ impl Projection {
                     json!({"data":if state["running"]==true {vec![json!({"id":self.turn.clone().unwrap_or_else(||"harness-active".into()),"status":"inProgress"})]}else{vec![]},"nextCursor":null}),
                 )
             }
+            "anywork/session/state" => {
+                let state = host
+                    .call(
+                        "session/state",
+                        json!({"request":{"sessionId":self.thread}}),
+                    )
+                    .await?;
+                Ok(
+                    json!({"status":if !self.pending.is_empty(){"waiting"}else if state["running"]==true{"running"}else{"idle"},"turnId":if state["running"]==true{Some(self.turn.clone().unwrap_or_else(||"harness-active".into()))}else{None}}),
+                )
+            }
             "thread/read" => {
                 let state = host
                     .call(

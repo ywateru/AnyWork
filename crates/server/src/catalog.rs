@@ -206,7 +206,7 @@ impl Catalog {
             }
         }
         drop(runtimes);
-        app.store.refresh_imports(&imported)?;
+        app.store.refresh_imports("codex", &imported)?;
         Ok(())
     }
     pub async fn refresh_status(&mut self, app: &App, session: &Session) -> Result<Session> {
@@ -481,7 +481,19 @@ pub async fn history_item(
             .into_iter()
             .find(|e| e.seq == seq && e.method == "item/completed")
             .context("History item not found")?;
+        if session.agent == crate::workbuddy::AGENT
+            && event.params["item"]["nativeCallId"].is_string()
+        {
+            let rt = app.ensure_runtime(&session).await?;
+            return Ok(Json(rt.rpc.call("anywork/item/detail",json!({"threadId":session.thread_id,"turnId":event.params["turnId"],"item":event.params["item"]})).await?));
+        }
         return Ok(Json(json!({"item":event.params["item"]})));
+    }
+    if session.agent != "codex" {
+        return Err(anyhow::anyhow!(
+            "Use the stored history event identity for shared-host details"
+        )
+        .into());
     }
     let turn_id = q.turn_id.context("Missing history turn id")?;
     let item_id = q.item_id.context("Missing history item id")?;
@@ -633,7 +645,7 @@ pub async fn read_history(
     Query(q): Query<HistoryQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let s = app.session(&id)?;
-    if s.agent == crate::harness::AGENT {
+    if crate::shared_host::is_shared(&s.agent) {
         let gate = app.gate(&id).await;
         let _lock = gate.lock().await;
         app.ensure_runtime(&s).await?;
@@ -825,13 +837,16 @@ pub async fn fork(
     Ok(Json(json!({"session":s})))
 }
 pub async fn workspaces(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
-    let mut catalog = app.catalog.lock().await;
-    catalog.sync(&app).await;
+    {
+        let mut catalog = app.catalog.lock().await;
+        catalog.sync(&app).await;
+    }
+    let _ = crate::shared_host::sync(&app).await;
     let root = app.workspace.to_string_lossy().to_string();
     let mut counts = HashMap::<String, usize>::new();
     for session in app.store.sessions()? {
         if app
-            .session_directory(&session.cwd, session.external)
+            .session_directory(&session.cwd, session.external && session.agent == "codex")
             .is_ok()
         {
             let count = counts.entry(session.cwd).or_default();

@@ -20,9 +20,11 @@ mod native_image_context;
 mod observer;
 mod review;
 mod runtime;
+mod shared_host;
 mod store;
 mod terminal;
 mod user_text;
+mod workbuddy;
 
 use anyhow::{Context, Result};
 use axum::{
@@ -65,6 +67,8 @@ struct Args {
     harness_token_file: Option<PathBuf>,
     #[arg(long, env = "ANYWORK_HARNESS_DISCOVERY_FILE")]
     harness_discovery_file: Option<PathBuf>,
+    #[arg(long, env = "ANYWORK_WORKBUDDY_DISCOVERY_FILE")]
+    workbuddy_discovery_file: Option<PathBuf>,
     /// Discover every local Codex project, or restrict history to --workspace.
     #[arg(
         long,
@@ -139,6 +143,8 @@ pub struct App {
     catalog: Mutex<catalog::Catalog>,
     harness: Option<harness::Config>,
     harness_sync: Mutex<Option<std::time::Instant>>,
+    workbuddy: workbuddy::Config,
+    workbuddy_sync: Mutex<Option<std::time::Instant>>,
     codex_discovery: bool,
     codex_scope: CodexScope,
     #[cfg(unix)]
@@ -294,7 +300,10 @@ async fn main() -> Result<()> {
         args.harness_token_file.clone(),
         args.harness_discovery_file.clone(),
     )?;
+    let workbuddy = workbuddy::Config::configured(args.workbuddy_discovery_file)?;
     let mut plugins = HashMap::new();
+    let manifest = workbuddy.manifest();
+    plugins.insert(manifest.id.clone(), manifest);
     if let Some(config) = &harness {
         let manifest = config.manifest();
         plugins.insert(manifest.id.clone(), manifest);
@@ -324,6 +333,8 @@ async fn main() -> Result<()> {
         catalog: Mutex::new(catalog::Catalog::default()),
         harness,
         harness_sync: Mutex::new(None),
+        workbuddy,
+        workbuddy_sync: Mutex::new(None),
         codex_discovery: args.codex_discovery,
         codex_scope: args.codex_scope,
         #[cfg(unix)]

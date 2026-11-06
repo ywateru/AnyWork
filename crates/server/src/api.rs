@@ -19,7 +19,7 @@ pub async fn info(State(app): State<Arc<App>>) -> Json<Value> {
 }
 pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"plugins":app.plugins.values().filter(|p|p.id != crate::harness::AGENT || app.harness.as_ref().is_some_and(|h|h.available())).map(|p|json!({"id":p.id,"name":p.name,"capabilities":p.capabilities,"protocol_version":p.protocol_version})).collect::<Vec<_>>()}),
+        json!({"plugins":app.plugins.values().filter(|p|crate::shared_host::available(&app, &p.id)).map(|p|json!({"id":p.id,"name":p.name,"capabilities":p.capabilities,"protocol_version":p.protocol_version})).collect::<Vec<_>>()}),
     )
 }
 /// Read stored state only: an update check must not start discovery or attach engines.
@@ -97,13 +97,15 @@ pub async fn sessions(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiErr
     catalog.sync(&app).await;
     let mut discovery_error = catalog.error.clone();
     drop(catalog);
-    if let Err(error) = crate::harness::sync(&app).await {
-        discovery_error = Some(format!(
-            "{}Harness 会话同步失败：{error}",
+    let errors = crate::shared_host::sync(&app).await;
+    if !errors.is_empty() {
+        discovery_error = Some(
             discovery_error
-                .map(|e| format!("{e}；"))
-                .unwrap_or_default()
-        ));
+                .into_iter()
+                .chain(errors)
+                .collect::<Vec<_>>()
+                .join("；"),
+        );
     }
     let mut sessions = app.store.sessions()?;
     #[cfg(unix)]
@@ -112,6 +114,7 @@ pub async fn sessions(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiErr
         let statuses = app.desktop_statuses.lock().await;
         for session in &mut sessions {
             if session.external
+                && session.agent == "codex"
                 && !runtimes.contains_key(&session.id)
                 && let Some(status) = statuses.get(&session.id)
             {
@@ -159,8 +162,15 @@ pub async fn create(
     if !app.plugins.contains_key(&agent) {
         return Err(anyhow::anyhow!("Plugin is not installed").into());
     }
-    if agent == crate::harness::AGENT {
-        let session = crate::harness::create(&app, &cwd.to_string_lossy(), body.title).await?;
+    if crate::shared_host::is_shared(&agent) {
+        let session = crate::shared_host::create(
+            &app,
+            &agent,
+            &cwd.to_string_lossy(),
+            body.title,
+            body.model,
+        )
+        .await?;
         return Ok(Json(json!({"session": session})));
     }
     let policy = body.policy.unwrap_or_else(|| "manual".into());
@@ -346,8 +356,12 @@ fn validate_message(app: &App, id: &str, body: &Message) -> Result<()> {
     }
     let session = app.session(id)?;
     anyhow::ensure!(
-        !body.goal || session.agent != crate::harness::AGENT,
-        "Harness 目标控制暂未接入，未发送消息"
+        !(session.agent == crate::workbuddy::AGENT && session.auxiliary),
+        "WorkBuddy child conversations are read-only"
+    );
+    anyhow::ensure!(
+        !body.goal || !crate::shared_host::is_shared(&session.agent),
+        "当前 Agent 不支持目标控制，未发送消息"
     );
     for path in &body.attachments {
         attachment_path(app, &session, path)?;
@@ -392,8 +406,8 @@ pub(crate) async fn deliver(
     validate_message(app, id, &body)?;
     let rt = app.ensure_runtime(&s).await?;
     if body.goal {
-        if s.agent == crate::harness::AGENT {
-            return Err(anyhow::anyhow!("Harness 目标控制暂未接入，未发送消息").into());
+        if crate::shared_host::is_shared(&s.agent) {
+            return Err(anyhow::anyhow!("当前 Agent 不支持目标控制，未发送消息").into());
         }
         crate::composer::require_goal_control(&rt, false)?;
     }
@@ -445,7 +459,7 @@ pub(crate) async fn deliver(
         });
         if image {
             input.push(json!({"type":"localImage","path":path}));
-        } else if s.agent == crate::harness::AGENT {
+        } else if crate::shared_host::is_shared(&s.agent) {
             input.push(json!({"type":"localFile","path":path}));
         } else {
             input.push(
@@ -583,6 +597,9 @@ pub async fn interrupt(
     let gate = app.gate(&id).await;
     let _lock = gate.lock().await;
     let s = app.session(&id)?;
+    if s.agent == crate::workbuddy::AGENT && s.auxiliary {
+        return Err(anyhow::anyhow!("WorkBuddy child conversations are read-only").into());
+    }
     app.store.pause_queue(&id, true)?;
     let rt = if s.external {
         app.ensure_runtime(&s).await?
@@ -1030,17 +1047,10 @@ pub fn start_queue_worker(app: Arc<App>) {
                         let Some(thread) = s.thread_id.as_deref() else {
                             return;
                         };
-                        let Ok(state) = rt
-                            .rpc
-                            .call(
-                                "thread/read",
-                                json!({"threadId":thread,"includeTurns":false}),
-                            )
-                            .await
-                        else {
+                        let Ok(state) = crate::runtime::session_state(&rt, thread).await else {
                             return;
                         };
-                        if state["thread"]["status"]["type"] != "idle" {
+                        if state["status"] != "idle" {
                             return;
                         }
                     } else if rt.turn.lock().await.is_some() || s.status != "idle" {

@@ -148,6 +148,10 @@ pub async fn read(
 }
 async fn build(app: &App, id: String, q: ReviewQuery) -> Result<Json<Value>> {
     let session = app.session(&id)?;
+    ensure!(
+        session.agent != crate::workbuddy::AGENT,
+        "WorkBuddy review is not supported"
+    );
     let source = q.source.unwrap_or(Source::Branch);
     if matches!(source, Source::LastTurn) {
         let (turn_id, diff) = app.store.last_turn_diff(&id)?;
@@ -383,6 +387,10 @@ pub async fn commits(
 }
 async fn branch_commits(app: &App, id: String, q: CommitsQuery) -> Result<Json<Value>> {
     let session = app.session(&id)?;
+    ensure!(
+        session.agent != crate::workbuddy::AGENT,
+        "WorkBuddy review is not supported"
+    );
     let mut context = json!({"commits":[],"branches":[]});
     let Some(root) = repository(app, &session, &mut context).await? else {
         return Ok(expected(context, "not-a-repository"));
