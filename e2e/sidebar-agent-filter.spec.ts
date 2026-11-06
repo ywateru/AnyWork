@@ -6,6 +6,7 @@ async function fixture(
   options: {
     saved?: string;
     delay?: boolean;
+    delayPlugins?: boolean;
     empty?: boolean;
     workbuddy?: boolean;
     workbuddyOnly?: boolean;
@@ -65,6 +66,10 @@ async function fixture(
   const pending = new Promise<void>((resolve) => {
     release = resolve;
   });
+  let releasePlugins!: () => void;
+  const pluginsPending = new Promise<void>((resolve) => {
+    releasePlugins = resolve;
+  });
   let firstLoad = true;
   let streamRelease!: () => void;
   const streamPending = new Promise<void>((resolve) => {
@@ -81,7 +86,8 @@ async function fixture(
       if (firstLoad && options.delay) await pending;
       firstLoad = false;
       data = { sessions };
-    } else if (path === "/plugins")
+    } else if (path === "/plugins") {
+      if (options.delayPlugins) await pluginsPending;
       data = {
         plugins: [
           ...(options.workbuddy
@@ -116,7 +122,7 @@ async function fixture(
           (plugin) => !options.workbuddyOnly || plugin.id === "workbuddy",
         ),
       };
-    else if (path === "/info")
+    } else if (path === "/info")
       data = {
         hostname: "Sidebar fixture",
         workspace: "/work",
@@ -193,7 +199,7 @@ async function fixture(
     localStorage.setItem("sidebar-fixture-initialized", "true");
   }, options);
   await page.goto("/#codex-newest");
-  return { release, streamRelease, writes, sessions };
+  return { release, releasePlugins, streamRelease, writes, sessions };
 }
 async function openSidebar(page: Page, mobile: boolean) {
   if (!mobile) return;
@@ -577,3 +583,37 @@ test("full WorkBuddy child conversation exposes native read-only reason without 
   await page.getByRole("button", { name: "Codex newest", exact: true }).click();
   await expect(page.locator('[contenteditable="true"]').first()).toBeVisible();
 });
+
+for (const workbuddyOnly of [true, false]) {
+  test(`late Agent catalog initializes only the empty new-chat choice (${workbuddyOnly ? "WorkBuddy only" : "Codex preferred"})`, async ({
+    page,
+  }, info) => {
+    const { releasePlugins, writes } = await fixture(page, {
+      delayPlugins: true,
+      workbuddy: true,
+      workbuddyOnly,
+    });
+    await openSidebar(page, info.project.name === "android-web");
+    await page.getByRole("button", { name: "新建会话", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "新建会话" });
+    const chooser = dialog.getByLabel("Agent", { exact: true });
+    const create = dialog.getByRole("button", {
+      name: "创建会话",
+      exact: true,
+    });
+    await expect(chooser).toBeDisabled();
+    await expect(chooser).toHaveAttribute("aria-busy", "true");
+    await expect(chooser.locator("option:checked")).toHaveText(
+      "正在加载 Agent…",
+    );
+    await expect(create).toBeDisabled();
+    releasePlugins();
+    await expect(chooser).toBeEnabled();
+    await expect(chooser).toHaveValue(workbuddyOnly ? "workbuddy" : "codex");
+    await expect(create).toBeEnabled();
+    await expect(
+      chooser.locator("option").filter({ hasText: "正在加载 Agent…" }),
+    ).toHaveCount(0);
+    expect(writes).toEqual([]);
+  });
+}

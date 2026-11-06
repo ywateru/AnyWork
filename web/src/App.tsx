@@ -20,6 +20,7 @@ import { useSidebarAgent } from "./hooks/useSidebarAgent";
 import SidebarAgentFilter from "./components/SidebarAgentFilter";
 import AgentIcon from "./components/AgentIcon";
 import { agentName } from "./sidebarAgents";
+import { sessionAgentSelection } from "./sessionAgentSelection";
 import { useSessionDraft } from "./hooks/useSessionDraft";
 import { useGoalComposerMode } from "./hooks/useGoalComposerMode";
 import { useMessageEditing } from "./hooks/useMessageEditing";
@@ -146,6 +147,7 @@ export default function App() {
     [sessionsErrorFor, setSessionsErrorFor] = useState<Api | null>(null),
     [plugins, setPlugins] = useState<Plugin[]>([]),
     [pluginsLoadedFor, setPluginsLoadedFor] = useState<Api | null>(null),
+    [pluginsErrorFor, setPluginsErrorFor] = useState<Api | null>(null),
     [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]),
     [createCwd, setCreateCwd] = useState(""),
     [models, setModels] = useState<
@@ -436,9 +438,15 @@ export default function App() {
         if (!cancelled) {
           setPlugins(data.plugins);
           setPluginsLoadedFor(api);
+          setPluginsErrorFor(null);
         }
       })
-      .catch(fail);
+      .catch((error) => {
+        if (!cancelled) {
+          setPluginsErrorFor(api);
+          fail(error);
+        }
+      });
     reload().catch(fail);
     const timer = setInterval(() => reload().catch(() => {}), 2500);
     return () => {
@@ -2047,7 +2055,14 @@ export default function App() {
                 </button>
                 <CreateSession
                   api={api}
-                  plugins={plugins}
+                  plugins={pluginsLoadedFor === api ? plugins : []}
+                  pluginsState={
+                    pluginsLoadedFor === api
+                      ? "ready"
+                      : pluginsErrorFor === api
+                        ? "error"
+                        : "loading"
+                  }
                   workspace={createCwd || info.workspace}
                   workspaces={workspaces}
                   onCreated={async (s) => {
@@ -2171,6 +2186,7 @@ function Login({ onConnect }: { onConnect: (connection: Connection) => void }) {
 function CreateSession({
   api,
   plugins,
+  pluginsState,
   workspace,
   workspaces,
   onCreated,
@@ -2178,21 +2194,23 @@ function CreateSession({
 }: {
   api: Api;
   plugins: Plugin[];
+  pluginsState: "loading" | "ready" | "error";
   workspace: string;
   workspaces: WorkspaceInfo[];
   onCreated: (s: Session) => void;
   onError: (e: unknown) => void;
 }) {
   const [cwd, setCwd] = useState(workspace),
-    [agent, setAgent] = useState(
-      plugins.find((plugin) => plugin.id === "codex")?.id ||
-        plugins[0]?.id ||
-        "",
-    ),
+    [agent, setAgent] = useState(() => sessionAgentSelection("", plugins)),
     [model, setModel] = useState(""),
     [policy, setPolicy] = useState("manual"),
     [busy, setBusy] = useState(false);
-  const available = plugins.some((plugin) => plugin.id === agent);
+  useEffect(() => {
+    if (pluginsState === "ready")
+      setAgent((current) => sessionAgentSelection(current, plugins));
+  }, [plugins, pluginsState]);
+  const available =
+    pluginsState === "ready" && plugins.some((plugin) => plugin.id === agent);
   return (
     <form
       onSubmit={async (e) => {
@@ -2223,11 +2241,19 @@ function CreateSession({
           <select
             aria-label="Agent"
             value={agent}
+            disabled={pluginsState === "loading"}
+            aria-busy={pluginsState === "loading"}
             onChange={(e) => setAgent(e.target.value)}
           >
             {!available && (
-              <option value="" disabled>
-                暂无可连接的 Agent
+              <option value={agent} disabled>
+                {agent
+                  ? `${agentName(agent)}（暂不可用）`
+                  : pluginsState === "loading"
+                    ? "正在加载 Agent…"
+                    : pluginsState === "error"
+                      ? "无法加载 Agent"
+                      : "暂无可连接的 Agent"}
               </option>
             )}
             {plugins.map((p) => (
