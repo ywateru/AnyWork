@@ -4,7 +4,7 @@ Status: implementation contract; research and runtime gates remain open in the [
 
 ## Ownership and transport
 
-AnyWork connects to an already running WorkBuddy desktop, never another CodeBuddy CLI, Harness instance, PTY owner or daemon stdin. The candidate transport uses a persistent local CDP connection to WorkBuddy's existing trusted main renderer and invokes its existing `__wbInvoke(channel, context, ...args)` preload boundary. The known namespace is `wb:conversations:*`; each method's exact schema must be bound to observed installed code before implementation.
+AnyWork connects to an already running WorkBuddy desktop, never another CodeBuddy CLI, Harness instance, PTY owner or daemon stdin. The candidate transport uses a persistent local CDP connection to WorkBuddy's existing trusted main renderer and invokes its existing `__wbInvoke(channel, context, ...args)` preload boundary. The verified namespace is `wb:conversations:<method>` (nested repository: `wb:conversations.local:<method>`); invoke it with an undefined context and separately serialized method arguments. Methods and side effects are recorded in the investigation.
 
 An optional explicit launcher may set the application's built-in `WORKBUDDY_REMOTE_DEBUGGING_PORT` for its next launch and publish a private descriptor. It must not patch/re-sign the app, terminate an existing instance, steal its single-instance lock, read model account credentials or start an independent agent. If the chosen profile already runs without the entry, provide actionable setup guidance; do not silently claim connection. Tests launch only isolated profiles with OS integrations accounted for. Production sessions remain untouched.
 
