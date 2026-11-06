@@ -20,7 +20,7 @@ const base = `http://127.0.0.1:${server.address().port}/AnyWork`;
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? {channel:process.env.PLAYWRIGHT_CHANNEL} : {});
 await mkdir('artifacts', {recursive:true});
 try {
-  for (const locale of ['en','zh']) for (const width of [1440,390]) {
+  for (const locale of ['en','zh']) for (const width of [1440,1024,768,390,320]) {
     const page = await browser.newPage({viewport:{width,height:1000}, reducedMotion:'reduce', deviceScaleFactor:1});
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -33,6 +33,21 @@ try {
     assert.equal(await page.locator('h1').count(),1);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${locale}/${width}: horizontal overflow`);
     assert((await page.locator(`[data-asset="${asset}"]`).getAttribute('href')).endsWith('/v0.1.0/'+asset));
+    // Both connection switches are independent, work from the keyboard, and
+    // only change the explicitly labelled product illustration.
+    const quick = page.locator('[data-demo-switch="quick"]');
+    const vpn = page.locator('[data-demo-switch="vpn"]');
+    await quick.click();
+    assert.equal(await quick.getAttribute('aria-checked'), 'false');
+    assert.equal(await vpn.getAttribute('aria-checked'), 'false');
+    await vpn.focus();
+    await vpn.press('Space');
+    assert.equal(await vpn.getAttribute('aria-checked'), 'true');
+    assert.equal(await quick.getAttribute('aria-checked'), 'false');
+    await quick.press('Enter');
+    assert.equal(await quick.getAttribute('aria-checked'), 'true');
+    assert.equal(await vpn.getAttribute('aria-checked'), 'true');
+    await vpn.click();
     await page.locator('#tab-changes').click();
     assert(await page.locator('#panel-changes').isVisible());
     assert(!(await page.locator('#panel-chat').isVisible()));

@@ -32,6 +32,14 @@ document.querySelector('#demo-approve').addEventListener('click', event => {
   event.target.textContent = event.target.dataset.approved;
   event.target.disabled = true;
 });
+for (const toggle of document.querySelectorAll('[data-demo-switch]')) {
+  toggle.addEventListener('click', () => {
+    const enabled = toggle.getAttribute('aria-checked') !== 'true';
+    toggle.setAttribute('aria-checked', String(enabled));
+    const status = document.querySelector(`[data-switch-status="${toggle.dataset.demoSwitch}"]`);
+    status.textContent = enabled ? status.dataset.on : status.dataset.off;
+  });
+}
 // Language remains an explicit, shareable URL. Remember a choice without forced redirects.
 try { localStorage.setItem('anywork-site-language', document.body.dataset.lang); } catch {}
 const releaseURL = 'https://api.github.com/repos/ywateru/AnyWork/releases/latest';
