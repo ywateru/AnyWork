@@ -1,0 +1,4 @@
+# Official Harness profile layer: install adds this bundle to the selected profile.
+- insert:
+    - id: anywork-harness-discovery
+      name: '@anywork/harness-discovery'

@@ -347,10 +347,19 @@ export function toolResultPresentation(item: Record<string, any>, output = "") {
         /* Non-JSON text remains plain output. */
       }
   }
+  const plainOutput =
+    output || text(item.aggregatedOutput) || text(item.output);
+  const repeatedHarnessText =
+    item.source === "deepseek-harness" &&
+    blocks
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("\n")
+      .trim() === plainOutput.trim();
   return {
     blocks,
     structured,
     error,
-    output: output || text(item.aggregatedOutput) || text(item.output),
+    output: repeatedHarnessText ? "" : plainOutput,
   };
 }

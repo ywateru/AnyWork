@@ -86,6 +86,22 @@ export default function ToolResult({
               {block.text}
             </pre>
           );
+        if (block.type === "localImage" && typeof block.path === "string")
+          return (
+            <div className="tool-result-image" key={key}>
+              <ImagePreview
+                api={api}
+                sessionId={sessionId}
+                path={block.path}
+                autoLoad
+                thumbnail
+                compact
+                displayName={block.name || "工具返回的图片"}
+              />
+            </div>
+          );
+        if (block.type === "localFile" && typeof block.path === "string")
+          return <div key={key}>{resource({ ...block, uri: block.path })}</div>;
         if (
           block.type === "image" &&
           typeof block.data === "string" &&

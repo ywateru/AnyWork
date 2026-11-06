@@ -94,8 +94,18 @@ async function fixture(page: Page, status = "running") {
           title: "read",
           arguments: { path: "/tmp/report.txt" },
           status: "completed",
+          source: "deepseek-harness",
+          output: "fixture report\n".repeat(60),
           result: {
-            content: [{ type: "text", text: "fixture report\n".repeat(60) }],
+            content: [
+              { type: "text", text: "fixture report\n".repeat(60) },
+              { type: "localImage", path: "/work/project/uploads/tool.png" },
+              {
+                type: "localFile",
+                path: "/work/project/README.md",
+                name: "工具生成的报告",
+              },
+            ],
           },
         }),
         item(6, {
@@ -158,7 +168,25 @@ async function fixture(page: Page, status = "running") {
     else if (path.endsWith("/composer"))
       data = { settings_available: false, models: [], goal: null };
     else if (path.endsWith("/models")) data = { data: [] };
-    else if (/^\/sessions\/[^/]+$/.test(path)) data = { session };
+    else if (path.endsWith("/files") || path.endsWith("/image")) {
+      const requested =
+        new URL(route.request().url()).searchParams.get("path") || "";
+      if (requested.endsWith("tool.png")) {
+        await route.fulfill({
+          contentType: "image/png",
+          body: Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j1ioAAAAASUVORK5CYII=",
+            "base64",
+          ),
+        });
+      } else {
+        await route.fulfill({
+          contentType: "text/markdown",
+          body: "# 工具生成的报告\n\n保留授权文件预览。",
+        });
+      }
+      return;
+    } else if (/^\/sessions\/[^/]+$/.test(path)) data = { session };
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
@@ -260,4 +288,27 @@ test("agent switch isolates public Harness reasoning and completed content retai
   await expect(page.locator(".markdown pre")).toContainText(
     "const result = 42",
   );
+});
+
+test("hydrated Harness local image and file results use authorized previews without duplicate text", async ({
+  page,
+}) => {
+  await fixture(page, "idle");
+  await expect(page.getByText("检查完成。", { exact: true })).toBeVisible();
+  await page.locator(".turn-disclosure").click();
+  const read = page.locator('[data-message-id="read"]');
+  await read.locator("summary").click();
+  await expect(read.locator(".tool-text-output")).toHaveCount(1);
+  await expect(
+    read.getByRole("button", { name: "工具生成的报告" }),
+  ).toBeVisible();
+  const preview = read.getByRole("button", { name: "查看图片", exact: true });
+  await expect(preview.locator("img")).toHaveAttribute("src", /^blob:/);
+  await preview.click();
+  const viewer = page.getByRole("dialog", { name: "图片查看器" });
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator("img")).toHaveAttribute("src", /^blob:/);
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+  await expect(preview).toBeFocused();
 });

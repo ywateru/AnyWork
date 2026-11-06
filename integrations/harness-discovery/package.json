@@ -1,0 +1,33 @@
+{
+  "name": "@anywork/harness-discovery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Publish the existing Harness host address privately for AnyWork local collaboration",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "descriptor.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22",
+    "dsh": "0.2.2-rc.1"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test descriptor.test.js"
+  }
+}
