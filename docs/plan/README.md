@@ -23,3 +23,7 @@ The user then added [sidebar Agent filtering and identity icons](tasks/sidebar-a
 
 Final cloud checks found a separate model-menu focus race. The [focus correction](tasks/model-picker-focus.md) passed [independent review](reviews/model-picker-focus.md), including a composite Escape-then-input ownership fix. Merged v0.1.10 checks passed 304 Web unit tests and 567 desktop/mobile browser cases (one existing desktop-only case skipped on Android), typechecking, format, source export/version checks, desktop updater UI and bilingual site checks. Full cloud Checks and the release matrix succeeded. [v0.1.10](https://github.com/ywateru/AnyWork/releases/tag/v0.1.10) is published with all 20 assets, 19 matching checksums, five signed desktop-update targets and both verified DMG downloads. The bilingual website links to v0.1.10, and the local service is deployed with all 69 prior sessions and the access key retained. Its existing tunnel process and installed hosts were left in place. All published tags and assets remain immutable.
 
+
+## WorkBuddy follow-up
+
+The new goal is to add WorkBuddy from the installed desktop, preserving shared execution. [Research](analysis/workbuddy.md) records the exact artifact, primary references and rejected transports; the [integration contract](../workbuddy-integration.md) defines the candidate native boundary and completion gates. Research has not yet established runtime attachment. No production instance, credentials, version or release is changed by this work.
