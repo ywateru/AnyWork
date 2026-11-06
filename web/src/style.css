@@ -930,7 +930,7 @@ kbd {
   text-overflow: ellipsis;
   color: var(--text);
 }
-.tool-card summary span {
+.tool-card:not(.harness-tool) summary span {
   font-size: 9px;
 }
 .tool-card pre {
@@ -1707,7 +1707,7 @@ label small {
   .working {
     margin-left: 32px;
   }
-  .tool-card summary span {
+  .tool-card:not(.harness-tool) summary span {
     display: none;
   }
   .chat-empty {

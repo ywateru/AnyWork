@@ -1,5 +1,9 @@
 import type { ConversationTurn, Message } from "./types";
-export function splitTurn(turn: ConversationTurn, latestWorking = false) {
+export function splitTurn(
+  turn: ConversationTurn,
+  latestWorking = false,
+  showReasoning = false,
+) {
   const user = turn.messages.filter((m) => m.role === "user");
   const candidates = turn.messages.filter(
     (m) =>
@@ -24,7 +28,9 @@ export function splitTurn(turn: ConversationTurn, latestWorking = false) {
         .slice(finalIndex + 1)
         .filter(
           (m) =>
-            m.role !== "user" && m.role !== "error" && m.role !== "reasoning",
+            m.role !== "user" &&
+            m.role !== "error" &&
+            (showReasoning || m.role !== "reasoning"),
         )
     : [];
   const activity = turn.messages
@@ -34,7 +40,7 @@ export function splitTurn(turn: ConversationTurn, latestWorking = false) {
         m.role !== "user" &&
         m !== final &&
         m.role !== "error" &&
-        m.role !== "reasoning",
+        (showReasoning || m.role !== "reasoning"),
     );
   const errors = turn.messages.filter((m) => m.role === "error");
   const collapsible = (!!final || complete) && turn.status !== "interrupted";

@@ -1,0 +1,140 @@
+/* Host theme/DOM adaptation for extracted Harness components. Composer is untouched. */
+.anywork-workbench {
+  --dsh-chat-content-width: 748px;
+  --dsh-content-font-size: var(--app-chat-font-size, 14px);
+  --dsh-content-font-size-secondary: calc(var(--dsh-content-font-size) - 1px);
+  --dsh-content-font-delta: calc(var(--dsh-content-font-size) - 14px);
+  --dsw-alias-bg-base: var(--surface);
+  --dsw-alias-label-primary: var(--text);
+  --dsw-alias-label-secondary: var(--text);
+  --dsw-alias-label-tertiary: var(--muted);
+  --dsw-alias-label-caption: color-mix(in srgb, var(--muted) 70%, transparent);
+  --dsw-alias-label-shimmer: color-mix(in srgb, var(--text) 80%, var(--muted));
+  --dsw-alias-label-deep-diving: #4d6bfe;
+  --dsw-alias-label-deep-diving-shimmer: #a3b1ff;
+  --dsw-alias-border-l1: var(--line);
+  --dsw-alias-border-l2: var(--line);
+  --dsw-alias-state-error-primary: var(--danger, #b42318);
+  --dsw-alias-state-warn-label: #a56818;
+  --dsw-alias-interactive-bg-hover: var(--raised);
+  --dsw-specific-bubble: var(--app-chat-user-bg);
+  --dsw-radius-sm: 4px;
+  --dsw-radius-lg: 12px;
+  --dsw-radius-xl: 20px;
+}
+.anywork-workbench .transcript {
+  max-width: calc(748px + 2 * var(--thread-content-margin));
+}
+.anywork-workbench .message.user {
+  gap: 6px;
+}
+.anywork-workbench .message.user .harness-user-stack .message-body {
+  max-width: 100%;
+  padding: 10px 16px;
+  border-radius: 20px;
+  font-size: var(--dsh-content-font-size);
+  line-height: calc(22px + var(--dsh-content-font-delta));
+}
+.anywork-workbench .harness-user-stack .message-images {
+  margin: 0;
+}
+.anywork-workbench .message.assistant .markdown {
+  font-size: var(--dsh-content-font-size);
+  line-height: calc(24px + var(--dsh-content-font-delta));
+}
+.anywork-workbench .message.assistant .markdown > .md-paragraph {
+  margin: 0;
+}
+.anywork-workbench .message.assistant .message-actions {
+  margin: 0;
+}
+.anywork-workbench .turn-disclosure {
+  height: calc(33px + var(--dsh-content-font-delta));
+  margin: 0 0 16px;
+  padding: 0 0 8px;
+  border-bottom: 0.5px solid var(--line);
+  font-size: var(--dsh-content-font-size);
+  color: var(--muted);
+}
+.anywork-workbench .harness-tool {
+  min-width: 0;
+  margin: 2px 0;
+}
+.anywork-workbench .harness-tool > summary {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  list-style: none;
+}
+.anywork-workbench .harness-tool > summary::-webkit-details-marker {
+  display: none;
+}
+.anywork-workbench .harness-tool > summary:focus-visible,
+.anywork-workbench [data-disclosure-row]:focus-visible {
+  outline: 2px solid var(--accent, #4d6bfe);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.anywork-workbench .harness-tool > summary [data-disclosure-row] {
+  width: 100%;
+}
+.anywork-workbench .harness-tool .tool-result {
+  margin: 4px 0 4px 4px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.anywork-workbench .harness-tool .tool-command {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--app-code-bg);
+  border: 0.5px solid var(--line);
+  border-radius: 12px 12px 0 0;
+  overflow-wrap: anywhere;
+}
+.anywork-workbench .harness-tool .tool-command > svg {
+  flex-shrink: 0;
+}
+.anywork-workbench .harness-tool .command-tool-result {
+  padding: 12px;
+  background: var(--app-code-bg);
+  border: 0.5px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+}
+.anywork-workbench .working[data-chat-running] {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin: 12px 0 8px;
+  padding: 0;
+  font-size: calc(var(--dsh-content-font-size) - 2px);
+  color: var(--dsw-alias-label-deep-diving);
+}
+@media (max-width: 600px) {
+  .anywork-workbench .harness-user-stack {
+    max-width: 90%;
+  }
+  .anywork-workbench .harness-tool > summary [data-disclosure-row] {
+    height: auto;
+    min-height: 28px;
+  }
+  .anywork-workbench .harness-tool [data-shimmer] {
+    max-width: 100%;
+  }
+}
+
+.anywork-workbench .turn-activity {
+  gap: 4px;
+}
+.anywork-workbench .turn-activity .message.assistant {
+  margin: 8px 0;
+}
+.anywork-workbench .turn-activity .harness-tool > summary {
+  min-height: 24px;
+}
+.anywork-workbench .turn-activity .harness-tool {
+  margin: 0;
+}

@@ -1538,7 +1538,7 @@ test("Codex document links open a rendered side panel, preserve drafts and expan
     page.getByText("我先读取文档并核对结构。", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("已读取 guide.md", { exact: true }),
+    page.locator(".tool-card > summary").filter({ hasText: "docs/guide.md" }),
   ).toBeVisible();
   await page.screenshot({
     path: `artifacts/codex-expanded-turn-${testInfo.project.name}.png`,
@@ -1796,7 +1796,7 @@ test("document preview keeps the newest selection when an older file response ar
   ).toBeVisible();
 });
 
-test("Codex expanded activity uses plain grouped rows without reasoning cards", async ({
+test("Codex expanded activity uses individual Harness rows without exposing reasoning", async ({
   page,
 }, testInfo) => {
   await login(page);
@@ -1823,14 +1823,12 @@ test("Codex expanded activity uses plain grouped rows without reasoning cards", 
   await expect(
     page.getByText("检查已完成，继续下一步。", { exact: true }),
   ).toBeVisible();
-  const group = page.locator(".activity-group");
-  await expect(group).toHaveCount(1);
-  await expect(group.locator(":scope > summary")).toHaveText(
-    "读取了文件，运行了命令",
-  );
-  await expect(group.locator(".tool-card").first()).toBeHidden();
-  await group.locator(":scope > summary").click();
-  await expect(group.locator(".tool-card").first()).toBeVisible();
+  await expect(page.locator(".activity-group")).toHaveCount(0);
+  const tools = page.locator(".tool-card");
+  await expect(tools).toHaveCount(3);
+  await expect(tools.first()).toBeVisible();
+  await tools.first().locator(":scope > summary").click();
+  await expect(tools.first()).toHaveAttribute("open", "");
   await page.screenshot({
     path: `artifacts/codex-activity-rows-${testInfo.project.name}.png`,
     fullPage: true,

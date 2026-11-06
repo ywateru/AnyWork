@@ -181,7 +181,6 @@ export function groupToolActivities(messages: Message[]) {
     messages: Message[];
   }[] = [];
   for (const message of messages) {
-    if (message.role === "reasoning") continue;
     const item = message.item ?? {};
     const tools =
       message.role === "tool" &&
