@@ -52,3 +52,9 @@ The supported carrier is the pinned official loopback HTTP Web/desktop gateway, 
 Goal/plan, thread fork and message editing are explicitly unsupported rather than simulated. Native Host settings and permissions remain authoritative. AnyWork's own pending queue is verified; already queued native Host inputs are not asserted to have a separately editable AnyWork queue representation. Actual native execution and final user-message identity are shared. File/document preview relies on the existing authorized workspace resource path; arbitrary files outside that path are not implicitly fetched from the Host.
 
 See [harness-preflight.md](harness-preflight.md) for protocol preparation and [harness-discovery.md](harness-discovery.md) for credential/discovery lifecycle evidence. Final merged-main smoke is recorded below when the orchestrator's build is ready.
+
+## Final merged-main smoke and cleanup
+
+After the orchestrator merged the backend and rebuilt main, independently launched main's `target/debug/anywork` with `/private/tmp/anywork-harness-final-web-dist` and the isolated companion descriptor. Restored the native-precreated history, then sent `verify-tools` through the same actual Host and confirmed real tool output and completion. Repeated actual tool-image and historical user-image modal tests in 1440px desktop and 390px mobile browsers: each stayed open for 1.4 seconds and Escape preserved the draft. Updated the ignored `artifacts/harness-native-*.png` screenshots from this merged build and visually checked the mobile result.
+
+Stopped only owned verifier processes (local model 9386, official isolated Host 9387, AnyWork 9391/9394, raw relay 9392/9393), verified every fixture listener closed, and removed temporary live descriptor/launch-URL files. Production 3210 and installed applications were untouched. Backend acceptance remains **PASS**, with no open blocking finding.
