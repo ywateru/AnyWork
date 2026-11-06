@@ -1,7 +1,7 @@
 ---
 id: model-picker-focus
 scope: model-menu focus consistency discovered during final release checks
-status: investigating
+status: independently-passed-and-merged
 depends-on: [message-replay-race]
 ---
 
@@ -15,3 +15,7 @@ The v0.1.9 cloud browser suite passed 538 cases and skipped one, but its fast-ti
 - Use isolated fixtures only. Do not send prompts to real sessions or alter installed hosts. Root owns merges, full checks and authorized publication/deployment.
 
 The developer worktree is `task/model-picker-focus`, based on `e825c60`. Product corrections, if needed, ship in v0.1.10; published v0.1.9 tags and assets remain immutable.
+
+Commits `e875454` and `98d379f` passed [independent acceptance](../reviews/model-picker-focus.md) and are merged. Review independently reproduced both the original disabled-commit race and a composite Escape-then-input ownership issue; both are closed. The final independent run passed 36 desktop/mobile cases and an additional reviewer-authored composite case. Root owns merged full regression and v0.1.10 delivery.
+
+Merged validation passed 304 Web unit tests and 567 full desktop/mobile browser cases, with one existing desktop-only case skipped on Android and no failures. Typechecking, format, source export/version checks, the desktop updater UI and bilingual website checks also passed.
