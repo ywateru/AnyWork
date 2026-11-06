@@ -1,6 +1,6 @@
 # Harness independent verification preflight
 
-Status: preparing actual upstream runtime; no development commit reviewed yet.
+Status: preparation complete. Committed UI, companion and backend were independently reviewed and accepted; see [backend acceptance](harness-backend.md), [UI acceptance](harness-ui.md), and [companion acceptance](harness-discovery.md). Historical preparation observations below retain their original context.
 
 ## Contract observations
 
@@ -36,4 +36,4 @@ A second native session successfully executed real Harness `bash` with `printf A
 
 Not all `user/message` events are human messages: the native stream includes runtime context, skills, and time snapshots with user roles but distinct `data.source.kind`. These must not be displayed as authored human messages. The adapter developer received native frame captures for history, tools and approval; they live only in the verifier's temporary directory.
 
-This is preparation evidence, not a passing product review. Actual AnyWork round trips, full-reference image hydration, companion discovery, independent browser acceptance, and archive tests await committed developer changes.
+This section records the original preparation evidence. Subsequent actual AnyWork round trips, full-reference image hydration, companion discovery, independent browser acceptance, reconnect/permission boundaries and archive tests passed against committed changes; their exact revisions and limits are recorded in the linked final review reports.

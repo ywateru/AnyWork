@@ -37,7 +37,7 @@ Reviewed follow-up commit `593f6a1c74adef362f594194d76538f6ad135c4a`: **pass**. 
 
 ### Correction: incremental typecheck gate
 
-The initial incremental PASS above was incomplete: it ran unit tests, Vite and browsers, but did not rerun TypeScript's separate checker. The orchestrator subsequently found **blocking TS18046** in commit `593f6a1`, `tool-metadata.ts` catch branch, where mutable `args: unknown` is no longer narrowed to string. Vite is a transpilation/build check and does not satisfy this gate. The incremental result is **blocked until a committed fix passes an independent standalone `npm run typecheck -w web` with its own checked exit status**. The earlier main extraction typecheck remains valid for `7343d47`; it does not cover this follow-up.
+The initial incremental PASS above was incomplete: it ran unit tests, Vite and browsers, but did not rerun TypeScript's separate checker. The orchestrator subsequently found **blocking TS18046** in commit `593f6a1`, `tool-metadata.ts` catch branch, where mutable `args: unknown` is no longer narrowed to string. Vite is a transpilation/build check and does not satisfy this gate. At that review point, the incremental result was **blocked until a committed fix passed an independent standalone `npm run typecheck -w web` with its own checked exit status**; that blocker is now closed by the committed fix and independent checker result below. The earlier main extraction typecheck remains valid for `7343d47`; it does not cover this follow-up.
 
 ### Typecheck fix and real rich output closure
 
@@ -49,4 +49,4 @@ Beyond fixtures, used the actual official Harness Host with a session created an
 - `artifacts/harness-native-image-desktop.png`, `artifacts/harness-native-image-mobile.png`: actual tool-image modal.
 - `artifacts/harness-native-history-image-desktop.png`, `artifacts/harness-native-history-image-mobile.png`: actual historical user-image modal.
 
-All inputs and paths belong to isolated verifier fixtures; no real user account key, private conversation or launch credential is shown. Overall UI extraction and both follow-ups now pass; backend cancellation/disconnection findings remain separately blocking for the full integration.
+All inputs and paths belong to isolated verifier fixtures; no real user account key, private conversation or launch credential is shown. Overall UI extraction and both follow-ups now pass; backend cancellation/disconnection findings were separately blocking at that point and are now closed on `a26d54b`; see [final backend acceptance](harness-backend.md).
