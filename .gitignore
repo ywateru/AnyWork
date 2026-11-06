@@ -92,3 +92,7 @@ Thumbs.db
 /release/
 /site/dist/
 !/site/assets/social.png
+
+# Local research sources and isolated development checkouts
+/ref/
+/.worktrees/

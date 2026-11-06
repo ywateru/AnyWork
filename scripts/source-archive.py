@@ -12,7 +12,7 @@ OUTPUT = ROOT / 'artifacts/anywork-source.tar.gz'
 MANIFEST = 'SOURCE_MANIFEST.json'
 PRIVATE_PARTS = {
     '.git', '.anywork', '.remote-agent', '.codex', '.agents', '.aws', '.ssh',
-    'node_modules', 'target', 'references', 'artifacts', 'dist', 'build',
+    'node_modules', 'target', 'references', 'ref', '.worktrees', 'artifacts', 'dist', 'build',
     '.gradle', '.kotlin', '__pycache__', '.idea', '.vscode',
     'test-results', 'playwright-report', 'coverage', 'private', 'local',
     'backups', 'screenshots', 'captures', 'workspace',

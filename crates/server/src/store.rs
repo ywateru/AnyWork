@@ -59,6 +59,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS events_session_seq ON events(session_id,seq);
+            CREATE UNIQUE INDEX IF NOT EXISTS harness_replay_identity ON events(session_id,json_extract(data,'$.params.harnessEventKey')) WHERE json_extract(data,'$.params.harnessEventKey') IS NOT NULL;
             CREATE TABLE IF NOT EXISTS message_queue(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS queue_settings(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, paused INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS queue_edits(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, seq INTEGER NOT NULL UNIQUE, data TEXT NOT NULL);
@@ -503,6 +504,14 @@ impl Store {
         request_id: Option<Value>,
     ) -> Result<Event> {
         let db = self.0.lock().unwrap();
+        if let Some(key) = data["harnessEventKey"].as_str() {
+            let saved: Option<(i64, String)> = db.query_row("SELECT seq,data FROM events WHERE session_id=?1 AND json_extract(data,'$.params.harnessEventKey')=?2", params![id,key], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
+            if let Some((seq, raw)) = saved {
+                let mut event: Event = serde_json::from_str(&raw)?;
+                event.seq = seq;
+                return Ok(event);
+            }
+        }
         let mut event = Event {
             seq: 0,
             session_id: id.into(),

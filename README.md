@@ -22,6 +22,8 @@ AnyWork gives the Codex running on your computer a remote workspace: streaming c
 
 The Rust desktop manager starts the local service and manages connection addresses, access keys and connected devices. Use a browser or the native Android app. There is no AnyWork-hosted account or mandatory AnyWork cloud relay; your Codex model calls still use your own account and model provider.
 
+DeepSeek Harness is also available through its existing local Web/Desktop host: [shared-host setup and verification](docs/harness-setup.md). It preserves native session ownership and keeps Codex available alongside it.
+
 ### What you can do
 
 - **Continue the conversation.** Discover local Codex history, group chats by project, cache conversations and reconnect event streams. Attach to supported desktop sharing interfaces without starting a second execution engine.

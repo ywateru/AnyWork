@@ -14,6 +14,7 @@ mod desktop_state;
 mod editing;
 mod feedback;
 mod files;
+mod harness;
 mod native_app_input;
 mod native_image_context;
 mod observer;
@@ -57,6 +58,13 @@ use tower_http::{
 struct Args {
     #[arg(long, env = "ANYWORK_CODEX_DISCOVERY", default_value_t = true, action = clap::ArgAction::Set)]
     codex_discovery: bool,
+    /// Existing local Harness launch URL (with token); never starts another engine.
+    #[arg(long, env = "ANYWORK_HARNESS_URL")]
+    harness_url: Option<String>,
+    #[arg(long, env = "ANYWORK_HARNESS_TOKEN_FILE")]
+    harness_token_file: Option<PathBuf>,
+    #[arg(long, env = "ANYWORK_HARNESS_DISCOVERY_FILE")]
+    harness_discovery_file: Option<PathBuf>,
     /// Discover every local Codex project, or restrict history to --workspace.
     #[arg(
         long,
@@ -129,6 +137,8 @@ impl Args {
 }
 pub struct App {
     catalog: Mutex<catalog::Catalog>,
+    harness: Option<harness::Config>,
+    harness_sync: Mutex<Option<std::time::Instant>>,
     codex_discovery: bool,
     codex_scope: CodexScope,
     #[cfg(unix)]
@@ -153,7 +163,7 @@ pub struct App {
 impl App {
     fn session(&self, id: &str) -> Result<Session> {
         let s = self.store.session(id)?;
-        self.session_directory(&s.cwd, s.external)?;
+        self.session_directory(&s.cwd, s.external && s.agent == "codex")?;
         Ok(s)
     }
     fn session_directory(&self, cwd: &str, external: bool) -> Result<PathBuf> {
@@ -279,7 +289,16 @@ async fn main() -> Result<()> {
         token.len() >= 16,
         "Access token must contain at least 16 characters"
     );
+    let harness = harness::Config::configured(
+        args.harness_url.as_deref(),
+        args.harness_token_file.clone(),
+        args.harness_discovery_file.clone(),
+    )?;
     let mut plugins = HashMap::new();
+    if let Some(config) = &harness {
+        let manifest = config.manifest();
+        plugins.insert(manifest.id.clone(), manifest);
+    }
     let codex = remote_agent_codex::CodexPlugin.manifest();
     plugins.insert(codex.id.clone(), codex);
     if args.plugins_dir.exists() {
@@ -303,6 +322,8 @@ async fn main() -> Result<()> {
     }
     let app = Arc::new(App {
         catalog: Mutex::new(catalog::Catalog::default()),
+        harness,
+        harness_sync: Mutex::new(None),
         codex_discovery: args.codex_discovery,
         codex_scope: args.codex_scope,
         #[cfg(unix)]

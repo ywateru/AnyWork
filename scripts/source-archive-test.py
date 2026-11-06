@@ -29,7 +29,7 @@ class SourceExport(unittest.TestCase):
                               check=check, capture_output=True)
 
     def test_export_uses_tracked_public_files_and_neutral_metadata(self):
-        for name in ['.env', 'docs/screenshots/session.png', '.remote-agent/access-token', '.anywork/access-token', 'auth.json']:
+        for name in ['.env', 'docs/screenshots/session.png', '.remote-agent/access-token', '.anywork/access-token', 'auth.json', 'ref/private-reference.txt', '.worktrees/private-branch/source.rs']:
             path = self.root / name
             path.parent.mkdir(exist_ok=True, parents=True)
             path.write_text('private fixture')
