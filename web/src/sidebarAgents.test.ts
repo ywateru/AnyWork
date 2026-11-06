@@ -106,6 +106,7 @@ describe("sidebar Agent projection", () => {
     expect(sidebarAgentOptions([], [], "")).toEqual([
       { id: "codex", name: "Codex", present: false },
       { id: "deepseek-harness", name: "DeepSeek Harness", present: false },
+      { id: "workbuddy", name: "WorkBuddy", present: false },
     ]);
   });
   it("scopes persistence to each server and preserves missing plugin selections", () => {
@@ -124,5 +125,34 @@ describe("sidebar Agent projection", () => {
         },
       }),
     ).toBe("");
+  });
+  it("keeps WorkBuddy identity available without registering an execution backend", () => {
+    expect(
+      agentName("workbuddy", [
+        { id: "workbuddy", name: "Other name" },
+      ] as Plugin[]),
+    ).toBe("WorkBuddy");
+    const history = [
+      s("native buddy", "workbuddy", "/work/buddy", 100),
+      ...sessions,
+    ];
+    expect(
+      sidebarAgentOptions([], [], "").find(
+        (option) => option.id === "workbuddy",
+      ),
+    ).toEqual({ id: "workbuddy", name: "WorkBuddy", present: false });
+    expect(
+      sidebarAgentOptions([], history, "").find(
+        (option) => option.id === "workbuddy",
+      )?.present,
+    ).toBe(true);
+    expect(
+      sidebarSessions(history, { ...filter, agent: "workbuddy" }).map(
+        (session) => session.id,
+      ),
+    ).toEqual(["native buddy"]);
+    expect(sessions.some((session) => session.agent === "workbuddy")).toBe(
+      false,
+    );
   });
 });

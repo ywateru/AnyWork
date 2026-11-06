@@ -5,7 +5,9 @@ export const agentName = (id: string, plugins: Plugin[] = []) =>
     ? "Codex"
     : id === "deepseek-harness"
       ? "DeepSeek Harness"
-      : plugins.find((plugin) => plugin.id === id)?.name || id;
+      : id === "workbuddy"
+        ? "WorkBuddy"
+        : plugins.find((plugin) => plugin.id === id)?.name || id;
 
 export function sidebarAgentOptions(
   plugins: Plugin[],
@@ -16,10 +18,16 @@ export function sidebarAgentOptions(
     ...plugins.map((plugin) => plugin.id),
     ...sessions.map((session) => session.agent),
   ]);
-  const ids = new Set(["codex", "deepseek-harness", ...present]);
+  const ids = new Set(["codex", "deepseek-harness", "workbuddy", ...present]);
   if (selected) ids.add(selected);
   const rank = (id: string) =>
-    id === "codex" ? 0 : id === "deepseek-harness" ? 1 : 2;
+    id === "codex"
+      ? 0
+      : id === "deepseek-harness"
+        ? 1
+        : id === "workbuddy"
+          ? 2
+          : 3;
   return [...ids]
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
     .map((id) => ({

@@ -11,6 +11,7 @@ npm run build
 npm test
 python3 scripts/integration-test.py
 python3 scripts/service-control-test.py
+python3 scripts/workbuddy-launch-test.py
 python3 scripts/editing-test.py
 python3 scripts/discovery-test.py
 python3 scripts/shared-control-test.py
