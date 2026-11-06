@@ -136,8 +136,12 @@ test("real revert failure recovers the editor after refresh and retries the save
   expect(retry.operation_id).toBe(saved.operation.id);
   expect(retry.retry).toBe(true);
   await expect(editor).toHaveCount(0);
-  await page.getByRole("button", { name: "加载更早消息", exact: true }).click();
+  // The earlier turn was loaded while recovering the rejected edit. The cache
+  // keeps it visible across the retry, without another pagination request.
   await expect(page.locator(".message.user")).toHaveCount(2);
+  await expect(page.locator(".message.user").first()).toContainText(
+    "保留的前一回合",
+  );
   await expect(page.locator(".message.user").last()).toContainText(
     "恢复后修改并重新提交",
   );

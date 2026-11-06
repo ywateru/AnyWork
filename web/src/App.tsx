@@ -1130,15 +1130,6 @@ export default function App() {
       ["running", "waiting", "starting"].includes(session?.status || ""),
     resetHistory: resetEditedHistory,
   });
-  if (!connection || !api)
-    return (
-      <Login
-        onConnect={(c) => {
-          localStorage.setItem("ra.connection", JSON.stringify(c));
-          setConnection(c);
-        }}
-      />
-    );
   const busy = ["running", "waiting", "starting"].includes(
     session?.status || "",
   );
@@ -1160,6 +1151,15 @@ export default function App() {
     session?.status,
     notifications.receive,
   ]);
+  if (!connection || !api)
+    return (
+      <Login
+        onConnect={(c) => {
+          localStorage.setItem("ra.connection", JSON.stringify(c));
+          setConnection(c);
+        }}
+      />
+    );
 
   const leaveReviewRoute = () => {
     if (chatLocation().id === selected && chatLocation().review) {

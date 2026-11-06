@@ -1960,6 +1960,20 @@ const PromptEditor = forwardRef<PromptEditorHandle, PromptEditorProps>(
         <div
           className="prompt-editor-mount"
           ref={mount}
+          onMouseDownCapture={(event) => {
+            // Linux pastes the primary selection on middle-button down. A
+            // conversation link opens a tab and must leave the draft intact.
+            if (event.button !== 1 || !(event.target instanceof Element))
+              return;
+            const element = event.target.closest<HTMLElement>(
+              "[rich-link-href]:not([rich-link-loading])",
+            );
+            if (
+              element &&
+              promptThreadHref(element.getAttribute("rich-link-href") ?? "")
+            )
+              event.preventDefault();
+          }}
           onClickCapture={(event) => {
             openLink(event.nativeEvent);
           }}

@@ -211,7 +211,7 @@ test("native activity groups, lazy MCP output and subagent events remain flat an
     ),
   ).toBe(true);
   await page.screenshot({
-    path: `/private/tmp/anywork-tool-activity-${info.project.name}.png`,
+    path: info.outputPath(`tool-activity-${info.project.name}.png`),
     fullPage: true,
   });
 });
