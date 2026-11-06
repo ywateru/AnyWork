@@ -4,9 +4,11 @@ Base: `main` at `f2e2ebd`. References are local-only. Implementation tasks use s
 
 | Task | Scope | State |
 | --- | --- | --- |
-| [harness-backend](tasks/harness-backend.md) | shared host adapter, agent registration, history and API integration, reference export boundaries | ready |
-| [harness-ui](tasks/harness-ui.md) | upstream conversation body extraction, tool/status views, composer preserved | ready |
-| integration review | independent protocol, browser and full-system verification after both tasks | pending |
+| [harness-backend](tasks/harness-backend.md) | shared host adapter, agent registration, history and API integration, reference export boundaries | in progress |
+| [harness-ui](tasks/harness-ui.md) | upstream conversation body extraction, tool/status views, composer preserved | in progress |
+| [independent verification](tasks/harness-verification.md) | actual upstream host preparation, then protocol, browser and system review of committed changes | preparing |
 
 Backend and UI paths are disjoint. Each task commits before independent verification; merge only after blocking findings are fixed. The orchestrator merges and runs full-system checks. No release is requested for this goal.
+
+[Integration analysis](analysis/harness.md) enumerates the creation and call paths that must work together.
 
