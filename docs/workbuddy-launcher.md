@@ -4,6 +4,10 @@ This source launcher supports the official macOS WorkBuddy Desktop **5.9.3** bun
 
 本引导目前支持官方 macOS WorkBuddy Desktop **5.9.3**。使用应用自身的本机调试入口，启动安装包内原始可执行文件；不修改应用，不启动另一套 Agent 引擎，不读取模型账号凭据。AnyWork 后端仍会独立验证原生页面和接口能力。
 
+The integration is experimental. Actual installed preload/list/model reads have passed isolated checks; native creation and message delivery still require acceptance with a normally configured desktop. WorkBuddy's local repository requires its account user ID even when using a custom local model. Complete WorkBuddy's normal account setup first; a fresh signed-out profile returns an initialization/account error. AnyWork does not fabricate identity or provide an authentication bypass.
+
+本接入仍为实验实现。安装版原生连接、会话列表和模型公开信息读取已通过隔离验证；真实创建与消息收发仍需在正常配置的桌面上验收。WorkBuddy 的本地会话库即使用自定义本地模型，也要求账号用户 ID。请先完成 WorkBuddy 自身的正常账号设置；全新未登录配置会返回初始化/账号错误，AnyWork 不会伪造身份或绕过认证。
+
 ## Start / 启动
 
 Quit WorkBuddy normally first, then run from the AnyWork source directory with Python 3:
