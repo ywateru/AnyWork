@@ -57,6 +57,12 @@ interface ModelPickerProps {
   controlsRevision?: number;
 }
 
+interface FocusRestore {
+  session: string;
+  mutation: number;
+  element: HTMLButtonElement;
+}
+
 interface SettingsUpdate {
   model?: string;
   effort?: string;
@@ -96,12 +102,8 @@ export default function ModelPicker({
     loadVersion = useRef(0),
     mutationVersion = useRef(0),
     savingRef = useRef(false),
-    restoreTrigger = useRef(false),
-    restoreSpeed = useRef<{
-      session: string;
-      mutation: number;
-      element: HTMLButtonElement;
-    } | null>(null),
+    restoreTrigger = useRef<FocusRestore | null>(null),
+    restoreSpeed = useRef<FocusRestore | null>(null),
     identity = useRef(session.id),
     menuId = useId();
   identity.current = session.id;
@@ -140,6 +142,7 @@ export default function ModelPicker({
     setPreviewEffort(null);
     pendingEffort.current = null;
     restoreSpeed.current = null;
+    restoreTrigger.current = null;
     savingRef.current = false;
     void load(controller.signal);
     return () => {
@@ -220,19 +223,30 @@ export default function ModelPicker({
     restoreSpeed.current = null;
     setOpen(false);
     setSpeedOpen(false);
-    restoreTrigger.current = restoreFocus;
-    if (restoreFocus)
-      requestAnimationFrame(() =>
-        trigger.current?.focus({ preventScroll: true }),
-      );
+    restoreTrigger.current =
+      restoreFocus && trigger.current
+        ? {
+            session: identity.current,
+            mutation: mutationVersion.current,
+            element: trigger.current,
+          }
+        : null;
   }, []);
 
-  useEffect(() => {
-    if (!open && !saving && restoreTrigger.current) {
-      restoreTrigger.current = false;
-      trigger.current?.focus({ preventScroll: true });
-    }
-  }, [open, saving]);
+  useLayoutEffect(() => {
+    const pending = restoreTrigger.current;
+    if (!pending || open || saving) return;
+    restoreTrigger.current = null;
+    if (
+      pending.session === session.id &&
+      pending.mutation === mutationVersion.current &&
+      pending.element === trigger.current &&
+      !pending.element.disabled &&
+      (document.activeElement === document.body ||
+        document.activeElement === pending.element)
+    )
+      pending.element.focus({ preventScroll: true });
+  }, [open, saving, session.id]);
 
   // A frame can run before React commits saving=false. Restore only after the
   // initiating button is enabled in the DOM, while its interaction still owns
@@ -255,12 +269,19 @@ export default function ModelPicker({
   }, [open, saving, tierEditable, session.id]);
 
   useLayoutEffect(() => {
-    if (!open) return;
+    // Escape may defer returning to a disabled trigger until its save ends.
+    // Keep observing ownership after the menu closes, so a subsequent user
+    // action cancels that deferred return as well as an in-menu restoration.
     const cancel = () => {
       restoreSpeed.current = null;
+      restoreTrigger.current = null;
     };
     const movedFocus = (event: FocusEvent) => {
-      if (event.target !== restoreSpeed.current?.element) cancel();
+      if (
+        event.target !== restoreSpeed.current?.element &&
+        event.target !== restoreTrigger.current?.element
+      )
+        cancel();
     };
     document.addEventListener("pointerdown", cancel, true);
     document.addEventListener("keydown", cancel, true);
@@ -273,7 +294,7 @@ export default function ModelPicker({
       document.removeEventListener("focusin", movedFocus, true);
       window.removeEventListener("blur", cancel);
     };
-  }, [open, session.id]);
+  }, [session.id]);
 
   useLayoutEffect(() => {
     if (!open) return;

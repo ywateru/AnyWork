@@ -379,14 +379,16 @@ for (const rejected of [false, true]) {
     "another control",
     "outside",
     "Escape",
+    "Escape then outside",
     "another session",
+    "Escape then another session",
   ] as const) {
     test(`a ${rejected ? "rejected" : "successful"} speed save respects focus moved to ${intent}`, async ({
       page,
     }) => {
       const { session, picker, menu } = await fixture(page);
       const other =
-        intent === "another session"
+        intent === "another session" || intent === "Escape then another session"
           ? (
               await (
                 await page.request.post("/api/sessions", {
@@ -446,6 +448,10 @@ for (const rejected of [false, true]) {
       if (intent === "another control") await destination.focus();
       else if (intent === "Escape") await page.keyboard.press("Escape");
       else {
+        if (intent.startsWith("Escape then")) {
+          await page.keyboard.press("Escape");
+          await expect(menu).toHaveCount(0);
+        }
         if (other) {
           await page.evaluate((id) => {
             location.hash = id;
