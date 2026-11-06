@@ -2,7 +2,13 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.8 / 本次更新**
+**New in 0.1.9 / 本次更新**
+
+Fixes an intermittent duplicate-answer race when a compact history snapshot arrives before older live events. Replayed deltas and snapshots now converge to the canonical message while preserving legitimate repeated text and ongoing updates.
+
+修复精简历史快照先于旧实时事件到达时，回答偶发重复拼接的问题。事件重放与快照合并后收敛到原始消息，保留合法的重复文本和实时更新。
+
+**Agent sidebar introduced in 0.1.8 / Agent 侧边栏**
 
 Filter the sidebar by All Agents, Codex, DeepSeek Harness or another available Agent. The choice is saved for each server and combines with search, projects, archives and grouping. Directories follow the newest matching conversation. Filtering preserves the current chat, draft, split views and live replies even when its row is hidden.
 
