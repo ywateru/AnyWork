@@ -1,7 +1,7 @@
 ---
 id: harness-companion
 scope: official Harness desktop discovery plugin
-status: ready
+status: merged
 depends-on: []
 ---
 
@@ -22,3 +22,7 @@ Own `integrations/harness-discovery/` and companion installation documentation. 
 ## Verification
 
 Check secure atomic descriptor publication, loopback-only URL, configurable destination, symlink protection, own-activation cleanup and multiple activations. Demonstrate official installation in an isolated host and runtime service injection, coordinating host ownership with independent verifier. Commit before separate-agent review. Never install into the real user's Harness Desktop/CLI profile.
+
+## Delivery
+
+Implementation `ebfefef` is merged through `5d9d5b1`. [Independent review](../reviews/harness-discovery.md) passes: eight lifecycle tests, official installation in an isolated Harness Web profile, and discovery of native-created sessions through the published descriptor. The installed production Electron application was not modified or restarted; that manual installation remains a stated verification limit.
