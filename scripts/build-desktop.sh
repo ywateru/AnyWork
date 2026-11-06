@@ -47,15 +47,7 @@ cp -R "$web" "$resources/web"
 if [[ -f artifacts/anywork-source.tar.gz ]]; then cp artifacts/anywork-source.tar.gz "$resources/artifacts/"; fi
 if [[ "$platform" == Darwin ]]; then
   cp desktop/Info.plist "$app/Contents/Info.plist"
-  iconset="$(mktemp -d "${TMPDIR:-/tmp}/anywork-icon.XXXXXX")/AnyWork.iconset"
-  mkdir -p "$iconset"
-  for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" desktop/icon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
-    double=$((size * 2))
-    sips -z "$double" "$double" desktop/icon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
-  done
-  python3 scripts/make-icns.py "$iconset" "$resources/AnyWork.icns"
-  rm -rf "$(dirname "$iconset")"
+  cp desktop/icon.icns "$resources/AnyWork.icns"
   codesign --force --deep --sign - "$app"
 fi
 echo "$app"

@@ -77,6 +77,19 @@ try {
     offset+=png.length;
   }
   await writeFile('desktop/icon.ico',Buffer.concat([header,...sizes.map(size=>images.get(size))]));
+  // Supply an explicit ICNS so the native bundler never guesses a Retina size.
+  const icnsChunks = [[128,'ic07'],[256,'ic08'],[512,'ic09'],[1024,'ic10']].map(([size,type]) => {
+    const png = images.get(size);
+    const entry = Buffer.alloc(8);
+    entry.write(type,0,4,'ascii');
+    entry.writeUInt32BE(png.length+8,4);
+    return Buffer.concat([entry,png]);
+  });
+  const icnsPayload = Buffer.concat(icnsChunks);
+  const icnsHeader = Buffer.alloc(8);
+  icnsHeader.write('icns',0,4,'ascii');
+  icnsHeader.writeUInt32BE(icnsPayload.length+8,4);
+  await writeFile('desktop/icon.icns',Buffer.concat([icnsHeader,icnsPayload]));
   await writeFile('site/assets/mark.svg',svg);
   await writeFile('android/app/src/main/res/drawable/ic_launcher.xml',androidVector(vector));
 } finally {await browser.close();}

@@ -27,6 +27,7 @@
   "bundle": {
     "active": false,
     "icon": [
+      "../../desktop/icon.icns",
       "../../desktop/icon.png",
       "../../desktop/icon.ico"
     ],
