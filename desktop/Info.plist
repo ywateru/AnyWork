@@ -11,7 +11,7 @@
 	<key>CFBundleIdentifier</key>
 	<string>dev.anywork.desktop</string>
 	<key>CFBundleExecutable</key>
-	<string>AnyWork</string>
+	<string>anywork-desktop</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

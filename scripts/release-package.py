@@ -27,7 +27,7 @@ def main():
         if args.platform.startswith('macos'):
             app = folder / 'AnyWork.app'
             resources = app / 'Contents/Resources'
-            executable = app / 'Contents/MacOS/AnyWork'
+            executable = app / 'Contents/MacOS/anywork-desktop'
             executable.parent.mkdir(parents=True)
             shutil.copy2(ROOT / 'target/release/anywork-desktop', executable)
             shutil.copy2(ROOT / 'desktop/Info.plist', app / 'Contents/Info.plist')

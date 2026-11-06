@@ -20,7 +20,7 @@ suffix=""
 if [[ "$platform" == MINGW* || "$platform" == MSYS* ]]; then suffix=.exe; fi
 if [[ "$platform" == Darwin ]]; then
   app="${ANYWORK_DESKTOP_OUTPUT:-artifacts/AnyWork.app}"
-  executable="$app/Contents/MacOS/AnyWork"
+  executable="$app/Contents/MacOS/anywork-desktop"
   resources="$app/Contents/Resources"
 else
   app="${ANYWORK_DESKTOP_OUTPUT:-artifacts/AnyWork-$(uname -s)-$(uname -m)}"
