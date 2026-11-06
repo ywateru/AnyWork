@@ -1,7 +1,7 @@
 ---
 id: message-replay-race
 scope: snapshot and live-event consistency discovered during release verification
-status: in-development
+status: independently-passed-and-merged
 depends-on: [sidebar-agent-filter]
 ---
 
@@ -15,3 +15,5 @@ Full CI on v0.1.8 passed the new Agent filtering cases but exposed an existing i
 - Add a deterministic regression for the actual observed event/snapshot ordering, then independently review and test the committed change. Also investigate the separate 1.5px desktop overview geometry failure; if measurement timing is responsible, take a coherent settled layout measurement without weakening containment.
 
 The orchestrator-created `task/release-018-ci` worktree owns the fix. Developer commits product/tests; independent verifier reviews stable commits. Root handles merges, full checks and authorized deployment. v0.1.8 and its assets remain immutable; a product correction ships as v0.1.9 after acceptance.
+
+Stable fix `5d20f1f` passed [independent acceptance](../reviews/message-replay-race.md), including a deterministic old-build failure and new-build pass, canonical repeated-delta behavior and strict document-link assertions. Merged checks and v0.1.9 deployment/publication are owned by the orchestrator.
