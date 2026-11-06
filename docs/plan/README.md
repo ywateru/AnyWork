@@ -19,5 +19,5 @@ Final verification and cleanup are complete. [Backend](reviews/harness-backend.m
 
 After accepting the integration, the user requested GitHub publication and a server update. Release [v0.1.7](https://github.com/ywateru/AnyWork/releases/tag/v0.1.7) is published with all 20 assets, five signed desktop-update targets, both macOS DMGs, Android and the corresponding Web/source. The bilingual download site and local service were updated and checked; existing sessions and the access key were retained. This deployment is separate from the isolated integration acceptance above.
 
-The user then added [sidebar Agent filtering and identity icons](tasks/sidebar-agent-filter.md). That follow-up is in development and independent review. It will be merged, deployed and published as a new version after its checks pass; published tags are not reused.
+The user then added [sidebar Agent filtering and identity icons](tasks/sidebar-agent-filter.md). That follow-up passed [independent review](reviews/sidebar-agent-filter.md) and is merged. The orchestrator is performing merged checks and authorized v0.1.8 deployment/publication; published tags are not reused.
 

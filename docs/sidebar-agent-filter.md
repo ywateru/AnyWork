@@ -1,6 +1,6 @@
 # Sidebar Agent filter and identity
 
-Status: authorized implementation following the request to filter sidebar sessions by Agent and show each Agent's own icon. Existing conversation state, drafts and host ownership are outside this presentation filter.
+Status: independently verified and merged following the request to filter sidebar sessions by Agent and show each Agent's own icon. Existing conversation state, drafts and host ownership are outside this presentation filter.
 
 ## Layout
 
