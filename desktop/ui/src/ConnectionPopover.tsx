@@ -15,7 +15,11 @@ export function ConnectionPopover({
   children: React.ReactNode;
 }) {
   const panel = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: 16, top: 16 });
+  const [position, setPosition] = useState({
+    left: 16,
+    top: 16,
+    maxHeight: innerHeight - 32,
+  });
   const close = useRef(onClose);
   close.current = onClose;
   useLayoutEffect(() => {
@@ -29,20 +33,19 @@ export function ConnectionPopover({
         16,
         Math.min(rect.right - box.width, innerWidth - box.width - 16),
       );
-      const below = rect.bottom + gap;
-      const above = rect.top - gap - box.height;
-      const preferredTop =
-        below + box.height <= innerHeight - 16
-          ? below
-          : above >= 16
-            ? above
-            : below;
-      const top = Math.max(
-        16,
-        Math.min(preferredTop, innerHeight - box.height - 16),
-      );
+      const below = Math.max(0, innerHeight - 16 - rect.bottom - gap);
+      const above = Math.max(0, rect.top - gap - 16);
+      const naturalHeight =
+        element!.scrollHeight + element!.offsetHeight - element!.clientHeight;
+      const useBelow = below >= naturalHeight || below >= above;
+      // Keep the trigger reachable even when the details need to scroll.
+      const maxHeight = Math.max(0, useBelow ? below : above);
+      const height = Math.min(naturalHeight, maxHeight);
+      const top = useBelow ? rect.bottom + gap : rect.top - gap - height;
       setPosition((old) =>
-        old.left === left && old.top === top ? old : { left, top },
+        old.left === left && old.top === top && old.maxHeight === maxHeight
+          ? old
+          : { left, top, maxHeight },
       );
     }
     place();

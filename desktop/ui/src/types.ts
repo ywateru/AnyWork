@@ -44,6 +44,7 @@ export type Snapshot = {
   owned: boolean;
   external: boolean;
   authorized: boolean;
+  info?: { local_service_control?: boolean } | null;
   clients: Client[];
   routes: Route[];
   error: string;

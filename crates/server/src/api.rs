@@ -14,7 +14,7 @@ use std::{path::PathBuf, sync::Arc};
 
 pub async fn info(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"client_presence":true,"product":"AnyWork","version":env!("CARGO_PKG_VERSION"),"workspace":app.workspace,"codex_scope":if app.codex_scope == crate::CodexScope::All { "all" } else { "workspace" },"hostname":std::env::var("ANYWORK_HOSTNAME").or_else(|_|std::env::var("REMOTE_AGENT_HOSTNAME")).or_else(|_|std::env::var("HOSTNAME")).unwrap_or_else(|_|"Local machine".into())}),
+        json!({"client_presence":true,"local_service_control":true,"product":"AnyWork","version":env!("CARGO_PKG_VERSION"),"workspace":app.workspace,"codex_scope":if app.codex_scope == crate::CodexScope::All { "all" } else { "workspace" },"hostname":std::env::var("ANYWORK_HOSTNAME").or_else(|_|std::env::var("REMOTE_AGENT_HOSTNAME")).or_else(|_|std::env::var("HOSTNAME")).unwrap_or_else(|_|"Local machine".into())}),
     )
 }
 pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
@@ -34,6 +34,63 @@ pub async fn update_readiness(State(app): State<Arc<App>>) -> Result<Json<Value>
         })
         .count();
     Ok(Json(json!({"busy_sessions": busy})))
+}
+/// Explicit desktop control only; automatic app cleanup never calls this endpoint.
+pub async fn stop_service(
+    State(app): State<Arc<App>>,
+    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    use axum::{http::StatusCode, response::IntoResponse};
+    if !local_service_control_allowed(peer, &headers) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error":"服务启停仅允许本机桌面直接操作。"})),
+        )
+            .into_response();
+    }
+    match app.store.sessions() {
+        Ok(sessions)
+            if sessions.iter().any(|s| {
+                !s.external && ["running", "starting", "waiting"].contains(&s.status.as_str())
+            }) =>
+        {
+            return (StatusCode::CONFLICT, Json(json!({"error":"仍有本服务管理的会话正在执行或等待确认，请任务结束后再停止服务。"}))).into_response();
+        }
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":"无法确认会话状态，请稍后再停止服务。"})),
+            )
+                .into_response();
+        }
+        _ => {}
+    }
+    app.stopping
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    app.stop_requested.notify_one();
+    Json(json!({"stopping":true})).into_response()
+}
+fn local_service_control_allowed(
+    peer: std::net::SocketAddr,
+    headers: &axum::http::HeaderMap,
+) -> bool {
+    peer.ip().is_loopback()
+        && headers
+            .get("x-anywork-service-control")
+            .and_then(|v| v.to_str().ok())
+            == Some("desktop")
+        && ![
+            "forwarded",
+            "x-forwarded-for",
+            "x-forwarded-host",
+            "x-forwarded-proto",
+            "cf-connecting-ip",
+            "x-real-ip",
+            "origin",
+        ]
+        .iter()
+        .any(|name| headers.contains_key(*name))
 }
 pub async fn sessions(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
     let mut catalog = app.catalog.lock().await;
@@ -970,4 +1027,49 @@ pub fn start_queue_worker(app: Arc<App>) {
             .await;
         }
     });
+}
+
+#[cfg(test)]
+mod service_control_tests {
+    use super::*;
+    #[test]
+    fn service_control_requires_direct_local_desktop_requests() {
+        let mut headers = axum::http::HeaderMap::new();
+        assert!(!local_service_control_allowed(
+            "127.0.0.1:80".parse().unwrap(),
+            &headers
+        ));
+        headers.insert("x-anywork-service-control", "desktop".parse().unwrap());
+        assert!(local_service_control_allowed(
+            "127.0.0.1:80".parse().unwrap(),
+            &headers
+        ));
+        assert!(local_service_control_allowed(
+            "[::1]:80".parse().unwrap(),
+            &headers
+        ));
+        assert!(!local_service_control_allowed(
+            "192.0.2.10:80".parse().unwrap(),
+            &headers
+        ));
+        for name in [
+            "forwarded",
+            "x-forwarded-for",
+            "x-forwarded-host",
+            "x-forwarded-proto",
+            "cf-connecting-ip",
+            "x-real-ip",
+            "origin",
+        ] {
+            let mut forwarded = headers.clone();
+            forwarded.insert(
+                axum::http::HeaderName::from_static(name),
+                "test".parse().unwrap(),
+            );
+            assert!(
+                !local_service_control_allowed("127.0.0.1:80".parse().unwrap(), &forwarded),
+                "{name}"
+            );
+        }
+    }
 }

@@ -21,7 +21,6 @@ import {
   Settings2,
   ShieldCheck,
   Smartphone,
-  Wifi,
   X,
 } from "lucide-react";
 import "./style.css";
@@ -98,7 +97,7 @@ function App() {
     [welcome, setWelcome] = useState(false),
     [preview, setPreview] = useState<string | null>(null),
     [showKey, setShowKey] = useState(false),
-    [detail, setDetail] = useState<Kind | "local" | "lan" | null>(null),
+    [detail, setDetail] = useState<Kind | "local" | null>(null),
     [configuring, setConfiguring] = useState(false),
     [pairing, setPairing] = useState<Pairing | null>(null),
     [toast, setToast] = useState(""),
@@ -109,7 +108,7 @@ function App() {
     [lan, setLan] = useState("");
   const installDialog = useRef<HTMLDialogElement>(null);
   const detailTriggers = useRef<Record<string, HTMLButtonElement | null>>({});
-  function openDetail(value: Kind | "local" | "lan", edit = false) {
+  function openDetail(value: Kind | "local", edit = false) {
     setDetail(value);
     setConfiguring(edit);
   }
@@ -730,138 +729,103 @@ function App() {
                   aria-label="Codex 与远程设备的连接关系"
                 >
                   <NetworkLines />
-                  <div className="agent-node" data-node="agent">
-                    <span className="node-caption">本机 Agent</span>
-                    <div className="codex-symbol">
-                      <Code2 size={26} strokeWidth={1.5} />
-                    </div>
-                    <h2>Codex</h2>
-                    <p>在这台电脑上执行</p>
-                    <span className="agent-footnote">桌面与远程共享会话</span>
-                    <button
-                      className="agent-settings"
-                      aria-label="配置工作目录"
-                      title={state.config.workspace || "配置工作目录"}
-                      onClick={() => navigate("settings")}
-                    >
-                      <span>
-                        <small>工作目录</small>
-                        <span>
-                          {state.config.workspace
-                            .split(/[\\/]/)
-                            .filter(Boolean)
-                            .pop() || "待配置"}
-                        </span>
-                      </span>
-                      <Settings2 size={14} />
-                    </button>
-                  </div>
+                  <button
+                    className="agent-node"
+                    aria-label="Codex 设置"
+                    title={`工作目录：${state.config.workspace || "待配置"}`}
+                    onClick={() => navigate("settings")}
+                  >
+                    <span className="codex-symbol" data-node="agent">
+                      <Code2 size={36} strokeWidth={1.5} />
+                    </span>
+                    <span className="agent-name">Codex</span>
+                  </button>
                   <div className="host-column">
-                    <button
-                      className="host-node"
-                      ref={(element) => {
-                        detailTriggers.current.local = element;
-                      }}
-                      aria-expanded={detail === "local"}
-                      aria-controls={
-                        detail === "local" ? "connection-details" : undefined
-                      }
-                      aria-label="本地服务详情"
-                      onClick={() =>
-                        detail === "local"
-                          ? setDetail(null)
-                          : openDetail("local")
-                      }
-                    >
-                      <img
-                        className="host-logo"
-                        data-node="hub"
-                        src={anyworkLogo}
-                        width="72"
-                        height="72"
-                        alt=""
-                      />
-                      <span className="host-name">AnyWork</span>
-                      <Status
-                        phase={state.authorized ? "running" : state.service}
-                        text={state.authorized ? "运行中" : status}
-                      />
-                      <span
-                        className="host-address"
-                        title={`http://127.0.0.1:${state.config.port}`}
+                    <div className="host-node">
+                      <button
+                        className="host-details"
+                        ref={(element) => {
+                          detailTriggers.current.local = element;
+                        }}
+                        aria-expanded={detail === "local"}
+                        aria-controls={
+                          detail === "local" ? "connection-details" : undefined
+                        }
+                        aria-label="本地服务详情"
+                        onClick={() =>
+                          detail === "local"
+                            ? setDetail(null)
+                            : openDetail("local")
+                        }
                       >
-                        127.0.0.1:{state.config.port}
-                      </span>
-                      <span className="host-settings">
-                        <Settings2 size={12} />
-                        服务设置
-                      </span>
-                    </button>
-                    <div className="host-controls" data-node="controls">
-                      {state.owned ? (
-                        <button
-                          className="host-power"
-                          disabled={
-                            pending.includes("stop_server") ||
-                            state.service === "stopping"
-                          }
-                          onClick={() => void action("stop_server")}
-                        >
-                          <Power size={15} />
-                          {state.service === "stopping"
-                            ? "正在停止…"
-                            : "停止服务"}
-                        </button>
-                      ) : !state.external ? (
-                        <button
-                          className="primary host-power"
-                          disabled={
-                            busy(state.service) ||
-                            pending.includes("start_server")
-                          }
-                          onClick={() =>
-                            void action("start_server", { config, token })
-                          }
-                        >
-                          <Power size={15} />
-                          {pending.includes("start_server") ||
-                          busy(state.service)
-                            ? "正在启动…"
-                            : "启动服务"}
-                        </button>
-                      ) : (
-                        <span className="host-managed">由命令行管理</span>
-                      )}
-                    </div>
-                    <button
-                      className="lan-node"
-                      data-node="lan"
-                      ref={(element) => {
-                        detailTriggers.current.lan = element;
-                      }}
-                      aria-label="局域网访问详情"
-                      aria-expanded={detail === "lan"}
-                      onClick={() =>
-                        detail === "lan" ? setDetail(null) : openDetail("lan")
-                      }
-                    >
-                      <Wifi size={20} />
-                      <span>
-                        <strong>局域网访问</strong>
-                        <Status
-                          phase={lan ? "running" : "off"}
-                          text={
-                            lan
-                              ? "已启用"
-                              : state.config.allowLAN
-                                ? "等待连接"
-                                : "未启用"
-                          }
+                        <img
+                          className="host-logo"
+                          data-node="hub"
+                          src={anyworkLogo}
+                          width="72"
+                          height="72"
+                          alt=""
                         />
-                        <small>{lan || "连接同一网络中的设备"}</small>
-                      </span>
-                      <ChevronRight size={14} />
-                    </button>
+                        <span className="host-name">AnyWork</span>
+                        <Status
+                          phase={state.authorized ? "running" : state.service}
+                          text={state.authorized ? "运行中" : status}
+                        />
+                        <span
+                          className="host-address"
+                          title={`http://127.0.0.1:${state.config.port}`}
+                        >
+                          127.0.0.1:{state.config.port}
+                        </span>
+                        <span className="host-settings">
+                          <Settings2 size={12} />
+                          服务设置
+                        </span>
+                      </button>
+                      <div className="host-controls">
+                        {state.owned || state.external ? (
+                          <button
+                            className="host-power"
+                            title={
+                              state.external &&
+                              !state.info?.local_service_control
+                                ? "请先将命令行服务升级到支持桌面启停的版本"
+                                : undefined
+                            }
+                            disabled={
+                              pending.includes("stop_server") ||
+                              state.service === "stopping" ||
+                              (!state.owned &&
+                                (!state.authorized ||
+                                  !state.info?.local_service_control))
+                            }
+                            onClick={() => void action("stop_server")}
+                          >
+                            <Power size={15} />
+                            {state.service === "stopping"
+                              ? "正在停止…"
+                              : "停止服务"}
+                          </button>
+                        ) : (
+                          <button
+                            className="primary host-power"
+                            disabled={
+                              busy(state.service) ||
+                              pending.includes("start_server")
+                            }
+                            onClick={() =>
+                              void action("start_server", { config, token })
+                            }
+                          >
+                            <Power size={15} />
+                            {pending.includes("start_server") ||
+                            busy(state.service)
+                              ? "正在启动…"
+                              : "启动服务"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <div className="route-nodes" aria-label="独立远程连接">
                     {kinds.map((kind, i) => {
@@ -1032,11 +996,7 @@ function App() {
           key={detail}
           anchor={detailTriggers.current[detail]}
           title={
-            detail === "local"
-              ? "本地服务"
-              : detail === "lan"
-                ? "局域网访问"
-                : titles[kinds.indexOf(detail)]
+            detail === "local" ? "本地服务" : titles[kinds.indexOf(detail)]
           }
           onClose={() => setDetail(null)}
         >
@@ -1064,6 +1024,7 @@ function App() {
                     url={`http://127.0.0.1:${state.config.port}`}
                     copy={copy}
                   />
+                  {lan && <Address label="局域网地址" url={lan} copy={copy} />}
                   {state.authorized ? (
                     keyRow
                   ) : state.external ? (
@@ -1118,37 +1079,6 @@ function App() {
                   </div>
                 </>
               )}
-            </>
-          ) : detail === "lan" ? (
-            <>
-              <Status
-                phase={lan ? "running" : "off"}
-                text={
-                  lan ? "已启用" : state.config.allowLAN ? "等待连接" : "未启用"
-                }
-              />
-              {lan ? (
-                <>
-                  <Address label="局域网地址" url={lan} copy={copy} />
-                  <p className="hint">
-                    在同一网络的设备中打开此地址，使用访问密钥连接。
-                  </p>
-                  {keyRow}
-                </>
-              ) : (
-                <p className="hint">
-                  {state.config.allowLAN
-                    ? "启动并认证本地服务后，将自动显示可用的局域网地址。"
-                    : "在服务配置中允许局域网连接，再启动服务，即可连接同一网络中的设备。"}
-                </p>
-              )}
-              <div className="detail-options">
-                <button onClick={() => openDetail("local", true)}>
-                  <Settings2 size={17} />
-                  查看服务配置
-                  <ChevronRight size={15} />
-                </button>
-              </div>
             </>
           ) : (
             (() => {

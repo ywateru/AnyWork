@@ -17,6 +17,7 @@ export async function manager(
     unconfigured?: boolean;
     lan?: boolean;
     failSave?: boolean;
+    legacyService?: boolean;
   } = {},
 ) {
   await page.route("http://anywork-desktop.test/**", async (route) => {
@@ -86,6 +87,7 @@ export async function manager(
       owned: !opts.off && !!opts.owned,
       external: !opts.off && !opts.owned,
       authorized: !opts.off,
+      info: { local_service_control: !opts.legacyService },
       clients: [],
       routes,
       error: "",

@@ -31,7 +31,7 @@ bash scripts/build-android.sh
 
 macOS 设置保存在 `~/Library/Application Support/AnyWork/manager.json`，其他平台使用系统应用数据目录。访问密钥文件为服务数据目录中的 `access-token`；Unix 文件权限 0600，目录 0700。Cloudflare 连接器令牌和 tunwg 中继密钥保存于系统 keyring，不放入进程参数或配对二维码。配对码包含 AnyWork 地址和访问密钥。已有 CLI 服务使用不同密钥时，可填入对应密钥或通过原生选取器读取指定 access-token 文件；应用不会覆盖外部服务的密钥。
 
-已由命令行启动的 Server 显示为外部服务。选择它的数据目录或填写匹配的密钥后，可以查看设备并使用隧道；应用不会通过猜测 PID 停止这类服务。退出桌面应用会向自己创建的 Server 和隧道发送关闭信号，独立 Codex 执行进程不属于其进程所有权。
+已由命令行启动的 Server 通过匹配的数据目录或密钥认证后，可以查看设备、使用隧道，并通过 AnyWork 节点内的按钮显式停止兼容服务。`GET /api/info` 中的 `local_service_control: true` 表示支持；旧版服务需先升级。停止使用经过 Bearer 认证的 `POST /api/service/stop`，附加 `X-AnyWork-Service-Control: desktop`，只接受直接回环连接，不接受 Origin 或转发头；存在本服务管理的执行中或等待确认会话时返回 409。应用不会通过猜测 PID 停止服务。退出桌面应用会向自己创建的 Server 和隧道发送关闭信号，保留独立 CLI 服务和 Codex 执行进程。
 
 ## 三种外网连接
 

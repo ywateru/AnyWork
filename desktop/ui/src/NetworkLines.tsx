@@ -25,9 +25,8 @@ export function NetworkLines() {
           : null;
       };
       const hub = bounds("hub"),
-        agent = bounds("agent"),
-        lan = bounds("lan");
-      if (!hub || !agent || !lan) return;
+        agent = bounds("agent");
+      if (!hub || !agent) return;
       const next: string[] = [];
       const horizontal = (
         from: NonNullable<typeof hub>,
@@ -44,10 +43,6 @@ export function NetworkLines() {
         const route = bounds(name);
         if (route) next.push(horizontal(hub, route));
       }
-      const controls = bounds("controls") || hub;
-      next.push(
-        `M${controls.x},${controls.bottom + 2} L${lan.x},${lan.top - 5}`,
-      );
       setPaths((old) =>
         JSON.stringify(old) === JSON.stringify(next) ? old : next,
       );

@@ -14,7 +14,7 @@ for (const [width, height] of [
     await page.emulateMedia({ colorScheme: "dark" });
     await manager(page, { owned: true, lan: true, changed: true });
     await expect(
-      page.getByRole("heading", { name: "Codex", exact: true }),
+      page.getByRole("button", { name: "Codex 设置", exact: true }),
     ).toBeVisible();
     await expect(page.getByText(/Cursor|Claude Code/)).toHaveCount(0);
     await expect(page.locator(".route-node")).toHaveCount(3);
@@ -25,7 +25,8 @@ for (const [width, height] of [
       page.getByText("工作环境与文件保留在本机", { exact: true }),
     ).toHaveCount(0);
     await expect(page.locator(".host-node")).toContainText("127.0.0.1:3210");
-    await expect(page.locator(".agent-node")).toContainText("fixture");
+    await expect(page.locator(".agent-node")).toHaveText("Codex");
+    await expect(page.locator(".lan-node, .host-managed")).toHaveCount(0);
     const address = page
       .getByRole("button", { name: "匿名隧道详情" })
       .locator(".route-address");
@@ -50,8 +51,8 @@ for (const [width, height] of [
       const stop = await page
         .getByRole("button", { name: "停止服务", exact: true })
         .boundingBox();
-      expect(stop!.y).toBeGreaterThanOrEqual(hub!.y + hub!.height);
-      await expect(page.locator(".network-lines > path")).toHaveCount(5);
+      expect(stop!.y + stop!.height).toBeLessThanOrEqual(hub!.y + hub!.height);
+      await expect(page.locator(".network-lines > path")).toHaveCount(4);
     }
     expect(
       await page.evaluate(
@@ -222,6 +223,37 @@ test("service controls stay at the host and respect external service ownership",
   ).toBeDisabled();
 });
 
+test("an authenticated compatible CLI service can be stopped from its node", async ({
+  page,
+}) => {
+  await manager(page);
+  const stop = page
+    .locator(".host-node")
+    .getByRole("button", { name: "停止服务", exact: true });
+  await expect(stop).toBeEnabled();
+  await expect(page.getByText("由命令行管理", { exact: true })).toHaveCount(0);
+  await stop.click();
+  await expect(
+    page
+      .locator(".host-node")
+      .getByRole("button", { name: "启动服务", exact: true }),
+  ).toBeVisible();
+});
+
+test("an older CLI service does not pretend to support desktop stopping", async ({
+  page,
+}) => {
+  await manager(page, { legacyService: true });
+  const stop = page
+    .locator(".host-node")
+    .getByRole("button", { name: "停止服务", exact: true });
+  await expect(stop).toBeDisabled();
+  await expect(stop).toHaveAttribute(
+    "title",
+    "请先将命令行服务升级到支持桌面启停的版本",
+  );
+});
+
 test("verified connection details support copying, opening and Android QR pairing", async ({
   page,
 }) => {
@@ -237,7 +269,7 @@ test("verified connection details support copying, opening and Android QR pairin
   await expect(dialog).toContainText("https://fixture.trycloudflare.com");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await page.getByRole("button", { name: "局域网访问详情" }).click();
+  await page.getByRole("button", { name: "本地服务详情" }).click();
   await expect(page.getByRole("dialog")).toContainText(
     "http://192.0.2.10:3210",
   );
@@ -247,7 +279,7 @@ test("node settings lead to working configuration and save feedback stays visibl
   page,
 }) => {
   await manager(page, { off: true });
-  await page.getByRole("button", { name: "配置工作目录", exact: true }).click();
+  await page.getByRole("button", { name: "Codex 设置", exact: true }).click();
   const workspace = page.getByRole("textbox", {
     name: "工作目录",
     exact: true,
@@ -259,8 +291,8 @@ test("node settings lead to working configuration and save feedback stays visibl
   ).toBeVisible();
   await page.getByRole("button", { name: "总览", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "配置工作目录", exact: true }),
-  ).toContainText("new-workspace");
+    page.getByRole("button", { name: "Codex 设置", exact: true }),
+  ).toHaveAttribute("title", "工作目录：/fixture/new-workspace");
   await page.getByRole("button", { name: "本地服务详情", exact: true }).click();
   const local = page.getByRole("dialog", { name: "本地服务", exact: true });
   await expect(

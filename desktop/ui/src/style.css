@@ -937,7 +937,7 @@ input[type="checkbox"] {
   align-items: start;
   gap: 30px;
   padding: 24px 0 20px;
-  min-height: 460px;
+  min-height: 400px;
 }
 .network-lines {
   position: absolute;
@@ -958,73 +958,33 @@ input[type="checkbox"] {
   min-width: 0;
 }
 .agent-node {
-  margin-top: 62px;
-  padding: 20px 15px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
+  margin-top: 134px;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 0;
+  background: transparent;
 }
-.node-caption {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 18px;
+.agent-node:hover,
+.agent-node:active {
+  background: transparent;
 }
 .codex-symbol {
-  width: 40px;
-  height: 40px;
+  width: 56px;
+  height: 56px;
   display: grid;
   place-items: center;
   background: #f4f4f4;
-  border-radius: 11px;
-  margin-bottom: 12px;
+  border-radius: 14px;
 }
-.agent-node h2 {
+.agent-node:hover .codex-symbol {
+  background: #ebebeb;
+}
+.agent-name {
   font-size: 18px;
+  font-weight: 600;
   letter-spacing: -0.3px;
-}
-.agent-node p {
-  font-size: 12px;
-  color: #525252;
-  margin-top: 7px;
-}
-.agent-footnote {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  margin-top: 4px;
-  line-height: 1.7;
-}
-.agent-settings {
-  width: 100%;
-  margin-top: 16px;
-  padding: 10px 0 0;
-  border: 0;
-  border-top: 1px solid var(--line);
-  border-radius: 0;
-  background: transparent;
-  gap: 6px;
-  text-align: left;
-  color: var(--muted);
-}
-.agent-settings > span {
-  flex: 1;
-  min-width: 0;
-}
-.agent-settings small {
-  display: block;
-  font-size: 10px;
-  margin-bottom: 4px;
-}
-.agent-settings > span > span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 12px;
-  color: var(--accent);
-}
-.agent-settings > svg {
-  flex-shrink: 0;
 }
 .host-column {
   display: flex;
@@ -1037,10 +997,18 @@ input[type="checkbox"] {
   display: flex;
   flex-direction: column;
   align-items: center;
+  border-radius: 12px;
+  padding: 6px 0;
+}
+.host-details {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 9px;
   background: transparent;
   border: 0;
-  padding: 6px 0;
+  padding: 0;
   white-space: normal;
 }
 .host-logo {
@@ -1054,7 +1022,7 @@ input[type="checkbox"] {
   letter-spacing: -0.5px;
   font-weight: 650;
 }
-.host-node > .status {
+.host-details > .status {
   font-size: 12px;
 }
 .host-address {
@@ -1082,46 +1050,6 @@ input[type="checkbox"] {
   font-size: 12px;
   min-height: 30px;
   padding: 5px 10px;
-}
-.host-managed {
-  color: var(--muted);
-  font-size: 11px;
-}
-.lan-node {
-  margin-top: 24px;
-  width: 100%;
-  padding: 13px 10px;
-  gap: 7px;
-  border-radius: 10px;
-  text-align: left;
-  background: #fafafa;
-  white-space: normal;
-}
-.lan-node > span {
-  flex: 1;
-  min-width: 0;
-}
-.lan-node strong {
-  display: block;
-  font-size: 13px;
-  font-weight: 550;
-  margin-bottom: 5px;
-}
-.lan-node .status {
-  font-size: 11px;
-}
-.lan-node small {
-  display: block;
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.6;
-}
-.lan-node > svg {
-  flex-shrink: 0;
 }
 .route-nodes {
   display: flex;
@@ -1418,10 +1346,6 @@ input[type="checkbox"] {
   .route-info strong {
     font-size: 12px;
   }
-  .agent-node {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
 }
 @media (max-width: 680px) {
   .shell {
@@ -1477,28 +1401,7 @@ input[type="checkbox"] {
   }
   .agent-node {
     margin: 0 auto;
-    width: 190px;
-    display: grid;
-    grid-template-columns: 40px 1fr;
-    column-gap: 12px;
-    padding: 14px;
-  }
-  .agent-node .node-caption {
-    grid-column: 1 / -1;
-    margin-bottom: 12px;
-  }
-  .codex-symbol {
-    grid-row: 2 / 5;
-    margin: 0;
-  }
-  .agent-node h2 {
-    font-size: 16px;
-  }
-  .agent-footnote {
-    font-size: 10px;
-  }
-  .agent-settings {
-    grid-column: 1 / -1;
+    width: 96px;
   }
   .host-column {
     padding: 0;
@@ -1509,10 +1412,6 @@ input[type="checkbox"] {
   .host-logo {
     width: 56px;
     height: 56px;
-  }
-  .lan-node {
-    width: 240px;
-    margin-top: 24px;
   }
   .route-nodes {
     gap: 12px;

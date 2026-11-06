@@ -66,11 +66,19 @@ pub struct RouteState {
     pub retry_in_seconds: u64,
     pub address_changed: bool,
 }
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ServerInfo {
     pub hostname: String,
     pub workspace: String,
+    #[serde(default)]
+    pub local_service_control: bool,
 }
+impl PartialEq for ServerInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.hostname == other.hostname && self.workspace == other.workspace
+    }
+}
+impl Eq for ServerInfo {}
 #[derive(Clone, Deserialize, Serialize)]
 pub struct RemoteClient {
     pub id: String,
@@ -619,8 +627,12 @@ impl Worker {
                 result
             }
             Command::StopServer => {
-                self.stop_server().await;
-                Ok(())
+                if self.server.is_some() {
+                    self.stop_server().await;
+                    Ok(())
+                } else {
+                    self.stop_external_server().await
+                }
             }
             Command::StartRoute(kind, c, secret) => {
                 if let Err(e) = self.start_route(kind, c, secret).await {
@@ -804,6 +816,42 @@ impl Worker {
             });
             self.reset_probe();
         }
+    }
+    async fn stop_external_server(&mut self) -> Result<()> {
+        let state = self.snapshot();
+        anyhow::ensure!(state.external && state.authorized, "请先认证本地服务。");
+        anyhow::ensure!(
+            state
+                .info
+                .as_ref()
+                .is_some_and(|info| info.local_service_control),
+            "当前命令行服务不支持桌面启停，请先升级服务。"
+        );
+        let response = self
+            .http
+            .local
+            .post(format!("{}/api/service/stop", state.config.local_url()))
+            .bearer_auth(&state.token)
+            .header("x-anywork-service-control", "desktop")
+            .send()
+            .await
+            .context("无法连接本地服务，请稍后重试。")?;
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.context("本地服务未确认停止请求。")?;
+        anyhow::ensure!(
+            status.is_success() && body["stopping"] == true,
+            "{}",
+            body["error"].as_str().unwrap_or("本地服务拒绝停止请求。")
+        );
+        self.edit(|s| {
+            s.service = Phase::Stopping;
+            s.error.clear();
+        });
+        for kind in RouteKind::ALL {
+            self.stop_route(kind, String::new()).await;
+        }
+        self.reset_probe();
+        Ok(())
     }
     async fn start_route(&mut self, kind: RouteKind, c: Config, secret: String) -> Result<()> {
         let i = kind.index();
@@ -2242,5 +2290,74 @@ mod tests {
         assert!(manager_lock(dir.path()).is_err());
         drop(second);
         assert!(manager_lock(dir.path()).is_ok());
+    }
+
+    #[tokio::test]
+    async fn explicit_external_stop_requires_capability_and_server_confirmation() {
+        for (status, body, accepted) in [
+            ("200 OK", r#"{"stopping":true}"#, true),
+            ("200 OK", r#"{}"#, false),
+            ("401 Unauthorized", r#"{"error":"key rejected"}"#, false),
+            ("409 Conflict", r#"{"error":"busy task"}"#, false),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut buffer = [0; 4096];
+                let read = stream.read(&mut buffer).await.unwrap();
+                let request = String::from_utf8_lossy(&buffer[..read]).to_lowercase();
+                assert!(request.starts_with("post /api/service/stop "));
+                assert!(request.contains("authorization: bearer test-access-token-123456"));
+                assert!(request.contains("x-anywork-service-control: desktop"));
+                stream.write_all(format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let mut w = worker(
+                Options {
+                    support: dir.path().into(),
+                    resources: dir.path().into(),
+                    secrets: Arc::new(MemorySecrets::default()),
+                },
+                Config {
+                    port,
+                    ..Default::default()
+                },
+            );
+            assert!(w.stop_external_server().await.is_err()); // Missing capability sends no request.
+            let mut info: ServerInfo = serde_json::from_value(serde_json::json!({
+                "hostname":"fixture", "workspace":"/fixture", "local_service_control":true
+            }))
+            .unwrap();
+            let same_origin = info.clone();
+            info.local_service_control = false;
+            assert_eq!(info, same_origin); // A capability upgrade is not a different tunnel origin.
+            w.edit(|s| {
+                s.info = Some(same_origin);
+                s.authorized = false;
+            });
+            assert!(w.stop_external_server().await.is_err());
+            w.edit(|s| s.authorized = true);
+            assert_eq!(w.stop_external_server().await.is_ok(), accepted);
+            assert_eq!(
+                w.snapshot().service,
+                if accepted {
+                    Phase::Stopping
+                } else {
+                    Phase::Running
+                }
+            );
+            server.await.unwrap();
+            // Automatic shutdown must never use the independent service's control endpoint.
+            w.cleanup().await;
+            assert_eq!(
+                w.snapshot().service,
+                if accepted {
+                    Phase::Stopping
+                } else {
+                    Phase::Running
+                }
+            );
+        }
     }
 }

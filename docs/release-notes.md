@@ -2,19 +2,19 @@ AnyWork brings a local Codex workspace to browsers and Android, with a Rust desk
 
 AnyWork 将本机 Codex 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.5 / 本次更新**
+**New in 0.1.6 / 本次更新**
 
-The Rust desktop manager has a new white, monochrome interface centered on a live connection diagram: Codex → AnyWork → three independent remote connections. Anonymous Cloudflare Tunnel, a fixed Cloudflare hostname and WireGuard + TLS relay can remain enabled together. The AnyWork node now includes its service status, local address, port and settings; the Codex node shows the configured workspace and its settings entry.
+The Rust desktop manager has a new white, monochrome interface centered on a live connection diagram: Codex → AnyWork → three independent remote connections. Anonymous Cloudflare Tunnel, a fixed Cloudflare hostname and WireGuard + TLS relay can remain enabled together. The AnyWork node includes its service status, local address, port, settings and start/stop button. The Codex node is reduced to its icon and name, with settings available on click.
 
-Rust 桌面管理器采用全新的白底黑白界面，以实时连接关系图呈现 Codex → AnyWork → 三路独立远程连接。Cloudflare 匿名隧道、固定域名与 WireGuard + TLS 中继可以同时启用。AnyWork 节点直接显示服务状态、本机地址、端口和设置入口；Codex 节点显示已配置的工作目录及设置入口。
+Rust 桌面管理器采用全新的白底黑白界面，以实时连接关系图呈现 Codex → AnyWork → 三路独立远程连接。Cloudflare 匿名隧道、固定域名与 WireGuard + TLS 中继可以同时启用。AnyWork 节点直接显示服务状态、本机地址、端口、设置和启停按钮；Codex 节点精简为图标与名称，点击可进入设置。
 
-Connection cards display known URLs, truncating long addresses while keeping the full address in their tooltip and details. Click a node for connection details, copy/open actions, Android pairing or configuration. Popovers close on outside click, Escape or a second click, and choose a position that keeps narrow-screen controls usable. Service start/stop stays beneath the host node. The redundant overview footer has been removed.
+Connection cards display known URLs, truncating long addresses while keeping the full address in their tooltip and details. Click a node for connection details, copy/open actions, Android pairing or configuration. Popovers close on outside click, Escape or a second click, and scroll within available space to keep their trigger usable. The management label, downward arrow, standalone LAN card and redundant overview footer have been removed; LAN addresses remain in local service details. Compatible authenticated CLI services can be stopped explicitly from the manager; busy managed sessions prevent shutdown, and automatic cleanup leaves independent services running.
 
-连接卡片显示已知网址，长地址自动截断，悬停提示和详情中保留完整地址。点击节点即可查看详情、复制或打开地址、进行 Android 配对或配置连接。浮层支持点击外部、Escape 或再次点击触发器关闭，并根据可用空间选择位置，保证窄屏开关可操作。服务启停位于宿主节点下方，移除了重复的总览底部区域。
+连接卡片显示已知网址，长地址自动截断，悬停提示和详情中保留完整地址。点击节点即可查看详情、复制或打开地址、进行 Android 配对或配置连接。浮层支持点击外部、Escape 或再次点击触发器关闭，根据可用空间限制高度并内部滚动，保证窄屏开关可操作。移除管理归属文字、下方箭头、独立局域网卡片及重复的总览底部区域，局域网地址保留在本地服务详情。兼容的命令行服务认证后可显式停止，仍有自有任务执行时拒绝停止；自动清理保留独立服务。
 
-Settings now show save results and errors. Desktop layouts were checked at 1440×1000, 960×720, 800×620 and a narrow 390px viewport; 42 isolated manager interaction cases and the updater UI regression passed locally. New Web users start with a white theme; existing explicit light/dark/system choices and custom appearances are preserved.
+Settings now show save results and errors. Desktop layouts were checked at 1440×1000, 960×720, 800×620 and a narrow 390px viewport; 46 isolated manager interaction cases and the updater UI regression passed locally. New Web users start with a white theme; existing explicit light/dark/system choices and custom appearances are preserved.
 
-设置页补齐保存结果和错误反馈。桌面布局检查覆盖 1440×1000、960×720、800×620 和 390px 窄屏；本地通过 42 项隔离管理界面交互测试及更新界面回归。Web 新用户默认白色主题，已有用户明确保存的浅色、深色、跟随系统与自定义外观继续保留。
+设置页补齐保存结果和错误反馈。桌面布局检查覆盖 1440×1000、960×720、800×620 和 390px 窄屏；本地通过 46 项隔离管理界面交互测试及更新界面回归。Web 新用户默认白色主题，已有用户明确保存的浅色、深色、跟随系统与自定义外观继续保留。
 
 **Installers and updates / 安装与更新**
 

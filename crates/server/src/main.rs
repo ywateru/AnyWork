@@ -148,6 +148,7 @@ pub struct App {
     origins: Vec<String>,
     stopping: AtomicBool,
     shutdown: Notify,
+    stop_requested: Notify,
 }
 impl App {
     fn session(&self, id: &str) -> Result<Session> {
@@ -210,6 +211,13 @@ async fn auth(State(app): State<Arc<App>>, req: axum::extract::Request, next: Ne
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error":"Invalid access token"})),
+        )
+            .into_response();
+    }
+    if app.stopping.load(Ordering::Relaxed) {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error":"Service is stopping"})),
         )
             .into_response();
     }
@@ -313,6 +321,7 @@ async fn main() -> Result<()> {
         changed: Notify::new(),
         stopping: AtomicBool::new(false),
         shutdown: Notify::new(),
+        stop_requested: Notify::new(),
         origins: args.origins.clone(),
     });
     api::start_queue_worker(app.clone());
@@ -321,6 +330,7 @@ async fn main() -> Result<()> {
     let api = Router::new()
         .route("/info", get(api::info))
         .route("/update-readiness", get(api::update_readiness))
+        .route("/service/stop", post(api::stop_service))
         .route("/clients", get(clients::list))
         .route("/clients/heartbeat", post(clients::heartbeat))
         .route("/plugins", get(api::plugins))
@@ -424,11 +434,11 @@ async fn main() -> Result<()> {
             let mut terminate =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                     .expect("signal handler");
-            tokio::select! {_=tokio::signal::ctrl_c()=>{},_=terminate.recv()=>{}}
+            tokio::select! {_=tokio::signal::ctrl_c()=>{},_=terminate.recv()=>{},_=shutdown_app.stop_requested.notified()=>{}}
         }
         #[cfg(not(unix))]
         {
-            let _ = tokio::signal::ctrl_c().await;
+            tokio::select! {_=tokio::signal::ctrl_c()=>{},_=shutdown_app.stop_requested.notified()=>{}}
         }
         shutdown_app.stopping.store(true, Ordering::Relaxed);
         shutdown_app.shutdown.notify_waiters();
