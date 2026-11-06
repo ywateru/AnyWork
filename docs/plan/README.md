@@ -27,3 +27,9 @@ Final cloud checks found a separate model-menu focus race. The [focus correction
 ## WorkBuddy follow-up
 
 The new goal is to add WorkBuddy from the installed desktop, preserving shared execution. [Research](analysis/workbuddy.md) records the exact artifact, primary references and rejected transports; the [integration contract](../workbuddy-integration.md) defines the candidate native boundary and completion gates. Research has not yet established runtime attachment. No production instance, credentials, version or release is changed by this work.
+
+| WorkBuddy task | State |
+| --- | --- |
+| [Native backend and shared-host integration](tasks/workbuddy-backend.md) | developing in isolated worktree |
+| [Identity and explicit launch setup](tasks/workbuddy-ui.md) | native-contract research, then isolated implementation |
+| [Independent verification](tasks/workbuddy-verification.md) | OS/runtime preflight; committed implementation review pending |
