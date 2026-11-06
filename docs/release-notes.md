@@ -2,7 +2,17 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.7 / 本次更新**
+**New in 0.1.8 / 本次更新**
+
+Filter the sidebar by All Agents, Codex, DeepSeek Harness or another available Agent. The choice is saved for each server and combines with search, projects, archives and grouping. Directories follow the newest matching conversation. Filtering preserves the current chat, draft, split views and live replies even when its row is hidden.
+
+侧边栏新增 Agent 筛选，可选择所有 Agent、Codex、DeepSeek Harness 或其他可用 Agent。各服务器分别记住选择，并与搜索、项目、归档和分组组合使用；目录按匹配会话的最新时间排序。筛选隐藏当前会话时，对话、草稿、分屏和实时回复继续保留。
+
+Conversation rows now use verified Codex product artwork and the official Harness whale mark, bundled locally in light and dark variants. Running and waiting indicators remain visible. Sources, checksums and trademark attribution are recorded in the [asset provenance](https://github.com/ywateru/AnyWork/blob/main/web/public/agents/README.md).
+
+会话图标使用经过核对的 Codex 专用产品图标和 Harness 官方鲸鱼标识，本地打包深浅主题版本，保留执行动画及待响应提示。来源、校验值和商标归属见图标来源说明。
+
+**Included since 0.1.7 / 已有 Harness 支持**
 
 DeepSeek Harness is now available alongside Codex. AnyWork connects to the existing official Harness Web/Desktop host, preserving its native workspace and session IDs. Existing history, live replies, tools, image attachments, model selection, queue/steer, cancellation and one-time approvals run through that same host. An optional discovery companion publishes the host's dynamic loopback address privately; it creates no listener or execution engine. See the [Harness setup guide](https://github.com/ywateru/AnyWork/blob/main/docs/harness-setup.md).
 
