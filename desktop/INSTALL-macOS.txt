@@ -1,0 +1,45 @@
+AnyWork — macOS 安装说明 / Installation guide
+============================================
+
+中文
+
+1. 将本磁盘映像中的 AnyWork.app 拖入 Applications（应用程序）文件夹。
+2. 打开“终端”，执行以下命令，再打开 AnyWork：
+
+   sudo xattr -cr "/Applications/AnyWork.app"
+
+   按提示输入 Mac 的管理员密码。输入密码时终端不会显示字符，输入后按回车。
+   注意路径为 /Applications（末尾有 s），不是 /Application。
+   如果安装在其他目录，请将命令中的路径替换为实际安装路径。
+3. 从“应用程序”目录打开 AnyWork。请勿直接在本磁盘映像内运行，
+   这样才能正常保存安装并使用后续自动更新。安装完成后可推出磁盘映像。
+
+当前应用使用临时签名，尚未经过 Apple 公证。上述命令递归清除应用包的
+扩展属性（包括下载隔离标记），不会赋予应用管理员权限或修改系统保护。
+仅对从 AnyWork 官方发行页下载并核对来源的应用执行此命令。
+
+English
+
+1. Drag AnyWork.app from this disk image into Applications.
+2. Open Terminal, run the following command, then open AnyWork:
+
+   sudo xattr -cr "/Applications/AnyWork.app"
+
+   Enter your Mac administrator password when prompted. Terminal does not
+   display password characters; press Return after typing.
+   The path is /Applications (with an s), not /Application.
+   If you installed elsewhere, replace the path with the actual app location.
+3. Open AnyWork from Applications. Run the installed copy rather than the copy
+   inside this disk image so automatic updates can replace the app. Eject the
+   disk image after installation.
+
+The app is ad-hoc signed and not yet Apple notarized. This command recursively
+clears extended attributes (including the download quarantine flag) on this app;
+it does not grant the app administrator privileges or change system protection.
+Run it only for an app whose source you have verified from the official release.
+
+下载与校验 / Downloads and checksums:
+https://github.com/ywateru/AnyWork/releases/latest
+
+中文指南: https://github.com/ywateru/AnyWork/blob/main/docs/getting-started.zh-CN.md
+English: https://github.com/ywateru/AnyWork/blob/main/docs/getting-started.md

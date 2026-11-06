@@ -76,9 +76,11 @@ def main():
                 if not value.startswith(REPO + '/releases'):
                     raise ValueError('Unexpected release asset origin')
                 return html.escape(value, quote=True)
-            def button(name, label):
-                return f'<a data-asset="{name}" data-label="{html.escape(label, quote=True)}" href="{url(name)}">{html.escape(label)} <span aria-hidden="true">↓</span></a>'
-            values['macDownloads'] = button('anywork-macos-arm64.zip', raw['armMac']) + button('anywork-macos-x86_64.zip', raw['intelMac'])
+            def button(name, label, fallback=None):
+                selected = fallback if name not in assets and fallback in assets else name
+                fallback_attr = f' data-fallback="{fallback}"' if fallback else ''
+                return f'<a data-asset="{name}"{fallback_attr} data-label="{html.escape(label, quote=True)}" href="{url(selected)}">{html.escape(label)} <span aria-hidden="true">↓</span></a>'
+            values['macDownloads'] = ''.join(button(f'anywork-macos-{arch}.dmg', raw[label], f'anywork-macos-{arch}.zip') for arch, label in [('arm64', 'armMac'), ('x86_64', 'intelMac')])
             values['winDownloads'] = (button('anywork-windows-x86_64-setup.exe', raw['installer']) if 'anywork-windows-x86_64-setup.exe' in assets else '') + button('anywork-windows-x86_64.zip', raw['portable'])
             values['linuxDownloads'] = ''.join(button(f'anywork-linux-{arch}.AppImage', raw[label]) for arch, label in [('x86_64', 'x64AppImage'), ('arm64', 'armAppImage')] if f'anywork-linux-{arch}.AppImage' in assets) + button('anywork-linux-x86_64.tar.gz', raw['x64Archive']) + button('anywork-linux-arm64.tar.gz', raw['armArchive'])
             values['androidDownloads'] = button('anywork-android.apk', raw['apk'])

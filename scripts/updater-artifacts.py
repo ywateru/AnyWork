@@ -64,10 +64,19 @@ def collect(platform):
     name = f'anywork-{platform}{suffix}'
     shutil.copy2(artifact, output / name)
     shutil.copy2(str(artifact) + '.sig', output / (name + '.sig'))
+    if platform.startswith('macos'):
+        images = list((ROOT / 'target/release/bundle/dmg').glob('*.dmg'))
+        if len(images) != 1:
+            raise ValueError(f'Expected exactly one {platform} DMG installer, found {len(images)}')
+        shutil.copy2(images[0], output / f'anywork-{platform}.dmg')
     (output / f'updater-{platform}.json').write_text(json.dumps({'target': target, 'filename': name, 'signature': signature}) + '\n')
     print(f'Collected signed update for {target}')
 
 def manifest(directory, app_version, notes):
+    for platform in ['macos-arm64', 'macos-x86_64']:
+        image = directory / f'anywork-{platform}.dmg'
+        if not image.is_file() or image.stat().st_size == 0:
+            raise ValueError(f'Missing macOS installer: {image.name}')
     platforms = {}
     for platform in PLATFORMS:
         item = json.loads((directory / f'updater-{platform}.json').read_text())

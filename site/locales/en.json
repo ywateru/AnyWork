@@ -80,7 +80,7 @@
   "releaseFallback": "View releases",
   "sizeLabel": "Package size",
   "macTitle": "macOS",
-  "macNote": "macOS 14+ · Ad-hoc signed, not notarized",
+  "macNote": "DMG installer · macOS 14+ · Ad-hoc signed, not notarized",
   "winTitle": "Windows",
   "winNote": "Windows 10/11 · WebView2 · Installer + portable",
   "linuxTitle": "Linux",

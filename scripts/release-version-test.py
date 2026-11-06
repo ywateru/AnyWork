@@ -45,13 +45,22 @@ class ReleaseVersions(unittest.TestCase):
         fixture = json.loads((ROOT / 'crates/desktop/tests/fixtures/signed-update.json').read_text())
         with tempfile.TemporaryDirectory() as temp:
             directory = pathlib.Path(temp)
-            with self.assertRaises(FileNotFoundError):
+            with self.assertRaisesRegex(ValueError, 'Missing macOS installer'):
                 updater.manifest(directory, '9.0.0', 'notes')
             for platform, (target, _, _, suffix) in updater.PLATFORMS.items():
                 name = 'anywork-' + platform + suffix
                 (directory / name).write_text(fixture['payload'])
                 (directory / (name + '.sig')).write_text(fixture['signature'])
                 (directory / ('updater-' + platform + '.json')).write_text(json.dumps({'target': target, 'filename': name, 'signature': fixture['signature']}))
+            for platform in ['macos-arm64', 'macos-x86_64']:
+                with self.assertRaisesRegex(ValueError, 'Missing macOS installer'):
+                    updater.manifest(directory, '9.0.0', 'notes')
+                (directory / f'anywork-{platform}.dmg').write_bytes(b'fixture-dmg')
+            image = directory / 'anywork-macos-arm64.dmg'
+            image.write_bytes(b'')
+            with self.assertRaisesRegex(ValueError, 'Missing macOS installer'):
+                updater.manifest(directory, '9.0.0', 'notes')
+            image.write_bytes(b'fixture-dmg')
             with self.assertRaises(ValueError):
                 updater.manifest(directory, '9.0.1', 'notes')
             result = updater.manifest(directory, '9.0.0', 'notes')

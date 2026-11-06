@@ -2,27 +2,31 @@ AnyWork brings a local Codex workspace to browsers and Android, with a Rust desk
 
 AnyWork 将本机 Codex 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.2 / 本次更新**
+**New in 0.1.3 / 本次更新**
 
-Desktop updates download quietly, preserve verified complete downloads across restarts, defer reminders for 24 hours, and install only after confirmation. This maintenance release adds an idle-task check before stopping managed services, preserves a retryable state if a cached package is removed, and rejects stale version confirmations. Download packages and native updates use the same macOS launch path. Windows installers and Linux AppImages support automatic updates.
+macOS downloads are now DMG installers for Apple Silicon and Intel. Open the image, drag AnyWork into Applications, and follow the included bilingual `INSTALL-macOS.txt`. It includes `sudo xattr -cr "/Applications/AnyWork.app"` for the current ad-hoc signed app. Release builds mount each DMG read-only and verify its application signature, processor architecture, resources and exact agreement with the signed automatic-update app.
 
-桌面更新在后台静默下载，完整下载跨重启保留，支持稍后 24 小时提醒，确认后才安装。本版增加安装前任务空闲检查，缓存丢失时可重新下载，并拒绝过期版本确认。统一 macOS 下载包与更新包的启动路径。Windows 安装版、Linux AppImage 支持自动更新。
+macOS 现提供 Apple Silicon 和 Intel 的 DMG 安装盘。打开后将 AnyWork 拖入应用程序，并参考盘内中英文 `INSTALL-macOS.txt`，其中包含当前临时签名应用的运行命令 `sudo xattr -cr "/Applications/AnyWork.app"`。构建时只读挂载每个 DMG，验证应用签名、处理器架构、资源，并逐文件确认与签名自动更新包内的应用一致。
 
-Updates from 0.1.1 use the signed native updater. Version numbers and Android versionCode increase with every release; packages include the matching server, Web and corresponding source. See the update guide for supported installation types.
+Quick Tunnel checks now report specific timeout, TLS, DNS, HTTP and response errors. Proxy HTTP failures and invalid responses also trigger a direct authenticated retry. Temporary failures keep the same tunnel process and address. The website prefers DMG downloads while retaining compatibility with older ZIP-only releases. This release also includes the raw tool-output dialog improvements and browser interaction fixes from main.
 
-0.1.1 可通过签名原生更新器升级。每次发版递增各端版本及 Android versionCode，更新包含匹配的 Server、Web 与对应源码。支持的安装方式见更新说明。
+匿名隧道验证区分超时、TLS、DNS、HTTP 和响应错误；代理返回临时 HTTP 错误或异常页面时也会进行带身份校验的直连重试。短暂故障保留原隧道进程和地址。官网优先下载 DMG，同时兼容仅有 ZIP 的旧版。本版也包含 main 中的工具原始输出弹窗及浏览器交互修复。
+
+Desktop updates continue downloading quietly and install only after confirmation. Every release increments all app versions and Android versionCode; packages include the matching server, Web and corresponding source.
+
+桌面自动更新仍在后台静默下载，确认后才安装。每次发版递增各端版本与 Android versionCode，安装包内含匹配的 Server、Web 和对应源码。
 
 **Upgrade from 0.1.0 / 从旧版升级：** Install this version manually once, retaining the user data directory. / 0.1.0 没有更新器，请先手动安装本版并保留数据目录。See [updates / 更新说明](https://github.com/ywateru/AnyWork/blob/main/docs/updates.md).
 
 **Downloads / 下载**
 
-- macOS 14+ Apple Silicon / Intel: ad-hoc signed app, not notarized / 临时签名，尚未公证。
+- macOS 14+ Apple Silicon / Intel: DMG installers; ad-hoc signed app, not notarized / DMG 安装盘；临时签名，尚未公证。
 - Windows x64: per-user installer or portable ZIP; requires WebView2, unsigned / 当前用户安装版或便携包；需 WebView2，未做发行商签名。
 - Linux x64 / ARM64: AppImages or portable archives; compatible desktop libraries required / AppImage 或便携包，需兼容运行库。
 - Android 8+: signed universal APK / 持久签名通用 APK。
 - Web client and corresponding source / Web 资源与对应源码。
 
-Checksums are provided in `SHA256SUMS`. Each desktop archive includes its corresponding source, licenses and a start guide.
+Checksums are provided in `SHA256SUMS`. Desktop packages include the corresponding source and licenses; the DMG includes a bilingual installation guide.
 
 所有文件提供 SHA-256 校验值。桌面包内含对应源码、许可证与启动说明。
 

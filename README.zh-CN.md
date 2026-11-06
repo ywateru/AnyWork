@@ -36,7 +36,7 @@ Rust 桌面管理器负责启动本地服务、管理连接地址、访问密钥
 
 | 平台 | 下载内容 | 安装要求 |
 | --- | --- | --- |
-| macOS Apple Silicon / Intel | 含 `AnyWork.app` 的 `.zip` | macOS 14+；临时签名，尚未公证 |
+| macOS Apple Silicon / Intel | `.dmg` 安装盘，将 `AnyWork.app` 拖入应用程序 | macOS 14+；临时签名，尚未公证 |
 | Windows x64 | 当前用户安装版或便携 `.zip` | Windows 10/11、Microsoft Edge WebView2；未做发行商签名 |
 | Linux x64 / ARM64 | AppImage 或便携 `.tar.gz` | GTK 3、WebKitGTK 4.1；x64 基于 Ubuntu 22.04，ARM64 基于 Ubuntu 24.04 构建 |
 | Android | 持久签名的通用 `.apk` | Android 8.0+，较新的 Android System WebView |

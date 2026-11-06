@@ -24,7 +24,7 @@ try {
     const page = await browser.newPage({viewport:{width,height:1000}, reducedMotion:'reduce', deviceScaleFactor:1});
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const asset = 'anywork-macos-arm64.zip';
+    const asset = 'anywork-macos-arm64.dmg';
     const release = {tag_name:'v99.0.0',assets:[{name:asset,size:104857600,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${asset}`}]};
     await page.route('https://api.github.com/**', route => route.fulfill({json:release}));
     await page.goto(`${base}/${locale}/`, {waitUntil:'networkidle'});
@@ -106,7 +106,7 @@ try {
   // Whichever response arrives last, older metadata cannot downgrade downloads.
   for (const delayed of ['baseline', 'live']) {
     const page = await browser.newPage();
-    const asset = 'anywork-macos-arm64.zip';
+    const asset = 'anywork-macos-arm64.dmg';
     const fresh = {tag_name:'v99.0.0', assets:[{name:asset,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${asset}`}]};
     const stale = {tag_name:'v1.0.0', assets:[{name:asset,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v1.0.0/${asset}`}]};
     await page.route('**/release.json', async route => {
@@ -122,6 +122,21 @@ try {
     assert((await page.locator('#release-status').textContent()).includes('v99.0.0'));
     await page.close();
     console.log(`Passed release ordering: late ${delayed} cannot downgrade downloads`);
+  }
+  for (const useDmg of [false, true]) {
+    const page = await browser.newPage();
+    const assets = ['anywork-macos-arm64.zip', 'anywork-macos-x86_64.zip',
+      ...(useDmg ? ['anywork-macos-arm64.dmg', 'anywork-macos-x86_64.dmg'] : [])];
+    const release = {tag_name:'v99.0.0', assets:assets.map(name => ({name, browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${name}`}))};
+    await page.route('**/release.json', route => route.fulfill({json:release}));
+    await page.route('https://api.github.com/**', route => route.fulfill({json:release}));
+    await page.goto(`${base}/en/`, {waitUntil:'networkidle'});
+    for (const arch of ['arm64', 'x86_64']) {
+      const url = await page.locator(`[data-asset="anywork-macos-${arch}.dmg"]`).getAttribute('href');
+      assert(url.endsWith(`/anywork-macos-${arch}.${useDmg ? 'dmg' : 'zip'}`));
+    }
+    await page.close();
+    console.log(`Passed macOS download selection: ${useDmg ? 'DMG preferred over ZIP' : 'legacy ZIP fallback'}`);
   }
   const fallback = await browser.newPage({javaScriptEnabled:false});
   await fallback.goto(`${base}/`);

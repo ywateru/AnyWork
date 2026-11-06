@@ -6,7 +6,7 @@
 
 从 [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest) 下载，使用随发行版提供的 `SHA256SUMS` 核对。macOS 执行 `shasum -a 256 <文件>`，Linux 执行 `sha256sum <文件>`，Windows 执行 `Get-FileHash <文件> -Algorithm SHA256`。
 
-- **macOS 14+：** Apple Silicon 选 `macos-arm64`，Intel 选 `macos-x86_64`。解压后把 `AnyWork.app` 放入应用程序目录。目前是临时签名，尚未经过 Apple 公证。核对来源和校验值后，如被 Gatekeeper 拦截，可前往“隐私与安全性 → 仍要打开”。
+- **macOS 14+：** Apple Silicon 选 `macos-arm64`，Intel 选 `macos-x86_64`。打开 `.dmg`，将 `AnyWork.app` 拖入 Applications（应用程序）。磁盘映像内附 `INSTALL-macOS.txt` 中英文说明；打开安装后的应用前，在终端执行 `sudo xattr -cr "/Applications/AnyWork.app"`。请从应用程序目录运行，便于后续自动更新。目前是临时签名，尚未经过 Apple 公证。核对来源和校验值后，如被 Gatekeeper 拦截，可前往“隐私与安全性 → 仍要打开”。
 - **Windows 10/11 x64：** 推荐使用当前用户 `-setup.exe` 安装版以支持自动更新。便携版需解压并保持 `anywork-desktop.exe` 和 `resources` 在同一目录。如缺少则安装 [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)。程序尚无发行商证书。本版不支持 Windows Codex 桌面进程热接入，可使用 Codex CLI 会话。
 - **Linux：** 推荐从可写位置运行 AppImage 以支持自动更新（`chmod +x anywork-linux-*.AppImage`）。便携包解压后运行 `./anywork-desktop`。x64 基于 Ubuntu 22.04（glibc 2.35+），ARM64 基于 Ubuntu 24.04（glibc 2.39+）。安装运行库：`sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 libsecret-1-0`。其他发行版使用等价软件包。
 - **Android 8+：** 安装 `anywork-android.apk`，按系统提示允许所选来源安装。本包使用持久签名，不是 Play 商店发行。旧本地 Debug 版使用其他签名，相同应用 ID 会导致无法覆盖安装；请先导出需要保留的配置再卸载旧版。保持 Android System WebView 更新。

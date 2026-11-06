@@ -36,7 +36,7 @@ Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases
 
 | Platform | Package | Requirements |
 | --- | --- | --- |
-| macOS Apple Silicon / Intel | `.zip` containing `AnyWork.app` | macOS 14+; ad-hoc signed, not notarized |
+| macOS Apple Silicon / Intel | `.dmg` installer; drag `AnyWork.app` into Applications | macOS 14+; ad-hoc signed, not notarized |
 | Windows x64 | Per-user installer or portable `.zip` | Windows 10/11, Microsoft Edge WebView2; unsigned |
 | Linux x64 / ARM64 | AppImage or portable `.tar.gz` | GTK 3, WebKitGTK 4.1; x64 built on Ubuntu 22.04, ARM64 on Ubuntu 24.04 |
 | Android | Signed universal `.apk` | Android 8.0+, current Android System WebView |

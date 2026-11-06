@@ -80,7 +80,7 @@
   "releaseFallback": "查看发行版",
   "sizeLabel": "文件大小",
   "macTitle": "macOS",
-  "macNote": "macOS 14+ · 临时签名，尚未公证",
+  "macNote": "DMG 安装盘 · macOS 14+ · 临时签名，尚未公证",
   "winTitle": "Windows",
   "winNote": "Windows 10/11 · WebView2 · 安装版与便携包",
   "linuxTitle": "Linux",

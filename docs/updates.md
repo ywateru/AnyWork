@@ -22,12 +22,16 @@ AnyWork 从 0.1.1 起提供签名自动更新。**0.1.0 没有更新器，需要
 
 | Platform / 平台 | Automatic updates / 自动更新 |
 | --- | --- |
-| macOS Apple Silicon / Intel | Extracted `AnyWork.app` in a writable Applications directory / 解压后放入可写应用目录 |
+| macOS Apple Silicon / Intel | `AnyWork.app` copied from the DMG into a writable Applications directory / 从 DMG 拖入可写应用目录后运行 |
 | Windows x64 | Per-user `anywork-windows-x86_64-setup.exe`; quiet NSIS updates / 当前用户安装版，确认后静默安装 |
 | Linux x64 / ARM64 | `anywork-linux-*.AppImage`, launched from a writable location / 从可写位置运行 AppImage |
 | Windows / Linux portable directories | Manual replacement through Releases / 从发行页面手动替换 |
 | Development builds / 开发构建 | Automatic replacement disabled / 不自动替换 |
 | Android APK / Web | APK uses Android's manual installation flow; Web updates with the host and PWA refresh / APK 由系统安装流程处理，Web 随主机升级及 PWA 刷新 |
+
+macOS manual downloads use DMG installers from 0.1.3. Open the image, drag the app into Applications and follow `INSTALL-macOS.txt`. The DMG contains the exact app from the signed `.app.tar.gz` update; the update archive remains available for the built-in updater.
+
+macOS 从 0.1.3 起使用 DMG 手动安装包，打开后拖入应用程序并参考盘内 `INSTALL-macOS.txt`。DMG 与签名 `.app.tar.gz` 更新包内的应用逐文件一致；更新压缩包继续用于应用内自动更新。
 
 Native updates include the server, Web, licenses and corresponding source. User data and downloaded tools in the support directory remain outside the application bundle.
 
@@ -43,6 +47,6 @@ The public key is in `crates/desktop/tauri.conf.json`. Keep and back up the matc
 
 公钥进入源码；私钥保存在 Git 之外并私下备份，配置为 Actions 的 `TAURI_SIGNING_PRIVATE_KEY` secret。当前私钥不额外设置口令，由文件权限和 GitHub secret 存储保护。丢失将影响后续验签。更新签名与 Apple 公证、Windows 发行商证书和 Android 签名相互独立。
 
-Run **Release new version** in Actions to increment all versions and Android versionCode, commit and dispatch platform builds. Alternatively run `npm run version:patch`, commit, and push a matching tag. The guard rejects duplicate or lower releases before building; missing platforms or mismatched version-bound signatures prevent publication of `latest.json`.
+Run **Release new version** in Actions to increment all versions and Android versionCode, commit and dispatch platform builds. Alternatively run `npm run version:patch`, commit, and push a matching tag. The guard rejects duplicate or lower releases before building; missing platforms, missing macOS DMGs or mismatched version-bound signatures prevent publication of `latest.json`. Each macOS runner mounts its DMG read-only, checks the installation guide and Applications link, verifies app signature and architecture, then compares every app file with the native update archive.
 
-运行 Actions 的 **Release new version** 可自动递增所有版本和 Android versionCode、提交并构建。也可执行 `npm run version:patch` 后提交并推送匹配 tag。构建前拒绝重复或倒退版本；平台缺失或签名版本不符时，不发布 `latest.json`。
+运行 Actions 的 **Release new version** 可自动递增所有版本和 Android versionCode、提交并构建。也可执行 `npm run version:patch` 后提交并推送匹配 tag。构建前拒绝重复或倒退版本；平台、macOS DMG 缺失或签名版本不符时，不发布 `latest.json`。每个 Mac 构建机只读挂载 DMG，检查安装说明、Applications 入口、应用签名和架构，并与原生更新包逐文件比较。

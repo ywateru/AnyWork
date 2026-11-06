@@ -75,6 +75,7 @@ jobs:
       - name: Test native applications
         run: cargo test --locked --release -p anywork -p anywork-desktop
       - name: Package application and source
+        if: runner.os != 'macOS'
         run: python3 scripts/release-package.py --platform ${{ matrix.platform }}
       - name: Stage resources for native updates
         run: python3 scripts/updater-artifacts.py prepare
@@ -84,8 +85,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         run: npx tauri bundle --ci --bundles ${{ matrix.bundle }} --config tauri.bundle.conf.json
+      - name: Create macOS drag-and-drop installer with installation guide
+        if: runner.os == 'macOS'
+        run: python3 scripts/build-macos-dmg.py --platform ${{ matrix.platform }}
       - name: Collect version-bound update signatures
         run: python3 scripts/updater-artifacts.py collect --platform ${{ matrix.platform }}
+      - name: Mount and verify macOS installer
+        if: runner.os == 'macOS'
+        run: python3 scripts/check-macos-dmg.py --platform ${{ matrix.platform }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}

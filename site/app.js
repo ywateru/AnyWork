@@ -65,7 +65,7 @@ function applyRelease(release) {
   appliedVersion = version;
   const assets = new Map(release.assets.map(asset => [asset.name, asset]));
   for (const link of document.querySelectorAll('[data-asset]')) {
-    const asset = assets.get(link.dataset.asset);
+    const asset = assets.get(link.dataset.asset) || assets.get(link.dataset.fallback);
     if (!asset || typeof asset.browser_download_url !== 'string' || !asset.browser_download_url.startsWith('https://github.com/ywateru/AnyWork/releases/download/')) continue;
     link.href = asset.browser_download_url;
     if (asset.size > 0) link.title = `${link.dataset.label || link.textContent.trim()} · ${(asset.size / 1048576).toFixed(1)} MB`;

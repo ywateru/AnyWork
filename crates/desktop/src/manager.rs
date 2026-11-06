@@ -232,6 +232,25 @@ impl std::fmt::Display for IdentityRejected {
 }
 impl std::error::Error for IdentityRejected {}
 
+fn transport_hint(error: &reqwest::Error) -> &'static str {
+    // Inspect internally, but never expose request URLs, proxy credentials or provider output.
+    let detail = format!("{error:?}").to_ascii_lowercase();
+    if error.is_timeout() {
+        "远程验证超时，请检查网络或代理；将继续自动重试。"
+    } else if detail.contains("certificate") || detail.contains("tls") || detail.contains("ssl") {
+        "远程 TLS 证书或握手验证失败，请检查系统时间、证书和代理设置。"
+    } else if detail.contains("dns")
+        || detail.contains("resolve")
+        || detail.contains("no such host")
+    {
+        "远程域名解析失败，请检查 DNS 和代理设置；将继续自动重试。"
+    } else if error.is_decode() {
+        "远程返回了无法识别的服务响应，请检查代理和隧道源站。"
+    } else {
+        "无法建立远程连接，请检查网络、防火墙和代理；将继续自动重试。"
+    }
+}
+
 #[derive(Debug)]
 struct ValidationFailure {
     message: String,
@@ -321,12 +340,14 @@ impl Http {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
             remote: reqwest::Client::builder()
-                .timeout(Duration::from_secs(5))
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(12))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
             remote_direct: reqwest::Client::builder()
                 .no_proxy()
-                .timeout(Duration::from_secs(5))
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(12))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
         })
@@ -334,21 +355,31 @@ impl Http {
     pub async fn info(&self, origin: &str, token: &str, remote: bool) -> Result<ServerInfo> {
         let client = if remote { &self.remote } else { &self.local };
         let url = format!("{}/api/info", origin.trim_end_matches('/'));
-        let response = client.get(&url).bearer_auth(token).send().await;
-        let response = match response {
-            Ok(response) => response,
-            Err(error) if remote && (error.is_connect() || error.is_timeout()) => {
-                // A desktop's system proxy can fail CONNECT/TLS for a newly created hostname.
-                // A direct retry retains certificate checks, authentication and identity validation.
-                self.remote_direct
-                    .get(&url)
-                    .bearer_auth(token)
-                    .send()
+        match Self::read_info(client, &url, token).await {
+            Ok(info) => Ok(info),
+            Err(error) if remote && error.downcast_ref::<IdentityRejected>().is_none() => {
+                // Proxies can also return HTTP 502/503 or an HTML error page.
+                // Retry the complete authenticated check, preserving TLS and identity checks.
+                Self::read_info(&self.remote_direct, &url, token)
                     .await
-                    .with_context(|| format!("默认连接失败（{error}），直连重试也未成功。"))?
+                    .map_err(|direct| {
+                        if direct.downcast_ref::<IdentityRejected>().is_some() {
+                            direct
+                        } else {
+                            anyhow::anyhow!("默认连接：{error} 直连重试：{direct}")
+                        }
+                    })
             }
-            Err(error) => return Err(error.into()),
-        };
+            Err(error) => Err(error),
+        }
+    }
+    async fn read_info(client: &reqwest::Client, url: &str, token: &str) -> Result<ServerInfo> {
+        let response = client
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|error| anyhow::anyhow!(transport_hint(&error)))?;
         if !response.status().is_success() {
             if matches!(response.status().as_u16(), 401 | 403) {
                 return Err(IdentityRejected(format!(
@@ -374,7 +405,10 @@ impl Http {
         if response.content_length().is_some_and(|n| n > 65536) {
             bail!("响应过大")
         }
-        Ok(response.json().await?)
+        response
+            .json()
+            .await
+            .map_err(|error| anyhow::anyhow!(transport_hint(&error)))
     }
     async fn probe(&self, c: Config, token: String) -> Probe {
         let healthy = match self
@@ -950,13 +984,9 @@ impl Worker {
                     }
                     Err(e) => {
                         let rejected = e.downcast_ref::<IdentityRejected>().is_some();
-                        // Do not display request URLs or raw transport errors containing credentials.
                         result = Err(ValidationFailure {
-                            message: if rejected {
-                                e.to_string()
-                            } else {
-                                "远程连接暂不可用，正在等待网络和 TLS 连接恢复。".into()
-                            },
+                            // Http only returns classified messages, never raw request data.
+                            message: e.to_string(),
                             rejected,
                         });
                         if rejected {
@@ -1292,6 +1322,85 @@ pub fn manager_lock(support: &Path) -> Result<ManagerLock> {
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    #[tokio::test]
+    async fn remote_validation_retries_proxy_errors_but_preserves_authentication_rejection() {
+        for (status, body, expected_success) in [
+            (
+                "502 Bad Gateway",
+                "upstream unavailable secret-proxy-value",
+                true,
+            ),
+            (
+                "200 OK",
+                "<html>proxy error secret-proxy-value</html>",
+                true,
+            ),
+            ("401 Unauthorized", "secret-proxy-value", false),
+        ] {
+            let (port, origin) = fixture().await;
+            let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
+            let response = tokio::spawn(async move {
+                let (mut stream, _) = proxy.accept().await.unwrap();
+                let mut request = [0; 4096];
+                assert!(stream.read(&mut request).await.unwrap() > 0);
+                stream.write_all(format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            });
+            let mut http = Http::new().unwrap();
+            http.remote = reqwest::Client::builder()
+                .no_proxy()
+                .proxy(reqwest::Proxy::all(proxy_url).unwrap())
+                .timeout(Duration::from_secs(2))
+                .build()
+                .unwrap();
+            let result = http
+                .info(
+                    &format!("http://127.0.0.1:{port}"),
+                    "test-access-token-123456",
+                    true,
+                )
+                .await;
+            assert_eq!(result.is_ok(), expected_success);
+            if let Err(error) = result {
+                assert!(error.downcast_ref::<IdentityRejected>().is_some());
+                assert!(!error.to_string().contains("secret-proxy-value"));
+            }
+            response.await.unwrap();
+            origin.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_transport_diagnostics_are_specific_and_do_not_expose_urls_or_tokens() {
+        let http = Http::new().unwrap();
+        let error = http
+            .info(
+                "http://127.0.0.1:9/private-marker",
+                "secret-access-key",
+                true,
+            )
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("默认连接") && message.contains("直连重试"));
+        assert!(message.contains("网络、防火墙和代理"));
+        for private in ["127.0.0.1", "private-marker", "secret-access-key"] {
+            assert!(!message.contains(private));
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_millis(30))
+            .build()
+            .unwrap();
+        let error = Http::read_info(&client, &url, "secret-access-key")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("超时"));
+        assert!(!error.to_string().contains("127.0.0.1"));
+    }
+
     #[derive(Default)]
     struct MemorySecrets(Mutex<std::collections::HashMap<String, String>>);
     impl Secrets for MemorySecrets {
