@@ -12,7 +12,9 @@ class Model(BaseHTTPRequestHandler):
  def do_POST(self):
   body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))))
   record=ROOT/'model-requests.jsonl'
-  with open(os.open(record,os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600),'a') as f:f.write(json.dumps({'path':self.path,'body':body})+'\n')
+  if record.exists() and record.stat().st_size>1024*1024:record.unlink()
+  summary={'path':self.path,'messages':len(body.get('messages',[])),'tools':[t.get('function',{}).get('name') for t in body.get('tools',[])],'images':sum(1 for m in body.get('messages',[]) for p in (m.get('content') if isinstance(m.get('content'),list) else []) if p.get('type')=='image_url')}
+  with open(os.open(record,os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600),'a') as f:f.write(json.dumps(summary)+'\n')
   if self.path!='/v1/chat/completions':self.send_error(404);return
   messages=body.get('messages',[])
   text=next((str(m.get('content','')) for m in reversed(messages) if m.get('role')=='user' and 'verify-' in str(m.get('content',''))),'verify-response')

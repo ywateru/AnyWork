@@ -462,6 +462,10 @@ pub async fn attach(
         "Invalid Harness opening snapshot: {}",
         snapshot["error"]
     );
+    ensure!(
+        snapshot["value"]["header"]["id"] == thread,
+        "Harness snapshot session identity mismatch"
+    );
     let records = history_records(&host, &thread, &snapshot["value"]).await?;
     let (initial, mut initial_events) = mpsc::unbounded_channel();
     for mut record in records {
@@ -522,6 +526,7 @@ pub async fn attach(
                         if frame["streamId"]=="session" && frame["type"]=="item" {
                             let value=&frame["value"];
                             if value["type"]=="snapshot" {
+                                ensure!(value["header"]["id"]==thread,"Harness snapshot session identity mismatch");
                                 let records=history_records(&host,&thread,value).await?;
                                 for mut record in records {materialize_images(&app,&app.store.session(&id)?,&host,&mut record["event"]).await?;state.event(&record["event"],&bridge.responses)?;}
                                 state.baseline(&value["assistantStream"],&bridge.responses)?;
@@ -740,7 +745,8 @@ impl Projection {
             .as_i64()
             .map(|t| format!("harness-turn-{t}"))
             .or_else(|| self.turn.clone());
-        let emit = |this: &Self, method: &str, p: Value| {
+        let emit = |this: &Self, method: &str, mut p: Value| {
+            p["harnessEventTime"] = event["time"].clone();
             let key = format!("{seq}:{method}:{}", p["item"]["id"].as_str().unwrap_or(""));
             this.emit(out, method, p, Some(key))
         };
@@ -846,30 +852,54 @@ impl Projection {
     }
     fn baseline(&mut self, baseline: &Value, out: &mpsc::UnboundedSender<Value>) -> Result<()> {
         let a = &baseline["activeAttempt"];
-        if let Some(id) = a["attemptId"].as_str() {
-            self.attempts.insert(
-                id.into(),
-                (
-                    format!("harness-assistant-{}-{}", a["turn"], a["step"]),
-                    String::new(),
-                ),
-            );
-            for chunk in a["stream"].as_array().into_iter().flatten() {
-                match chunk["type"].as_str() {
-                    Some("text-chunks") => {
-                        for text in chunk["texts"].as_array().into_iter().flatten() {
-                            self.chunk(id, &json!({"type":"text-delta","text":text}), out)?;
-                        }
+        let Some(id) = a["attemptId"].as_str() else {
+            return Ok(());
+        };
+        let item = format!("harness-assistant-{}-{}", a["turn"], a["step"]);
+        self.attempts
+            .insert(id.into(), (item.clone(), String::new()));
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        for record in a["stream"].as_array().into_iter().flatten() {
+            match record["type"].as_str() {
+                Some("text-chunks") => {
+                    for part in record["texts"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_str)
+                    {
+                        text.push_str(part)
                     }
-                    Some("reasoning-chunks") => {
-                        for text in chunk["texts"].as_array().into_iter().flatten() {
-                            self.chunk(id, &json!({"type":"reasoning-delta","text":text}), out)?;
-                        }
-                    }
-                    Some("chunk") => self.chunk(id, &chunk["chunk"], out)?,
-                    _ => {}
                 }
+                Some("reasoning-chunks") => {
+                    for part in record["texts"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_str)
+                    {
+                        reasoning.push_str(part)
+                    }
+                }
+                Some("chunk") => {
+                    let chunk = &record["chunk"];
+                    if chunk["type"] == "text-delta" {
+                        text.push_str(chunk["text"].as_str().unwrap_or(""))
+                    } else if chunk["type"] == "reasoning-delta" {
+                        reasoning.push_str(chunk["text"].as_str().unwrap_or(""))
+                    }
+                }
+                _ => {}
             }
+        }
+        // Replace the previously observed process-local prefix at this cut;
+        // appending it would duplicate pre-disconnection deltas in the UI.
+        if !text.is_empty() {
+            self.emit(out,"item/started",json!({"item":{"type":"agentMessage","id":item,"text":text,"status":"inProgress","source":AGENT}}),Some(format!("baseline:{id}:{}:text",a["nextIndex"])))?;
+        }
+        if !reasoning.is_empty() {
+            self.emit(out,"item/started",json!({"item":{"type":"reasoning","id":format!("{item}-reasoning"),"summary":[reasoning],"status":"inProgress","source":AGENT}}),Some(format!("baseline:{id}:{}:reasoning",a["nextIndex"])))?;
         }
         Ok(())
     }

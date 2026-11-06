@@ -516,9 +516,12 @@ impl Store {
             seq: 0,
             session_id: id.into(),
             method: method.into(),
+            created_at: data["harnessEventTime"]
+                .as_i64()
+                .filter(|time| *time > 0)
+                .unwrap_or_else(now),
             params: data,
             request_id,
-            created_at: now(),
         };
         db.execute(
             "INSERT INTO events(session_id,data) VALUES(?1,?2)",
