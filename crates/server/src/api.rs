@@ -22,6 +22,19 @@ pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
         json!({"plugins":app.plugins.values().map(|p|json!({"id":p.id,"name":p.name,"capabilities":p.capabilities,"protocol_version":p.protocol_version})).collect::<Vec<_>>()}),
     )
 }
+/// Read stored state only: an update check must not start discovery or attach engines.
+pub async fn update_readiness(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
+    let busy = app
+        .store
+        .sessions()?
+        .iter()
+        .filter(|session| {
+            !session.external
+                && ["running", "starting", "waiting"].contains(&session.status.as_str())
+        })
+        .count();
+    Ok(Json(json!({"busy_sessions": busy})))
+}
 pub async fn sessions(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {
     let mut catalog = app.catalog.lock().await;
     catalog.sync(&app).await;

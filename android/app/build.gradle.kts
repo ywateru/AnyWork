@@ -3,7 +3,7 @@ android {
     namespace = "dev.remoteagent.app"
     compileSdk = 36
     buildFeatures { buildConfig = true }
-    defaultConfig { applicationId = "dev.remoteagent.app"; minSdk = 26; targetSdk = 36; versionCode = 2; versionName = "0.1.1" }
+    defaultConfig { applicationId = "dev.remoteagent.app"; minSdk = 26; targetSdk = 36; versionCode = 3; versionName = "0.1.2" }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     signingConfigs {
         if (System.getenv("ANYWORK_ANDROID_KEYSTORE") != null) {

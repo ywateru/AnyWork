@@ -11,6 +11,10 @@ use std::sync::{
 };
 use tauri::Manager;
 fn main() {
+    if std::env::args().any(|arg| arg == "--version" || arg == "-V") {
+        println!("AnyWork {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     if let Err(error) = run() {
         eprintln!("AnyWork: {error:#}");
         rfd::MessageDialog::new()
@@ -138,7 +142,10 @@ fn run() -> anyhow::Result<()> {
         {
             // Tauri starts the replacement before exiting this process. Release the
             // instance lock now; the updater has already paused our managed services.
-            manager_lock.lock().unwrap_or_else(|e| e.into_inner()).take();
+            manager_lock
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
             return;
         }
         if let tauri::RunEvent::ExitRequested { api, .. } = event

@@ -164,7 +164,7 @@ pub enum Command {
     StartRoute(RouteKind, Config, String),
     StopRoute(RouteKind),
     UseCloudflared(PathBuf, oneshot::Sender<Result<(), String>>),
-    PauseForUpdate(oneshot::Sender<()>),
+    PauseForUpdate(oneshot::Sender<Result<(), String>>),
     Shutdown(oneshot::Sender<()>),
 }
 #[derive(Clone)]
@@ -202,7 +202,9 @@ impl Handle {
     pub async fn pause_for_update(&self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.tx.send(Command::PauseForUpdate(tx))?;
-        tokio::time::timeout(Duration::from_secs(20), rx).await??;
+        tokio::time::timeout(Duration::from_secs(20), rx)
+            .await??
+            .map_err(anyhow::Error::msg)?;
         Ok(())
     }
 }
@@ -256,6 +258,61 @@ pub struct Http {
     remote_direct: reqwest::Client,
 }
 impl Http {
+    async fn update_readiness(&self, state: &Snapshot) -> Result<()> {
+        if !state.owned {
+            return Ok(());
+        }
+        anyhow::ensure!(state.authorized, "无法确认任务状态，请稍后再更新。");
+        let response = self
+            .local
+            .get(format!("{}/api/update-readiness", state.config.local_url()))
+            .bearer_auth(&state.token)
+            .send()
+            .await?;
+        let busy = if response.status() == reqwest::StatusCode::NOT_FOUND {
+            // 0.1.1 hosts predate the dedicated endpoint. Keep the first upgrade safe too.
+            #[derive(Deserialize)]
+            struct Session {
+                external: bool,
+                status: String,
+            }
+            #[derive(Deserialize)]
+            struct Sessions {
+                sessions: Vec<Session>,
+            }
+            let sessions = self
+                .local
+                .get(format!("{}/api/sessions", state.config.local_url()))
+                .bearer_auth(&state.token)
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<Sessions>()
+                .await?;
+            sessions
+                .sessions
+                .iter()
+                .filter(|s| {
+                    !s.external && ["running", "starting", "waiting"].contains(&s.status.as_str())
+                })
+                .count()
+        } else {
+            #[derive(Deserialize)]
+            struct Readiness {
+                busy_sessions: usize,
+            }
+            response
+                .error_for_status()?
+                .json::<Readiness>()
+                .await?
+                .busy_sessions
+        };
+        anyhow::ensure!(
+            busy == 0,
+            "仍有 {busy} 个本应用管理的会话正在执行或等待确认，请任务结束后再更新。更新包已保留。"
+        );
+        Ok(())
+    }
     pub fn new() -> Result<Self> {
         Ok(Self {
             local: reqwest::Client::builder()
@@ -562,8 +619,11 @@ impl Worker {
             }
             Command::Shutdown(_) => Ok(()),
             Command::PauseForUpdate(done) => {
-                self.stop_server().await;
-                let _ = done.send(());
+                let readiness = self.http.update_readiness(&self.snapshot()).await;
+                if readiness.is_ok() {
+                    self.stop_server().await;
+                }
+                let _ = done.send(readiness.map_err(|e| format!("{e:#}")));
                 Ok(())
             }
         };
@@ -1310,6 +1370,105 @@ mod tests {
             generation: 0,
             probe: None,
             last_probe: Instant::now(),
+        }
+    }
+    #[tokio::test]
+    async fn updating_waits_for_owned_work_and_rejects_unknown_readiness() {
+        for (status, body, allowed) in [
+            ("200 OK", r#"{"busy_sessions":0}"#, true),
+            ("200 OK", r#"{"busy_sessions":2}"#, false),
+            ("200 OK", r#"{}"#, false),
+            ("401 Unauthorized", r#"{}"#, false),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let response = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut buf = [0; 4096];
+                let n = stream.read(&mut buf).await.unwrap();
+                let request = String::from_utf8_lossy(&buf[..n]);
+                assert!(request.starts_with("GET /api/update-readiness "));
+                assert!(
+                    request
+                        .to_lowercase()
+                        .contains("authorization: bearer test-access-token-123456")
+                );
+                stream.write_all(format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let mut w = worker(
+                Options {
+                    support: dir.path().into(),
+                    resources: dir.path().into(),
+                    secrets: Arc::new(MemorySecrets::default()),
+                },
+                Config {
+                    port,
+                    ..Default::default()
+                },
+            );
+            w.edit(|s| {
+                s.owned = true;
+                s.external = false;
+            });
+            let (tx, rx) = oneshot::channel();
+            w.command(Command::PauseForUpdate(tx)).await;
+            assert_eq!(rx.await.unwrap().is_ok(), allowed);
+            if !allowed {
+                assert_eq!(
+                    w.snapshot().service,
+                    Phase::Running,
+                    "a refused update must leave service untouched"
+                );
+            }
+            response.await.unwrap();
+        }
+    }
+    #[tokio::test]
+    async fn legacy_update_readiness_distinguishes_external_and_owned_tasks() {
+        for external in [true, false] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let response = tokio::spawn(async move {
+                for index in 0..2 {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let mut buf = [0; 4096];
+                    let n = stream.read(&mut buf).await.unwrap();
+                    let request = String::from_utf8_lossy(&buf[..n]);
+                    let (status, body) = if index == 0 {
+                        assert!(request.starts_with("GET /api/update-readiness "));
+                        ("404 Not Found", "{}".to_string())
+                    } else {
+                        assert!(request.starts_with("GET /api/sessions "));
+                        (
+                            "200 OK",
+                            format!(
+                                r#"{{"sessions":[{{"external":{external},"status":"running"}}]}}"#
+                            ),
+                        )
+                    };
+                    stream.write_all(format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+                }
+            });
+            let mut state = Snapshot::new(
+                Config {
+                    port,
+                    ..Default::default()
+                },
+                "test-access-token-123456".into(),
+            );
+            state.owned = true;
+            state.authorized = true;
+            assert_eq!(
+                Http::new().unwrap().update_readiness(&state).await.is_ok(),
+                external
+            );
+            response.await.unwrap();
+            state.owned = false;
+            assert!(
+                Http::new().unwrap().update_readiness(&state).await.is_ok(),
+                "external services must not be queried or stopped for an app update"
+            );
         }
     }
     fn connector(dir: &Path) -> PathBuf {

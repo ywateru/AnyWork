@@ -2,11 +2,15 @@ AnyWork brings a local Codex workspace to browsers and Android, with a Rust desk
 
 AnyWork 将本机 Codex 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.1 / 本次更新**
+**New in 0.1.2 / 本次更新**
 
-Signed desktop updates now download quietly in the background, retain completed packages across restarts, offer a 24-hour reminder deferral, and install/restart only after confirmation. Native updates include the server and Web; manager-owned services and tunnels resume after restart. New Windows per-user installers and Linux AppImages support automatic updates. Every release requires a newer version and Android versionCode.
+Desktop updates download quietly, preserve verified complete downloads across restarts, defer reminders for 24 hours, and install only after confirmation. This maintenance release adds an idle-task check before stopping managed services, preserves a retryable state if a cached package is removed, and rejects stale version confirmations. Download packages and native updates use the same macOS launch path. Windows installers and Linux AppImages support automatic updates.
 
-新增签名自动更新：后台静默下载、完整缓存跨重启保留、稍后 24 小时提醒，确认后安装重启。Server 与 Web 一起升级，应用管理的服务和隧道重启后恢复。新增 Windows 当前用户安装版和 Linux AppImage。发行流程拒绝重复或倒退版本。
+桌面更新在后台静默下载，完整下载跨重启保留，支持稍后 24 小时提醒，确认后才安装。本版增加安装前任务空闲检查，缓存丢失时可重新下载，并拒绝过期版本确认。统一 macOS 下载包与更新包的启动路径。Windows 安装版、Linux AppImage 支持自动更新。
+
+Updates from 0.1.1 use the signed native updater. Version numbers and Android versionCode increase with every release; packages include the matching server, Web and corresponding source. See the update guide for supported installation types.
+
+0.1.1 可通过签名原生更新器升级。每次发版递增各端版本及 Android versionCode，更新包含匹配的 Server、Web 与对应源码。支持的安装方式见更新说明。
 
 **Upgrade from 0.1.0 / 从旧版升级：** Install this version manually once, retaining the user data directory. / 0.1.0 没有更新器，请先手动安装本版并保留数据目录。See [updates / 更新说明](https://github.com/ywateru/AnyWork/blob/main/docs/updates.md).
 

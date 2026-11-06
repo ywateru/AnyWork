@@ -78,8 +78,8 @@ def main():
             def button(name, label):
                 return f'<a data-asset="{name}" data-label="{html.escape(label, quote=True)}" href="{url(name)}">{html.escape(label)} <span aria-hidden="true">↓</span></a>'
             values['macDownloads'] = button('anywork-macos-arm64.zip', raw['armMac']) + button('anywork-macos-x86_64.zip', raw['intelMac'])
-            values['winDownloads'] = button('anywork-windows-x86_64.zip', raw['x64'])
-            values['linuxDownloads'] = button('anywork-linux-x86_64.tar.gz', raw['x64']) + button('anywork-linux-arm64.tar.gz', raw['arm64'])
+            values['winDownloads'] = (button('anywork-windows-x86_64-setup.exe', raw['installer']) if 'anywork-windows-x86_64-setup.exe' in assets else '') + button('anywork-windows-x86_64.zip', raw['portable'])
+            values['linuxDownloads'] = ''.join(button(f'anywork-linux-{arch}.AppImage', raw[label]) for arch, label in [('x86_64', 'x64AppImage'), ('arm64', 'armAppImage')] if f'anywork-linux-{arch}.AppImage' in assets) + button('anywork-linux-x86_64.tar.gz', raw['x64Archive']) + button('anywork-linux-arm64.tar.gz', raw['armArchive'])
             values['androidDownloads'] = button('anywork-android.apk', raw['apk'])
             values['checksumUrl'] = url('SHA256SUMS')
             values['structuredData'] = json.dumps({'@context':'https://schema.org', '@type':'SoftwareApplication', 'name':'AnyWork', 'description':raw['description'], 'applicationCategory':'DeveloperApplication', 'operatingSystem':'macOS, Windows, Linux, Android, Web', 'url':BASE + '/' + lang + '/', 'license':REPO + '/blob/main/LICENSE', 'offers':{'@type':'Offer','price':'0','priceCurrency':'USD'}}, ensure_ascii=False).replace('<', '\\u003c')

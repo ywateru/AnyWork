@@ -33,6 +33,9 @@ def check_local(tag, root=ROOT):
     plist = plistlib.loads((root / 'desktop/Info.plist').read_bytes())
     if plist['CFBundleShortVersionString'] != version or plist['CFBundleVersion'] != str(code):
         raise ValueError('macOS bundle version mismatch')
+    configuration = json.loads((root / 'crates/desktop/tauri.conf.json').read_text())
+    if plist['CFBundleExecutable'] != configuration.get('mainBinaryName', 'anywork-desktop'):
+        raise ValueError('macOS download and updater launch paths must agree')
     return version, code
 
 def check_published(version, releases):

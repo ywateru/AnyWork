@@ -86,7 +86,11 @@ export function UpdateNotice({
       <button
         className="update-later"
         disabled={controller.pending}
-        onClick={() => void controller.action("desktop_update_defer")}
+        onClick={() =>
+          void controller.action("desktop_update_defer", {
+            version: controller.state?.version,
+          })
+        }
       >
         稍后提醒
       </button>
@@ -206,7 +210,11 @@ export function UpdatePage({ controller }: { controller: Controller }) {
               </button>
               <button
                 disabled={busy}
-                onClick={() => void action("desktop_update_defer")}
+                onClick={() =>
+                  void action("desktop_update_defer", {
+                    version: state.version,
+                  })
+                }
               >
                 稍后提醒
               </button>
@@ -288,7 +296,7 @@ export function UpdatePage({ controller }: { controller: Controller }) {
           将安装已下载的更新并重启。本应用开启的服务与远程连接会短暂断开，重启后自动恢复；匿名隧道地址可能变化。
         </p>
         <p className="hint">
-          工作目录、会话和访问密钥会保留。独立启动的服务保持运行。
+          请在任务空闲时更新。仍有本应用管理的会话执行或等待确认时，会保留更新包，待任务结束后再试。工作目录、会话和访问密钥会保留。
         </p>
         {(error || state?.error) && (
           <p role="alert" className="error">
@@ -301,7 +309,12 @@ export function UpdatePage({ controller }: { controller: Controller }) {
           </button>
           <button
             className="primary"
-            disabled={pending || installing || (state?.phase !== "ready" || state.version !== confirm)}
+            disabled={
+              pending ||
+              installing ||
+              state?.phase !== "ready" ||
+              state.version !== confirm
+            }
             onClick={() =>
               void action("desktop_update_install", { version: confirm })
             }

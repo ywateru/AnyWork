@@ -320,6 +320,7 @@ async fn main() -> Result<()> {
     desktop_observer::start(&app);
     let api = Router::new()
         .route("/info", get(api::info))
+        .route("/update-readiness", get(api::update_readiness))
         .route("/clients", get(clients::list))
         .route("/clients/heartbeat", post(clients::heartbeat))
         .route("/plugins", get(api::plugins))

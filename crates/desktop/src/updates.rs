@@ -81,6 +81,8 @@ pub struct Handle {
     operation: Arc<AsyncMutex<()>>,
     changed: Arc<Notify>,
     directory: PathBuf,
+    #[cfg(test)]
+    executable_path: Option<PathBuf>,
 }
 impl Handle {
     pub fn new(support: &Path, supported: bool) -> Self {
@@ -115,6 +117,8 @@ impl Handle {
             operation: Arc::new(AsyncMutex::new(())),
             changed: Arc::new(Notify::new()),
             directory,
+            #[cfg(test)]
+            executable_path: None,
         }
     }
     fn edit(&self, edit: impl FnOnce(&mut Data)) {
@@ -155,13 +159,20 @@ impl Handle {
             data.snapshot.error = format!("{error:#}");
         });
     }
-    fn updater(&self, app: &AppHandle) -> Result<tauri_plugin_updater::Updater> {
-        Ok(app
-            .updater_builder()
-            .timeout(Duration::from_secs(30))
-            .build()?)
+    fn updater<R: tauri::Runtime>(
+        &self,
+        app: &AppHandle<R>,
+    ) -> Result<tauri_plugin_updater::Updater> {
+        let builder = app.updater_builder().timeout(Duration::from_secs(30));
+        #[cfg(test)]
+        let builder = if let Some(path) = &self.executable_path {
+            builder.executable_path(path)
+        } else {
+            builder
+        };
+        Ok(builder.build()?)
     }
-    async fn restore(&self, app: &AppHandle) -> Result<()> {
+    async fn restore<R: tauri::Runtime>(&self, app: &AppHandle<R>) -> Result<()> {
         let Some(manifest) = read_manifest(&self.directory)? else {
             return Ok(());
         };
@@ -190,7 +201,7 @@ impl Handle {
         let _ = std::fs::remove_file(self.directory.join("manifest.json"));
         let _ = std::fs::remove_file(self.directory.join("package"));
     }
-    async fn check(&self, app: &AppHandle, manual: bool) -> Result<()> {
+    async fn check<R: tauri::Runtime>(&self, app: &AppHandle<R>, manual: bool) -> Result<()> {
         let Ok(_operation) = self.operation.try_lock() else {
             return Ok(());
         };
@@ -236,11 +247,16 @@ impl Handle {
             data.snapshot.total = None;
         });
         update.timeout = Some(Duration::from_secs(15 * 60));
+        let oversized = Notify::new();
         let bytes = tokio::select! {
             result = update.download(|size, total| self.edit(|data| {
                 data.snapshot.downloaded += size as u64;
                 data.snapshot.total = total;
+                if data.snapshot.downloaded > MAX_PACKAGE_SIZE || total.is_some_and(|size| size > MAX_PACKAGE_SIZE) {
+                    oversized.notify_one();
+                }
             }), || {}) => result?,
+            _ = oversized.notified() => bail!("更新包超过大小限制，请从发行页面下载。"),
             _ = self.changed.notified(), if !manual => {
                 self.edit(settle);
                 return Ok(());
@@ -414,9 +430,7 @@ pub fn supported(preview: bool) -> bool {
     {
         matches!(
             tauri::utils::platform::bundle_type(),
-            Some(
-                tauri::utils::config::BundleType::Nsis | tauri::utils::config::BundleType::Msi
-            )
+            Some(tauri::utils::config::BundleType::Nsis | tauri::utils::config::BundleType::Msi)
         )
     }
     #[cfg(target_os = "linux")]
@@ -451,8 +465,13 @@ pub fn desktop_update_preferences(
     Ok(updates.snapshot())
 }
 #[tauri::command]
-pub fn desktop_update_defer(updates: State<'_, Handle>) -> Result<Snapshot, String> {
-    let version = updates.snapshot().version;
+pub fn desktop_update_defer(
+    updates: State<'_, Handle>,
+    version: String,
+) -> Result<Snapshot, String> {
+    if updates.snapshot().version != version {
+        return Err("可用更新已改变，请重新查看。".into());
+    }
     updates
         .preferences(|p| {
             p.deferred_version = version;
@@ -466,6 +485,16 @@ pub async fn desktop_update_install(
     app: AppHandle,
     updates: State<'_, Handle>,
     version: String,
+) -> Result<(), String> {
+    let service = app.state::<crate::bridge::DesktopState>().handle.clone();
+    install_ready(&updates, &service, &version).await?;
+    app.request_restart();
+    Ok(())
+}
+async fn install_ready(
+    updates: &Handle,
+    service: &manager::Handle,
+    version: &str,
 ) -> Result<(), String> {
     let _operation = updates
         .operation
@@ -482,7 +511,15 @@ pub async fn desktop_update_install(
         .pending
         .clone()
         .ok_or("更新包未准备好。")?;
-    let bytes = read_package(&updates.directory).map_err(|e| e.to_string())?;
+    let bytes = match read_package(&updates.directory) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            updates.clear_cache();
+            updates.edit(|data| data.pending = None);
+            updates.fail(error.context("更新缓存不可读取，请重新检查更新"));
+            return Err(updates.snapshot().error);
+        }
+    };
     // Recheck before stopping any service, even when the cached bytes changed on disk.
     if update.verify(&bytes).is_err() {
         updates.clear_cache();
@@ -490,7 +527,6 @@ pub async fn desktop_update_install(
         updates.fail(anyhow::anyhow!("更新包校验失败，请重新检查更新。"));
         return Err(updates.snapshot().error);
     }
-    let service = app.state::<crate::bridge::DesktopState>().handle.clone();
     let plan = ResumePlan::capture(&service.snapshot());
     let resume_path = updates.directory.join("resume.json");
     config::atomic_private(
@@ -502,15 +538,11 @@ pub async fn desktop_update_install(
     if let Err(error) = service.pause_for_update().await {
         let _ = std::fs::remove_file(resume_path);
         updates.fail(error.context("无法安全暂停本应用的服务，未安装更新"));
-        plan.resume(&service).await;
         return Err(updates.snapshot().error);
     }
     let result = tauri::async_runtime::spawn_blocking(move || update.install(&bytes)).await;
     match result {
-        Ok(Ok(())) => {
-            app.request_restart();
-            Ok(())
-        }
+        Ok(Ok(())) => Ok(()),
         error => {
             let _ = std::fs::remove_file(resume_path);
             let message = match error {
@@ -519,7 +551,7 @@ pub async fn desktop_update_install(
                 _ => unreachable!(),
             };
             updates.fail(anyhow::anyhow!("安装未完成，已保留当前版本：{message}"));
-            plan.resume(&service).await;
+            plan.resume(service).await;
             Err(updates.snapshot().error)
         }
     }
@@ -532,6 +564,187 @@ pub fn desktop_update_open_releases() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "downloads a published update and installs only into a fresh temporary app copy"]
+    async fn published_update_installs_into_isolated_app() {
+        use sha2::{Digest, Sha256};
+        use std::process::Command;
+        struct EmptySecrets;
+        impl config::Secrets for EmptySecrets {
+            fn read(&self, _: &str) -> Result<String> {
+                Ok(String::new())
+            }
+            fn write(&self, _: &str, _: &str) -> Result<()> {
+                Ok(())
+            }
+        }
+        fn plist(app: &Path, key: &str) -> String {
+            let result = Command::new("/usr/bin/plutil")
+                .args(["-extract", key, "raw", "-o", "-"])
+                .arg(app.join("Contents/Info.plist"))
+                .output()
+                .unwrap();
+            assert!(result.status.success());
+            String::from_utf8(result.stdout).unwrap().trim().into()
+        }
+        let base = PathBuf::from(
+            std::env::var_os("ANYWORK_UPDATE_SMOKE_BASE_APP")
+                .expect("Supply an already downloaded AnyWork.app"),
+        );
+        let from =
+            std::env::var("ANYWORK_UPDATE_SMOKE_FROM").expect("Supply the expected old version");
+        let to = std::env::var("ANYWORK_UPDATE_SMOKE_TO")
+            .expect("Supply the exact published update version");
+        assert_eq!(plist(&base, "CFBundleShortVersionString"), from);
+        let old_name = plist(&base, "CFBundleExecutable");
+        let original_executable = base.join("Contents/MacOS").join(&old_name);
+        let original_hash = Sha256::digest(std::fs::read(&original_executable).unwrap());
+        let sandbox = tempfile::Builder::new()
+            .prefix("anywork-signed-update-smoke-")
+            .tempdir()
+            .unwrap();
+        let installed = sandbox.path().join("AnyWork.app");
+        assert!(
+            Command::new("/usr/bin/ditto")
+                .arg(&base)
+                .arg(&installed)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let support = sandbox.path().join("support");
+        let configuration: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+        context.package_info_mut().version = from.parse().unwrap();
+        context.config_mut().plugins.0.insert(
+            "updater".into(),
+            configuration["plugins"]["updater"].clone(),
+        );
+        let app = tauri::test::mock_builder()
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .build(context)
+            .unwrap();
+        let mut updates = Handle::new(&support, true);
+        updates.executable_path = Some(installed.join("Contents/MacOS").join(&old_name));
+        updates.edit(|data| data.snapshot.current_version = from.clone());
+        updates.check(app.handle(), true).await.unwrap();
+        assert_eq!(updates.snapshot().phase, Phase::Ready);
+        assert_eq!(updates.snapshot().version, to);
+        assert_eq!(
+            plist(&installed, "CFBundleShortVersionString"),
+            from,
+            "background download must not install"
+        );
+        let cached = read_package(&updates.directory).unwrap();
+        let manifest = std::fs::read(updates.directory.join("manifest.json")).unwrap();
+        let mut corrupt = cached.clone();
+        corrupt[0] ^= 1;
+        config::atomic_private(&updates.directory.join("package"), &corrupt).unwrap();
+        let preview = manager::Handle::preview(manager::Snapshot::new(
+            config::Config::default(),
+            String::new(),
+        ));
+        assert!(
+            install_ready(&updates, &preview, &to).await.is_err(),
+            "tampered cache must fail before touching any service or app"
+        );
+        assert_eq!(plist(&installed, "CFBundleShortVersionString"), from);
+        config::atomic_private(&updates.directory.join("package"), &cached).unwrap();
+        config::atomic_private(&updates.directory.join("manifest.json"), &manifest).unwrap();
+        // Fresh process state restores and verifies the cache without a network check.
+        let mut restored = Handle::new(&support, true);
+        restored.executable_path = updates.executable_path.clone();
+        restored.restore(app.handle()).await.unwrap();
+        assert_eq!(restored.snapshot().phase, Phase::Ready);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let settings = config::Config {
+            workspace: sandbox.path().display().to_string(),
+            data_directory: support.join("data").display().to_string(),
+            port,
+            ..Default::default()
+        };
+        config::save(&support.join("manager.json"), &settings).unwrap();
+        drop(listener);
+        let service = manager::start(manager::Options {
+            support: support.clone(),
+            resources: installed.join("Contents/Resources"),
+            secrets: Arc::new(EmptySecrets),
+        })
+        .unwrap();
+        assert!(
+            install_ready(&restored, &service, "0.0.0").await.is_err(),
+            "stale confirmation must not install"
+        );
+        install_ready(&restored, &service, &to).await.unwrap();
+        service.shutdown().await;
+        assert_eq!(plist(&installed, "CFBundleShortVersionString"), to);
+        let executable = installed
+            .join("Contents/MacOS")
+            .join(plist(&installed, "CFBundleExecutable"));
+        let launch = Command::new(&executable).arg("--version").output().unwrap();
+        assert!(launch.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&launch.stdout).trim(),
+            format!("AnyWork {to}")
+        );
+        let server = installed.join("Contents/Resources/bin/anywork");
+        let server_version = Command::new(server).arg("--version").output().unwrap();
+        assert!(String::from_utf8_lossy(&server_version.stdout).contains(&to));
+        assert!(
+            Command::new("/usr/bin/codesign")
+                .args(["--verify", "--deep", "--strict"])
+                .arg(&installed)
+                .status()
+                .unwrap()
+                .success()
+        );
+        // Launch the installed GUI with isolated storage and inert preview IPC.
+        // Never open a user's manager, credentials, service or agent connection.
+        let gui_log = sandbox.path().join("gui.log");
+        let output = std::fs::File::create(&gui_log).unwrap();
+        let mut gui = Command::new(&executable)
+            .args(["--preview", "overview"])
+            .env("ANYWORK_MANAGER_HOME", sandbox.path().join("gui-support"))
+            .stdout(output.try_clone().unwrap())
+            .stderr(output)
+            .spawn()
+            .unwrap();
+        let mut frontend_connected = false;
+        for _ in 0..100 {
+            let log = std::fs::read_to_string(&gui_log).unwrap_or_default();
+            if log.contains("preview frontend connected to Rust/Tauri IPC") {
+                frontend_connected = true;
+                break;
+            }
+            if gui.try_wait().unwrap().is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        // The PID belongs to the disposable preview child created just above.
+        unsafe {
+            libc::kill(gui.id() as i32, libc::SIGTERM);
+        }
+        let _ = gui.wait();
+        assert!(
+            frontend_connected,
+            "the updated GUI must load its bundled frontend and connect to IPC"
+        );
+        assert_eq!(
+            Sha256::digest(std::fs::read(&original_executable).unwrap()),
+            original_hash,
+            "base app must remain untouched"
+        );
+        if let Some(path) = std::env::var_os("ANYWORK_UPDATE_SMOKE_REPORT") {
+            std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({"from":from,"to":to,"backgroundDownload":true,"signatureVerified":true,"tamperedCacheRejected":true,"offlineCacheRestored":true,"staleConfirmationRejected":true,"installedIntoTemporaryCopy":true,"newDesktopExecutableLaunched":true,"updatedGuiConnectedToIpc":frontend_connected,"serverVersionUpdated":true,"codesignVerified":true,"originalAppUnchanged":true})).unwrap()).unwrap();
+        }
+        println!(
+            "Published update verified: {from} -> {to}; only a disposable app copy was changed."
+        );
+    }
     fn signed_fixture() -> (tauri_plugin_updater::Updater, serde_json::Value, Vec<u8>) {
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../tests/fixtures/signed-update.json")).unwrap();
