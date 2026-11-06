@@ -1193,7 +1193,18 @@ pub fn primary_lan_address(port: u16) -> Option<String> {
     }
     Some(format!("http://{ip}:{port}"))
 }
-pub fn manager_lock(support: &Path) -> Result<std::fs::File> {
+pub struct ManagerLock(std::fs::File);
+
+impl Drop for ManagerLock {
+    fn drop(&mut self) {
+        // A concurrent spawn can briefly inherit the descriptor before exec on
+        // macOS. Explicitly release our lock rather than waiting for every copy
+        // of the open file description to close.
+        let _ = fs2::FileExt::unlock(&self.0);
+    }
+}
+
+pub fn manager_lock(support: &Path) -> Result<ManagerLock> {
     config::prepare(support)?;
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -1202,7 +1213,7 @@ pub fn manager_lock(support: &Path) -> Result<std::fs::File> {
         .open(support.join("manager.lock"))?;
     fs2::FileExt::try_lock_exclusive(&file)
         .context("AnyWork 桌面程序已在运行。请使用已打开的窗口。")?;
-    Ok(file)
+    Ok(ManagerLock(file))
 }
 
 #[cfg(all(test, unix))]
@@ -1944,7 +1955,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let first = manager_lock(dir.path()).unwrap();
         assert!(manager_lock(dir.path()).is_err());
+        let inherited = first.0.try_clone().unwrap();
         drop(first);
+        let second = manager_lock(dir.path()).unwrap();
+        drop(inherited);
+        assert!(manager_lock(dir.path()).is_err());
+        drop(second);
         assert!(manager_lock(dir.path()).is_ok());
     }
 }

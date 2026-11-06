@@ -51,9 +51,9 @@ CI 仅上传明确列出的 Web 构建、源码包或 APK，不上传整个开�
 
 ## GitHub Actions 发行 / Automated releases
 
-公开仓库为 `ywateru/AnyWork`，默认分支为 `main`。发布 `v*` tag 后，`Build releases` 工作流并行构建 macOS arm64/x86_64、Windows x64、Linux x64/ARM64、Android，以及 Web/对应源码。只有全部构建和打包成功才创建 GitHub Release，并为完整产物生成 `SHA256SUMS`。手动运行只生成 Actions artifacts，不创建发行版。
+公开仓库为 `ywateru/AnyWork`，默认分支为 `main`。发布 `v*` tag 后，`Build releases` 工作流并行构建 macOS arm64/x86_64、Windows x64、Linux x64/ARM64、Android，以及 Web/对应源码。只有全部构建和打包成功才创建 GitHub Release，并为完整产物生成 `SHA256SUMS`。手动运行默认只生成 Actions artifacts；勾选 publish 并填写与源码匹配的 tag，全部平台通过后会从本次精确提交创建发行版。
 
-Push a version tag to run the release matrix. Only after every platform succeeds does the publish job create a release. Manual dispatch builds downloadable Actions artifacts without publishing a release. Linux x64 uses Ubuntu 22.04; Linux ARM64 uses Ubuntu 24.04. Neither the Windows portable nor macOS app has a paid publisher/notarization certificate. Do not describe successful compilation as full hardware validation.
+Push a version tag to run the release matrix. Only after every platform succeeds does the publish job create a release. Manual dispatch builds Actions artifacts by default. Enable `publish` with a tag matching the source version to publish from that exact workflow commit after all platforms pass. Linux x64 uses Ubuntu 22.04; Linux ARM64 uses Ubuntu 24.04. Neither the Windows portable nor macOS app has a paid publisher/notarization certificate. Do not describe successful compilation as full hardware validation.
 
 ```bash
 git tag v0.1.0
