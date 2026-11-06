@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionHistoryCache } from "./sessionHistory";
+import { projectEvents } from "./events";
 import type { AgentEvent, Session } from "./types";
 const session = (id: string, status = "idle", external = false): Session => ({
   id,
@@ -138,6 +139,89 @@ describe("session history lifecycle", () => {
     pending.resolve(page([event("a", 1), event("a", 12)]));
     await flush();
     expect(cache.get("a").events.map((e) => e.seq)).toEqual([1, 12]);
+  });
+  it("converges compact completed history with older SSE deltas without duplicating final text", async () => {
+    const { cache, streams, histories } = fixture();
+    const text = "文档已准备好：[设计说明](/docs/guide.md)。";
+    const packet = (seq: number, method: string, params: unknown) =>
+      ({
+        ...event("a", seq, method),
+        params,
+      }) as AgentEvent;
+    const started = packet(11, "turn/started", { turn: { id: "t" } });
+    const completed = packet(15, "item/completed", {
+      turnId: "t",
+      item: { id: "answer", type: "agentMessage", text },
+    });
+    const done = packet(16, "turn/completed", {
+      turn: { id: "t", status: "completed" },
+    });
+    // The server's compact history omits started/delta events for completed items.
+    histories.set("a", page([started, completed, done]));
+    cache.start();
+    cache.reconcile([session("a")], "a");
+    await flush();
+    const answer = () =>
+      projectEvents(cache.get("a").events).messages.find(
+        (message) => message.id === "answer",
+      )?.text;
+    expect(answer()).toBe(text);
+    for (const replay of [
+      started,
+      packet(12, "item/started", {
+        turnId: "t",
+        item: { id: "answer", type: "agentMessage", text: "" },
+      }),
+      packet(13, "item/agentMessage/delta", {
+        turnId: "t",
+        itemId: "answer",
+        delta: text,
+      }),
+      // Another item below the snapshot watermark must still be retained.
+      packet(14, "item/agentMessage/delta", {
+        turnId: "t",
+        itemId: "other",
+        delta: "并行进度",
+      }),
+      completed,
+      done,
+    ]) {
+      streams[0].receive(replay);
+      expect(answer()).toBe(text);
+      const view = projectEvents(cache.get("a").events);
+      expect(
+        view.messages.find((message) => message.id === "answer")?.item?.status,
+      ).toBe("completed");
+      expect(view.turns.find((turn) => turn.id === "t")?.status).toBe(
+        "completed",
+      );
+    }
+    expect(cache.get("a").events.map((event) => event.seq)).toEqual([
+      11, 12, 13, 14, 15, 16,
+    ]);
+    expect(
+      projectEvents(cache.get("a").events).messages.find(
+        (message) => message.id === "other",
+      )?.text,
+    ).toBe("并行进度");
+  });
+  it("retains distinct identical delta chunks and isolates matching item ids in another session", async () => {
+    const { cache, streams } = fixture();
+    cache.start();
+    cache.reconcile([session("a", "running"), session("b", "running")], "a");
+    await flush();
+    const delta = (id: string, seq: number, text: string): AgentEvent => ({
+      ...event(id, seq, "item/agentMessage/delta"),
+      params: { turnId: "t", itemId: "same-item", delta: text },
+    });
+    streams[0].receive(delta("a", 11, "哈"));
+    streams[0].receive(delta("a", 12, "哈"));
+    streams[0].receive(delta("a", 12, "哈"));
+    streams[0].receive(delta("b", 13, "另一个会话"));
+    expect(projectEvents(cache.get("a").events).messages[0].text).toBe("哈哈");
+    expect(projectEvents(cache.get("b").events).messages[0].text).toBe(
+      "另一个会话",
+    );
   });
   it("retains cached text and resumes from the global cursor after disconnect", async () => {
     vi.useFakeTimers();

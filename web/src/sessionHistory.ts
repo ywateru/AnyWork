@@ -386,7 +386,20 @@ export class SessionHistoryCache {
         patch.controls = [...entry.snapshot.controls, event];
       if (!event.method.startsWith("queue/")) this.schedule(entry);
     } else if (!entry.snapshot.events.some((old) => old.seq === event.seq)) {
-      patch.events = [...entry.snapshot.events, event];
+      const events = entry.snapshot.events;
+      if (!events.length || events.at(-1)!.seq < event.seq)
+        patch.events = [...events, event];
+      else {
+        // Compacted history can arrive before its older started/delta events.
+        // Preserve canonical sequence so its completed text remains authoritative;
+        // a watermark/content filter would discard valid concurrent item updates.
+        const index = events.findIndex((old) => old.seq > event.seq);
+        patch.events = [
+          ...events.slice(0, index),
+          event,
+          ...events.slice(index),
+        ];
+      }
     }
     this.patch(entry, patch);
   }
