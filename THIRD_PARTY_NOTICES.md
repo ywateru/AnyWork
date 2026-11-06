@@ -27,3 +27,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+
+Agent identification marks: Codex product icons © OpenAI; DeepSeek Harness favicons © DeepSeek (official MIT repository, trademark rights reserved). Used solely to identify connected Agents; no endorsement implied. See web/public/agents/README.md (shipped as /agents/README.md) for official sources, pinned revisions and SHA-256 checksums. These brand marks do not become AnyWork branding or AGPL-licensed assets.

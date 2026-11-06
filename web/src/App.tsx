@@ -16,6 +16,9 @@ import { GoalEditor } from "./components/conversation/GoalBanner";
 import SplitPane from "./components/conversation/SplitPane";
 import { useConversationPanels } from "./hooks/useConversationPanels";
 import { useFloatingMenus } from "./hooks/useFloatingMenus";
+import { useSidebarAgent } from "./hooks/useSidebarAgent";
+import SidebarAgentFilter from "./components/SidebarAgentFilter";
+import { agentName } from "./sidebarAgents";
 import { useSessionDraft } from "./hooks/useSessionDraft";
 import { useGoalComposerMode } from "./hooks/useGoalComposerMode";
 import { useMessageEditing } from "./hooks/useMessageEditing";
@@ -140,6 +143,7 @@ export default function App() {
     [sessionsLoadedFor, setSessionsLoadedFor] = useState<Api | null>(null),
     [sessionsErrorFor, setSessionsErrorFor] = useState<Api | null>(null),
     [plugins, setPlugins] = useState<Plugin[]>([]),
+    [pluginsLoadedFor, setPluginsLoadedFor] = useState<Api | null>(null),
     [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]),
     [createCwd, setCreateCwd] = useState(""),
     [models, setModels] = useState<
@@ -172,6 +176,7 @@ export default function App() {
     [uploading, setUploading] = useState(0);
   const { appearance, setAppearance, theme, toggleTheme } = useAppearance();
   const serverKey = connection?.url || "";
+  const [sidebarAgent, setSidebarAgent] = useSidebarAgent(serverKey);
   const panels = useConversationPanels(serverKey, selected);
   const { tab, setTab, fileTarget } = panels;
   const api = useMemo(
@@ -426,7 +431,10 @@ export default function App() {
     api
       .request("/plugins")
       .then((data) => {
-        if (!cancelled) setPlugins(data.plugins);
+        if (!cancelled) {
+          setPlugins(data.plugins);
+          setPluginsLoadedFor(api);
+        }
       })
       .catch(fail);
     reload().catch(fail);
@@ -1236,6 +1244,15 @@ export default function App() {
           )}
           <aside className={sidebar ? "sidebar open" : "sidebar"}>
             <NavigationHeader
+              agentFilter={
+                <SidebarAgentFilter
+                  key={serverKey}
+                  plugins={pluginsLoadedFor === api ? plugins : []}
+                  sessions={sessionsLoadedFor === api ? sessions : []}
+                  value={sidebarAgent}
+                  onChange={setSidebarAgent}
+                />
+              }
               sessions={sessions}
               filter={filter}
               project={projectFilter}
@@ -1274,6 +1291,16 @@ export default function App() {
               filter={filter}
               project={projectFilter}
               group={groupMode}
+              agent={sidebarAgent}
+              agentLabel={
+                sidebarAgent
+                  ? agentName(
+                      sidebarAgent,
+                      pluginsLoadedFor === api ? plugins : [],
+                    )
+                  : undefined
+              }
+              onClearAgent={() => setSidebarAgent("")}
               onSelect={select}
               onCreate={(path) => {
                 setCreateCwd(path);

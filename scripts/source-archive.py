@@ -24,7 +24,7 @@ PRIVATE_SUFFIXES = ('.log', '.pid', '.sock', '.db', '.sqlite', '.sqlite3',
                     '.apk', '.aab', '.zip', '.tar', '.tar.gz', '.tgz',
                     '.bundle', '.tmp', '.bak', '.orig', '.pyc',
                     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.webm')
-PUBLIC_IMAGES = {'web/public/icon-192.png', 'web/public/icon-512.png', 'desktop/icon.png', 'site/assets/social.png'}
+PUBLIC_IMAGES = {'web/public/icon-192.png', 'web/public/icon-512.png', 'desktop/icon.png', 'site/assets/social.png', 'web/public/agents/codex-light.png', 'web/public/agents/codex-dark.png'}
 
 
 def is_public(name):
