@@ -38,3 +38,15 @@ Reviewed follow-up commit `593f6a1c74adef362f594194d76538f6ad135c4a`: **pass**. 
 ### Correction: incremental typecheck gate
 
 The initial incremental PASS above was incomplete: it ran unit tests, Vite and browsers, but did not rerun TypeScript's separate checker. The orchestrator subsequently found **blocking TS18046** in commit `593f6a1`, `tool-metadata.ts` catch branch, where mutable `args: unknown` is no longer narrowed to string. Vite is a transpilation/build check and does not satisfy this gate. The incremental result is **blocked until a committed fix passes an independent standalone `npm run typecheck -w web` with its own checked exit status**. The earlier main extraction typecheck remains valid for `7343d47`; it does not cover this follow-up.
+
+### Typecheck fix and real rich output closure
+
+Reviewed `46c036ef90603004a339dbe74d71efb2ca4d18a5` and `94c001849d4de19b385264033ed7a7a4779543f5`: **PASS**. A separate standalone `npm run typecheck -w web` completed with exit 0 after the narrowing fix; the prior TS18046 blocker is closed. Independently rebuilt the committed UI and ran all six updated Harness conversation browser cases (desktop/Android), exit 0. The rich-output patch routes `localImage` through the existing session-authenticated `ImagePreview` and `localFile` through the existing authorized resource action; equal Harness text/output is rendered once.
+
+Beyond fixtures, used the actual official Harness Host with a session created and executed through a separate native carrier before AnyWork attached. The real `read_image` tool produced a durable full-reference image result. AnyWork downloaded that reference, rendered its output and image in both desktop and 390px mobile browsers, opened the image modal, kept it open through a 1.4-second observation and retained the composer draft after Escape. Repeated the big-image/draft check for a native historical user-message attachment. Screenshots in the ignored main-workspace artifacts directory:
+
+- `artifacts/harness-native-desktop.png`, `artifacts/harness-native-mobile.png`: actual tool, output, assistant and unchanged draft composer.
+- `artifacts/harness-native-image-desktop.png`, `artifacts/harness-native-image-mobile.png`: actual tool-image modal.
+- `artifacts/harness-native-history-image-desktop.png`, `artifacts/harness-native-history-image-mobile.png`: actual historical user-image modal.
+
+All inputs and paths belong to isolated verifier fixtures; no real user account key, private conversation or launch credential is shown. Overall UI extraction and both follow-ups now pass; backend cancellation/disconnection findings remain separately blocking for the full integration.
