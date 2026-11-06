@@ -49,6 +49,7 @@ fn run() -> anyhow::Result<()> {
     } else {
         None
     };
+    let manager_lock = std::sync::Mutex::new(_lock);
     let handle = if preview.is_some() {
         let mut s = Snapshot::new(
             config::Config {
@@ -130,6 +131,16 @@ fn run() -> anyhow::Result<()> {
         })
         .build(context)?;
     app.run(move |app, event| {
+        if let tauri::RunEvent::ExitRequested {
+            code: Some(tauri::RESTART_EXIT_CODE),
+            ..
+        } = event
+        {
+            // Tauri starts the replacement before exiting this process. Release the
+            // instance lock now; the updater has already paused our managed services.
+            manager_lock.lock().unwrap_or_else(|e| e.into_inner()).take();
+            return;
+        }
         if let tauri::RunEvent::ExitRequested { api, .. } = event
             && !finished_event.load(Ordering::SeqCst)
         {
