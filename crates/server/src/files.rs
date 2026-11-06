@@ -11,9 +11,12 @@ use std::{
 };
 
 pub fn within(root: &FsPath, path: &FsPath) -> anyhow::Result<PathBuf> {
+    // Compare the same path representation on both sides. On Windows,
+    // canonicalize adds a verbatim prefix (\\?\) even to an absolute path.
+    let root = root.canonicalize()?;
     let canonical = path.canonicalize()?;
     anyhow::ensure!(
-        canonical.starts_with(root),
+        canonical.starts_with(&root),
         "Path is outside the allowed workspace"
     );
     Ok(canonical)
@@ -454,6 +457,9 @@ mod tests {
     fn rejects_traversal_and_symlinks() {
         let root = std::env::temp_dir().join(format!("ra-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();
+        let canonical = root.canonicalize().unwrap();
+        assert_eq!(within(&root, &root).unwrap(), canonical);
+        assert_eq!(within(&root.join("."), &canonical).unwrap(), canonical);
         assert!(within(&root, &root.join("..")).is_err());
         #[cfg(unix)]
         {
