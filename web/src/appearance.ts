@@ -22,7 +22,7 @@ export type Appearance = {
   lineHeight: number;
 };
 export const defaultAppearance: Appearance = {
-  mode: "system",
+  mode: "light",
   preset: "codex",
   accent: "#0d0d0d",
   background: null,
@@ -46,7 +46,9 @@ export function normalizeAppearance(value: unknown): Appearance {
       : fallback;
   return {
     mode:
-      input.mode === "light" || input.mode === "dark" ? input.mode : "system",
+      input.mode === "light" || input.mode === "dark" || input.mode === "system"
+        ? input.mode
+        : defaultAppearance.mode,
     preset: appearancePresets.some((p) => p.id === input.preset)
       ? (input.preset as Appearance["preset"])
       : defaultAppearance.preset,
@@ -77,7 +79,10 @@ function loadAppearance(): Appearance {
     return {
       ...defaultAppearance,
       ...(preset ? { preset: preset.id, accent: preset.accent } : {}),
-      mode: legacy === "dark" || legacy === "light" ? legacy : "system",
+      mode:
+        legacy === "dark" || legacy === "light" || legacy === "system"
+          ? legacy
+          : defaultAppearance.mode,
     };
   } catch {
     return { ...defaultAppearance };
@@ -119,6 +124,9 @@ export function useAppearance(): {
     root.style.colorScheme = theme;
     const background =
       appearance.background || (theme === "dark" ? "#212121" : "#ffffff");
+    document
+      .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+      ?.setAttribute("content", background);
     const foreground =
       appearance.foreground || (theme === "dark" ? "#ececec" : "#0d0d0d");
     const accent =

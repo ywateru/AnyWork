@@ -1408,7 +1408,7 @@ test("composer add menu uploads, attaches remote files and controls native goal 
 test("Codex appearance follows system, edits colors and fonts, imports and restores defaults", async ({
   page,
 }, testInfo) => {
-  await page.emulateMedia({ colorScheme: "light" });
+  await page.emulateMedia({ colorScheme: "dark" });
   await login(page);
   await clickSessionAction(page, "设置");
   const dialog = page.getByRole("dialog", { name: "设置与插件", exact: true });
@@ -1416,8 +1416,14 @@ test("Codex appearance follows system, edits colors and fonts, imports and resto
     dialog.getByRole("heading", { name: "外观", exact: true }),
   ).toBeVisible();
   await expect(
-    dialog.getByRole("button", { name: "跟随系统", exact: true }),
+    dialog.getByRole("button", { name: "浅色", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+    "content",
+    "#ffffff",
+  );
+  await dialog.getByRole("button", { name: "跟随系统", exact: true }).click();
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await dialog.getByRole("button", { name: "浅色", exact: true }).click();
@@ -1491,7 +1497,7 @@ test("Codex appearance follows system, edits colors and fonts, imports and resto
   await dialog.getByRole("button", { name: "高级", exact: true }).click();
   await dialog.getByRole("button", { name: "恢复默认", exact: true }).click();
   await expect(
-    dialog.getByRole("button", { name: "跟随系统", exact: true }),
+    dialog.getByRole("button", { name: "浅色", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
     true,

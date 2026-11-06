@@ -1,10 +1,14 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronDown,
+  Cloud,
+  Code2,
+  Home,
+  Power,
+  QrCode,
   ChevronRight,
   Copy,
   Download,
@@ -12,20 +16,11 @@ import {
   Eye,
   EyeOff,
   FolderOpen,
-  Globe,
-  KeyRound,
-  Link,
   LoaderCircle,
   Monitor,
-  Network,
-  Plus,
-  Radio,
-  RefreshCw,
-  Server,
   Settings2,
   ShieldCheck,
   Smartphone,
-  Unplug,
   Wifi,
   X,
 } from "lucide-react";
@@ -33,57 +28,9 @@ import "./style.css";
 import { version as appVersion } from "../package.json";
 import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
 import { anyworkLogo } from "./brand";
-type Kind = "quick" | "named" | "relay";
-type Phase =
-  | "off"
-  | "checking"
-  | "starting"
-  | "validating"
-  | "running"
-  | "reconnecting"
-  | "stopping"
-  | "error";
-type Config = {
-  workspace: string;
-  dataDirectory: string;
-  port: number;
-  allowLAN: boolean;
-  serverBinary: string;
-  cloudflaredBinary: string;
-  tunwgBinary: string;
-  publicURL: string;
-  relayDomain: string;
-  forceRelay: boolean;
-  welcomed: boolean;
-};
-type Route = {
-  phase: Phase;
-  url: string;
-  error: string;
-  restart_attempts?: number;
-  retry_in_seconds?: number;
-  address_changed?: boolean;
-};
-type Client = {
-  id: string;
-  address: string;
-  user_agent: string;
-  last_seen: number;
-};
-type Snapshot = {
-  config: Config;
-  token: string;
-  secrets: string[];
-  secrets_loaded: boolean;
-  service: Phase;
-  owned: boolean;
-  external: boolean;
-  authorized: boolean;
-  clients: Client[];
-  routes: Route[];
-  error: string;
-  notice: string;
-};
+import type { Kind, Phase, Config, Snapshot } from "./types";
+import { ConnectionPopover } from "./ConnectionPopover";
+import { NetworkLines } from "./NetworkLines";
 type Pairing = { link: string; svg: string; url: string };
 type CloudflaredStatus = {
   available: boolean;
@@ -151,7 +98,8 @@ function App() {
     [welcome, setWelcome] = useState(false),
     [preview, setPreview] = useState<string | null>(null),
     [showKey, setShowKey] = useState(false),
-    [expanded, setExpanded] = useState<Kind[]>([]),
+    [detail, setDetail] = useState<Kind | "local" | "lan" | null>(null),
+    [configuring, setConfiguring] = useState(false),
     [pairing, setPairing] = useState<Pairing | null>(null),
     [toast, setToast] = useState(""),
     [error, setError] = useState(""),
@@ -160,6 +108,15 @@ function App() {
     [installError, setInstallError] = useState(""),
     [lan, setLan] = useState("");
   const installDialog = useRef<HTMLDialogElement>(null);
+  const detailTriggers = useRef<Record<string, HTMLButtonElement | null>>({});
+  function openDetail(value: Kind | "local" | "lan", edit = false) {
+    setDetail(value);
+    setConfiguring(edit);
+  }
+  function navigate(value: string) {
+    setPage(value);
+    setDetail(null);
+  }
   const initialized = useRef(false),
     secretsLoaded = useRef(false),
     touched = useRef(new Set<number>()),
@@ -258,6 +215,7 @@ function App() {
         );
         if (!status.available) {
           setInstallError("");
+          setDetail(null);
           setInstallRequest({ status, values, key });
           return;
         }
@@ -339,7 +297,7 @@ function App() {
       ((kind === "named" && (!config?.publicURL || !secrets[i])) ||
         (kind === "relay" && (!config?.relayDomain || !secrets[i])))
     ) {
-      setExpanded((old) => (old.includes(kind) ? old : [...old, kind]));
+      openDetail(kind, true);
       setToast("请先填写这一路连接的配置");
       return;
     }
@@ -395,6 +353,218 @@ function App() {
       </button>
     </div>
   );
+  const serviceConfiguration = (
+    <>
+      <fieldset disabled={locked}>
+        <div className="two-columns">
+          <PathField
+            label="工作目录"
+            value={config.workspace}
+            set={(v) => update("workspace", v)}
+            choose={() => void choose("workspace")}
+          />
+          <PathField
+            label="数据目录"
+            value={config.dataDirectory}
+            set={(v) => update("dataDirectory", v)}
+            choose={() => void choose("dataDirectory")}
+          />
+        </div>
+        <div className="config-line">
+          <label className="port-field">
+            服务端口
+            <input
+              type="number"
+              min={1024}
+              max={65535}
+              value={config.port}
+              onChange={(e) => update("port", Number(e.target.value))}
+            />
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={config.allowLAN}
+              onChange={(e) => update("allowLAN", e.target.checked)}
+            />
+            允许局域网连接
+          </label>
+        </div>
+        <label>
+          访问密钥
+          <div className="input-actions">
+            <input
+              type={showKey ? "text" : "password"}
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="留空时自动生成"
+            />
+            <button
+              onClick={async () => {
+                const value = await call<string>("desktop_generate_token");
+                if (value) setToken(value);
+              }}
+            >
+              重新生成
+            </button>
+          </div>
+        </label>
+        <div className="form-footer">
+          <p>已有服务的密钥文件不会被此处覆盖。</p>
+          <button
+            disabled={pending.includes("save_service")}
+            onClick={() => void action("save_service", { config, token })}
+          >
+            保存服务配置
+          </button>
+        </div>
+      </fieldset>
+      {locked && (
+        <p className="hint">
+          关闭本应用启动的服务和远程连接后，可修改本地配置。
+        </p>
+      )}
+    </>
+  );
+  const programConfiguration = (
+    <>
+      <details className="advanced">
+        <summary>
+          <Settings2 size={15} />
+          高级选项 · 程序位置
+        </summary>
+        <p className="hint">默认使用桌面包内置程序，留空即可自动查找。</p>
+        <fieldset disabled={locked}>
+          {(["serverBinary", "cloudflaredBinary", "tunwgBinary"] as const).map(
+            (key, i) => (
+              <PathField
+                key={key}
+                label={["AnyWork Server", "cloudflared", "tunwg"][i]}
+                value={config[key]}
+                set={(v) => update(key, v)}
+                choose={() => void choose(key)}
+              />
+            ),
+          )}
+          <button onClick={() => void action("save_programs", { config })}>
+            保存程序位置
+          </button>
+        </fieldset>
+      </details>
+    </>
+  );
+  function routeConfiguration(kind: Kind) {
+    if (!state || !config) return null;
+    const i = kinds.indexOf(kind),
+      on = active(state.routes[i].phase),
+      isPending = pending.includes(kind);
+    if (kind === "quick")
+      return (
+        <>
+          <p className="hint">
+            Cloudflare 自动分配临时 HTTPS
+            地址，无需配置域名。网络恢复时优先保留原地址；进程重启后地址可能变化。
+          </p>
+          <p className="hint">
+            程序位置：
+            {config.cloudflaredBinary ||
+              "自动查找 cloudflared，缺失时提示下载安装"}
+          </p>
+        </>
+      );
+    return (
+      <>
+        <fieldset disabled={on || isPending}>
+          {kind === "named" ? (
+            <>
+              <label>
+                公开 HTTPS 地址
+                <input
+                  value={config.publicURL}
+                  placeholder="https://work.example.com"
+                  onChange={(e) => update("publicURL", e.target.value)}
+                />
+              </label>
+              <label>
+                连接器令牌
+                <input
+                  type="password"
+                  value={secrets[i]}
+                  placeholder="Cloudflare Tunnel Token"
+                  onChange={(e) => secret(i, e.target.value)}
+                />
+              </label>
+              <p className="hint">
+                在 Cloudflare 中将公开域名的源站配置为 http://127.0.0.1:
+                {state.config.port}。
+              </p>
+            </>
+          ) : (
+            <>
+              <label>
+                中继域名
+                <input
+                  value={config.relayDomain}
+                  placeholder="relay.example.com"
+                  onChange={(e) => update("relayDomain", e.target.value)}
+                />
+              </label>
+              <label>
+                授权密钥
+                <input
+                  type="password"
+                  value={secrets[i]}
+                  placeholder="中继服务提供的授权密钥"
+                  onChange={(e) => secret(i, e.target.value)}
+                />
+              </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={config.forceRelay}
+                  onChange={(e) => update("forceRelay", e.target.checked)}
+                />
+                始终通过中继转发
+              </label>
+              <p className="hint">
+                需要已部署的 tunwg 中继。Android 经 HTTPS/TLS 访问中继，再通过
+                WireGuard 到达这台电脑。
+              </p>
+            </>
+          )}
+          <div className="form-buttons">
+            <button
+              onClick={() =>
+                void action(
+                  "save_route",
+                  { kind, config, secret: secrets[i] },
+                  kind,
+                )
+              }
+            >
+              保存配置
+            </button>
+            <button
+              className="primary"
+              disabled={!state.authorized}
+              onClick={() =>
+                void action(
+                  "start_route",
+                  { kind, config, secret: secrets[i] },
+                  kind,
+                )
+              }
+            >
+              保存并开启
+            </button>
+          </div>
+        </fieldset>
+        {on && (
+          <p className="hint">关闭这一路后可修改配置，其他连接继续运行。</p>
+        )}
+      </>
+    );
+  }
   return (
     <>
       {welcome ? (
@@ -469,18 +639,25 @@ function App() {
             <nav>
               <button
                 className={page === "service" ? "selected" : ""}
-                onClick={() => setPage("service")}
+                onClick={() => navigate("service")}
               >
-                <Network size={18} />
-                服务与连接
+                <Home size={18} />
+                总览
               </button>
               <button
                 className={page === "devices" ? "selected" : ""}
-                onClick={() => setPage("devices")}
+                onClick={() => navigate("devices")}
               >
                 <Smartphone size={18} />
                 在线设备
                 {state.clients.length > 0 && <b>{state.clients.length}</b>}
+              </button>
+              <button
+                className={page === "settings" ? "selected" : ""}
+                onClick={() => navigate("settings")}
+              >
+                <Settings2 size={18} />
+                设置
               </button>
             </nav>
             <div className="aside-footer">
@@ -491,7 +668,7 @@ function App() {
               <button onClick={() => setWelcome(true)}>使用说明</button>
               <button
                 className="version-button"
-                onClick={() => setPage("updates")}
+                onClick={() => navigate("updates")}
                 aria-label="软件更新"
               >
                 AnyWork · {appVersion}
@@ -503,50 +680,141 @@ function App() {
             {page !== "updates" && (
               <UpdateNotice
                 controller={updates}
-                open={() => setPage("updates")}
+                open={() => navigate("updates")}
               />
             )}
+            {page !== "service" && page !== "updates" && uiError && (
+              <div role="alert" className="error">
+                {uiError}
+              </div>
+            )}
+            {page !== "service" &&
+              page !== "updates" &&
+              state.notice &&
+              !uiError && (
+                <div className="notice" role="status">
+                  {state.notice}
+                </div>
+              )}
             {page === "updates" ? (
               <UpdatePage controller={updates} />
             ) : page === "service" ? (
               <>
-                <header>
-                  <div>
-                    <h1>服务与连接</h1>
-                    <p>让这台电脑上的工作，随时继续。</p>
-                  </div>
-                  <button
-                    disabled={!state.authorized}
-                    onClick={() => void call("desktop_open", { kind: null })}
+                <header className="overview-heading">
+                  <div
+                    className={`service-beacon ${state.authorized ? "running" : ""}`}
                   >
-                    打开工作台
-                    <ExternalLink size={14} />
-                  </button>
+                    <span />
+                  </div>
+                  <div>
+                    <h1>
+                      {state.authorized
+                        ? "AnyWork 正在运行"
+                        : state.service === "off"
+                          ? "从这里，连接你的工作。"
+                          : status}
+                    </h1>
+                    <p>为这台电脑上的 Codex 提供安全的远程访问。</p>
+                  </div>
                 </header>
-                <section className="local-service">
-                  <div className="section-top">
-                    <div>
-                      <Server size={19} />
-                      <h2>本地服务</h2>
+                {uiError && !detail && (
+                  <div role="alert" className="error">
+                    {uiError}
+                  </div>
+                )}
+                {state.notice && !uiError && (
+                  <div className="notice">{state.notice}</div>
+                )}
+                <section
+                  className="network-map"
+                  aria-label="Codex 与远程设备的连接关系"
+                >
+                  <NetworkLines />
+                  <div className="agent-node" data-node="agent">
+                    <span className="node-caption">本机 Agent</span>
+                    <div className="codex-symbol">
+                      <Code2 size={26} strokeWidth={1.5} />
+                    </div>
+                    <h2>Codex</h2>
+                    <p>在这台电脑上执行</p>
+                    <span className="agent-footnote">桌面与远程共享会话</span>
+                    <button
+                      className="agent-settings"
+                      aria-label="配置工作目录"
+                      title={state.config.workspace || "配置工作目录"}
+                      onClick={() => navigate("settings")}
+                    >
+                      <span>
+                        <small>工作目录</small>
+                        <span>
+                          {state.config.workspace
+                            .split(/[\\/]/)
+                            .filter(Boolean)
+                            .pop() || "待配置"}
+                        </span>
+                      </span>
+                      <Settings2 size={14} />
+                    </button>
+                  </div>
+                  <div className="host-column">
+                    <button
+                      className="host-node"
+                      ref={(element) => {
+                        detailTriggers.current.local = element;
+                      }}
+                      aria-expanded={detail === "local"}
+                      aria-controls={
+                        detail === "local" ? "connection-details" : undefined
+                      }
+                      aria-label="本地服务详情"
+                      onClick={() =>
+                        detail === "local"
+                          ? setDetail(null)
+                          : openDetail("local")
+                      }
+                    >
+                      <img
+                        className="host-logo"
+                        data-node="hub"
+                        src={anyworkLogo}
+                        width="72"
+                        height="72"
+                        alt=""
+                      />
+                      <span className="host-name">AnyWork</span>
                       <Status
                         phase={state.authorized ? "running" : state.service}
-                        text={status}
+                        text={state.authorized ? "运行中" : status}
                       />
-                    </div>
-                    {state.owned ? (
-                      <button
-                        disabled={
-                          pending.includes("stop_server") ||
-                          state.service === "stopping"
-                        }
-                        onClick={() => void action("stop_server")}
+                      <span
+                        className="host-address"
+                        title={`http://127.0.0.1:${state.config.port}`}
                       >
-                        关闭服务
-                      </button>
-                    ) : (
-                      !state.external && (
+                        127.0.0.1:{state.config.port}
+                      </span>
+                      <span className="host-settings">
+                        <Settings2 size={12} />
+                        服务设置
+                      </span>
+                    </button>
+                    <div className="host-controls" data-node="controls">
+                      {state.owned ? (
                         <button
-                          className="primary"
+                          className="host-power"
+                          disabled={
+                            pending.includes("stop_server") ||
+                            state.service === "stopping"
+                          }
+                          onClick={() => void action("stop_server")}
+                        >
+                          <Power size={15} />
+                          {state.service === "stopping"
+                            ? "正在停止…"
+                            : "停止服务"}
+                        </button>
+                      ) : !state.external ? (
+                        <button
+                          className="primary host-power"
                           disabled={
                             busy(state.service) ||
                             pending.includes("start_server")
@@ -555,407 +823,155 @@ function App() {
                             void action("start_server", { config, token })
                           }
                         >
-                          启动服务
+                          <Power size={15} />
+                          {pending.includes("start_server") ||
+                          busy(state.service)
+                            ? "正在启动…"
+                            : "启动服务"}
                         </button>
-                      )
-                    )}
-                  </div>
-                  <Address
-                    label="本机地址"
-                    url={`http://127.0.0.1:${state.config.port}`}
-                    copy={copy}
-                  />
-                  {lan && <Address label="局域网地址" url={lan} copy={copy} />}{" "}
-                  {state.authorized ? (
-                    keyRow
-                  ) : state.external ? (
-                    <div className="external-auth">
-                      <p>
-                        填入已有服务的访问密钥，连接后即可开启隧道和查看设备。
-                      </p>
-                      <div>
-                        <input
-                          aria-label="已有服务访问密钥"
-                          type="password"
-                          value={token}
-                          onChange={(e) => setToken(e.target.value)}
-                          placeholder="访问密钥"
-                        />
-                        <button
-                          onClick={() => void action("authenticate", { token })}
-                        >
-                          连接
-                        </button>
-                        <button
-                          title="选择服务数据目录里的 access-token"
-                          onClick={async () => {
-                            const v = await call<string | null>(
-                              "desktop_read_key",
-                            );
-                            if (v) setToken(v);
-                          }}
-                        >
-                          读取密钥文件
-                        </button>
-                      </div>
+                      ) : (
+                        <span className="host-managed">由命令行管理</span>
+                      )}
                     </div>
-                  ) : (
-                    <p className="service-hint">
-                      启动后即可在网页中继续工作。首次启动会自动生成访问密钥。
-                    </p>
-                  )}
-                </section>
-                <details className="local-config">
-                  <summary>
-                    <Settings2 size={15} />
-                    服务配置
-                  </summary>
-                  <fieldset disabled={locked}>
-                    <div className="two-columns">
-                      <PathField
-                        label="工作目录"
-                        value={config.workspace}
-                        set={(v) => update("workspace", v)}
-                        choose={() => void choose("workspace")}
-                      />
-                      <PathField
-                        label="数据目录"
-                        value={config.dataDirectory}
-                        set={(v) => update("dataDirectory", v)}
-                        choose={() => void choose("dataDirectory")}
-                      />
-                    </div>
-                    <div className="config-line">
-                      <label className="port-field">
-                        服务端口
-                        <input
-                          type="number"
-                          min={1024}
-                          max={65535}
-                          value={config.port}
-                          onChange={(e) =>
-                            update("port", Number(e.target.value))
+                    <button
+                      className="lan-node"
+                      data-node="lan"
+                      ref={(element) => {
+                        detailTriggers.current.lan = element;
+                      }}
+                      aria-label="局域网访问详情"
+                      aria-expanded={detail === "lan"}
+                      onClick={() =>
+                        detail === "lan" ? setDetail(null) : openDetail("lan")
+                      }
+                    >
+                      <Wifi size={20} />
+                      <span>
+                        <strong>局域网访问</strong>
+                        <Status
+                          phase={lan ? "running" : "off"}
+                          text={
+                            lan
+                              ? "已启用"
+                              : state.config.allowLAN
+                                ? "等待连接"
+                                : "未启用"
                           }
                         />
-                      </label>
-                      <label className="check">
-                        <input
-                          type="checkbox"
-                          checked={config.allowLAN}
-                          onChange={(e) => update("allowLAN", e.target.checked)}
-                        />
-                        允许局域网连接
-                      </label>
-                    </div>
-                    <label>
-                      访问密钥
-                      <div className="input-actions">
-                        <input
-                          type={showKey ? "text" : "password"}
-                          value={token}
-                          onChange={(e) => setToken(e.target.value)}
-                          placeholder="留空时自动生成"
-                        />
-                        <button
-                          onClick={async () => {
-                            const value = await call<string>(
-                              "desktop_generate_token",
-                            );
-                            if (value) setToken(value);
-                          }}
-                        >
-                          重新生成
-                        </button>
-                      </div>
-                    </label>
-                    <div className="form-footer">
-                      <p>已有服务的密钥文件不会被此处覆盖。</p>
-                      <button
-                        disabled={pending.includes("save_service")}
-                        onClick={() =>
-                          void action("save_service", { config, token })
-                        }
-                      >
-                        保存服务配置
-                      </button>
-                    </div>
-                  </fieldset>
-                  {locked && (
-                    <p className="hint">
-                      关闭本应用启动的服务和远程连接后，可修改本地配置。
-                    </p>
-                  )}
-                </details>
-                {uiError && (
-                  <div role="alert" className="error">
-                    {uiError}
+                        <small>{lan || "连接同一网络中的设备"}</small>
+                      </span>
+                      <ChevronRight size={14} />
+                    </button>
                   </div>
-                )}
-                {state.notice && !uiError && (
-                  <div className="notice">{state.notice}</div>
-                )}
-                <div className="connections-heading">
-                  <h2>远程连接</h2>
-                  <span>可同时开启多种方式</span>
-                </div>
-                <section className="routes">
-                  {kinds.map((kind, i) => {
-                    const r = state.routes[i],
-                      on = active(r.phase),
-                      isPending = pending.includes(kind),
-                      open = expanded.includes(kind);
-                    const Icon = [Globe, Link, ShieldCheck][i];
-                    return (
-                      <article className="route" key={kind}>
-                        <div className="route-top">
-                          <div className="route-symbol">
-                            <Icon size={21} />
-                          </div>
-                          <div className="route-info">
-                            <h3>{titles[i]}</h3>
-                            <p>{descriptions[i]}</p>
-                          </div>
-                          <div className="route-actions">
-                            {kind !== "quick" && (
-                              <button
-                                className="text-button"
-                                aria-expanded={open}
-                                onClick={() =>
-                                  setExpanded((old) =>
-                                    open
-                                      ? old.filter((v) => v !== kind)
-                                      : [...old, kind],
-                                  )
-                                }
-                              >
-                                {open ? "收起" : "配置"}
-                                <ChevronDown
-                                  className={open ? "rotated" : ""}
-                                  size={13}
-                                />
-                              </button>
-                            )}
-                            <Status
-                              phase={isPending && !on ? "starting" : r.phase}
-                            />
-                            <button
-                              className={`switch${on || isPending ? " on" : ""}`}
-                              role="switch"
-                              aria-label={`${titles[i]}开关`}
-                              aria-checked={on || isPending}
-                              disabled={
-                                isPending ||
-                                r.phase === "stopping" ||
-                                (!state.authorized && !on)
-                              }
-                              onClick={() => toggle(kind, !on)}
-                            >
-                              <span />
-                            </button>
-                          </div>
-                        </div>
-                        {open && (
-                          <div className="route-config">
-                            <fieldset disabled={on || isPending}>
-                              {kind === "named" ? (
-                                <>
-                                  <label>
-                                    公开 HTTPS 地址
-                                    <input
-                                      value={config.publicURL}
-                                      placeholder="https://work.example.com"
-                                      onChange={(e) =>
-                                        update("publicURL", e.target.value)
-                                      }
-                                    />
-                                  </label>
-                                  <label>
-                                    连接器令牌
-                                    <input
-                                      type="password"
-                                      value={secrets[i]}
-                                      placeholder="Cloudflare Tunnel Token"
-                                      onChange={(e) =>
-                                        secret(i, e.target.value)
-                                      }
-                                    />
-                                  </label>
-                                  <p className="hint">
-                                    在 Cloudflare 中将公开域名的源站配置为
-                                    http://127.0.0.1:{state.config.port}。
-                                  </p>
-                                </>
-                              ) : (
-                                <>
-                                  <label>
-                                    中继域名
-                                    <input
-                                      value={config.relayDomain}
-                                      placeholder="relay.example.com"
-                                      onChange={(e) =>
-                                        update("relayDomain", e.target.value)
-                                      }
-                                    />
-                                  </label>
-                                  <label>
-                                    授权密钥
-                                    <input
-                                      type="password"
-                                      value={secrets[i]}
-                                      placeholder="中继服务提供的授权密钥"
-                                      onChange={(e) =>
-                                        secret(i, e.target.value)
-                                      }
-                                    />
-                                  </label>
-                                  <label className="check">
-                                    <input
-                                      type="checkbox"
-                                      checked={config.forceRelay}
-                                      onChange={(e) =>
-                                        update("forceRelay", e.target.checked)
-                                      }
-                                    />
-                                    始终通过中继转发
-                                  </label>
-                                  <p className="hint">
-                                    需要已部署的 tunwg 中继。Android 经
-                                    HTTPS/TLS 访问中继，再通过 WireGuard
-                                    到达这台电脑。
-                                  </p>
-                                </>
-                              )}
-                              <div className="form-buttons">
-                                <button
-                                  onClick={() =>
-                                    void action(
-                                      "save_route",
-                                      { kind, config, secret: secrets[i] },
-                                      kind,
-                                    )
-                                  }
-                                >
-                                  保存配置
-                                </button>
-                                <button
-                                  className="primary"
-                                  disabled={!state.authorized}
-                                  onClick={() =>
-                                    void action(
-                                      "start_route",
-                                      { kind, config, secret: secrets[i] },
-                                      kind,
-                                    )
-                                  }
-                                >
-                                  保存并开启
-                                </button>
-                              </div>
-                            </fieldset>
-                            {on && (
-                              <p className="hint">
-                                关闭这一路后可修改配置，其他连接继续运行。
-                              </p>
-                            )}
-                          </div>
-                        )}
-                        {kind === "quick" && r.phase === "reconnecting" && (
-                          <p className="hint" role="status">
-                            {r.retry_in_seconds
-                              ? `${r.retry_in_seconds} 秒后重试启动（第 ${r.restart_attempts ?? 1} 次）；等待本地服务可用。`
-                              : "正在自动恢复；优先保留现有进程和匿名地址。"}
-                          </p>
-                        )}
-                        {kind === "quick" && r.address_changed && (
-                          <p className="hint" role="status">
-                            匿名地址已变更，请使用下方新地址重新连接远程设备。
-                          </p>
-                        )}
-                        {r.url && (
-                          <div className="route-address">
-                            <Address
-                              label={
-                                r.phase === "running"
-                                  ? "远程地址"
-                                  : "上次连接地址 · 正在恢复"
-                              }
-                              url={r.url}
-                              copy={copy}
-                            />
-                            <div>
-                              <button
-                                disabled={r.phase !== "running"}
-                                onClick={() =>
-                                  void call("desktop_open", { kind })
-                                }
-                              >
-                                打开网页
-                                <ExternalLink size={13} />
-                              </button>
-                              <button
-                                disabled={r.phase !== "running"}
-                                onClick={async () => {
-                                  const value = await call<Pairing>(
-                                    "desktop_pairing",
-                                    { kind },
-                                  );
-                                  if (value) setPairing(value);
-                                }}
-                              >
-                                连接 Android
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {r.error && (
-                          <div
-                            role={
-                              r.phase === "reconnecting" ? "status" : "alert"
+                  <div className="route-nodes" aria-label="独立远程连接">
+                    {kinds.map((kind, i) => {
+                      const r = state.routes[i],
+                        on = active(r.phase),
+                        isPending = pending.includes(kind),
+                        address =
+                          r.url ||
+                          (kind === "named" ? state.config.publicURL : "");
+                      const Icon = kind === "relay" ? ShieldCheck : Cloud;
+                      return (
+                        <article
+                          className={`route-node ${detail === kind ? "selected" : ""}`}
+                          key={kind}
+                          data-node={kind}
+                        >
+                          <button
+                            className="route-trigger"
+                            ref={(element) => {
+                              detailTriggers.current[kind] = element;
+                            }}
+                            aria-label={`${titles[i]}详情`}
+                            aria-expanded={detail === kind}
+                            aria-controls={
+                              detail === kind ? "connection-details" : undefined
                             }
-                            className={
-                              r.phase === "reconnecting"
-                                ? "hint route-error"
-                                : "error route-error"
+                            onClick={() =>
+                              detail === kind
+                                ? setDetail(null)
+                                : openDetail(kind)
                             }
                           >
-                            {r.error}
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
+                            <span className="route-symbol">
+                              <Icon size={22} strokeWidth={1.5} />
+                            </span>
+                            <span className="route-info">
+                              <strong>
+                                {kind === "quick"
+                                  ? "Cloudflare 匿名隧道"
+                                  : kind === "named"
+                                    ? "Cloudflare 固定域名"
+                                    : "WireGuard + TLS 中继"}
+                              </strong>
+                              {address ? (
+                                <small
+                                  className="route-address"
+                                  title={address}
+                                  aria-label={`${r.phase === "reconnecting" ? "上次连接地址" : r.url ? "连接地址" : "配置地址"}：${address}`}
+                                >
+                                  {address.replace(/^https?:\/\//, "")}
+                                </small>
+                              ) : (
+                                <small>{descriptions[i]}</small>
+                              )}
+                              <Status
+                                phase={isPending && !on ? "starting" : r.phase}
+                                text={
+                                  r.phase === "running" ? "已启用" : undefined
+                                }
+                              />
+                            </span>
+                            <ChevronRight className="route-chevron" size={16} />
+                          </button>
+                          <button
+                            className={`switch${on || isPending ? " on" : ""}`}
+                            role="switch"
+                            aria-label={`${titles[i]}开关`}
+                            aria-checked={on || isPending}
+                            disabled={
+                              isPending ||
+                              r.phase === "stopping" ||
+                              (!state.authorized && !on)
+                            }
+                            onClick={() => toggle(kind, !on)}
+                          >
+                            <span />
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
                 </section>
-                <details className="advanced">
-                  <summary>
-                    <Settings2 size={15} />
-                    高级选项 · 程序位置
-                  </summary>
-                  <p className="hint">
-                    默认使用桌面包内置程序，留空即可自动查找。
-                  </p>
-                  <fieldset disabled={locked}>
-                    {(
-                      [
-                        "serverBinary",
-                        "cloudflaredBinary",
-                        "tunwgBinary",
-                      ] as const
-                    ).map((key, i) => (
-                      <PathField
-                        key={key}
-                        label={["AnyWork Server", "cloudflared", "tunwg"][i]}
-                        value={config[key]}
-                        set={(v) => update(key, v)}
-                        choose={() => void choose(key)}
-                      />
-                    ))}
-                    <button
-                      onClick={() => void action("save_programs", { config })}
-                    >
-                      保存程序位置
-                    </button>
-                  </fieldset>
-                </details>
+              </>
+            ) : page === "settings" ? (
+              <>
+                <header>
+                  <div>
+                    <h1>设置</h1>
+                    <p>配置本地服务与连接程序。</p>
+                  </div>
+                </header>
+                <section className="settings-section">
+                  <h2>本地服务</h2>
+                  {serviceConfiguration}
+                </section>
+                <section className="settings-section">
+                  {programConfiguration}
+                </section>
+                <section className="settings-section settings-update">
+                  <div>
+                    <h2>软件更新</h2>
+                    <p className="hint">
+                      当前版本 {appVersion}，在后台下载，确认后安装。
+                    </p>
+                  </div>
+                  <button onClick={() => navigate("updates")}>
+                    检查更新
+                    <ChevronRight size={14} />
+                  </button>
+                </section>
               </>
             ) : (
               <>
@@ -979,8 +995,8 @@ function App() {
                         ? "开启一种远程连接，再从网页或 Android 应用访问。"
                         : "连接服务后，可以在这里查看远程设备。"}
                     </p>
-                    <button onClick={() => setPage("service")}>
-                      前往服务与连接
+                    <button onClick={() => navigate("service")}>
+                      前往总览
                     </button>
                   </div>
                 ) : (
@@ -1010,6 +1026,250 @@ function App() {
             )}
           </main>
         </div>
+      )}
+      {detail && !welcome && page === "service" && (
+        <ConnectionPopover
+          key={detail}
+          anchor={detailTriggers.current[detail]}
+          title={
+            detail === "local"
+              ? "本地服务"
+              : detail === "lan"
+                ? "局域网访问"
+                : titles[kinds.indexOf(detail)]
+          }
+          onClose={() => setDetail(null)}
+        >
+          {configuring && (
+            <button
+              className="popover-back"
+              onClick={() => setConfiguring(false)}
+            >
+              <ArrowLeft size={14} />
+              连接详情
+            </button>
+          )}
+          {detail === "local" ? (
+            <>
+              <Status
+                phase={state.authorized ? "running" : state.service}
+                text={status}
+              />
+              {configuring ? (
+                serviceConfiguration
+              ) : (
+                <>
+                  <Address
+                    label="本机地址"
+                    url={`http://127.0.0.1:${state.config.port}`}
+                    copy={copy}
+                  />
+                  {state.authorized ? (
+                    keyRow
+                  ) : state.external ? (
+                    <div className="external-auth">
+                      <p>
+                        填入已有服务的访问密钥，连接后即可开启隧道和查看设备。
+                      </p>
+                      <div>
+                        <input
+                          aria-label="已有服务访问密钥"
+                          type="password"
+                          value={token}
+                          onChange={(e) => setToken(e.target.value)}
+                          placeholder="访问密钥"
+                        />
+                        <button
+                          onClick={() => void action("authenticate", { token })}
+                        >
+                          连接
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const value = await call<string | null>(
+                              "desktop_read_key",
+                            );
+                            if (value) setToken(value);
+                          }}
+                        >
+                          读取密钥文件
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="hint">
+                      启动本地服务后，即可从网页或 Android 应用继续 Codex 会话。
+                    </p>
+                  )}
+                  <div className="detail-options">
+                    <button
+                      disabled={!state.authorized}
+                      onClick={() => void call("desktop_open", { kind: null })}
+                    >
+                      <ExternalLink size={17} />
+                      打开工作台
+                      <ChevronRight size={15} />
+                    </button>
+                    <button onClick={() => setConfiguring(true)}>
+                      <Settings2 size={17} />
+                      查看服务配置
+                      <ChevronRight size={15} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          ) : detail === "lan" ? (
+            <>
+              <Status
+                phase={lan ? "running" : "off"}
+                text={
+                  lan ? "已启用" : state.config.allowLAN ? "等待连接" : "未启用"
+                }
+              />
+              {lan ? (
+                <>
+                  <Address label="局域网地址" url={lan} copy={copy} />
+                  <p className="hint">
+                    在同一网络的设备中打开此地址，使用访问密钥连接。
+                  </p>
+                  {keyRow}
+                </>
+              ) : (
+                <p className="hint">
+                  {state.config.allowLAN
+                    ? "启动并认证本地服务后，将自动显示可用的局域网地址。"
+                    : "在服务配置中允许局域网连接，再启动服务，即可连接同一网络中的设备。"}
+                </p>
+              )}
+              <div className="detail-options">
+                <button onClick={() => openDetail("local", true)}>
+                  <Settings2 size={17} />
+                  查看服务配置
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            </>
+          ) : (
+            (() => {
+              const i = kinds.indexOf(detail),
+                r = state.routes[i],
+                on = active(r.phase),
+                isPending = pending.includes(detail);
+              return (
+                <>
+                  <div className="detail-status">
+                    <span>{descriptions[i]}</span>
+                    <Status
+                      phase={r.phase}
+                      text={r.phase === "running" ? "已启用" : undefined}
+                    />
+                  </div>
+                  {configuring ? (
+                    routeConfiguration(detail)
+                  ) : (
+                    <>
+                      {detail === "quick" && r.phase === "reconnecting" && (
+                        <p className="hint" role="status">
+                          {r.retry_in_seconds
+                            ? `${r.retry_in_seconds} 秒后重试启动（第 ${r.restart_attempts ?? 1} 次）；等待本地服务可用。`
+                            : "正在自动恢复；优先保留现有进程和匿名地址。"}
+                        </p>
+                      )}
+                      {detail === "quick" && r.address_changed && (
+                        <p className="hint" role="status">
+                          匿名地址已变更，请使用下方新地址重新连接远程设备。
+                        </p>
+                      )}
+                      {r.url ? (
+                        <>
+                          <Address
+                            label={
+                              r.phase === "running"
+                                ? "访问地址"
+                                : "上次连接地址 · 正在恢复"
+                            }
+                            url={r.url}
+                            copy={copy}
+                          />
+                          <button
+                            className="open-connection"
+                            disabled={r.phase !== "running"}
+                            onClick={() =>
+                              void call("desktop_open", { kind: detail })
+                            }
+                          >
+                            打开网页
+                            <ExternalLink size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <p className="detail-empty">
+                          {busy(r.phase)
+                            ? "连接验证成功后，将在这里显示访问地址。"
+                            : "开启此连接后，将在这里显示访问地址。"}
+                        </p>
+                      )}
+                      <div className="detail-options">
+                        <span className="detail-label">远程访问</span>
+                        <button
+                          disabled={r.phase !== "running"}
+                          onClick={async () => {
+                            const value = await call<Pairing>(
+                              "desktop_pairing",
+                              { kind: detail },
+                            );
+                            if (value) {
+                              setPairing(value);
+                              setDetail(null);
+                            }
+                          }}
+                        >
+                          <QrCode size={18} />
+                          生成二维码
+                          <ChevronRight size={15} />
+                        </button>
+                        <span className="detail-label">配置</span>
+                        <button onClick={() => setConfiguring(true)}>
+                          <Settings2 size={17} />
+                          查看配置
+                          <ChevronRight size={15} />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {r.error && (
+                    <p
+                      role={r.phase === "reconnecting" ? "status" : "alert"}
+                      className={r.phase === "reconnecting" ? "hint" : "error"}
+                    >
+                      {r.error}
+                    </p>
+                  )}
+                  {!configuring && (
+                    <button
+                      className={`connection-power ${on ? "" : "primary"}`}
+                      disabled={
+                        isPending ||
+                        r.phase === "stopping" ||
+                        (!state.authorized && !on)
+                      }
+                      onClick={() => toggle(detail, !on)}
+                    >
+                      <Power size={15} />
+                      {on ? "关闭此连接" : "开启此连接"}
+                    </button>
+                  )}
+                </>
+              );
+            })()
+          )}
+          {uiError && (
+            <div role="alert" className="error">
+              {uiError}
+            </div>
+          )}
+        </ConnectionPopover>
       )}
       {toast && (
         <div role="status" className="toast">
@@ -1193,6 +1453,7 @@ function PathField({
       {label}
       <div className="input-actions">
         <input
+          aria-label={label}
           value={value}
           onChange={(e) => set(e.target.value)}
           placeholder="使用内置程序或自动查找"

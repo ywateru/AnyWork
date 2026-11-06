@@ -2,21 +2,29 @@ AnyWork brings a local Codex workspace to browsers and Android, with a Rust desk
 
 AnyWork 将本机 Codex 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.4 / 本次更新**
+**New in 0.1.5 / 本次更新**
 
-AnyWork has a new product logo: a dark rounded hexagon with two white ring eyes, redrawn as a transparent SVG. The Web client, desktop manager, macOS/Windows/Linux application icons, Android launcher and bilingual website now share the same mark. Platform assets are generated from one canonical SVG to keep future changes consistent.
+The Rust desktop manager has a new white, monochrome interface centered on a live connection diagram: Codex → AnyWork → three independent remote connections. Anonymous Cloudflare Tunnel, a fixed Cloudflare hostname and WireGuard + TLS relay can remain enabled together. The AnyWork node now includes its service status, local address, port and settings; the Codex node shows the configured workspace and its settings entry.
 
-AnyWork 更换为新的产品标志：深色圆角六边形与双圆环眼睛，使用透明背景 SVG 重新绘制。Web 界面、桌面管理器、macOS/Windows/Linux 应用图标、Android 启动图标与双语官网同步更新。各平台资源统一从一份主 SVG 生成，便于持续保持一致。
+Rust 桌面管理器采用全新的白底黑白界面，以实时连接关系图呈现 Codex → AnyWork → 三路独立远程连接。Cloudflare 匿名隧道、固定域名与 WireGuard + TLS 中继可以同时启用。AnyWork 节点直接显示服务状态、本机地址、端口和设置入口；Codex 节点显示已配置的工作目录及设置入口。
 
-**Included from 0.1.3 / 延续上一版本**
+Connection cards display known URLs, truncating long addresses while keeping the full address in their tooltip and details. Click a node for connection details, copy/open actions, Android pairing or configuration. Popovers close on outside click, Escape or a second click, and choose a position that keeps narrow-screen controls usable. Service start/stop stays beneath the host node. The redundant overview footer has been removed.
+
+连接卡片显示已知网址，长地址自动截断，悬停提示和详情中保留完整地址。点击节点即可查看详情、复制或打开地址、进行 Android 配对或配置连接。浮层支持点击外部、Escape 或再次点击触发器关闭，并根据可用空间选择位置，保证窄屏开关可操作。服务启停位于宿主节点下方，移除了重复的总览底部区域。
+
+Settings now show save results and errors. Desktop layouts were checked at 1440×1000, 960×720, 800×620 and a narrow 390px viewport; 42 isolated manager interaction cases and the updater UI regression passed locally. New Web users start with a white theme; existing explicit light/dark/system choices and custom appearances are preserved.
+
+设置页补齐保存结果和错误反馈。桌面布局检查覆盖 1440×1000、960×720、800×620 和 390px 窄屏；本地通过 42 项隔离管理界面交互测试及更新界面回归。Web 新用户默认白色主题，已有用户明确保存的浅色、深色、跟随系统与自定义外观继续保留。
+
+**Installers and updates / 安装与更新**
 
 macOS downloads are now DMG installers for Apple Silicon and Intel. Open the image, drag AnyWork into Applications, and follow the included bilingual `INSTALL-macOS.txt`. It includes `sudo xattr -cr "/Applications/AnyWork.app"` for the current ad-hoc signed app. Release builds mount each DMG read-only and verify its application signature, processor architecture, resources and exact agreement with the signed automatic-update app.
 
 macOS 现提供 Apple Silicon 和 Intel 的 DMG 安装盘。打开后将 AnyWork 拖入应用程序，并参考盘内中英文 `INSTALL-macOS.txt`，其中包含当前临时签名应用的运行命令 `sudo xattr -cr "/Applications/AnyWork.app"`。构建时只读挂载每个 DMG，验证应用签名、处理器架构、资源，并逐文件确认与签名自动更新包内的应用一致。
 
-Quick Tunnel checks now report specific timeout, TLS, DNS, HTTP and response errors. Proxy HTTP failures and invalid responses also trigger a direct authenticated retry. Temporary failures keep the same tunnel process and address. The website prefers DMG downloads while retaining compatibility with older ZIP-only releases. This release also includes the raw tool-output dialog improvements and browser interaction fixes from main.
+Quick Tunnel retains automatic recovery, preferring to keep its existing process and temporary address. The website prefers DMG downloads and automatically chooses Chinese or English at its language-neutral entry point, while preserving manual language selections.
 
-匿名隧道验证区分超时、TLS、DNS、HTTP 和响应错误；代理返回临时 HTTP 错误或异常页面时也会进行带身份校验的直连重试。短暂故障保留原隧道进程和地址。官网优先下载 DMG，同时兼容仅有 ZIP 的旧版。本版也包含 main 中的工具原始输出弹窗及浏览器交互修复。
+匿名隧道保留自动恢复能力，优先维持现有进程和临时地址。官网优先下载 DMG，并在语言中立入口根据浏览器自动选择中文或英文，保留用户手动选择的语言。
 
 Desktop updates continue downloading quietly and install only after confirmation. Every release increments all app versions and Android versionCode; packages include the matching server, Web and corresponding source.
 

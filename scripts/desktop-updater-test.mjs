@@ -44,7 +44,7 @@ try {
   });
   const { expect } = await import('@playwright/test');
   await page.goto(origin + '/');
-  await expect(page.getByRole('heading',{name:'服务与连接',exact:true})).toBeVisible();
+  await expect(page.locator('.network-map')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.evaluate(() => Object.assign(window.updateFixture,{phase:'downloading',version:'0.1.2',downloaded:1048576,total:2097152}));
   await expect(page.locator('.update-notice')).toHaveCount(0);
@@ -53,7 +53,7 @@ try {
   await expect(page.getByLabel('更新下载进度')).toHaveAttribute('value','1048576');
   await page.evaluate(() => Object.assign(window.updateFixture,{phase:'error',error:'Offline fixture'}));
   await expect(page.getByRole('alert')).toHaveText('Offline fixture');
-  await page.getByRole('button',{name:'服务与连接',exact:true}).click();
+  await page.getByRole('button',{name:'总览',exact:true}).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.evaluate(() => Object.assign(window.updateFixture,{phase:'ready',error:'',version:'0.1.2',notes:'Fixture release notes',showNotice:true}));
