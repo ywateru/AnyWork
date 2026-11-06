@@ -40,8 +40,12 @@ for (const toggle of document.querySelectorAll('[data-demo-switch]')) {
     status.textContent = enabled ? status.dataset.on : status.dataset.off;
   });
 }
-// Language remains an explicit, shareable URL. Remember a choice without forced redirects.
-try { localStorage.setItem('anywork-site-language', document.body.dataset.lang); } catch {}
+// Remember explicit choices only. An automatically selected page must not
+// overwrite the browser's preference, and explicit language URLs never redirect.
+document.querySelector('a.language').addEventListener('click', event => {
+  const language = event.currentTarget.getAttribute('hreflang') === 'zh-CN' ? 'zh' : 'en';
+  try { localStorage.setItem('anywork-site-preferred-language', language); } catch {}
+});
 const releaseURL = 'https://api.github.com/repos/ywateru/AnyWork/releases/latest';
 function applyRelease(release) {
   if (!release || !Array.isArray(release.assets) || release.draft || release.prerelease) return;

@@ -50,6 +50,23 @@ def main():
                 values[key] = values[key].replace('&lt;br&gt;', '<br>')
             prefix = '.' if root else '..'
             values.update(assetPrefix=prefix, htmlLang='zh-CN' if lang == 'zh' else 'en', otherHtmlLang='zh-CN' if lang == 'en' else 'en', homeUrl='./', otherUrl=('./' if root else '../') + raw['otherLang'] + '/', canonical=BASE + ('/' if root else f'/{lang}/'), guideUrl=REPO + '/blob/main/docs/' + raw['guideFile'])
+            # Only the language-neutral entry point negotiates language. Deep
+            # links and manual choices remain stable and shareable. Run before
+            # rendering to avoid briefly showing English to Chinese browsers.
+            values['languageRedirect'] = '''<script>
+(() => {
+  let preferred;
+  try { preferred = localStorage.getItem('anywork-site-preferred-language'); } catch {}
+  const browser = (navigator.languages || [navigator.language || 'en'])
+    .map(language => language.toLowerCase().split('-')[0])
+    .find(language => language === 'zh' || language === 'en') || 'en';
+  const language = ['en', 'zh'].includes(preferred) ? preferred : browser;
+  const target = new URL('./' + language + '/', location.href);
+  target.search = location.search;
+  target.hash = location.hash;
+  location.replace(target.href);
+})();
+</script>''' if root else ''
             values['releaseStatus'] = html.escape(raw['releaseAvailable'] + ': ' + release['tag_name'] if release else raw['releaseLoading'])
             assets = {asset['name']: asset for asset in release['assets']} if release else {}
             def url(name):

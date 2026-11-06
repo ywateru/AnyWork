@@ -74,14 +74,40 @@ try {
     await page.close();
     console.log(`Passed ${locale} ${width}px: layout, tabs, keys, preview, downloads, local assets`);
   }
-  const page = await browser.newPage({viewport:{width:1200,height:630},reducedMotion:'reduce'});
+  for (const [locale, expected] of [['zh-CN','zh'],['zh-TW','zh'],['en-US','en'],['fr-FR','en']]) {
+    const context = await browser.newContext({locale});
+    const page = await context.newPage();
+    await page.route('https://api.github.com/**', route => route.abort());
+    await page.goto(`${base}/?from=test#download`, {waitUntil:'networkidle'});
+    assert.equal(new URL(page.url()).pathname, `/AnyWork/${expected}/`);
+    assert.equal(new URL(page.url()).search, '?from=test');
+    assert.equal(new URL(page.url()).hash, '#download');
+    const alternate = expected === 'zh' ? 'en' : 'zh';
+    await page.locator('a.language').click();
+    assert.equal(new URL(page.url()).pathname, `/AnyWork/${alternate}/`);
+    await page.goto(`${base}/`, {waitUntil:'networkidle'});
+    assert.equal(new URL(page.url()).pathname, `/AnyWork/${alternate}/`, 'Manual language choice must persist');
+    await page.goto(`${base}/${expected}/`, {waitUntil:'networkidle'});
+    assert.equal(new URL(page.url()).pathname, `/AnyWork/${expected}/`, 'Explicit language links must stay stable');
+    await context.close();
+    console.log(`Passed language negotiation: ${locale}, manual choice, explicit URL, query and fragment`);
+  }
+  const page = await browser.newPage({locale:'en-US',viewport:{width:1200,height:630},reducedMotion:'reduce'});
   await page.route('https://api.github.com/**', route => route.abort());
   await page.goto(`${base}/`,{waitUntil:'networkidle'});
   assert.equal(await page.locator('html').getAttribute('lang'),'en');
-  assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'),'https://ywateru.github.io/AnyWork/');
+  assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'),'https://ywateru.github.io/AnyWork/en/');
   assert(await page.locator('#release-status').textContent());
-  if (process.env.ANYWORK_SITE_SOCIAL === '1') await page.screenshot({path:'site/assets/social.png'});
+  if (process.env.ANYWORK_SITE_SOCIAL === '1') {
+    await page.addStyleTag({content:'.header{height:60px}.hero{padding-block:20px;gap:45px}.manager-scene{padding-top:0}.manager-content{padding:17px 18px 12px}.service-summary{margin-top:16px;padding-block:11px}.manager-section-label{margin-top:15px}.manager-route{padding-block:9px}.manager-address{margin-top:12px}.intro{font-size:17px}.hero h1{font-size:56px}.release-line{margin-bottom:18px}.manager-scene .preview-disclaimer{margin-top:9px}'});
+    await page.screenshot({path:'site/assets/social.png'});
+  }
   await page.close();
+  const fallback = await browser.newPage({javaScriptEnabled:false});
+  await fallback.goto(`${base}/`);
+  assert.equal(await fallback.locator('html').getAttribute('lang'), 'en');
+  assert.equal(await fallback.locator('h1').count(),1);
+  await fallback.close();
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));
