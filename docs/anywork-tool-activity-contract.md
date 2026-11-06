@@ -1,6 +1,6 @@
 # 会话工具与子 Agent 活动契约
 
-记录日期：2026-11-06。参考为用户提供的 `codex-clipboard-e773d23f-06d0-443c-bdb8-a857387a4fd3.png` 和用户指定的安装包 `/Applications/ChatGPT.app/Contents/Resources/app.asar`。本轮包内身份为 `openai-codex-electron` / `26.1013.40934`，ASAR SHA-256 为 `5ddc4e48259aa6f979e04529b1a5a4ae54b0f5c4ad6db5c6e004924c10916ddb`。它与较早参考契约的包摘要、版本不同；不能把旧包 Evidence 当作本轮的当前包证据。
+记录日期：2026-11-06。参考为用户提供的工具与子 Agent 参考截图 和用户指定的安装包 `/Applications/ChatGPT.app/Contents/Resources/app.asar`。本轮包内身份为 `openai-codex-electron` / `26.1013.40934`，ASAR SHA-256 为 `5ddc4e48259aa6f979e04529b1a5a4ae54b0f5c4ad6db5c6e004924c10916ddb`。它与较早参考契约的包摘要、版本不同；不能把旧包 Evidence 当作本轮的当前包证据。
 
 仅以只读方式解析 ASAR header、成员 offset/size 和 UTF-8 文本，并把所需成员复制到 `/private/tmp/anywork-reference/`。没有运行原应用、执行 bundle、注入进程或修改安装包；临时目录中新旧文件名共存，以本文所列摘要界定本轮证据。
 

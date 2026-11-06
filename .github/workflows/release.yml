@@ -55,7 +55,7 @@ jobs:
       - name: Smoke test server executable
         run: ./target/release/anywork --version
       - name: Test native applications
-        run: cargo test --locked -p anywork -p anywork-desktop
+        run: cargo test --locked --release -p anywork -p anywork-desktop
       - name: Package application and source
         run: python3 scripts/release-package.py --platform ${{ matrix.platform }}
       - uses: actions/upload-artifact@v4
