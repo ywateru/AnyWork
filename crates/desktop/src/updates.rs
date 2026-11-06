@@ -415,7 +415,7 @@ pub fn supported(preview: bool) -> bool {
         matches!(
             tauri::utils::platform::bundle_type(),
             Some(
-                tauri::utils::platform::BundleType::Nsis | tauri::utils::platform::BundleType::Msi
+                tauri::utils::config::BundleType::Nsis | tauri::utils::config::BundleType::Msi
             )
         )
     }
