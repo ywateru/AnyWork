@@ -68,7 +68,7 @@ Android release signing uses the three secrets above and the `anywork` alias. Ba
 
 官网源文件在 `site/`。`python3 scripts/build-site.py` 输出英文 `/en/`、中文 `/zh/`、默认英文首页、SEO 元信息、sitemap 与下载元数据。使用 `--fetch-release` 将真实的最新 Release 附件写入静态页面；尚无 Release 时链接到发行列表，不生成假下载地址。浏览器可进一步刷新最新元数据，API 不可用时保留静态下载。
 
-The website builds without npm dependencies. `Publish website` deploys `site/dist` with the official Pages artifact/OIDC workflow. Configure the repository's Pages source as **GitHub Actions**. After the first release, manually dispatch `pages.yml` once to refresh static links; releases created using the workflow's `GITHUB_TOKEN` do not trigger a second workflow through the release event. Subsequent site pushes and manual deployments also refresh metadata.
+The website builds without npm dependencies. `Publish website` deploys `site/dist` with the official Pages artifact/OIDC workflow. Configure the repository's Pages source as **GitHub Actions**. After publishing a release, the release job explicitly dispatches `pages.yml` to refresh static download links. This uses the workflow-dispatch exception because a release event emitted with `GITHUB_TOKEN` does not trigger another workflow by itself. Site pushes and manual deployments also refresh metadata.
 
 ```bash
 python3 scripts/build-site.py

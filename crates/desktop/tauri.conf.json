@@ -3,7 +3,9 @@
   "productName": "AnyWork",
   "version": "0.1.0",
   "identifier": "dev.anywork.desktop",
-  "build": { "frontendDist": "../../desktop/ui/dist" },
+  "build": {
+    "frontendDist": "../../desktop/ui/dist"
+  },
   "app": {
     "withGlobalTauri": true,
     "windows": [
@@ -22,5 +24,11 @@
       "capabilities": []
     }
   },
-  "bundle": { "active": false, "icon": ["../../desktop/icon.png"] }
+  "bundle": {
+    "active": false,
+    "icon": [
+      "../../desktop/icon.png",
+      "../../desktop/icon.ico"
+    ]
+  }
 }
