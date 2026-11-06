@@ -49,8 +49,21 @@ Workspace Rust tests: 109 passed; four opt-in tests remained ignored in the ordi
 
 The old tunnel IPC fixture logged `desktop_update_snapshot` as an operation, unlike its existing exemption for `desktop_snapshot`. The new background status poll therefore broke exact tunnel-operation assertions. The fixture now returns a complete inert update snapshot without counting that read-only call; unexpected installation and service actions still enter the strict operation log.
 
-旧隧道测试把新增的只读更新状态轮询计入隧道操作列表，导致严格断言失败；现提供完整的隔离更新状态，继续严格检查安装及服务操作。另对历史CI中的会话链接中键重复粘贴、触屏定位预览消失分别补充鼠标抬起默认行为拦截和按pointerType区分的离开处理。前者在本机未复现Linux系统粘贴，但已补充按下/抬起取消默认行为的确定性断言，Linux端需由CI回归确认。
+旧隧道测试把新增的只读更新状态轮询计入隧道操作列表，导致严格断言失败；现提供完整的隔离更新状态，继续严格检查安装及服务操作。另对历史CI中的会话链接中键重复粘贴、触屏定位预览消失分别补充鼠标抬起默认行为拦截和按pointerType区分的离开处理。前者在本机未复现Linux系统粘贴，因此补充按下/抬起取消默认行为的确定性断言，并通过下述Linux完整CI验证实际中键点击保留草稿。
 
 After these changes, all 74 desktop/mobile tests in `desktop-tunnel.spec.ts`, `thread-links.spec.ts`, and `conversation-history.spec.ts` passed locally, along with the Web TypeScript/production build and changed-file formatting checks. The independent raw-output modal pass is documented in `docs/anywork-tool-activity-contract.md`. These frontend/fixture changes are subsequent main-branch work and are **not included in already-published v0.1.2 assets**.
 
 修补后三组桌面/移动浏览器测试共74项在本机通过，Web类型检查、生产构建和变更文件格式检查通过。工具原始输出弹窗另有独立契约及验收记录。上述后续前端/fixture修补位于main源码，**不在已经发布的v0.1.2附件中**。
+
+## Final complete CI / 最终完整CI
+
+[Checks run 42172999633](https://github.com/ywateru/AnyWork/actions/runs/42172999633) succeeded for source `3052ac3`. Both `android` and `server-web` jobs completed successfully on 2026-11-06. The Linux job ran the full `scripts/check.sh`, formatting and bilingual website regression checks:
+
+- Rust: 109 passed; three opt-in tests ignored on Linux. The macOS published-package smoke above was run separately.
+- Web unit tests: 291 passed across 26 files.
+- Browser integration: 495 passed, one skipped, covering desktop and Android browser viewports. Real Linux middle-click links, touch history previews and the new raw-output dialogs passed.
+- Desktop updater browser fixture, server/bridge/goal/release integration scripts, Clippy, formatting and production builds all passed.
+- Website: both languages at 1440/1024/768/390/320px, language negotiation and both delayed-release metadata races passed.
+- Android APK build passed in its separate job.
+
+最终完整CI通过：Rust109项、Web单元291项、浏览器495项通过（另1项跳过），更新器界面、各服务/桥接集成脚本、格式与Clippy、双语官网及Android构建均通过。Linux环境中的中键链接保留草稿、触屏定位预览及新原始输出弹窗已回归成功。
