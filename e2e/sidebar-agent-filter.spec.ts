@@ -162,8 +162,22 @@ async function fixture(
   return { release, streamRelease, writes };
 }
 async function openSidebar(page: Page, mobile: boolean) {
-  if (mobile)
-    await page.getByRole("button", { name: "会话列表", exact: true }).click();
+  if (!mobile) return;
+  const sidebar = page.locator("aside.sidebar");
+  await expect(sidebar).toBeAttached();
+  // After reload, loading a chat replaces the visible overview trigger with the
+  // chat toolbar trigger. Retry that real transition, never a hidden old button;
+  // an already open drawer is the desired result and must not be toggled closed.
+  await expect(async () => {
+    if (
+      !(await sidebar.evaluate((element) => element.classList.contains("open")))
+    )
+      await page
+        .getByRole("button", { name: "会话列表", exact: true })
+        .filter({ visible: true })
+        .click({ timeout: 1000 });
+    await expect(sidebar).toHaveClass(/\bopen\b/, { timeout: 1000 });
+  }).toPass({ timeout: 10000 });
 }
 async function choose(page: Page, name: string) {
   const menu = page.locator(".sidebar-agent-filter");
@@ -228,6 +242,7 @@ test("Agent menu dismisses by selection, outside and Escape, supports keyboard a
   await fixture(page);
   if (info.project.name === "android-web")
     await page.setViewportSize({ width: 320, height: 768 });
+  await openSidebar(page, info.project.name === "android-web");
   await openSidebar(page, info.project.name === "android-web");
   const menu = page.locator(".sidebar-agent-filter");
   const trigger = menu.locator("summary");
