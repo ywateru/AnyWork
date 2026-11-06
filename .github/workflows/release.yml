@@ -42,6 +42,8 @@ jobs:
       - run: npm run build:desktop-ui
       - name: Build native applications
         run: cargo build --locked --release -p anywork -p anywork-desktop
+      - name: Smoke test server executable
+        run: ./target/release/anywork --version
       - name: Test native applications
         run: cargo test --locked -p anywork -p anywork-desktop
       - name: Package application and source
