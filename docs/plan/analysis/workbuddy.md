@@ -1,6 +1,6 @@
 # WorkBuddy integration investigation
 
-Status: implementation candidates are committed and undergoing independent review; isolated installed preload and native reads have passed, while native writing remains open. No production adapter or runtime support is claimed yet. Goal: add WorkBuddy as an Agent while preserving the existing desktop's session and execution ownership. The installed application remains unchanged.
+Status: experimental implementation merged locally after independent code acceptance; isolated installed preload and native reads have passed, while native writing remains open. No production deployment or complete runtime support is claimed yet. Goal: add WorkBuddy as an Agent while preserving the existing desktop's session and execution ownership. The installed application remains unchanged.
 
 ## Artifact and primary evidence
 

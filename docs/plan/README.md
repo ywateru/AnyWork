@@ -30,6 +30,8 @@ The new goal is to add WorkBuddy from the installed desktop, preserving shared e
 
 | WorkBuddy task | State |
 | --- | --- |
-| [Native backend and shared-host integration](tasks/workbuddy-backend.md) | candidate committed; native error-envelope and pending-generation follow-ups under independent review |
-| [Identity and explicit launch setup](tasks/workbuddy-ui.md) | initial candidate independently passed; delayed-plugin selection follow-up in progress |
-| [Independent verification](tasks/workbuddy-verification.md) | installed native reads passed; native writing and exact follow-up commits remain open |
+| [Native backend and shared-host integration](tasks/workbuddy-backend.md) | experimental source merged locally after exact-commit independent review; native writing gate open |
+| [Identity and explicit launch setup](tasks/workbuddy-ui.md) | merged locally; UI, launcher and delayed-plugin follow-up independently passed |
+| [Independent verification](tasks/workbuddy-verification.md) | final candidate code accepted for experimental integration; installed native writing/E2E remains open |
+
+The [backend review](reviews/workbuddy-backend.md) accepts product commit `46fed88`; the [UI/launcher review](reviews/workbuddy-ui.md) accepts `18282da`. [Merged-system checks](reviews/workbuddy-merged.md) record local validation separately. Native error-envelope and approval occurrence/turn findings are closed. A normally initialized WorkBuddy account remains necessary to complete actual native creation and collaboration acceptance. This experimental source merge is not a feature-completion or publication claim.

@@ -1,6 +1,6 @@
 # WorkBuddy backend
 
-State: candidate `cd6699a` committed in `.worktrees/workbuddy-backend`, branch `codex/workbuddy-backend`, base `a6f0943`. Follow-ups address the installed application's native error envelope and approval IDs reused across turns; independent review and native writing acceptance remain open. Develop agent: harness_backend; independent verifier: harness_verify.
+State: final product commit `46fed88` merged locally after [independent experimental-source acceptance](../reviews/workbuddy-backend.md), following baseline `cd6699a`. Follow-ups close the installed application's native error envelope and approval IDs reused across turns. Installed native writing/E2E remains open because the isolated upstream account is not initialized. Develop agent: harness_backend; independent verifier: harness_verify.
 
 Contract: [shared desktop integration](../../workbuddy-integration.md), [investigation](../analysis/workbuddy.md). Implement only observed native contracts; unknown capability is a gate, not permission to fabricate a fallback.
 

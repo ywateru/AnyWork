@@ -1,6 +1,6 @@
 # Independent WorkBuddy acceptance
 
-State: isolated installed preload/list/model checks passed; committed candidates are undergoing independent review. Native writing remains open. Verifier: harness_verify, independent of developer agents. UI/launcher verification is performed separately by workbuddy_ui_verify.
+State: [final backend product commit `46fed88` independently accepted for experimental local-main integration](../reviews/workbuddy-backend.md); observed error-envelope and pending-turn findings closed. Actual installed preload/list/model and get/create error checks passed, with partial catalog explicitly retained as a limitation. Native writing/E2E remains open. Verifier: harness_verify, independent of developer agents. UI/launcher verification was separately accepted by workbuddy_ui_verify.
 
 Use [the integration contract](../../workbuddy-integration.md) as the acceptance boundary. Verify the actual installed artifact and an isolated native runtime wherever possible, not just mocked proposed methods. Preserve the running user's WorkBuddy, Codex and AnyWork processes, existing credentials and prompts. Do not edit installed artifacts. Account for WorkBuddy's global deep-link registration before isolated launch: config/userData selection alone is insufficient OS isolation.
 
