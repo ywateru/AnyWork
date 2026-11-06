@@ -37,3 +37,14 @@ Follow-up review fixes:
 - Each pending interaction occurrence has a fresh local nonce, in addition to peer generation and conversation identity. Reusing a native tool/pending ID in a later turn cannot make a previous button valid again.
 - Rejected sends invalidate snapshot status deduplication so authoritative native state replaces the optimistic `starting` state without generating synthetic turn events.
 - Real-CDP deterministic integration now covers errors for list/get/create/models/send/cancel/approval/model/effort settings, no raw native error secret disclosure, no false turn lifecycle/cancel/approval success, and old permission rejection across consecutive turns on the same peer. Actual installed native write acceptance is still a distinct gate; the isolated fresh profile currently fails native create with `no user id`, and is not retried or worked around with a fabricated account.
+
+A second opt-in metadata-only test checks error projection against a previously failed native ID, without creating a conversation or sending a prompt:
+
+```sh
+ANYWORK_TEST_WORKBUDDY_DESCRIPTOR=/absolute/private/isolated/host.json \
+ANYWORK_TEST_WORKBUDDY_ERROR_THREAD=previously-failed-native-id \
+  cargo test --locked --offline -p anywork \
+    workbuddy::tests::isolated_native_error_projection_contract -- --ignored --nocapture
+```
+
+It requires the operator's independently isolated desktop fixture and asserts only the adapter's safe operation/code/setup guidance, never printing raw native error messages or objects.

@@ -1508,6 +1508,37 @@ mod tests {
             public.len()
         );
     }
+    #[tokio::test]
+    #[ignore = "requires explicit isolated descriptor and a previously failed native id; get only, never create/prompt"]
+    async fn isolated_native_error_projection_contract() {
+        let path = std::env::var_os("ANYWORK_TEST_WORKBUDDY_DESCRIPTOR")
+            .expect("explicit isolated descriptor required");
+        let thread = std::env::var("ANYWORK_TEST_WORKBUDDY_ERROR_THREAD")
+            .expect("explicit previously failed native id required");
+        let config = Config::configured(Some(PathBuf::from(path))).unwrap();
+        let host = config.connect().await.unwrap();
+        let error = host
+            .invoke("wb:conversations:get", json!([thread]))
+            .await
+            .expect_err("native failed lookup must not project a successful snapshot")
+            .to_string();
+        assert!(error.contains("conversations.get (UNKNOWN)"));
+        assert!(error.contains("初始化和账户状态") && error.contains("未自动重试"));
+        for private in [
+            "__wbError",
+            "incomplete provider lookup",
+            "no user id",
+            "wb.conversations.get",
+        ] {
+            assert!(
+                !error.contains(private),
+                "native error text must stay private"
+            );
+        }
+        println!(
+            "Isolated native WorkBuddy get rejected with safe operation/code; no mutation sent"
+        );
+    }
     fn record(id: &str, state: &str) -> Value {
         json!({"id":id,"timestamp":1700000000123i64,"state":state,"userMessage":{"content":[{"type":"text","text":"visible"}]},"systemMessage":{"content":[{"type":"text","text":"HIDDEN SYSTEM CONTEXT"}]},"assistantMessage":{"content":[{"type":"text","text":"answer"},{"type":"tool","toolCallId":"reused-call","status":"completed","_meta":{"codebuddy.ai/toolName":"read_file"},"rawInput":{"path":"/tmp/file"},"rawOutput":"output"}]}})
     }
