@@ -29,3 +29,11 @@ ANYWORK_TEST_WORKBUDDY_DESCRIPTOR=/absolute/private/isolated/host.json \
 ```
 
 Initial evidence: 89 unit tests passed; Clippy and build passed. Actual isolated installed WorkBuddy CDP/version/profile/list/model read contract passed (0 conversations, 3 public model entries; no raw model records or credentials printed). Deterministic real-CDP integration passed before the follow-up tool-detail enhancement; rerun this command for the exact reviewed commit. Actual installed app create/history/send/cancel/approval/image/reconnect acceptance remains a separate independent gate; a fresh signed-out host returning an unexpected create result must not trigger automatic creation retries.
+
+
+Follow-up review fixes:
+
+- All fixed native calls reject `__wbError` and legacy `errorCode` inside the renderer before public projection or mutation confirmation. Native message/source text is never returned; only a known code and the adapter's fixed operation name cross CDP. The user is directed to inspect desktop initialization/account status without treating every `UNKNOWN` as an authentication error. No mutation retries occur.
+- Each pending interaction occurrence has a fresh local nonce, in addition to peer generation and conversation identity. Reusing a native tool/pending ID in a later turn cannot make a previous button valid again.
+- Rejected sends invalidate snapshot status deduplication so authoritative native state replaces the optimistic `starting` state without generating synthetic turn events.
+- Real-CDP deterministic integration now covers errors for list/get/create/models/send/cancel/approval/model/effort settings, no raw native error secret disclosure, no false turn lifecycle/cancel/approval success, and old permission rejection across consecutive turns on the same peer. Actual installed native write acceptance is still a distinct gate; the isolated fresh profile currently fails native create with `no user id`, and is not retried or worked around with a fabricated account.

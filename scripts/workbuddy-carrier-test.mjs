@@ -31,11 +31,12 @@ try{
   await context.addInitScript(({workspace,configDir,image,document})=>{
     const info=id=>({id,title:`Native ${id}`,transport:'local',space:{type:'local',cwd:workspace},state:'idle',lifecycle:'active',createdAt:1700000000000,updatedAt:1700000000001});
     const record=(id,text,state='completed')=>({id,state,timestamp:1700000000000,finishTimestamp:state==='completed'?1700000000001:undefined,userMessage:{content:[{type:'text',text}]},systemMessage:{content:[{type:'text',text:'PRIVATE_SYSTEM_CONTEXT'}]},assistantMessage:{content:[{type:'text',text:'native seed response'},{type:'tool',toolCallId:'same-call',status:'completed',_meta:{'codebuddy.ai/toolName':'read_file'},rawInput:{path:document},rawOutput:'native tool result',content:[{type:'content',content:{type:'resource_link',uri:document,name:'notes.txt'}},{type:'content',content:{type:'image',uri:image}}]}]}});
-    const s={infos:{one:info('one'),two:info('two')},records:{one:[record('seed-turn','native seed')],two:[]},pending:{},calls:[],sendCount:0,answers:0,ready:0};
+    const s={infos:{one:info('one'),two:info('two')},records:{one:[record('seed-turn','native seed')],two:[]},pending:{},errors:{},calls:[],sendCount:0,answers:0,ready:0};
     const finish=(id,state='completed')=>{const r=s.records[id].at(-1);r.state=state;r.finishTimestamp=Date.now();r.assistantMessage={content:[{type:'text',text:`native response ${r.id}`}]};s.infos[id].state='idle';delete s.pending[id];};
     window.workbuddyDesktop={appVersion:'5.9.3',configDir};window.__wbEventBridge=()=>()=>{};window.fixture=s;
     window.__wbInvoke=async(channel,_context,...args)=>{
       s.calls.push({channel,args});const id=args[0];
+      if(s.errors[channel])return s.errors[channel]==='legacy'?{errorCode:'FORBIDDEN',message:'NATIVE_ERROR_SECRET',source:'PRIVATE_SOURCE_SECRET'}:{__wbError:true,code:'UNKNOWN',message:'NATIVE_ERROR_SECRET token=PRIVATE_TOKEN',source:'PRIVATE_SOURCE_SECRET'};
       switch(channel){
         case 'wb:conversations:list':return{items:Object.values(s.infos),total:Object.keys(s.infos).length,page:{current:1,size:100},partial:false};
         case 'wb:conversations:get':return s.infos[id]?{info:s.infos[id],configManager:{model:s.infos[id].model||'fixture-model',thoughtLevel:s.infos[id].effort||'low',connectors:[{apiKey:'CONNECTOR_SECRET'}]}}:undefined;
@@ -97,14 +98,43 @@ try{
   // Lose only this fixture's CDP connections; original renderer and pending stay alive.
   for(const socket of [...sockets])socket.destroy();const fresh=await until(async()=>{const p=await pending(id);return p&&p.request_id!==old.request_id?p:false},'new peer approval');
   await api(`/sessions/${id}/respond`,{request_id:old.request_id,accept:true},409);await api(`/sessions/${id}/respond`,{request_id:fresh.request_id,accept:true});assert.equal(await page.evaluate(()=>fixture.answers),1);await api(`/sessions/${id}/respond`,{request_id:fresh.request_id,accept:true},409);
-  await api(`/sessions/${id}/messages`,{text:'question'});const question=await until(()=>pending(id),'question');await api(`/sessions/${id}/respond`,{request_id:question.request_id,result:{answers:{q:{answers:['A']}}}});assert.equal(await page.evaluate(()=>fixture.answers),2);
+  // The native tool ID can be reused in a later turn on the SAME connection.
+  await until(async()=>(await api(`/sessions/${id}`)).session.status==='idle','first permission completed');
+  await api(`/sessions/${id}/messages`,{text:'approval'});const repeated=await until(()=>pending(id),'second permission occurrence');assert.notEqual(repeated.request_id,fresh.request_id);
+  await api(`/sessions/${id}/respond`,{request_id:fresh.request_id,accept:true},409);assert.equal(await page.evaluate(()=>fixture.answers),1);
+  await api(`/sessions/${id}/respond`,{request_id:repeated.request_id,accept:true});assert.equal(await page.evaluate(()=>fixture.answers),2);
+  await api(`/sessions/${id}/messages`,{text:'question'});const question=await until(()=>pending(id),'question');await api(`/sessions/${id}/respond`,{request_id:question.request_id,result:{answers:{q:{answers:['A']}}}});assert.equal(await page.evaluate(()=>fixture.answers),3);
   const imageUpload=await fetch(base+`/api/sessions/${id}/uploads`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:(()=>{const f=new FormData();f.append('files',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64')],{type:'image/png'}),'test.png');return f;})()});const uploaded=await imageUpload.json();assert(imageUpload.ok,JSON.stringify(uploaded));await api(`/sessions/${id}/messages`,{text:'image roundtrip',attachments:[uploaded.files[0].path]});await until(async()=>(await api(`/sessions/${id}`)).session.status==='idle','image completion');
   const imageHistory=await api(`/sessions/${id}/history?paged=true&limit=20`);assert(imageHistory.events.some(e=>e.params.attachments?.length));
   const imageResponse=await fetch(base+`/api/sessions/${id}/image?path=${encodeURIComponent(image)}`,{headers:{Authorization:`Bearer ${token}`}});assert.equal(imageResponse.status,200);
+  // Native errors are resolved values, not thrown exceptions. Every operation
+  // must reject before projection/confirmation; the raw message never leaves CDP.
+  const fail=async(channel,run,legacy=false)=>{await page.evaluate(({channel,legacy})=>fixture.errors[channel]=legacy?'legacy':true,{channel,legacy});try{await run();}finally{await page.evaluate(channel=>delete fixture.errors[channel],channel);}};
+  const rejected=async(route,body,operation)=>{const r=await fetch(base+'/api'+route,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const text=await r.text();assert(r.status>=400,`${route} falsely succeeded: ${text}`);assert(text.includes(operation),text);assert(!text.includes('NATIVE_ERROR_SECRET')&&!text.includes('PRIVATE_TOKEN')&&!text.includes('PRIVATE_SOURCE_SECRET'),text);};
+  await fail('wb:conversations:list',async()=>{const result=await api('/sessions');assert(result.discovery_error.includes('conversations.list'));assert(result.sessions.some(s=>s.id===id));assert(!JSON.stringify(result).includes('NATIVE_ERROR_SECRET'));});
+  await fail('wb:models:list',()=>rejected(`/sessions/${id}/models`,undefined,'models.list'));
+  await fail('wb:conversations:create',()=>rejected('/sessions',{agent:'workbuddy',cwd:'.'},'conversations.create'));
+  await fail('wb:conversations:get',()=>rejected(`/sessions/${created.id}/composer`,undefined,'conversations.get'));
+  const beforeErrorSend=await page.evaluate(()=>fixture.sendCount);const beforeErrorEvents=await api(`/sessions/${id}/events/poll?after=0`);
+  await fail('wb:conversations:sendPrompt',()=>rejected(`/sessions/${id}/messages`,{text:'must not submit'},'conversations.sendPrompt'));
+  assert.equal(await page.evaluate(()=>fixture.sendCount),beforeErrorSend);await delay(700);
+  const afterErrorEvents=await api(`/sessions/${id}/events/poll?after=0`);for(const method of ['turn/started','turn/completed'])assert.equal(afterErrorEvents.events.filter(e=>e.method===method).length,beforeErrorEvents.events.filter(e=>e.method===method).length);
+  await fail('wb:conversations:configSetModel',()=>rejected(`/sessions/${id}/composer`,{action:'settings',model:'fixture-model',effort:'low'},'conversations.configSetModel'));
+  await fail('wb:conversations:configSetThoughtLevel',()=>rejected(`/sessions/${id}/composer`,{action:'settings',model:'fixture-model',effort:'low'},'conversations.configSetThoughtLevel'),true);
+  assert.equal(await page.evaluate(()=>fixture.infos.one.effort),'high');
+  await until(async()=>(await api(`/sessions/${id}`)).session.status==='idle','failed send status restored');
+  await api(`/sessions/${id}/messages`,{text:'hold'});const heldId=await page.evaluate(()=>fixture.records.one.at(-1).id);
+  await fail('wb:conversations:cancel',()=>rejected(`/sessions/${id}/interrupt`,{},'conversations.cancel'));assert.equal(await page.evaluate(()=>fixture.records.one.at(-1).state),'streaming');
+  const cancellationEvents=await api(`/sessions/${id}/events/poll?after=0`);assert(!cancellationEvents.events.some(e=>e.method==='turn/completed'&&e.params.turn?.id===heldId));
+  await api(`/sessions/${id}/interrupt`,{});await until(async()=>(await api(`/sessions/${id}`)).session.status==='idle','real cancel completion');
+  await api(`/sessions/${id}/messages`,{text:'approval'});const failedApproval=await until(()=>pending(id),'native error permission');const answersBefore=await page.evaluate(()=>fixture.answers);
+  await fail('wb:conversations:resolvePending',()=>rejected(`/sessions/${id}/respond`,{request_id:failedApproval.request_id,accept:true},'conversations.resolvePending'));assert.equal(await page.evaluate(()=>fixture.answers),answersBefore);assert.equal((await pending(id)).request_id,failedApproval.request_id);
+  await api(`/sessions/${id}/respond`,{request_id:failedApproval.request_id,accept:true});assert.equal(await page.evaluate(()=>fixture.answers),answersBefore+1);
+  assert(!log.includes('NATIVE_ERROR_SECRET')&&!log.includes('PRIVATE_TOKEN')&&!log.includes('PRIVATE_SOURCE_SECRET'));
   assert(!log.includes('MODEL_SECRET')&&!log.includes('CONNECTOR_SECRET')&&!log.includes('PRIVATE_PROVIDER'));
   assert(!(await page.evaluate(()=>fixture.calls)).some(c=>c.channel.includes('subscription')||c.channel.includes('dispose')||c.channel.includes('configSetPermission')));
   server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));server=undefined;assert.equal(await page.evaluate(()=>typeof __wbInvoke),'function');
-  console.log('PASS: actual CDP carrier, private descriptor, shared catalog/history/tools/children/models, fixed evaluation injection resistance, create/send/image, local busy queue/cancel, pending cross-session/generation/exactly-once, and detach ownership. Native preload is a deterministic fixture; real installed WorkBuddy acceptance is separate.');
+  console.log('PASS: actual CDP carrier, private descriptor, shared catalog/history/tools/children/models, fixed evaluation injection resistance, create/send/image, local busy queue/cancel, pending cross-session/generation/cross-turn/exactly-once, native error envelopes rejected before every read/mutation confirmation, failed-send status recovery, and detach ownership. Native preload is a deterministic fixture; real installed WorkBuddy acceptance is separate.');
 }finally{
   if(server){server.kill('SIGTERM');await Promise.race([new Promise(r=>server.once('exit',r)),delay(3000)]);}
   for(const s of sockets)s.destroy();if(relay)await new Promise(r=>relay.close(r));if(context)await context.close();await rm(root,{recursive:true,force:true});

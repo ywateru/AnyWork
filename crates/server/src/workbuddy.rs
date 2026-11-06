@@ -333,28 +333,31 @@ impl Carrier {
             serde_json::to_string(channel)?,
             args
         );
-        // Product models can contain private provider fields. Strip them inside
-        // the renderer, before they cross CDP or enter AnyWork memory/history.
-        let expression = if channel == "wb:models:list" {
-            format!(
-                "(async()=>{{const r=await {call};return {{items:(r.items||[]).map(m=>({{id:m.id,name:m.name,description:m.description,supportsImages:m.supportsImages,supportsReasoning:m.supportsReasoning,reasoning:m.reasoning,isDefault:m.isDefault,disabled:m.disabled}}))}}}})()"
-            )
+        // Reject native error envelopes before ANY projection or mutation receipt.
+        // Never return native messages (which may contain provider/account secrets).
+        // Source is our fixed allowlisted operation, not untrusted native data.
+        let projection = if channel == "wb:models:list" {
+            "return {items:(r.items||[]).map(m=>({id:m.id,name:m.name,description:m.description,supportsImages:m.supportsImages,supportsReasoning:m.supportsReasoning,reasoning:m.reasoning,isDefault:m.isDefault,disabled:m.disabled}))};"
         } else if channel == "wb:conversations:get" || channel == "wb:conversations:create" {
-            format!(
-                "(async()=>{{const r=await {call};if(!r)return null;if(r.errorCode)return {{errorCode:r.errorCode}};const i=r.info,c=r.configManager||{{}};return {{info:{{id:i.id,title:i.title,state:i.state,lifecycle:i.lifecycle,space:{{type:i.space?.type,cwd:i.space?.cwd,name:i.space?.name}},transport:i.transport,kind:i.kind,createdAt:i.createdAt,updatedAt:i.updatedAt,lastActivityAt:i.lastActivityAt}},configManager:{{model:c.model,thoughtLevel:c.thoughtLevel}}}}}})()"
-            )
+            "if(!r)return null;const i=r.info,c=r.configManager||{};if(!i)return null;return {info:{id:i.id,title:i.title,state:i.state,lifecycle:i.lifecycle,space:{type:i.space?.type,cwd:i.space?.cwd,name:i.space?.name},transport:i.transport,kind:i.kind,createdAt:i.createdAt,updatedAt:i.updatedAt,lastActivityAt:i.lastActivityAt},configManager:{model:c.model,thoughtLevel:c.thoughtLevel}};"
         } else if channel == "wb:conversations:list" {
-            format!(
-                "(async()=>{{const r=await {call};return {{total:r.total,page:r.page,partial:r.partial,items:(r.items||[]).map(i=>({{id:i.id,title:i.title,state:i.state,lifecycle:i.lifecycle,space:{{type:i.space?.type,cwd:i.space?.cwd,name:i.space?.name}},transport:i.transport,kind:i.kind,createdAt:i.createdAt,updatedAt:i.updatedAt,lastActivityAt:i.lastActivityAt}}))}}}})()"
-            )
+            "return {total:r.total,page:r.page,partial:r.partial,items:(r.items||[]).map(i=>({id:i.id,title:i.title,state:i.state,lifecycle:i.lifecycle,space:{type:i.space?.type,cwd:i.space?.cwd,name:i.space?.name},transport:i.transport,kind:i.kind,createdAt:i.createdAt,updatedAt:i.updatedAt,lastActivityAt:i.lastActivityAt}))};"
         } else {
-            call
+            "return r;"
         };
-        let v = self.evaluate(&expression).await?;
-        ensure!(
-            v["errorCode"].is_null(),
-            "WorkBuddy rejected the desktop operation"
+        let source = channel.trim_start_matches("wb:").replace(':', ".");
+        let expression = format!(
+            "(async()=>{{const r=await {call};if(r&&(r.__wbError||r.errorCode!=null)){{const c=r.code??r.errorCode;return {{__anyworkWbError:{{code:['UNKNOWN','NOT_FOUND','INVALID_ARGUMENT','UNAUTHORIZED','FORBIDDEN','CONFLICT','NOT_READY','UNAVAILABLE','TIMEOUT'].includes(c)?c:'UNKNOWN',source:{}}}}};}}{projection}}})()",
+            serde_json::to_string(&source)?
         );
+        let v = self.evaluate(&expression).await?;
+        if let Some(error) = v.get("__anyworkWbError") {
+            bail!(
+                "WorkBuddy rejected desktop operation {} ({}). 请在 WorkBuddy 桌面检查初始化和账户状态；未自动重试，请核对原会话后再操作。",
+                source,
+                error["code"].as_str().unwrap_or("UNKNOWN")
+            );
+        }
         Ok(v)
     }
 }
@@ -731,7 +734,15 @@ impl Projection {
         let Some(id) = native["id"].as_str() else {
             return Ok(());
         };
-        let local = format!("workbuddy:{}:{}:{}", self.thread, self.generation, id);
+        // Native toolCallId/pending IDs may be reused by a later turn. A fresh
+        // occurrence must never accept an old button, even on the same peer.
+        let local = format!(
+            "workbuddy:{}:{}:{}:{}",
+            self.thread,
+            self.generation,
+            id,
+            uuid::Uuid::new_v4()
+        );
         let (method, params) = if native["category"] == "question" {
             let questions=native["questions"].as_array().context("WorkBuddy questions missing")?.iter().map(|q|json!({"id":q["id"],"header":q["header"],"question":q["question"],"options":q["options"],"multiSelect":q["multiSelect"],"isOther":true})).collect::<Vec<_>>();
             ("item/tool/requestUserInput", json!({"questions":questions}))
@@ -1346,6 +1357,10 @@ async fn handle(
             let options = json!({"clientRequestId":client,"clientTimestamp":now(),"_expectQueueReceipt":true,"queueDelivery":if v["method"]=="turn/steer"{"steer"}else{"queue"},"_meta":{"codebuddy.ai/conversationRequestId":id}});
             // Remember exact metadata before submission; native echo can race return.
             state.clients.insert(id.clone(), client);
+            // API optimistically marks the row starting. Even if native rejects
+            // before creating a request, the next snapshot must restore its
+            // authoritative idle/running state rather than deduplicating it.
+            state.last_status = None;
             let receipt = host
                 .invoke(
                     "wb:conversations:sendPrompt",
@@ -1577,6 +1592,22 @@ mod tests {
             )
             .unwrap();
         assert_ne!(old[0]["id"], drain(&mut rx)[0]["id"]);
+    }
+    #[test]
+    fn reused_native_permission_id_has_a_new_local_occurrence() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut p = Projection::new("same-peer".into());
+        let native = json!({"id":"same-native", "category":"tool", "options":[]});
+        p.pending(native.clone(), &tx).unwrap();
+        let first = drain(&mut rx)[0]["id"].clone();
+        p.pending(native.clone(), &tx).unwrap();
+        assert!(drain(&mut rx).is_empty());
+        p.pending(Value::Null, &tx).unwrap();
+        assert_eq!(drain(&mut rx)[0]["params"]["requestId"], first);
+        p.pending(native, &tx).unwrap();
+        let second = drain(&mut rx)[0]["id"].clone();
+        assert_ne!(first, second);
+        assert_eq!(p.pending.as_ref().unwrap().0, second.as_str().unwrap());
     }
     #[test]
     fn endpoint_and_target_checks_reject_untrusted_urls_without_echoing_them() {
