@@ -60,6 +60,9 @@ use tower_http::{
 struct Args {
     #[arg(long, env = "ANYWORK_CODEX_DISCOVERY", default_value_t = true, action = clap::ArgAction::Set)]
     codex_discovery: bool,
+    /// Native dsh data home for passive persisted history, including custom hosts.
+    #[arg(long, env = "ANYWORK_HARNESS_HISTORY_ROOT")]
+    harness_history_root: Option<PathBuf>,
     /// Existing local Harness launch URL (with token); never starts another engine.
     #[arg(long, env = "ANYWORK_HARNESS_URL")]
     harness_url: Option<String>,
@@ -150,6 +153,7 @@ impl Args {
 pub struct App {
     catalog: Mutex<catalog::Catalog>,
     harness: Option<harness::Config>,
+    harness_history_root: Option<PathBuf>,
     harness_sync: Mutex<Option<std::time::Instant>>,
     workbuddy: workbuddy::Config,
     workbuddy_sync: Mutex<Option<std::time::Instant>>,
@@ -354,6 +358,7 @@ async fn main() -> Result<()> {
     let app = Arc::new(App {
         catalog: Mutex::new(catalog::Catalog::default()),
         harness,
+        harness_history_root: args.harness_history_root,
         harness_sync: Mutex::new(None),
         workbuddy,
         workbuddy_sync: Mutex::new(None),
