@@ -781,23 +781,31 @@ pub struct EventQuery {
 pub struct AllEventsQuery {
     after: Option<i64>,
 }
+fn scoped_event_page(app: &App, after: i64) -> anyhow::Result<crate::store::ScopedEventPage> {
+    app.store.scoped_events(after, 500, |session| {
+        app.session_in_scope(
+            &session.cwd,
+            if session.external { &session.agent } else { "" },
+        )
+        .is_ok()
+    })
+}
 pub async fn poll_all_events(
     State(app): State<Arc<App>>,
     Query(q): Query<AllEventsQuery>,
 ) -> Result<Json<Value>, ApiError> {
     // Omitting the cursor establishes a watermark without replaying all chats.
-    let events = match q.after {
-        Some(after) => app.store.all_events(after, 500)?,
-        None => Vec::new(),
-    };
-    let cursor = match events.last() {
-        Some(event) => event.seq,
-        None => match q.after {
-            Some(after) => after,
-            None => app.store.event_cursor()?,
+    let page = match q.after {
+        Some(after) => scoped_event_page(&app, after)?,
+        None => crate::store::ScopedEventPage {
+            events: vec![],
+            cursor: app.store.event_cursor()?,
+            has_more: false,
         },
     };
-    Ok(Json(json!({"events":events,"cursor":cursor})))
+    Ok(Json(
+        json!({"events":page.events,"cursor":page.cursor,"has_more":page.has_more}),
+    ))
 }
 pub async fn all_events(
     State(app): State<Arc<App>>,
@@ -807,12 +815,38 @@ pub async fn all_events(
     ApiError,
 > {
     let after = q.after.unwrap_or(app.store.event_cursor()?);
-    let stream = async_stream::stream! {let mut cursor=after;loop{
-        if app.stopping.load(std::sync::atomic::Ordering::Relaxed){break;}
-        let notified=app.changed.notified();tokio::pin!(notified);notified.as_mut().enable();
-        match app.store.all_events(cursor,500){Ok(events) if !events.is_empty()=>{for event in events{cursor=event.seq;yield Ok(SseEvent::default().id(cursor.to_string()).json_data(event).unwrap());}continue;},Err(_)=>break,_=>{}}
-        tokio::select!{_=notified=>{},_=tokio::time::sleep(std::time::Duration::from_secs(15))=>{}}
-    }};
+    if after < 0 {
+        return Err(anyhow::anyhow!("Event cursor must be non-negative").into());
+    }
+    let stream = async_stream::stream! {
+        let mut cursor = after;
+        loop {
+            if app.stopping.load(std::sync::atomic::Ordering::Relaxed) { break; }
+            let notified = app.changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            match scoped_event_page(&app, cursor) {
+                Ok(page) => {
+                    let visible_cursor = page.events.last().map(|event| event.seq).unwrap_or(cursor);
+                    for event in page.events {
+                        yield Ok(SseEvent::default().id(event.seq.to_string()).json_data(event).unwrap());
+                    }
+                    if page.cursor > visible_cursor {
+                        // No data field: older fetch parsers cannot mistake a
+                        // cursor checkpoint for a real AgentEvent.
+                        yield Ok(SseEvent::default().event("cursor").id(page.cursor.to_string()));
+                    }
+                    cursor = page.cursor;
+                    if page.has_more { continue; }
+                }
+                Err(error) => { tracing::error!("Reading scoped event stream: {error}"); break; }
+            }
+            tokio::select! {
+                _ = notified => {},
+                _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {},
+            }
+        }
+    };
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 pub async fn poll_events(

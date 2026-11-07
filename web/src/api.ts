@@ -92,15 +92,29 @@ export class Api {
     if (new URL(this.connection.url).hostname.endsWith(".trycloudflare.com")) {
       let cursor = after;
       while (!signal.aborted) {
-        const { events } = await this.request<{ events: AgentEvent[] }>(
-          `${path}/poll?after=${cursor}`,
-          { signal },
-        );
-        for (const event of events) {
+        const before = cursor;
+        const page = await this.request<{
+          events: AgentEvent[];
+          cursor?: number;
+          has_more?: boolean;
+        }>(`${path}/poll?after=${cursor}`, { signal });
+        for (const event of page.events) {
+          if (event.seq <= cursor) continue;
           onEvent(event);
           cursor = event.seq;
         }
-        if (events.length === 500) continue;
+        if (page.cursor !== undefined) {
+          if (!Number.isSafeInteger(page.cursor) || page.cursor < 0)
+            throw new Error("服务返回了无效的事件游标");
+          cursor = Math.max(cursor, page.cursor);
+        }
+        const hasMore =
+          page.has_more === true ||
+          (page.has_more === undefined && page.events.length === 500);
+        if (hasMore) {
+          if (cursor <= before) throw new Error("服务返回了未推进的事件游标");
+          continue;
+        }
         await new Promise<void>((resolve) => {
           const finish = () => {
             clearTimeout(timer);
@@ -136,8 +150,10 @@ export class Api {
         while ((end = buffer.indexOf("\n\n")) >= 0) {
           const block = buffer.slice(0, end);
           buffer = buffer.slice(end + 2);
-          const data = block
-            .split("\n")
+          const lines = block.split("\n");
+          const eventName = lines.find((line) => line.startsWith("event:"));
+          if (eventName && eventName.slice(6).trim() !== "message") continue;
+          const data = lines
             .filter((l) => l.startsWith("data:"))
             .map((l) => l.slice(5).trimStart())
             .join("\n");

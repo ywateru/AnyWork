@@ -40,6 +40,13 @@ pub struct Event {
     pub created_at: i64,
 }
 
+/// A bounded scan of the global log. Cursor advancement is independent of visibility.
+pub struct ScopedEventPage {
+    pub events: Vec<Event>,
+    pub cursor: i64,
+    pub has_more: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Feedback {
     pub session_id: String,
@@ -772,21 +779,51 @@ impl Store {
         })
         .collect()
     }
-    /// Sequence numbers are global; one stream can multiplex all visible chats.
-    pub fn all_events(&self, after: i64, limit: usize) -> Result<Vec<Event>> {
+    /// Scan a bounded global page before applying current session visibility.
+    /// Hidden/deleted sessions advance the cursor without exposing their payload.
+    pub fn scoped_events(
+        &self,
+        after: i64,
+        limit: usize,
+        mut visible: impl FnMut(&Session) -> bool,
+    ) -> Result<ScopedEventPage> {
+        anyhow::ensure!(after >= 0, "Event cursor must be non-negative");
+        let limit = limit.clamp(1, 5000);
         let db = self.0.lock().unwrap();
-        let mut stmt =
-            db.prepare("SELECT seq,data FROM events WHERE seq>?1 ORDER BY seq LIMIT ?2")?;
-        stmt.query_map(params![after, limit.min(5000)], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })?
-        .map(|row| {
-            let (seq, raw) = row?;
+        let mut stmt = db.prepare(
+            "SELECT e.seq,e.data,s.data FROM events e LEFT JOIN sessions s ON s.id=e.session_id WHERE e.seq>?1 ORDER BY e.seq LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![after, limit + 1], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let has_more = rows.len() > limit;
+        let mut page = ScopedEventPage {
+            events: vec![],
+            cursor: after,
+            has_more,
+        };
+        for (seq, raw, session) in rows.into_iter().take(limit) {
+            page.cursor = seq;
+            let Some(session) = session else { continue };
+            let session: Session = serde_json::from_str(&session)?;
+            if !visible(&session) {
+                continue;
+            }
             let mut event: Event = serde_json::from_str(&raw)?;
+            anyhow::ensure!(
+                event.session_id == session.id,
+                "Event session identity mismatch"
+            );
             event.seq = seq;
-            Ok(event)
-        })
-        .collect()
+            page.events.push(event);
+        }
+        Ok(page)
     }
     /// The most recent native turn owns its patch, including an empty patch.
     /// A newer turn or a history reset must never inherit an earlier diff.
@@ -1273,7 +1310,7 @@ mod tests {
         let mut cursor = 0;
         let mut seen = Vec::new();
         loop {
-            let page = store.all_events(cursor, 500).unwrap();
+            let page = store.scoped_events(cursor, 500, |_| true).unwrap().events;
             if page.is_empty() {
                 break;
             }
@@ -1290,9 +1327,64 @@ mod tests {
             assert_eq!(session, if index % 2 == 0 { "one" } else { "two" });
         }
         store.event("two", "test/late", json!({}), None).unwrap();
-        let late = store.all_events(cursor, 500).unwrap();
+        let late = store.scoped_events(cursor, 500, |_| true).unwrap().events;
         assert_eq!(late.len(), 1);
         assert_eq!(late[0].method, "test/late");
+    }
+    #[test]
+    fn scoped_scan_advances_past_hidden_or_orphaned_rows_and_fails_closed() {
+        let store = Store::open(Path::new(":memory:")).unwrap();
+        store.save(&composer_session("hidden")).unwrap();
+        let mut visible = composer_session("visible");
+        visible.archived = true;
+        store.save(&visible).unwrap();
+        for _ in 0..501 {
+            store
+                .event("hidden", "test/secret", json!({"secret":"hidden"}), None)
+                .unwrap();
+        }
+        let shown = store
+            .event("visible", "test/visible", json!({"text":"shown"}), None)
+            .unwrap();
+        store
+            .event("hidden", "test/secret", json!({"secret":"tail"}), None)
+            .unwrap();
+        {
+            let db = store.0.lock().unwrap();
+            // Invisible payload need not be parsed to establish its watermark.
+            db.execute("UPDATE events SET data='{}' WHERE session_id='hidden'", [])
+                .unwrap();
+        }
+        let page = store
+            .scoped_events(0, 500, |session| session.id == "visible")
+            .unwrap();
+        assert!(page.events.is_empty());
+        assert_eq!(page.cursor, 500);
+        assert!(page.has_more);
+        let page = store
+            .scoped_events(page.cursor, 500, |session| session.id == "visible")
+            .unwrap();
+        assert_eq!(page.events.len(), 1);
+        assert_eq!(page.events[0].seq, shown.seq);
+        assert_eq!(page.cursor, 503);
+        assert!(!page.has_more);
+        {
+            let db = store.0.lock().unwrap();
+            db.execute_batch("PRAGMA foreign_keys=OFF; INSERT INTO events(session_id,data) VALUES('deleted','{}'); PRAGMA foreign_keys=ON;").unwrap();
+        }
+        let page = store.scoped_events(503, 500, |_| true).unwrap();
+        assert!(page.events.is_empty());
+        assert_eq!(page.cursor, 504);
+        assert!(!page.has_more);
+        assert!(store.scoped_events(-1, 500, |_| true).is_err());
+        assert!(store.scoped_events(0, 500, |_| true).is_err());
+        store
+            .0
+            .lock()
+            .unwrap()
+            .execute_batch("DROP TABLE events")
+            .unwrap();
+        assert!(store.scoped_events(504, 500, |_| true).is_err());
     }
     fn composer_session(id: &str) -> Session {
         Session {
