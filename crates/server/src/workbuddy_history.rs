@@ -731,6 +731,12 @@ mod tests {
     fn catalog_reads_local_os_profile_history_without_account_stores() {
         let root = temporary();
         let db = metadata(&root);
+        // Keep the workspace absent, but use this platform's absolute syntax:
+        // `/missing/project` has no drive prefix and is not absolute on Windows.
+        let cwd = root.join("missing").join("project");
+        assert!(cwd.is_absolute());
+        assert!(!cwd.exists());
+        let cwd = cwd.to_str().unwrap();
         for (id, user, status, transport, settings, deleted) in [
             ("first", "old-account", "completed", "local", None, None),
             ("second", "new-account", "archived", "local", None, None),
@@ -752,7 +758,7 @@ mod tests {
                 Some(1),
             ),
         ] {
-            db.execute("INSERT INTO sessions VALUES(?1,'/missing/project','native title','custom title',?2,100,200,300,'native-model',?3,?4,?5,?6)",rusqlite::params![id,status,settings,transport,deleted,user]).unwrap();
+            db.execute("INSERT INTO sessions VALUES(?1,?7,'native title','custom title',?2,100,200,300,'native-model',?3,?4,?5,?6)",rusqlite::params![id,status,settings,transport,deleted,user,cwd]).unwrap();
         }
         drop(db);
         let before = fs::read(root.join("workbuddy.db")).unwrap();
@@ -762,9 +768,34 @@ mod tests {
             && s.external
             && s.status == "external"
             && s.title == "custom title"
+            && s.cwd == cwd
             && s.updated_at == 300));
         assert!(rows.iter().any(|s| s.archived));
         assert_eq!(before, fs::read(root.join("workbuddy.db")).unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn catalog_rejects_nonabsolute_workspace_without_changing_native_database() {
+        let root = temporary();
+        let db = metadata(&root);
+        db.execute("INSERT INTO sessions VALUES('relative',?1,'native title',NULL,'completed',100,200,300,NULL,NULL,'local',NULL,'native-user')",["relative/project"]).unwrap();
+        #[cfg(not(windows))]
+        let paths = ["relative/project", "../project"];
+        #[cfg(windows)]
+        let paths = [
+            "relative/project",
+            "../project",
+            r"C:project",
+            r"\missing\project",
+        ];
+        for cwd in paths {
+            db.execute("UPDATE sessions SET cwd=?1", [cwd]).unwrap();
+            let before = fs::read(root.join("workbuddy.db")).unwrap();
+            assert!(!Path::new(cwd).is_absolute());
+            assert!(scan(&root).is_err());
+            assert_eq!(before, fs::read(root.join("workbuddy.db")).unwrap());
+        }
+        drop(db);
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
