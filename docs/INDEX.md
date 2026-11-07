@@ -1,6 +1,7 @@
 # Documentation index
 
 - [全项目改进与专家评审稿（2026-11-07）](project-improvement-review.md)
+- [当前支持与验收矩阵 / Support matrix](support-matrix.md)
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)
 - [Conversation UI](ui-design.md), [conversation panels](conversation-panels.md)
 - [Sidebar Agent filtering and icons](sidebar-agent-filter.md)

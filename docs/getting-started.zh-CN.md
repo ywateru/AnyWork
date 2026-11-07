@@ -69,7 +69,7 @@ Cloudflare 临时隧道使用带游标轮询代替 SSE。进程存活时优先�
 
 ## 功能与限制
 
-- 当前内置正式适配器为 Codex。插件接口不代表已经实现 Claude Code、Cursor 等其他 Agent。
+- Codex、Harness 的受支持拓扑、WorkBuddy 被动历史及实验写入统一见[支持与验收矩阵](support-matrix.md)。插件接口不代表已经实现 Claude Code、Cursor。
 - 桌面协作依赖版本相关的 Unix 本地接口。发现历史不代表已有执行进程一定具备可控入口，以界面报告的能力为准。不要强行对执行中的会话建立第二个 writer。
 - 桌面 follower 路径支持读取和暂停目标。创建、恢复、编辑、删除需要兼容共享引擎，见[共享启动说明](desktop-shared-start.md)与[宿主适配器说明](desktop-adapter.md)。
 - 排队消息属于 AnyWork，尚未承诺原生桌面队列迁移。语音听写/朗读，以及关闭浏览器后的 FCM/服务器推送未包含在本版。

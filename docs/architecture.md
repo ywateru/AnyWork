@@ -1,6 +1,6 @@
 # AnyWork 系统架构
 
-AnyWork 的 Web/PWA 直接连接运行在用户机器上的 Rust 服务，由本机 Codex app-server 执行工作。会话内容、附件、审批与文件在浏览器和该服务之间传输，不依赖 AnyWork 云端中转。Codex 自身继续使用本机既有账号和模型服务；这不表示模型推理可以离线完成。当前重点为 Web 和移动浏览器，已有 Android 内置 Web 宿主保留。
+AnyWork 的 Web/PWA/Android 连接运行在用户机器上的 Rust 服务，由所选原生 Agent 执行工作。当前包括 Codex、受支持的 Harness gateway，以及 WorkBuddy 被动历史/实验共享执行。拓扑、版本及实际验收范围见[支持矩阵](support-matrix.md)。会话内容、附件、审批与文件在客户端和该服务之间传输，不依赖 AnyWork 云端中转；用户可选第三方隧道有独立信任边界。Agent 继续使用原生账号和模型服务，不表示模型推理离线。
 
 ```mermaid
 flowchart LR
@@ -10,13 +10,14 @@ flowchart LR
   H --> R[会话运行时与插件注册表]
   R -->|JSON-RPC stdio| C[独立 Codex app-server]
   R -->|Unix socket| S[已有 Codex 共享执行进程]
+  R -->|受验证的本地 gateway / bridge| G[Harness / WorkBuddy 原主机]
   R -->|适配器协议| P[其他 Agent 插件]
   H --> F[本机文件 / 图片 / 文档 / Git]
 ```
 
 ## 服务与引擎边界
 
-Rust workspace 保留 `agent-sdk`、`agent-codex` 和 `server`。公开程序名称为 `anywork`；内部 SDK crate 名称保留兼容。前端只使用服务 API，不直接调用厂商 CLI。`AgentPlugin` 提供启动清单，外部插件通过受信任管理员安装的 JSON 清单接入，适配器负责转换厂商协议。
+Rust workspace 包含 `agent-sdk`、`agent-codex`、`server` 与 `desktop`。公开服务程序名称为 `anywork`；内部 SDK crate 名称保留兼容。前端只使用服务 API，不直接调用厂商 CLI。`AgentPlugin` 提供启动清单，外部插件通过受信任管理员安装的 JSON 清单接入；内置共享主机适配器通过窄 bridge 保留原生进程所有权。
 
 普通会话通过独立插件进程运行；发现的已有 Codex 会话在支持的平台通过 Unix socket 接回共享执行进程，以原 thread 继续工作。共享通知必须匹配会话 thread 后才能写入历史。未能连接原进程时返回错误，不静默另建进程或分支。
 
@@ -26,7 +27,7 @@ Rust workspace 保留 `agent-sdk`、`agent-codex` 和 `server`。公开程序名
 
 `user_text.rs` 区分原始输入与最终显示：先通过 `native_image_context.rs` 筛选有证据匹配的辅助文案，使用 CommonMark 与 URL 校验恢复 library 提及，通过 `native_app_input.rs` 严格验证完整 envelope。普通路径执行两次 Woe；首个有效 app-input 含 message 时执行一次。最终 `display_text` 由历史与实时事件提供；浏览器仅对同回合原首文本唯一匹配的本地回显补充正文，不修改原事件或附件。尚未完成发送者、自动化等全部特殊 dispatcher。
 
-`rebuild` 对原始首 text 执行一次 Ooe 重建，保留 page 前缀或最后请求标记之前的上下文。GET 编辑能力返回 trim 后的显示正文；POST 重建本身不 trim，普通 UI 提交执行文档序列化及 `trim()`。Rust helper 使用 ECMAScript 空白规则。有效 app-input 和 library 元数据不再额外禁用；原生 jun 历史编辑路径不经过 YEe/rDe，直接 Ooe 并清空首项元数据。普通历史编辑使用独立 ProseMirror PZ 文档与原子引用规范化；主输入框 rich 模式及完整富文本历史模式尚未接入；保留其他输入及最新唯一用户项等边界。
+`rebuild` 对原始首 text 执行一次 Ooe 重建，保留 page 前缀或最后请求标记之前的上下文。GET 编辑能力返回 trim 后的显示正文；POST 重建本身不 trim，普通 UI 提交执行文档序列化及 `trim()`。Rust helper 使用 ECMAScript 空白规则。有效 app-input 和 library 元数据消息不再额外禁用；原生 jun 历史编辑路径不经过 YEe/rDe，直接 Ooe 并清空首项元数据。普通历史编辑使用独立 ProseMirror PZ 文档与原子引用规范化；主输入框已有独立 rich schema，完整富文本历史模式仍有边界；保留其他输入及最新唯一用户项等限制。
 
 `serialize_text` 对应 YEe，普通 Codex 新发送、引导及队列在 deliver 时转换 library 链接，存储 UTF-8 span 与原 Markdown placeholder；本地回显以实际 wire 首文本作身份匹配，转换前草稿另存 submitted_text。非 Codex 插件保持原文字。`rebuild_context_input` 对应 rDe，保留已验证的新 prepared context-only envelope，目前仅作独立 helper 保留，不用于历史编辑。28 个隔离原纯函数样例记录于测试 fixture；使用替代 CommonMark parser，未执行原应用或整个原模块。
 
@@ -40,7 +41,7 @@ Rust workspace 保留 `agent-sdk`、`agent-codex` 和 `server`。公开程序名
 
 `useSessionDraft` 以服务器地址与会话ID为键保存文字草稿，优先使用 `sessionStorage`，不可用时回退进程内 Map。草稿不属于服务端消息历史；未确认发送前不提交给 Agent。未上传附件不承诺跨刷新恢复。标签和分屏宽度使用本地偏好保存，关闭标签不停止执行。
 
-`useMessageEditing` 先恢复服务端未完成编辑，再查询最新消息能力；编辑失败保留草稿，回退移除原消息后仍挂载独立恢复编辑区。`UserMessageEditor` 使用 `PromptEditor` 的真实 ProseMirror 文档，提供原附件查看、取消、发送和输入法/弹层键盘保护。`promptText` 对应普通历史 PZ 的初始化及 KX 序列化；`promptFileName` 只负责 live library 标签测量，复制保留完整标题。编辑器按 native DOM 属性恢复四种常用引用，普通纯文本粘贴保持字面内容；主 composer rich schema、引用动作菜单及所有复杂 HTML 分支尚未完成。未提交草稿仅保留在当前前端状态，服务端持久恢复的是已提交操作及其最后保存文字。
+`useMessageEditing` 先恢复服务端未完成编辑，再查询最新消息能力；编辑失败保留草稿，回退移除原消息后仍挂载独立恢复编辑区。`UserMessageEditor` 使用 `PromptEditor` 的真实 ProseMirror 文档，提供原附件查看、取消、发送和输入法/弹层键盘保护。`promptText` 对应普通历史 PZ 的初始化及 KX 序列化；`promptFileName` 只负责 live library 标签测量，复制保留完整标题。主 composer 已使用独立 rich schema，历史编辑与主输入器的引用/HTML 条件分支并不完全等价，完整原生对照仍有边界。未提交编辑草稿仅保留在当前前端状态，服务端持久恢复的是已提交操作及其最后保存文字。
 
 前端在待确认阶段锁定已提交文字，用同一操作核对发送结果；服务端返回异稿时保留当前草稿并提示。恢复请求通过会话版本及交互版本隔离，避免迟到的恢复响应重新打开已经结束的编辑。
 

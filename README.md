@@ -96,6 +96,8 @@ AnyWork is a personal, trusted-device tool with the host user's file and termina
 
 ### Current scope
 
+See the [support and acceptance matrix](docs/support-matrix.md) for the current Agent/version/topology and platform evidence. Passive history, simulated tests and native writing acceptance are listed separately.
+
 Agent adapters support **Codex** and the official **DeepSeek Harness 0.2.2-rc.1** loopback HTTP gateway. Harness shares the original native host/session; install its optional discovery companion or configure the host address explicitly. Goal/plan, fork and message editing are not supported for Harness, and independent TUI processes without a shared carrier cannot be controlled. See [Harness setup and tested scope](docs/harness-setup.md).
 
 Codex desktop sharing relies on version-dependent Unix interfaces, tested against Codex CLI 0.163/0.164 and the desktop versions recorded in the research notes; Windows desktop hot attach is not supported. CLI-backed work is available separately.

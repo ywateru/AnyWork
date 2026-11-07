@@ -69,7 +69,7 @@ For Android, keep `https://appassets.androidplatform.net` when overriding allowe
 
 ## Capabilities and limits
 
-- Codex is the included production adapter. No Claude Code, Cursor or other agent support is implied by the plugin interface.
+- Supported Codex and Harness topologies, WorkBuddy passive history and experimental writing are distinguished in the [support and acceptance matrix](support-matrix.md). No Claude Code or Cursor implementation is implied by the plugin interface.
 - Desktop collaboration uses local version-dependent Unix interfaces. A discovered historical chat is not proof that the live process has a controllable endpoint. The UI must respect the reported capabilities. Do not force a second writer into an executing chat.
 - The desktop follower path can read/pause a goal. Creating, resuming, editing or deleting goals requires a compatible shared engine. See [shared engine setup](desktop-shared-start.md) and [adapter reference](desktop-adapter.md) (Chinese).
 - Queued messages belong to AnyWork; native desktop queue migration is not claimed. Voice dictation/read-aloud and FCM/server push after the browser closes are not included.

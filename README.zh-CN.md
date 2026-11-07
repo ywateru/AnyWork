@@ -96,6 +96,8 @@ AnyWork 面向个人与可信设备，使用宿主系统用户的文件和终端
 
 ### 当前能力边界
 
+Agent、版本、连接拓扑及平台的当前证据统一见[支持与验收矩阵](docs/support-matrix.md)，明确区分被动历史、夹具验证与原生写入验收。
+
 Agent 适配器支持 **Codex** 和官方 **DeepSeek Harness 0.2.2-rc.1** 本机 HTTP gateway。Harness 沿用原有主机和原生会话，安装配套发现插件或显式配置主机地址即可接入。Harness 暂不支持目标/计划、分叉及消息编辑，也无法控制没有共享入口的独立 TUI。详见 [Harness 接入与验收范围](docs/harness-setup.md)。
 
 Codex 已有桌面的共享协作依赖版本相关的 Unix 本地接口，已验证 Codex CLI 0.163/0.164 及调研记录中的桌面版本；Windows 不支持桌面热接入，可使用 CLI 会话。

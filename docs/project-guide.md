@@ -4,7 +4,7 @@
 
 AnyWork 将开发机器上的编程 Agent 接入 Web/PWA 和 Android，任务继续在开发机器运行。服务端使用 Rust，界面采用 React + TypeScript，Android 使用原生 WebView 宿主复用 Web 构建。
 
-当前生产适配器为 Codex。DeepSeek Harness、Claude Code、Cursor 尚未实现，可按插件协议扩展，不属于已交付功能。服务面向个人或可信设备，不提供多租户权限隔离。
+当前已接入 Codex、受支持的 DeepSeek Harness gateway 与本机历史；WorkBuddy 历史可读，共享写入仍属实验。Claude Code、Cursor 尚无内置生产适配器。版本、拓扑和原生验收边界统一见[支持矩阵](support-matrix.md)。服务面向个人或可信设备，不提供多租户权限隔离。
 
 ## 主要能力
 
@@ -20,7 +20,7 @@ AnyWork 将开发机器上的编程 Agent 接入 Web/PWA 和 Android，任务继
 
 ## 本地启动
 
-依赖 Rust stable（edition 2024）、Node.js 22+、npm，以及已安装并登录的 Codex CLI。Android 构建另需 JDK 17、Android SDK API 35 和 Build Tools 35.0.0。
+依赖 Rust stable（edition 2024）、Node.js 22+、npm，以及所选 Agent 已初始化的原生入口。Harness 的 pinned 版本另需 Node ≥24.9。Android 构建另需 JDK 17、Android SDK API 36 和 Build Tools 36.0.0。
 
 在仓库根目录执行：
 
