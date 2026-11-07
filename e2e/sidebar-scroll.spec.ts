@@ -6,6 +6,14 @@ import {
   type Page,
 } from "@playwright/test";
 
+import {
+  touchStroke,
+  observeTouchInput,
+  touchEvidence,
+  attachTouchEvidence,
+  verifyTouchTransport,
+} from "./touch-input";
+
 async function sidebarFixture(page: Page, mobile: boolean, empty = false) {
   const now = Date.now();
   const sessions = Array.from({ length: empty ? 0 : 80 }, (_, index) => ({
@@ -117,16 +125,13 @@ async function scrollGesture(
   expect(bottom - top).toBeGreaterThan(32);
   const x = bounds.x + bounds.width / 2;
   if (cdp) {
-    // Keep both touch endpoints inside the visible list. A 10,000px drag from
-    // its centre leaves the viewport and can be discarded by Linux Chromium.
-    await cdp.send("Input.synthesizeScrollGesture", {
+    await touchStroke(
+      page,
+      cdp,
       x,
-      y: direction === "down" ? bottom : top,
-      yDistance: (direction === "down" ? -1 : 1) * (bottom - top),
-      speed: 3000,
-      preventFling: true,
-      gestureSourceType: "touch",
-    });
+      direction === "down" ? bottom : top,
+      direction === "down" ? top : bottom,
+    );
   } else {
     await page.mouse.move(x, (top + bottom) / 2);
     await page.mouse.wheel(0, direction === "down" ? 10000 : -10000);
@@ -143,13 +148,14 @@ for (const short of [false, true]) {
     if (mobile) test.setTimeout(45000);
     if (short)
       await page.setViewportSize({ width: mobile ? 390 : 960, height: 480 });
+    const cdp = mobile ? await context.newCDPSession(page) : null;
+    if (cdp) await verifyTouchTransport(page, cdp);
     const sidebar = await sidebarFixture(page, mobile);
     const list = sidebar.getByRole("navigation", { name: "工作目录与会话" });
     const before = await viewportState(page);
     expect(before.documentHeight).toBe(before.height);
     expect(before.scrollY).toBe(0);
     const bounds = (await list.boundingBox())!;
-    const cdp = mobile ? await context.newCDPSession(page) : null;
     const gesture = (direction: "down" | "up") =>
       scrollGesture(page, list, cdp, direction);
     const distanceToBoundary = (direction: "down" | "up") =>
@@ -170,10 +176,20 @@ for (const short of [false, true]) {
       for (let index = 0; index < maxGestures; index++) {
         const previous = await distanceToBoundary(direction);
         if (previous <= 1) break;
-        await gesture(direction);
-        await expect
-          .poll(() => distanceToBoundary(direction))
-          .toBeLessThan(previous);
+        const diagnostic = mobile && direction === "down" && index === 0;
+        if (diagnostic) await observeTouchInput(page, ".session-list");
+        try {
+          await gesture(direction);
+          await expect
+            .poll(() => distanceToBoundary(direction))
+            .toBeLessThan(previous);
+        } finally {
+          if (diagnostic)
+            await attachTouchEvidence(
+              "sidebar-native-touch.json",
+              await touchEvidence(page),
+            );
+        }
         expect(await viewportState(page)).toEqual(before);
       }
       await expect
