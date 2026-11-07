@@ -9,19 +9,29 @@ on:
         type: boolean
         default: false
       tag:
-        description: Release tag (must match the source version)
+        description: Existing immutable release tag (must match source version and commit)
         type: string
         default: ''
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   version:
     runs-on: ubuntu-latest
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
+      - name: Require trusted exact-source Checks before publishing builds
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
+        run: |
+          tag="${RELEASE_TAG:-v$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')}"
+          python3 scripts/check-release-ci.py --sha "$GITHUB_SHA" --tag "$tag"
       - name: Validate embedded versions
         env:
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
@@ -187,9 +197,6 @@ jobs:
         run: |
           RELEASE_TAG="${RELEASE_TAG:-v$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')}"
           python3 scripts/check-release-version.py "$RELEASE_TAG" --remote
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            gh release create "$RELEASE_TAG" release/* --verify-tag --title "AnyWork $RELEASE_TAG" --notes-file docs/release-notes.md
-          else
-            gh release create "$RELEASE_TAG" release/* --target "$RELEASE_COMMIT" --title "AnyWork $RELEASE_TAG" --notes-file docs/release-notes.md
-          fi
+          python3 scripts/check-release-ci.py --sha "$RELEASE_COMMIT" --tag "$RELEASE_TAG" --timeout 60 --poll 5
+          gh release create "$RELEASE_TAG" release/* --verify-tag --title "AnyWork $RELEASE_TAG" --notes-file docs/release-notes.md
           gh workflow run pages.yml --ref main

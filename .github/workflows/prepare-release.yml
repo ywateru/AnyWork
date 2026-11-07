@@ -1,35 +1,12 @@
-name: Release new version
+name: Release new version (retired)
 on:
   workflow_dispatch:
-    inputs:
-      increment:
-        description: Version increment (all embedded versions advance together)
-        type: choice
-        options: [patch, minor, major]
-        default: patch
-permissions:
-  contents: write
-  actions: write
-concurrency:
-  group: prepare-release
-  cancel-in-progress: false
+permissions: {}
 jobs:
-  prepare:
+  instructions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - name: Advance version and dispatch signed release builds
-        env:
-          INCREMENT: ${{ inputs.increment }}
-          GH_TOKEN: ${{ github.token }}
+      - name: Use the resumable publisher
         run: |
-          version="$(python3 scripts/bump-version.py "$INCREMENT")"
-          python3 scripts/check-release-version.py "v$version" --remote
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Cargo.toml Cargo.lock package.json package-lock.json web/package.json desktop/ui/package.json crates/desktop/tauri.conf.json desktop/Info.plist android/app/build.gradle.kts
-          git commit -m "Release v$version"
-          git push origin HEAD:main
-          gh workflow run release.yml --ref main -f publish=true -f tag="v$version"
+          echo '::error::This shortcut is retired. From a clean committed main checkout, run python3 scripts/publish.py (or npm run release). It prepares the version, waits for exact-source Checks, publishes immutable assets and verifies Pages.'
+          exit 1

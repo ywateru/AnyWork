@@ -2,12 +2,6 @@ name: Checks
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'site/**'
-      - '.github/workflows/pages.yml'
-      - '.github/workflows/release.yml'
   pull_request:
   workflow_dispatch:
 permissions:
@@ -89,3 +83,23 @@ jobs:
       - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - run: npm ci
       - run: ./scripts/build-android.sh
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Export reviewed corresponding source
+        run: python3 scripts/source-archive.py
+      - name: Clean server-only container build and isolated acceptance
+        run: python3 scripts/container-smoke-test.py --build
+      - name: Keep scrubbed container build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-build-diagnostics
+          path: artifacts/container-build-diagnostics.log
+          if-no-files-found: ignore
+          retention-days: 7
