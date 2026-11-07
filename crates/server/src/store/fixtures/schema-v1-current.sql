@@ -1,0 +1,13 @@
+-- Exact historical DDL from cd6699a; application schema was version 1.
+CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS events_session_seq ON events(session_id,seq);
+CREATE UNIQUE INDEX IF NOT EXISTS source_replay_identity ON events(session_id,json_extract(data,'$.params.sourceEventKey')) WHERE json_extract(data,'$.params.sourceEventKey') IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS harness_replay_identity ON events(session_id,json_extract(data,'$.params.harnessEventKey')) WHERE json_extract(data,'$.params.harnessEventKey') IS NOT NULL;
+CREATE TABLE IF NOT EXISTS message_queue(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS queue_settings(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, paused INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS queue_edits(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, seq INTEGER NOT NULL UNIQUE, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS message_feedback(session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, message_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,message_id));
+CREATE TABLE IF NOT EXISTS composer_metadata(session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, client_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,client_id));
+CREATE TABLE IF NOT EXISTS message_edits(operation_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
+PRAGMA user_version=1;
