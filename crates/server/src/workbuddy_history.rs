@@ -408,6 +408,10 @@ fn active_history(mut records: Vec<Value>) -> Result<Vec<Value>> {
             .or_else(|| nonempty(&r["logicalParentId"]))
             .map(str::to_owned);
     }
+    ensure!(
+        target.is_none() && !selected.is_empty(),
+        "WorkBuddy native branch target/parent is unavailable; cannot reconcile history"
+    );
     selected.reverse();
     let selected: HashSet<_> = selected.into_iter().collect();
     Ok(records
@@ -792,6 +796,19 @@ mod tests {
                 .contains("abandoned")
         );
         assert_eq!(projected[1]["id"], "new");
+    }
+    #[test]
+    fn unresolved_native_branch_never_becomes_an_authoritative_empty_history() {
+        let rows = vec![
+            json!({"id":"user","type":"message","role":"user","content":"keep"}),
+            json!({"id":"fork","type":"resend-fork-notice","parentId":"missing"}),
+        ];
+        assert!(active_history(rows).is_err());
+        let rows = vec![
+            json!({"id":"old","type":"message","role":"user","content":"keep","parentId":"missing"}),
+            json!({"id":"new","type":"message","role":"user","content":"new","parentId":"missing"}),
+        ];
+        assert!(active_history(rows).is_err());
     }
     #[test]
     fn partial_tail_has_notice_but_corrupt_complete_record_fails() {

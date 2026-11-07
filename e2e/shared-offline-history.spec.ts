@@ -28,7 +28,9 @@ for (const agent of ["deepseek-harness", "workbuddy"]) {
     await expect(page.locator(".chat-scroll")).toContainText(`${agent} 保存的问题`);
     await expect(page.locator(".chat-scroll")).toContainText(`${agent} 保存的回复`);
     await page.getByRole("textbox", { name: "消息", exact: true }).fill("保留离线草稿");
+    const rejectedConnection = page.waitForResponse(response => response.url().endsWith("/connect") && response.request().method() === "POST");
     await page.getByRole("button", { name: "发送", exact: true }).click();
+    await rejectedConnection;
     await expect(page.getByRole("textbox", { name: "消息", exact: true })).toContainText("保留离线草稿");
     expect(messages).toBe(0);
     await expect(page.getByRole("combobox", { name: "审批模式" })).toBeDisabled();

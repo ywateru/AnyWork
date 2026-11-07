@@ -45,6 +45,7 @@ class History(unittest.TestCase):
     tool=next(e for e in before if e['params'].get('item',{}).get('nativeCallId')=='native-tool')
     detail=self.req(f'/sessions/{sid}/history/item?seq={tool["seq"]}');self.assertIn('persisted tool details',json.dumps(detail))
     self.log.write_text(self.log.read_text()+'{"id":');partial=self.req(f'/sessions/{sid}/history?paged=true&limit=20');self.assertTrue(partial['history_notice']);self.assertIn('persisted answer',json.dumps(partial))
+    self.log.write_text(''.join(json.dumps(r)+'\n' for r in self.rows+[{'id':'fork','type':'resend-fork-notice','parentId':'unresolved-native-id'}]));orphan=self.req(f'/sessions/{sid}/history?paged=true&limit=20');self.assertTrue(orphan['history_notice']);self.assertIn('persisted answer',json.dumps(orphan))
     self.log.write_text('{broken}\n');retained=self.req(f'/sessions/{sid}/history?paged=true&limit=20');self.assertTrue(retained['history_notice']);self.assertIn('persisted answer',json.dumps(retained));self.write_wb()
   self.assertEqual((self.wb/'workbuddy.db').read_bytes(),self.db_before)
   self.stop();self.start(['--codex-scope','all']);self.assertEqual(self.req('/sessions')['sessions'],[])

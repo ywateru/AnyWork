@@ -403,6 +403,20 @@ pub fn tunnel_url(line: &str, kind: RouteKind) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(unix)]
+    fn desktop_service_explicitly_enables_cross_project_agent_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let c = Config {
+            workspace: dir.path().display().to_string(),
+            data_directory: dir.path().join("data").display().to_string(),
+            server_binary: "/usr/bin/true".into(),
+            ..Default::default()
+        };
+        let plan = LaunchPlan::server(&c, dir.path()).unwrap();
+        assert!(plan.args.windows(2).any(|p| p == ["--agent-scope", "all"]));
+        assert!(plan.args.windows(2).any(|p| p == ["--codex-scope", "all"]));
+    }
     #[tokio::test]
     async fn output_without_final_newline_is_read_and_diagnostics_do_not_echo_credentials() {
         let (tx, mut rx) = mpsc::channel(2);
