@@ -273,6 +273,135 @@ fn rejected_schema_constraints_indexes_unknown_objects_and_required_json_do_not_
 }
 
 #[test]
+fn sqlite_type_token_lookalikes_are_refused_before_any_schema_or_recovery_write() {
+    // All variants are valid SQLite DDL. They declare ordinary type names, not
+    // the required constraints; Unicode spaces are identifier characters here.
+    for (original, replacement) in [
+        ("data TEXT NOT NULL", "data TEXTNOTNULL"),
+        (
+            "seq INTEGER PRIMARY KEY AUTOINCREMENT",
+            "seq INTEGERPRIMARYKEYAUTOINCREMENT",
+        ),
+        ("data TEXT NOT NULL", "data TEXT\u{a0}NOT\u{a0}NULL"),
+        (
+            "seq INTEGER PRIMARY KEY AUTOINCREMENT",
+            "seq INTEGER\u{2003}PRIMARY\u{2003}KEY\u{2003}AUTOINCREMENT",
+        ),
+        ("data TEXT NOT NULL", "data \"TEXT NOT NULL\""),
+        (
+            "seq INTEGER PRIMARY KEY AUTOINCREMENT",
+            "seq \"INTEGER PRIMARY KEY AUTOINCREMENT\"",
+        ),
+    ] {
+        for ver in [0, 1] {
+            let fixture = Fixture::new();
+            fixture
+                .db()
+                .execute_batch(
+                    &include_str!("../fixtures/schema-v1-current.sql")
+                        .replace(original, replacement),
+                )
+                .unwrap();
+            fixture
+                .db()
+                .pragma_update(None, "user_version", ver)
+                .unwrap();
+            fixture.seed();
+            let before = fixture.snapshot();
+            assert_eq!(before["journal"], "delete");
+            // Verify the parsed-metadata defense independently too, rather
+            // than exercising it only after a lexer has already rejected SQL.
+            let reference = Connection::open_in_memory().unwrap();
+            reference.execute_batch(BASE).unwrap();
+            reference.execute_batch(HARNESS_INDEX).unwrap();
+            reference.execute_batch(SOURCE_INDEX).unwrap();
+            let db = fixture.db();
+            assert!(identity::validate_structure(&db, &reference, &objects(&db).unwrap()).is_err());
+            drop(db);
+            assert!(error(&fixture.path).contains("Malformed AnyWork schema object"));
+            // Includes journal, version, running session, raw rows, source
+            // identities, queue/edit phases and exact sequence/high-water IDs.
+            assert_eq!(fixture.snapshot(), before, "{replacement}, version {ver}");
+        }
+    }
+}
+
+#[test]
+fn schema_identity_preserves_tokens_quotes_unicode_and_sqlite_metadata() {
+    assert_ne!(
+        identity::tokens("data TEXT NOT NULL").unwrap(),
+        identity::tokens("data TEXTNOTNULL").unwrap()
+    );
+    assert_ne!(
+        identity::tokens("data TEXT NOT NULL").unwrap(),
+        identity::tokens("data TEXT\u{a0}NOT\u{a0}NULL").unwrap()
+    );
+    assert_ne!(
+        identity::tokens("seq INTEGER PRIMARY KEY AUTOINCREMENT").unwrap(),
+        identity::tokens("seq \"INTEGER PRIMARY KEY AUTOINCREMENT\"").unwrap()
+    );
+    for literal in [
+        "'A''b 雪; X'",
+        "\"A\"\"b 雪; X\"",
+        "`A``b 雪; X`",
+        "[A b 雪; X]",
+    ] {
+        assert_eq!(
+            identity::tokens(&format!("SELECT {literal} AS x;")).unwrap(),
+            vec![
+                "select".to_string(),
+                literal.to_string(),
+                "as".into(),
+                "x".into()
+            ]
+        );
+        assert_ne!(
+            identity::tokens(&format!("SELECT {literal} AS x")).unwrap(),
+            identity::tokens(&format!("SELECT {} AS x", literal.to_ascii_lowercase())).unwrap()
+        );
+    }
+    assert_ne!(
+        identity::tokens("json_extract(data,'$.params.sourceEventKey')").unwrap(),
+        identity::tokens("json_extract(data,'$.params.sourceeventkey')").unwrap()
+    );
+    assert!(identity::tokens("'unterminated").is_err());
+    assert!(identity::tokens("data TEXT /* unrecognized */ NOT NULL").is_err());
+    // Formatting and unquoted ASCII keyword/column case remain compatible.
+    let fixture = Fixture::new();
+    let ddl = format!("{BASE}{HARNESS_INDEX}{SOURCE_INDEX}")
+        .replace("CREATE", "create")
+        .replace("TEXT", "text")
+        .replace("INTEGER", "integer")
+        .replace("data ", "DATA ")
+        .replace("(data,", "(DATA,")
+        .replace(' ', "\n\t")
+        .replace(',', " ,\r\n ");
+    fixture.db().execute_batch(&ddl).unwrap();
+    fixture.db().pragma_update(None, "user_version", 1).unwrap();
+    fixture.seed();
+    let preserved = json!({"seq":0,"session_id":"one","method":"user/message","params":{"text":"Keep 雪; A''b ","sourceEventKey":"ExactCase 雪 ' quote"},"created_at":1}).to_string();
+    fixture
+        .db()
+        .execute("UPDATE events SET data=?1 WHERE seq=41", [&preserved])
+        .unwrap();
+    let store = Store::open(&fixture.path).unwrap();
+    assert_eq!(store.sessions().unwrap()[0].status, "disconnected");
+    let events = store.events("one", 0, 500).unwrap();
+    assert_eq!(events[0].seq, 41);
+    assert_eq!(events[0].params["sourceEventKey"], "ExactCase 雪 ' quote");
+    assert_eq!(events[0].params["text"], "Keep 雪; A''b ");
+    let raw: String = store
+        .0
+        .lock()
+        .unwrap()
+        .query_row("SELECT data FROM events WHERE seq=41", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(raw, preserved);
+    assert_eq!(events[1].seq, 42);
+    assert_eq!(events[1].method, "connection/interrupted");
+}
+
+#[test]
 fn real_transaction_faults_rollback_ddl_version_and_every_recovery_change() {
     let fresh = Fixture::new();
     fail_at("after_ddl", &fresh.path);

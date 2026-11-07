@@ -16,6 +16,7 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN = 'schema-restart-fixture-token'
+LOCAL_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 class SchemaRecovery(unittest.TestCase):
@@ -71,7 +72,7 @@ class SchemaRecovery(unittest.TestCase):
         if body is not None:headers['Content-Type']='application/json'
         request=urllib.request.Request(f'http://127.0.0.1:{self.port}/api'+path,
             data=None if body is None else json.dumps(body).encode(),headers=headers,method=method)
-        with urllib.request.urlopen(request,timeout=5) as response:return json.load(response)
+        with LOCAL_HTTP.open(request,timeout=5) as response:return json.load(response)
 
     def calls(self):
         path=self.base/'calls.jsonl'
@@ -147,6 +148,53 @@ class SchemaRecovery(unittest.TestCase):
         self.assertEqual(self.calls(),b'')
         # SQLite may perform its own open/recovery housekeeping; byte-for-byte
         # database/sidecar equality is deliberately not the contract.
+
+    def test_executable_schema_token_lookalikes_refuse_without_startup_mutation(self):
+        self.stop()
+        path=self.base/'data/remote-agent.sqlite'
+        ddl=(ROOT/'crates/server/src/store/fixtures/schema-v1-current.sql').read_text()
+        variants=[('data TEXT NOT NULL','data TEXTNOTNULL'),
+                  ('seq INTEGER PRIMARY KEY AUTOINCREMENT','seq INTEGERPRIMARYKEYAUTOINCREMENT'),
+                  ('data TEXT NOT NULL','data TEXT\u00a0NOT\u00a0NULL'),
+                  ('seq INTEGER PRIMARY KEY AUTOINCREMENT','seq INTEGER\u2003PRIMARY\u2003KEY\u2003AUTOINCREMENT'),
+                  ('data TEXT NOT NULL','data "TEXT NOT NULL"'),
+                  ('seq INTEGER PRIMARY KEY AUTOINCREMENT','seq "INTEGER PRIMARY KEY AUTOINCREMENT"')]
+        for original,replacement in variants:
+            for version in (0,1):
+                with self.subTest(replacement=replacement,version=version):
+                    # Replace only a stopped disposable fixture, never a live
+                    # database. Each declaration must be executable SQLite DDL.
+                    path.unlink()
+                    session={'id':'schema-negative','thread_id':None,'title':'keep','cwd':str(self.base/'workspace'),
+                             'agent':'fixture','model':None,'policy':'manual','status':'running',
+                             'archived':False,'created_at':1,'updated_at':1,'external':False}
+                    event={'seq':0,'session_id':'schema-negative','method':'user/message',
+                           'params':{'text':'keep 雪 \'source\'','sourceEventKey':'ExactMixedCase'},'created_at':1}
+                    with sqlite3.connect(path) as db:
+                        db.executescript(ddl.replace(original,replacement))
+                        db.execute('PRAGMA user_version='+str(version))
+                        db.execute('INSERT INTO sessions VALUES(?,?)',('schema-negative',json.dumps(session)))
+                        db.execute('INSERT INTO events(seq,session_id,data) VALUES(41,?,?)',('schema-negative',json.dumps(event)))
+                        db.execute('INSERT INTO message_queue(seq,session_id,data) VALUES(51,?,?)',('schema-negative',json.dumps({'status':'sending','text':'never replay'})))
+                        db.execute('INSERT INTO queue_settings VALUES(?,0)',('schema-negative',))
+                        db.execute('INSERT INTO message_edits VALUES(?,?,?)',('pending-edit','schema-negative',json.dumps({'id':'pending-edit','phase':'starting'})))
+                    with sqlite3.connect(path) as db:
+                        before='\n'.join(db.iterdump())
+                        self.assertEqual(db.execute('PRAGMA journal_mode').fetchone()[0],'delete')
+                    process,_,log=self.spawn()
+                    try:self.assertNotEqual(process.wait(timeout=10),0)
+                    finally:
+                        if process.poll() is None:process.kill();process.wait(timeout=5)
+                        log.close()
+                    with sqlite3.connect(path) as db:
+                        self.assertEqual('\n'.join(db.iterdump()),before)
+                        self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],version)
+                        self.assertEqual(db.execute('PRAGMA journal_mode').fetchone()[0],'delete')
+                        self.assertEqual(db.execute('SELECT seq FROM events').fetchall(),[(41,)])
+                        self.assertEqual(json.loads(db.execute('SELECT data FROM sessions').fetchone()[0])['status'],'running')
+                        self.assertEqual(json.loads(db.execute('SELECT data FROM message_queue').fetchone()[0])['status'],'sending')
+                        self.assertEqual(json.loads(db.execute('SELECT data FROM message_edits').fetchone()[0])['phase'],'starting')
+                    self.assertEqual(self.calls(),b'')
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

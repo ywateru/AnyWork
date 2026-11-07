@@ -5,6 +5,8 @@ use rusqlite::{Connection, TransactionBehavior, params};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::Path};
 
+#[path = "identity.rs"]
+mod identity;
 #[path = "ownership.rs"]
 mod ownership;
 pub(super) use ownership::OwnerGuard;
@@ -102,26 +104,6 @@ fn objects(db: &Connection) -> Result<BTreeMap<String, (String, String)>> {
         .query_map([], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))?
         .collect::<std::result::Result<_, _>>()?)
 }
-/// Ignore formatting/case outside SQL string literals; replay JSON paths retain
-/// their exact case. This is a conservative identity allowlist, not a SQL parser.
-fn normalized(sql: &str) -> String {
-    let mut quoted = false;
-    sql.chars()
-        .filter_map(|char| {
-            if char == '\'' {
-                quoted = !quoted;
-                return Some(char);
-            }
-            if quoted {
-                Some(char)
-            } else if char.is_whitespace() || char == ';' {
-                None
-            } else {
-                Some(char.to_ascii_lowercase())
-            }
-        })
-        .collect()
-}
 fn validate_schema(db: &Connection, ver: i64) -> Result<Shape> {
     let found = objects(db)?;
     if found.is_empty() {
@@ -155,7 +137,7 @@ fn validate_schema(db: &Connection, ver: i64) -> Result<Shape> {
         let (expected_kind, expected_sql) = expected.get(name)
             .with_context(|| format!("Unrecognized database schema object {name}; foreign tables, indexes, views and triggers are unsupported"))?;
         anyhow::ensure!(
-            kind == expected_kind && normalized(sql) == normalized(expected_sql),
+            kind == expected_kind && identity::tokens(sql)? == identity::tokens(expected_sql)?,
             "Malformed AnyWork schema object {name}; required constraints or expressions differ"
         );
     }
@@ -170,6 +152,10 @@ fn validate_schema(db: &Connection, ver: i64) -> Result<Shape> {
             "Malformed AnyWork schema: required object {name} is missing"
         );
     }
+    // Validate SQLite's parsed metadata as well as the token identity. A type
+    // name such as TEXTNOTNULL must never stand in for real NOT NULL/PK/FK
+    // constraints, even if a later lexical change introduces a comparison bug.
+    identity::validate_structure(db, &reference, &found)?;
     // Internal objects must be SQLite's normal autoindexes/sequence or ANALYZE
     // statistics. SQLite reserves sqlite_* names; reject invented internal SQL.
     let mut query = db.prepare("SELECT name,type FROM sqlite_schema WHERE name LIKE 'sqlite_%'")?;
