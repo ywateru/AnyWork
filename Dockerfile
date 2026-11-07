@@ -2,7 +2,7 @@
 FROM node:22-bookworm-slim AS web
 WORKDIR /source
 COPY artifacts/anywork-source.tar.gz /tmp/source.tar.gz
-RUN tar -xzf /tmp/source.tar.gz --strip-components=1 -C /source && npm ci && npm run build
+RUN tar -xzf /tmp/source.tar.gz --strip-components=1 -C /source && npm ci && npm run build && node scripts/container-web-identity.mjs /source/web/dist /tmp/source.tar.gz
 RUN mkdir -p /source/artifacts && mv /tmp/source.tar.gz /source/artifacts/anywork-source.tar.gz
 
 FROM rust:1-bookworm AS rust

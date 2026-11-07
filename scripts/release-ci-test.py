@@ -103,10 +103,63 @@ class ReleaseGate(unittest.TestCase):
         for token in ('', 'token\nsecret', 'é'):
             with self.assertRaisesRegex(gate.GateError, '^A valid GitHub token is required$'): gate.GitHub(REPO, token)
 
+    def test_remote_tag_binding_handles_lightweight_and_annotated_tags(self):
+        class TagAPI:
+            calls = []
+            def get(self, path, deadline):
+                self.calls.append(path)
+                return copy.deepcopy(self.responses[path])
+        api = TagAPI()
+        ref = {'ref':'refs/tags/v1.2.3', 'object':{'type':'commit', 'sha':SHA}}
+        api.responses = {'git/ref/tags/v1.2.3':ref}
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.require_tag_source(REPO, 'v1.2.3', SHA, api), SHA)
+        tagsha, nested = 'b'*40, 'c'*40
+        api.responses = {'git/ref/tags/v1.2.3':{'ref':'refs/tags/v1.2.3','object':{'type':'tag','sha':tagsha}},
+                         'git/tags/'+tagsha:{'sha':tagsha,'object':{'type':'tag','sha':nested}},
+                         'git/tags/'+nested:{'sha':nested,'object':{'type':'commit','sha':SHA}}}
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.require_tag_source(REPO, 'v1.2.3', SHA, api), SHA)
+        self.assertEqual(api.calls[-1], 'git/tags/'+nested)
+        api.responses['git/tags/'+nested]['object'] = {'type':'tag','sha':tagsha}
+        with self.assertRaisesRegex(gate.GateError, 'cyclic'):
+            gate.require_tag_source(REPO, 'v1.2.3', SHA, api)
+        api.responses['git/tags/'+nested]['object'] = {'type':'commit','sha':SHA}
+        api.responses['git/tags/'+nested]['object']['sha'] = 'd'*40
+        with self.assertRaisesRegex(gate.GateError, 'different source'):
+            gate.require_tag_source(REPO, 'v1.2.3', SHA, api)
+
+    def test_wrong_moved_missing_or_malformed_tag_never_authorizes(self):
+        class TagAPI:
+            def get(self, path, deadline):
+                if self.value is None: raise gate.GateError('GitHub Checks lookup returned HTTP 404')
+                return copy.deepcopy(self.value)
+        api = TagAPI()
+        api.value = {'ref':'refs/tags/v1.2.3','object':{'type':'commit','sha':SHA}}
+        with contextlib.redirect_stdout(io.StringIO()): gate.require_tag_source(REPO, 'v1.2.3', SHA, api)
+        # A tag moved after successful preflight must fail at the second boundary.
+        for obj in ({'type':'commit','sha':'b'*40}, {'type':'tree','sha':SHA},
+                    {'type':'commit','sha':'bad'}, None):
+            api.value = {'ref':'refs/tags/v1.2.3','object':obj}
+            with self.assertRaises(gate.GateError): gate.require_tag_source(REPO, 'v1.2.3', SHA, api)
+        api.value = None
+        with self.assertRaisesRegex(gate.GateError, 'existing exact-source tag is required'):
+            gate.require_tag_source(REPO, 'v1.2.3', SHA, api)
+        api.value = {'ref':'refs/tags/other','object':{'type':'commit','sha':SHA}}
+        with self.assertRaisesRegex(gate.GateError, 'Unexpected remote tag identity'):
+            gate.require_tag_source(REPO, 'v1.2.3', SHA, api)
+        api.value = {'ref':'refs/tags/v1.2.3','object':{'type':'tag','sha':'b'*40}}
+        # Annotated object identity must equal the requested object SHA.
+        with self.assertRaisesRegex(gate.GateError, 'annotated tag identity'):
+            gate.require_tag_source(REPO, 'v1.2.3', SHA, api)
+
     def test_workflow_entrypoints_cannot_bypass(self):
         release = (ROOT / '.github/workflows/release.yml').read_text()
         self.assertEqual(release.count('python3 scripts/check-release-ci.py'), 2)
         self.assertLess(release.index('check-release-ci.py --sha "$RELEASE_COMMIT"'), release.index('gh release create'))
+        self.assertIn('--sha "$RELEASE_COMMIT" --tag "$RELEASE_TAG"', release)
+        self.assertIn('--sha "$GITHUB_SHA" --tag "$tag"', release)
+        self.assertNotIn('--target "$RELEASE_COMMIT"', release)
         legacy = (ROOT / '.github/workflows/prepare-release.yml').read_text()
         self.assertIn('permissions: {}', legacy)
         for mutation in ('git push', 'gh workflow run', 'bump-version.py', 'actions/checkout'):

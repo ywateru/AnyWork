@@ -65,6 +65,35 @@ class GitHub:
             self.sleep(min(2 ** attempt, remaining))
 
 
+def require_tag_source(repository, tag, sha, api, timeout=60, clock=time.monotonic):
+    """Read and peel an existing remote tag; never create/move a ref."""
+    require(re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag), 'Expected a version release tag')
+    require(re.fullmatch(r'[a-f0-9]{40}', sha), 'Expected the exact 40-character source SHA')
+    deadline = clock() + timeout
+    url = f'https://github.com/{repository}/releases/tag/{tag}'
+    try:
+        ref = api.get('git/ref/tags/' + tag, deadline)
+        require(ref.get('ref') == 'refs/tags/' + tag, 'Unexpected remote tag identity')
+        obj = ref.get('object')
+        seen = set()
+        for _ in range(10):
+            require(isinstance(obj, dict), 'Malformed remote tag object')
+            value, kind = obj.get('sha'), obj.get('type')
+            require(isinstance(value, str) and re.fullmatch(r'[a-f0-9]{40}', value), 'Malformed remote tag SHA')
+            if kind == 'commit':
+                require(value == sha, 'Remote release tag points to a different source; no tag was moved')
+                print('Verified remote tag source:', tag, sha, url)
+                return value
+            require(kind == 'tag' and value not in seen, 'Unexpected or cyclic remote tag target')
+            seen.add(value)
+            annotated = api.get('git/tags/' + value, deadline)
+            require(annotated.get('sha') == value, 'Unexpected annotated tag identity')
+            obj = annotated.get('object')
+        raise GateError('Remote tag indirection exceeds its budget')
+    except GateError as error:
+        raise GateError(str(error) + '; an existing exact-source tag is required: ' + url) from None
+
+
 def trusted_run(run, workflow_id, repository, sha):
     """PR/fork checks and similarly named workflows cannot authorize a release."""
     return (type(run.get('id')) is int and run['id'] > 0
@@ -130,11 +159,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', default=os.environ.get('GITHUB_REPOSITORY', 'ywateru/AnyWork'))
     parser.add_argument('--sha', default=os.environ.get('GITHUB_SHA'), required=not os.environ.get('GITHUB_SHA'))
+    parser.add_argument('--tag', help='Also require an existing remote tag to resolve to this exact SHA')
     parser.add_argument('--timeout', type=int, default=4500)
     parser.add_argument('--poll', type=int, default=15)
     args = parser.parse_args(argv)
     token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN') or ''
-    check(args.repository, args.sha, GitHub(args.repository, token), args.timeout, args.poll)
+    api = GitHub(args.repository, token)
+    check(args.repository, args.sha, api, args.timeout, args.poll)
+    if args.tag:
+        require_tag_source(args.repository, args.tag, args.sha, api, min(args.timeout, 60))
 
 
 if __name__ == '__main__':

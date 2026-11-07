@@ -16,18 +16,83 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def build_diagnostics(raw):
+    """Keep a bounded, credential-scrubbed build-only tail; never runtime logs."""
+    text = raw[-65536:].decode('utf-8', errors='replace')
+    text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+    text = ''.join(char for char in text if char in '\n\t' or 32 <= ord(char) < 127)
+    lines = []
+    for line in text.splitlines():
+        if re.search(r'(?i)(token|secret|password|authorization|credential|private.?key)', line):
+            lines.append('[credential-bearing build line redacted]')
+            continue
+        line = re.sub(r'https?://\S+', '[URL redacted]', line)
+        line = re.sub(r'(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)', '[credential redacted]', line)
+        lines.append(line)
+    return ('\n'.join(lines))[-8192:]
+
+
 def docker(*args, timeout=60):
+    if args[0] == 'build':
+        # Do not retain an unbounded build log in memory or dump runtime logs.
+        with tempfile.TemporaryFile() as log:
+            failed = False
+            try:
+                result = subprocess.run(['docker', *args], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, timeout=timeout)
+                failed = result.returncode != 0
+            except subprocess.TimeoutExpired:
+                failed = True
+            if failed:
+                log.seek(0, 2); size = log.tell(); log.seek(max(0, size - 65536))
+                safe = build_diagnostics(log.read())
+                path = ROOT / 'artifacts/container-build-diagnostics.log'
+                path.parent.mkdir(exist_ok=True)
+                path.write_text(safe); path.chmod(0o600)
+                print('Isolated build diagnostics (scrubbed, at most 8 KiB):\n' + safe)
+                raise RuntimeError('Docker build failed or timed out; see artifacts/container-build-diagnostics.log')
+        return ''
     result = subprocess.run(['docker', *args], cwd=ROOT, capture_output=True, timeout=timeout)
     if result.returncode:
-        # Container/config/log output can contain credentials. Never echo it.
-        raise RuntimeError('Docker operation failed (' + args[0] + '); inspect the isolated CI step')
+        raise RuntimeError('Docker operation failed (' + args[0] + '); runtime output was withheld to protect the generated access key')
     return result.stdout.decode().strip()
+
+
+def verify_web_identity(request, version, source_digest):
+    """Check source/version association and every served file digest, not JS presence."""
+    identity = json.loads(request('/build-identity.json'))
+    if not isinstance(identity, dict) or identity.get('schema') != 1 or identity.get('appVersion') != version or identity.get('sourceSha256') != source_digest:
+        raise RuntimeError('Web build source/version identity mismatch')
+    files = identity.get('files')
+    fingerprint = identity.get('appFingerprint')
+    if not isinstance(files, dict) or not 2 <= len(files) <= 5000 or '/index.html' not in files or not isinstance(fingerprint, str) or not re.fullmatch(r'anywork-[a-f0-9]{16}', fingerprint):
+        raise RuntimeError('Malformed Web build identity')
+    fetched = {}; total = 0
+    for path, digest in files.items():
+        if not isinstance(path, str) or not re.fullmatch(r'/[A-Za-z0-9_./-]+', path) or any(part in ('', '.', '..') for part in path[1:].split('/')) or path.startswith(('/api/', '/ws/')) or path == '/source' or not isinstance(digest, str) or not re.fullmatch(r'[a-f0-9]{64}', digest):
+            raise RuntimeError('Unsafe Web build manifest entry')
+        content = request('/' if path == '/index.html' else path)
+        total += len(content)
+        if total > 300 * 1024 * 1024 or hashlib.sha256(content).hexdigest() != digest:
+            raise RuntimeError('Served Web file differs from build identity')
+        fetched[path] = content if path == '/index.html' else None
+    html = fetched['/index.html'].decode()
+    marker = re.search(r'<meta name="app-version" content="(anywork-[a-f0-9]{16})">', html)
+    asset = re.search(r'(?:src|href)="(/assets/[^" ]+\.js)"', html)
+    if not marker or marker[1] != fingerprint or not asset or asset[1] not in files:
+        raise RuntimeError('Web entrypoint does not match the identified build')
+
+
+def cleanup_docker(*args):
+    try:
+        subprocess.run(['docker', *args], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        print('Warning: an owned disposable Docker resource could not be cleaned; check the unique smoke resource names')
 
 
 def acceptance(image, prefix, fixture, version, source_digest):
     container = prefix + '-server'
     volumes = [prefix + suffix for suffix in ('-data', '-workspace', '-codex')]
-    for volume in volumes: docker('volume', 'create', volume)
+    created_volumes = []
     def start():
         docker('run', '-d', '--name', container, '-p', '127.0.0.1::3210',
                '-v', volumes[0]+':/data', '-v', volumes[1]+':/workspace',
@@ -54,6 +119,9 @@ def acceptance(image, prefix, fixture, version, source_digest):
     def read_token():
         return docker('exec', container, 'node', '-e', "process.stdout.write(require('fs').readFileSync('/data/access-token','utf8').trim())")
     try:
+        for volume in volumes:
+            created_volumes.append(volume)
+            docker('volume', 'create', volume)
         base = start()
         if docker('exec', container, 'id', '-u') != '10001': raise RuntimeError('Container is not the expected non-root user')
         token = read_token()
@@ -63,9 +131,7 @@ def acceptance(image, prefix, fixture, version, source_digest):
             if error.code != 401: raise RuntimeError('Incorrect authentication response') from None
         else: raise RuntimeError('Unauthenticated API was accepted')
         if json.loads(request(base, '/api/info', token))['version'] != version: raise RuntimeError('API version mismatch')
-        html = request(base, '/').decode()
-        asset = re.search(r'(?:src|href)="(/assets/[^" ]+\.js)"', html)
-        if not asset or not request(base, asset[1]): raise RuntimeError('Missing Web build or JavaScript asset')
+        verify_web_identity(lambda path: request(base, path), version, source_digest)
         if hashlib.sha256(request(base, '/source')).hexdigest() != source_digest: raise RuntimeError('Corresponding source differs')
         session = json.loads(request(base, '/api/sessions', token, dict(agent='container-fixture', cwd='/workspace', title='Container persistence')))['session']
         if session['agent'] != 'container-fixture': raise RuntimeError('Fixture Agent was not used')
@@ -78,10 +144,10 @@ def acceptance(image, prefix, fixture, version, source_digest):
         if restored['title'] != 'Container persistence': raise RuntimeError('Session was not persisted')
         if docker('exec', container, 'node', '-e', "process.stdout.write(require('fs').readFileSync('/workspace/persistent.txt','utf8'))") != 'container-smoke':
             raise RuntimeError('Workspace was not persisted')
-        print('Passed: clean server image, UID 10001, auth, Web asset, exact corresponding source, session/workspace/access-key persistence; no model requests')
+        print('Passed: clean server image, UID 10001, auth, source-bound Web identity and file digests, exact corresponding source, session/workspace/access-key persistence; no model requests')
     finally:
-        subprocess.run(['docker', 'rm', '-f', container], capture_output=True, timeout=30)
-        for volume in volumes: subprocess.run(['docker', 'volume', 'rm', volume], capture_output=True, timeout=30)
+        cleanup_docker('rm', '-f', container)
+        for volume in created_volumes: cleanup_docker('volume', 'rm', volume)
 
 
 def main():
@@ -115,7 +181,7 @@ console.log(JSON.stringify({id:r.id,result}));});
             for path in fixture.iterdir(): path.chmod(0o644)
             acceptance(image, prefix, fixture, version, digest)
     finally:
-        if args.build: subprocess.run(['docker', 'image', 'rm', '-f', image], capture_output=True, timeout=30)
+        if args.build: cleanup_docker('image', 'rm', '-f', image)
 
 
 if __name__ == '__main__':

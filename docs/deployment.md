@@ -55,7 +55,7 @@ python3 scripts/source-archive.py
 python3 scripts/container-smoke-test.py --build
 ```
 
-该脚本进行无缓存镜像构建，使用唯一命名的容器和卷、随机 loopback 端口及本地 RPC fixture，检查 UID 10001、错误令牌 401、API/Web 静态资源版本、`/source` 与源码归档逐字节一致，以及重建容器后会话、工作区和访问令牌保留；退出时只清理本次创建的资源。`--image 镜像` 可检验既有镜像，要求源码归档与镜像对应；不会移除传入的镜像。
+该脚本进行无缓存镜像构建，使用唯一命名的容器和卷、随机 loopback 端口及本地 RPC fixture，检查 UID 10001、错误令牌 401、API 版本、Web 构建清单中的应用版本/源码 SHA-256/PWA 指纹及全部文件摘要、`/source` 与源码归档逐字节一致，以及重建容器后会话、工作区和访问令牌保留；退出时只清理本次创建的资源。`--image 镜像` 可检验既有镜像，要求源码归档与镜像对应；不会移除传入的镜像。
 
 Checks 工作流中的 `container` job 会实际执行上述构建和验收，正式发布要求同一源码提交的完整 Checks 成功。当前开发机有 Docker CLI，但 daemon socket 不可用，因此本轮本机只能验证脚本/配置；**实际镜像验收仍待 CI 或具备 Docker daemon 的隔离环境执行**。不要将静态检查或新增 CI 配置视作实际构建成功。
 
@@ -66,3 +66,8 @@ Checks 工作流中的 `container` job 会实际执行上述构建和验收，�
 先构建 Web，再运行 `android/gradlew :app:assembleDebug :app:lintDebug`。正式 APK 使用自己的 release 签名，仓库不存放签名密钥。Debug APK 的 WebView 调试仅在 debug 构建启用。应用关闭备份；原生 `ConnectionStore` 使用 Android Keystore 中的 AES 密钥加密连接资料，并保存于应用私有偏好设置，通过桥接提供给 WebView。Web 层仍有会话及兼容浏览器的本地状态，不能将其描述为整个令牌生命周期仅存在于 WebView 或从不进入 Web 层。
 
 HTTP 支持用于用户配置的局域网服务；通过互联网请配置 HTTPS。Android System WebView 应保持更新，文本分享会填入当前会话草稿，发送仍由用户触发。
+
+
+容器构建在 PWA 产物生成后写入 `/build-identity.json`，将应用版本、对应源码归档摘要、PWA 指纹及完整 Web 文件摘要关联。验收会拒绝缺失身份、错误版本/源码、旧页面和被替换的脚本；仅能下载任意非空 JavaScript 不算通过。使用 `--image` 验收既有镜像时也执行同样检查，所以旧镜像缺少清单会明确失败。
+
+无缓存构建失败或超时时，脚本保留最多 8 KiB 的脱敏构建诊断到 `artifacts/container-build-diagnostics.log`，CI 在失败时上传该文件。不会打印或上传运行中容器日志，避免泄漏本次生成的测试访问密钥；卷部分创建失败也进入本次资源清理流程。

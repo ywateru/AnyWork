@@ -91,7 +91,7 @@ CI 仅上传明确列出的 Web 构建、源码包或 APK，不上传整个开�
 
 ## GitHub Actions 发行 / Automated releases
 
-公开仓库为 `ywateru/AnyWork`，默认分支为 `main`。发布 `v*` tag 后，`Build releases` 工作流并行构建 macOS arm64/x86_64、Windows x64、Linux x64/ARM64、Android，以及 Web/对应源码。只有全部构建和打包成功才创建 GitHub Release，并为完整产物生成 `SHA256SUMS`。手动运行默认只生成 Actions artifacts；勾选 publish 并填写与源码匹配的 tag，全部平台通过后会从本次精确提交创建发行版。
+公开仓库为 `ywateru/AnyWork`，默认分支为 `main`。发布 `v*` tag 后，`Build releases` 工作流并行构建 macOS arm64/x86_64、Windows x64、Linux x64/ARM64、Android，以及 Web/对应源码。只有全部构建和打包成功才创建 GitHub Release，并为完整产物生成 `SHA256SUMS`。手动运行默认只生成 Actions artifacts；勾选 publish 时必须先存在一个版本和实际提交均匹配本次源码的 tag。工作流不自动创建缺失 tag，也不移动冲突 tag；全部平台通过后才为该已验证 tag 创建发行版。
 
 Push a version tag to run the release matrix. Only after every platform succeeds does the publish job create a release. Manual dispatch builds Actions artifacts by default. Enable `publish` with a tag matching the source version to publish from that exact workflow commit after all platforms pass. Linux x64 uses Ubuntu 22.04; Linux ARM64 uses Ubuntu 24.04. Neither the Windows portable nor macOS app has a paid publisher/notarization certificate. Do not describe successful compilation as full hardware validation.
 
@@ -137,3 +137,8 @@ Use `python3 scripts/publish.py` for normal releases; it waits for exact-SHA Che
 GitHub 的 `GITHUB_TOKEN` 推送不会触发普通 on-push Checks，所以旧 prepare shortcut 已停用。高级自动化若用该令牌推送，必须显式对 main 分发 Checks，并确认其 `head_sha` 等于发布源码；若 main 已前进，应停止并重新选择源码。不得使用 PR 成功记录或另一提交的成功记录替代。普通发布仍使用 `python3 scripts/publish.py`，不可变发行与单独 Pages 恢复流程不变。
 
 The Release workflow independently verifies trusted, successful Checks for the exact source SHA both before builds and immediately before publication. Tag/manual publishing cannot bypass it; build-only dispatch remains available. The retired preparation Action has no write permissions or mutations. Token-generated pushes require explicit source Checks dispatch because GitHub does not trigger normal push workflows from `GITHUB_TOKEN` pushes. No real Actions, tags or releases are created by the offline gate regression tests.
+
+
+正式预检和创建 Release 前均通过 GitHub 只读 API 解析远端轻量或附注 tag（有界处理附注链），要求最终 commit 等于本次 `github.sha`。缺失、格式异常、循环、不同源码或构建期间被移动的 tag 均拒绝；手动 publish 与 tag 触发共用该策略。普通发布脚本已负责建立对应不可变 tag；高级手动运行也需先准备正确 tag。工作流只接受已有 tag 并使用 `--verify-tag`，不再借 `--target` 隐式创建。检查与创建发行版之间无法用分开的 GitHub API 实现原子锁；仓库应配置 tag 保护来禁止其他写入者在最后读检查后移动 tag，这属于额外仓库权限控制，离线测试不声称已检查实际仓库配置。
+
+Publishing preflight and final authorization both peel the existing remote tag and require the exact workflow source commit. Manual publishing no longer creates a missing tag implicitly. Missing, moved, malformed or wrong-source tags fail closed without mutations. Repository tag protections are still needed against an external writer racing the final read/create boundary.
