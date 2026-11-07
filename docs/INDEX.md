@@ -7,6 +7,7 @@
 - [WorkBuddy launcher / 桌面连接引导](workbuddy-launcher.md)
 - [DeepSeek Harness integration](deepseek-harness-integration.md)
 - [Harness shared-host setup / 共享主机接入](harness-setup.md)
+- [Harness persisted history](harness-persisted-history.md), [WorkBuddy persisted history](workbuddy-persisted-history.md)
 - [Harness Desktop discovery](harness-desktop-discovery.md)
 - [Discovery companion installation](../integrations/harness-discovery/README.md)
 - [Harness UI source provenance](harness-ui-provenance.md)
