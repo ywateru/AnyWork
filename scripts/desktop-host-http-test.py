@@ -583,16 +583,23 @@ class DesktopHostHTTP(unittest.TestCase):
 
     def test_shared_events_poll_watermark_replay_and_authentication(self):
         initial = self.request('/events/poll')
+        self.assertEqual(set(initial), {'events', 'cursor', 'has_more'})
         self.assertEqual(initial['events'], [])
+        self.assertIs(initial['has_more'], False)
         after = initial['cursor']
         self.host.update(lambda state: state.update(fixtureRevision='new body'))
         page = self.wait(lambda: (page if (page := self.request('/events/poll?after=' + str(after)))['events'] else None))
         self.assertTrue(all(event['seq'] > after and event['session_id'] == 'codex-' + THREAD for event in page['events']))
+        self.assertEqual(set(page), {'events', 'cursor', 'has_more'})
         self.assertEqual(page['cursor'], page['events'][-1]['seq'])
+        self.assertIs(page['has_more'], False)
         replay = self.request('/events/poll?after=' + str(after))
+        self.assertEqual(set(replay), {'events', 'cursor', 'has_more'})
         self.assertEqual(replay['events'][:len(page['events'])], page['events'])
+        self.assertEqual(replay['cursor'], replay['events'][-1]['seq'])
+        self.assertIs(replay['has_more'], False)
         future = self.request('/events/poll')['cursor'] + 1000
-        self.assertEqual(self.request('/events/poll?after=' + str(future)), {'events': [], 'cursor': future})
+        self.assertEqual(self.request('/events/poll?after=' + str(future)), {'events': [], 'cursor': future, 'has_more': False})
         for endpoint in ['/events', '/events/poll']:
             with self.assertRaises(urllib.error.HTTPError) as raised:
                 LOCAL_HTTP.open('http://127.0.0.1:' + str(self.port) + '/api' + endpoint, timeout=3)
