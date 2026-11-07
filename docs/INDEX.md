@@ -4,6 +4,7 @@
 - [当前支持与验收矩阵 / Support matrix](support-matrix.md)
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)
 - [Schema safety and recovery contract (G1 / I05)](schema-and-recovery.md)
+- [Durable message operations contract (G1 / I02)](message-operations.md)
 - [Global event scope and cursor contract (I01)](global-event-scope.md)
 - [Conditional file editing and conflict recovery (I04)](file-edit-consistency.md)
 - [Conversation UI](ui-design.md), [conversation panels](conversation-panels.md)
