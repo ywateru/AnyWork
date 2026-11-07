@@ -4,9 +4,9 @@ AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android
 
 **New in 0.1.11 / 本次更新**
 
-Discover existing local DeepSeek Harness and WorkBuddy histories alongside Codex, including conversations from other projects when `--agent-scope all` is enabled. Desktop-managed service launches enable that scope. Saved text and tool results remain readable without an execution host; native child sessions keep their parent relationship. Existing Agent icons, filters, search, directory ordering and archive controls apply to these histories too.
+Discover existing local DeepSeek Harness and WorkBuddy histories alongside Codex, including conversations from other projects when `--agent-scope all` is enabled. Desktop-managed service launches enable that scope. Saved text and tool results remain readable without an execution host; native child sessions keep their parent relationship. Existing Agent icons, filters, search, directory ordering, archive state and filtering apply to these histories too.
 
-新增本机 DeepSeek Harness 与 WorkBuddy 历史会话发现，与 Codex 一同显示。启用 `--agent-scope all` 后可查看跨项目历史，桌面管理器启动服务时默认启用该范围。执行入口未连接时仍可查看已保存的文本和工具结果；原生子会话保留父子关系，并沿用 Agent 图标、筛选、搜索、目录排序和归档功能。
+新增本机 DeepSeek Harness 与 WorkBuddy 历史会话发现，与 Codex 一同显示。启用 `--agent-scope all` 后可查看跨项目历史，桌面管理器启动服务时默认启用该范围。执行入口未连接时仍可查看已保存的文本和工具结果；原生子会话保留父子关系，并沿用 Agent 图标、筛选、搜索、目录排序、归档状态与筛选。
 
 Fixes WorkBuddy's injected runtime context appearing as user messages, including already cached records. Latest native snapshots now include in-memory requests and replies, restoring incremental updates after Web or desktop input. Legacy-cache repair preserves message identities, attachments and pending interactions; reconnect does not resend prompts.
 
