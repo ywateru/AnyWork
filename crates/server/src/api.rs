@@ -14,7 +14,7 @@ use std::{path::PathBuf, sync::Arc};
 
 pub async fn info(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"client_presence":true,"local_service_control":true,"product":"AnyWork","version":env!("CARGO_PKG_VERSION"),"workspace":app.workspace,"agent_scope":if app.agent_scope == crate::CodexScope::All { "all" } else { "workspace" },"codex_scope":if app.codex_scope == crate::CodexScope::All { "all" } else { "workspace" },"hostname":std::env::var("ANYWORK_HOSTNAME").or_else(|_|std::env::var("REMOTE_AGENT_HOSTNAME")).or_else(|_|std::env::var("HOSTNAME")).unwrap_or_else(|_|"Local machine".into())}),
+        json!({"capability_projection_v1":true,"client_presence":true,"local_service_control":true,"product":"AnyWork","version":env!("CARGO_PKG_VERSION"),"workspace":app.workspace,"agent_scope":if app.agent_scope == crate::CodexScope::All { "all" } else { "workspace" },"codex_scope":if app.codex_scope == crate::CodexScope::All { "all" } else { "workspace" },"hostname":std::env::var("ANYWORK_HOSTNAME").or_else(|_|std::env::var("REMOTE_AGENT_HOSTNAME")).or_else(|_|std::env::var("HOSTNAME")).unwrap_or_else(|_|"Local machine".into())}),
     )
 }
 pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
@@ -28,7 +28,8 @@ pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
             _ => None,
         };
         json!({"id":p.id,"name":p.name,"capabilities":p.capabilities,
-            "protocol_version":p.protocol_version,"available":available,"setup_hint":setup_hint})
+            "protocol_version":p.protocol_version,"available":available,"setup_hint":setup_hint,
+            "capability_projection":crate::capabilities::catalog(p, available)})
     }).collect::<Vec<_>>()}))
 }
 /// Read stored state only: an update check must not start discovery or attach engines.

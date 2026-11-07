@@ -1,4 +1,5 @@
 mod api;
+mod capabilities;
 mod catalog;
 mod clients;
 mod composer;
@@ -403,6 +404,7 @@ async fn main() -> Result<()> {
             get(api::session).patch(api::update).delete(api::remove),
         )
         .route("/sessions/{id}/messages", post(api::message))
+        .route("/sessions/{id}/capabilities", get(capabilities::read))
         .route("/sessions/{id}/edit", get(editing::get).post(editing::post))
         .route(
             "/sessions/{id}/edit/{operation_id}",

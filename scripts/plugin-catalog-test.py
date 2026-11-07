@@ -65,7 +65,13 @@ class DefaultPlugins(unittest.TestCase):
                             request('sessions', {'agent': agent, 'cwd': str(workspace)})
                         self.assertEqual(e.exception.code, 400)
                     for row in rows:
-                        self.assertEqual(set(row), {'id', 'name', 'capabilities', 'protocol_version', 'available', 'setup_hint'})
+                        self.assertEqual(set(row), {'id', 'name', 'capabilities', 'protocol_version', 'available', 'setup_hint', 'capability_projection'})
+                    for row in rows:
+                        projection = row['capability_projection']
+                        self.assertEqual(projection['version'], 1)
+                        self.assertTrue(projection['enabled'])
+                        self.assertIsNone(projection['transport_reachable'])
+                        self.assertIsNone(projection['identity_verified'])
                     self.assertEqual(request('sessions')['sessions'], [])
                     self.assertFalse((root / '.anywork').exists())
                     # Invalid default discovery must not look configured or start a host.
