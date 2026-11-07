@@ -139,6 +139,8 @@ for (const short of [false, true]) {
     context,
   }, info) => {
     const mobile = info.project.name === "android-web";
+    // Eighty sessions require many separate in-viewport touch strokes.
+    if (mobile) test.setTimeout(45000);
     if (short)
       await page.setViewportSize({ width: mobile ? 390 : 960, height: 480 });
     const sidebar = await sidebarFixture(page, mobile);
