@@ -35,3 +35,7 @@ The new goal is to add WorkBuddy from the installed desktop, preserving shared e
 | [Independent verification](tasks/workbuddy-verification.md) | final candidate code accepted for experimental integration; installed native writing/E2E remains open |
 
 The [backend review](reviews/workbuddy-backend.md) accepts product commit `46fed88`; the [UI/launcher review](reviews/workbuddy-ui.md) accepts `18282da`. [Merged-system checks](reviews/workbuddy-merged.md) record local validation separately. Native error-envelope and approval occurrence/turn findings are closed. A normally initialized WorkBuddy account remains necessary to complete actual native creation and collaboration acceptance. This experimental source merge is not a feature-completion or publication claim.
+
+## Default integration and sidebar scrolling follow-up
+
+The user requested default dsh/WorkBuddy visibility and bounded sidebar scrolling. [Contract and delivery tasks](tasks/default-agents-sidebar-scroll.md) separate enabled integration registration from native-host connection readiness. Two isolated implementations and an independent review are in progress. This follow-up does not publish a release or send messages to native sessions.
