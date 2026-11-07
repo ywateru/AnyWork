@@ -1,6 +1,6 @@
 # HTTP 与实时接口
 
-除 `/api/health`、静态界面和 `/source` 外，`/api/*` 均要求 `Authorization: Bearer <token>`。不支持 URL query token。除图片与二进制文档下载外返回 JSON；错误格式 `{error:string}`。token 错误为 401，越界路径为 403，不存在会话为 404，忙碌/已失效审批为 409。
+除 `/api/health`、静态界面和 `/source` 外，`/api/*` 均要求 `Authorization: Bearer <token>`。不支持 URL query token。除图片与二进制文档下载外返回 JSON；基本错误格式 `{error:string}`，文件保存等专门入口另含稳定 `code` / `delivery_state`。token 错误为 401，越界路径为 403，不存在会话为 404，忙碌/已失效审批为 409。
 
 | 方法 | 路径 | 用途 / 请求体 |
 | --- | --- | --- |
@@ -35,13 +35,17 @@
 | GET | `/api/sessions/:id/feedback/:message_id` | 当前消息反馈 `{feedback:对象或null}` |
 | PUT | `/api/sessions/:id/feedback/:message_id` | 覆盖保存 `{rating:"good"或"bad",tags?:[],text?:string或null}` |
 | DELETE | `/api/sessions/:id/feedback/:message_id` | 幂等重置消息反馈 `{ok:true}` |
-| GET | `/api/sessions/:id/files?path=src` | 目录 `{entries,path}` 或文本 `{content}` |
-| PUT | `/api/sessions/:id/files` | `{path,content}` 保存文本；父目录需存在 |
+| GET | `/api/sessions/:id/files?path=src` | 目录 `{entries,path}` 或文本 `{content,revision}`；revision 为精确字节 SHA-256 |
+| PUT | `/api/sessions/:id/files` | `{path,content,expected_revision}`；摘要须匹配，显式 null 仅创建；父目录需存在 |
 | POST | `/api/sessions/:id/uploads` | multipart 文件，返回 `{files:[{name,path,size}]}` |
 | GET | `/api/sessions/:id/image?path=...` | 带鉴权的 PNG/JPEG/GIF/WebP 图片字节 |
 | GET | `/api/sessions/:id/document?path=...` | PDF 内联预览；Office/OpenDocument/RTF 文档附件下载，最大 20 MiB |
 | GET | `/api/sessions/:id/git` | `{status,diff}`，当前工作树相对 HEAD 的差异 |
 | WS | `/ws/terminal/:id` | PTY 交互终端 |
+
+## 文本文件保存
+
+文件文本保存必须使用读取时的 `revision`；缺少 `expected_revision` 返回 428，过期摘要、原文件已删除或 create-only 碰撞返回 409。成功要求 `{ok:true,revision}`；503 `file_save_uncertain` 或丢响应不能直接重发覆盖。Web 保留草稿，允许比较并明确采用新基线、复制或放弃草稿。服务使用同进程统一写入锁，避免大小写/Unicode/父路径别名绕过串行检查；不同文件的保存也会依次执行。外部进程最终比较到 rename 间的竞争、多个服务进程与跨平台持久化范围，详见[文件一致性契约](file-edit-consistency.md)。
 
 ## 默认 Agent 插件
 

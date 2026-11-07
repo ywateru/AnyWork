@@ -1,6 +1,6 @@
-# Conditional text-file saves — I04 candidate
+# Conditional text-file saves — I04
 
-Status: isolated implementation candidate, not independently accepted or merged. This document records the proposed contract and evidence, not a claim that I04 is resolved.
+Status: source candidate `629992a` passed independent review `09daf58` and is merged. The contract and evidence below describe tested macOS/Chromium behavior; other platforms and arbitrary external-writer CAS remain explicitly outside the verified guarantee. Merged full-pipeline evidence is tracked in [delivery progress](plan/improvement-progress.md), separately from developer results.
 
 ## HTTP contract
 

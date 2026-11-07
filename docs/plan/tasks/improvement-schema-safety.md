@@ -1,7 +1,7 @@
 ---
 id: improvement-schema-safety
 scope: prioritized-project-improvement
-status: ready
+status: in-progress
 depends-on: []
 ---
 

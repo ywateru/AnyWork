@@ -5,6 +5,7 @@
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)
 - [Schema safety and recovery contract (G1 / I05)](schema-and-recovery.md)
 - [Global event scope and cursor contract (I01)](global-event-scope.md)
+- [Conditional file editing and conflict recovery (I04)](file-edit-consistency.md)
 - [Conversation UI](ui-design.md), [conversation panels](conversation-panels.md)
 - [Sidebar Agent filtering and icons](sidebar-agent-filter.md)
 - [WorkBuddy integration contract](workbuddy-integration.md), [investigation](plan/analysis/workbuddy.md)
