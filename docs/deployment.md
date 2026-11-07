@@ -2,13 +2,13 @@
 
 ## 本机服务
 
-建议单独系统用户运行，工作目录设置为实际允许的项目父目录。保留 `.remote-agent` 数据及该用户的 Codex 登录目录。服务退出不自动重复执行请求；下次消息恢复同一 Codex thread。
+建议单独系统用户运行，工作目录设置为实际允许的项目父目录。新安装默认使用 `.anywork`；仅当已有 `.remote-agent` 目录且未显式指定数据目录时继续使用旧目录。保留实际数据目录及该用户的 Codex 登录目录。服务退出不自动重复执行请求；下次消息恢复同一 Codex thread。
 
 生产命令：
 
 ```bash
 npm ci && npm run build
-cargo build --locked --release
+cargo build --locked --release -p anywork
 python3 scripts/source-archive.py
 ./target/release/anywork --workspace /srv/projects --data-dir /srv/anywork-data
 ```
@@ -36,7 +36,7 @@ location / {
 
 ## 容器
 
-仓库提供 Dockerfile 与 compose.yaml。容器以 UID 10001 运行，挂载的工作目录需对该用户可写。
+仓库提供 Dockerfile 与 compose.yaml。Rust 阶段仅构建 `-p anywork` 服务，不编译桌面应用，也不要求 GTK、WebKit 或桌面 UI 产物。容器以 UID 10001 运行，挂载的工作目录需对该用户可写。运行时默认固定 `@openai/codex@0.164.0`；可用 `--build-arg CODEX_VERSION=版本` 覆盖，但更换后需重新做对应 Codex 原生功能验收。
 
 ```bash
 mkdir -p workspace
@@ -48,12 +48,21 @@ docker compose up -d
 
 Codex 账号保存在独立命名卷中，数据和工作区分别挂载。compose 默认只发布到主机 loopback。外部 Agent 插件的可执行文件和运行依赖需要在镜像里安装，JSON 清单不是自动安装器。
 
-当前开发机没有 Docker；Docker/compose 配置作为可审查部署配套提供，未声称已在本机实际构建镜像。
+容器中的 Codex 是独立 CLI 环境；容器镜像不代表宿主桌面会话共享已通过验收。无需登录或调用模型的隔离验收：
+
+```bash
+python3 scripts/source-archive.py
+python3 scripts/container-smoke-test.py --build
+```
+
+该脚本进行无缓存镜像构建，使用唯一命名的容器和卷、随机 loopback 端口及本地 RPC fixture，检查 UID 10001、错误令牌 401、API/Web 静态资源版本、`/source` 与源码归档逐字节一致，以及重建容器后会话、工作区和访问令牌保留；退出时只清理本次创建的资源。`--image 镜像` 可检验既有镜像，要求源码归档与镜像对应；不会移除传入的镜像。
+
+Checks 工作流中的 `container` job 会实际执行上述构建和验收，正式发布要求同一源码提交的完整 Checks 成功。当前开发机有 Docker CLI，但 daemon socket 不可用，因此本轮本机只能验证脚本/配置；**实际镜像验收仍待 CI 或具备 Docker daemon 的隔离环境执行**。不要将静态检查或新增 CI 配置视作实际构建成功。
 
 ## Android
 
-使用 JDK 17、Gradle wrapper 8.14.2、Android API 35 和 Build Tools 35.0.0。Gradle wrapper 校验官方 SHA-256，不应删除校验以绕过下载失败。如果网络返回了错误页面，重新下载官方分发文件并核对 checksum。
+使用 JDK 17、Gradle wrapper 8.14.2、Android API 36 和 Build Tools 36.0.0。Gradle wrapper 校验官方 SHA-256，不应删除校验以绕过下载失败。如果网络返回了错误页面，重新下载官方分发文件并核对 checksum。
 
-先构建 Web，再运行 `android/gradlew :app:assembleDebug :app:lintDebug`。正式 APK 使用自己的 release 签名，仓库不存放签名密钥。Debug APK 的 WebView 调试仅在 debug 构建启用。应用关闭备份，令牌保存在应用私有 WebView 存储中。
+先构建 Web，再运行 `android/gradlew :app:assembleDebug :app:lintDebug`。正式 APK 使用自己的 release 签名，仓库不存放签名密钥。Debug APK 的 WebView 调试仅在 debug 构建启用。应用关闭备份；原生 `ConnectionStore` 使用 Android Keystore 中的 AES 密钥加密连接资料，并保存于应用私有偏好设置，通过桥接提供给 WebView。Web 层仍有会话及兼容浏览器的本地状态，不能将其描述为整个令牌生命周期仅存在于 WebView 或从不进入 Web 层。
 
 HTTP 支持用于用户配置的局域网服务；通过互联网请配置 HTTPS。Android System WebView 应保持更新，文本分享会填入当前会话草稿，发送仍由用户触发。

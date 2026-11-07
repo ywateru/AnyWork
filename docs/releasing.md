@@ -123,6 +123,17 @@ node scripts/site-test.mjs
 
 See [updates.md](updates.md) for the update lifecycle and key requirements. Configure `TAURI_SIGNING_PRIVATE_KEY` before running the release workflow. All five native desktop targets are required to publish `latest.json`. Windows now also builds a per-user NSIS installer; Linux builds AppImages. Portable downloads remain available for manual updates.
 
-Use `python3 scripts/publish.py` for normal releases; it waits for exact-SHA Checks before tagging and verifies the website afterward. The older **Release new version** Action and manual version/tag commands remain advanced alternatives and do not provide the same local resume/report lifecycle. Never reuse a published tag or overwrite its artifacts: the preflight rejects duplicate/backwards releases. The signing CLI binds each signature to its application version.
+Use `python3 scripts/publish.py` for normal releases; it waits for exact-SHA Checks before tagging and verifies the website afterward. The older **Release new version** Action is retired and fails with migration instructions without checking out code or mutating tags/branches. Manual version/tag or Release dispatch remains advanced maintenance only and must pass the same workflow-enforced Checks gate. Never reuse a published tag or overwrite its artifacts: the preflight rejects duplicate/backwards releases. The signing CLI binds each signature to its application version.
 
-正式发布需要先配置 `TAURI_SIGNING_PRIVATE_KEY`。五个原生桌面目标全部成功后，才发布 `latest.json`；签名绑定应用版本。常规发布使用 `python3 scripts/publish.py`，自动等待检查、构建、官网与轻量核验；旧的 **Release new version** Action 和 `npm run version:patch` 仅保留为手动维护方式。不复用已发布版本，不覆盖旧附件。保管好 Git 之外的发行私钥。
+正式发布需要先配置 `TAURI_SIGNING_PRIVATE_KEY`。五个原生桌面目标全部成功后，才发布 `latest.json`；签名绑定应用版本。常规发布使用 `python3 scripts/publish.py`，自动等待检查、构建、官网与轻量核验；旧的 **Release new version** Action 已停用，只返回迁移提示；它不再推送分支、创建 tag 或分发构建。手动维护版本或调用 Release 工作流也不能绕过下面的检查门禁。不复用已发布版本，不覆盖旧附件。保管好 Git 之外的发行私钥。
+
+
+## Release 工作流的独立 Checks 门禁
+
+发布脚本的检查之外，`Build releases` 自身在公共预检和实际创建 Release 前两次执行 `scripts/check-release-ci.py`。只接受仓库自身 `.github/workflows/ci.yml` 的 active workflow ID、精确 40 位源码 SHA、`main` 分支、`push` 或显式 `workflow_dispatch` 事件，并要求该运行 completed/success。PR、fork、相似名称、不同 SHA、失败、取消或缺失的运行均不能授权发布；已有精确成功记录可以复用。等待有上限并返回 Actions URL；API 只读、不转发重定向、失败关闭，不输出凭据。
+
+所有 tag 发布和手动 publish 均使用同一预检，创建 Release 前再核对一次。仅构建 artifacts 的手动运行不要求发布授权。Checks 对所有 main 提交运行，包括仅修改文档的提交，避免发布源码 SHA 没有对应检查。容器实际构建验收也是 Checks 的组成部分。
+
+GitHub 的 `GITHUB_TOKEN` 推送不会触发普通 on-push Checks，所以旧 prepare shortcut 已停用。高级自动化若用该令牌推送，必须显式对 main 分发 Checks，并确认其 `head_sha` 等于发布源码；若 main 已前进，应停止并重新选择源码。不得使用 PR 成功记录或另一提交的成功记录替代。普通发布仍使用 `python3 scripts/publish.py`，不可变发行与单独 Pages 恢复流程不变。
+
+The Release workflow independently verifies trusted, successful Checks for the exact source SHA both before builds and immediately before publication. Tag/manual publishing cannot bypass it; build-only dispatch remains available. The retired preparation Action has no write permissions or mutations. Token-generated pushes require explicit source Checks dispatch because GitHub does not trigger normal push workflows from `GITHUB_TOKEN` pushes. No real Actions, tags or releases are created by the offline gate regression tests.
