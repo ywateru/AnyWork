@@ -20,6 +20,7 @@ SPEC.loader.exec_module(LAUNCH)
 
 FAKE = r'''import http.server,json,os,pathlib,sys,threading,time,uuid
 mode=os.environ.get('ANYWORK_LAUNCH_FIXTURE_MODE','ok')
+time.sleep(float(os.environ.get('ANYWORK_LAUNCH_FIXTURE_START_DELAY','0')))
 config=pathlib.Path(os.environ['WORKBUDDY_CONFIG_DIR'])
 profile=pathlib.Path(os.environ['WORKBUDDY_USER_DATA_DIR'])
 report=pathlib.Path(os.environ['ANYWORK_LAUNCH_FIXTURE_REPORT'])
@@ -82,10 +83,21 @@ class LauncherTests(unittest.TestCase):
                 pass
         self.temp.cleanup()
 
-    def start(self, mode='ok', timeout=3):
-        env = {**os.environ, 'HOME': str(self.root), 'ANYWORK_LAUNCH_FIXTURE_MODE': mode, 'ANYWORK_LAUNCH_FIXTURE_REPORT': str(self.report)}
+    def start(self, mode='ok', timeout=3, startup_delay=0):
+        env = {**os.environ, 'HOME': str(self.root), 'ANYWORK_LAUNCH_FIXTURE_MODE': mode, 'ANYWORK_LAUNCH_FIXTURE_REPORT': str(self.report), 'ANYWORK_LAUNCH_FIXTURE_START_DELAY': str(startup_delay)}
         self.launcher = subprocess.Popen([sys.executable, str(SCRIPT), '--app', str(self.app), '--config-dir', str(self.config), '--user-data-dir', str(self.profile), '--descriptor', str(self.descriptor), '--timeout', str(timeout)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         return self.launcher
+
+    def wait_report(self):
+        # Popen does not wait for the fake desktop's Python imports or report.
+        # A deliberate launcher timeout may finish first under CPU pressure.
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                return json.loads(self.report.read_text())
+            except (FileNotFoundError, json.JSONDecodeError):
+                time.sleep(0.03)
+        self.fail('Fake desktop did not publish its startup report')
 
     def wait_descriptor(self):
         deadline = time.monotonic() + 5
@@ -249,13 +261,15 @@ class LauncherTests(unittest.TestCase):
                 if mode == 'stale':
                     active.write_text('65534\n/devtools/browser/' + str(uuid.uuid4()) + '\n')
                     old = active.read_bytes()
-                self.start(mode, timeout=0.4)
+                # Reproduce delayed child scheduling deterministically: the
+                # stale case times out before the desktop writes its report.
+                self.start(mode, timeout=0.4, startup_delay=0.7 if mode == 'stale' else 0)
                 self.launcher.communicate(timeout=5)
                 self.assertEqual(self.launcher.returncode, 1)
                 self.assertFalse(self.descriptor.exists())
                 if mode == 'stale':
                     self.assertEqual(active.read_bytes(), old)
-                pid = json.loads(self.report.read_text())['pid']
+                pid = self.wait_report()['pid']
                 os.kill(pid, 0)  # Setup failure must not terminate the desktop.
                 os.killpg(pid, signal.SIGTERM)
                 self.report.unlink()
