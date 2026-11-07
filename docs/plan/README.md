@@ -1,5 +1,7 @@
 # DeepSeek Harness delivery
 
+Current continuing work: [prioritized project improvements](improvement-progress.md), starting with the [G0 correctness and delivery contract](tasks/improvement-g0.md). Earlier delivery records below remain historical evidence.
+
 Base: `main` at `f2e2ebd`. References are local-only. Implementation tasks use separate worktrees and do not modify the real Codex or AnyWork runtime.
 
 | Task | Scope | State |
