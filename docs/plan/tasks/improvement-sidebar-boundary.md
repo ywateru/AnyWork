@@ -1,7 +1,7 @@
 ---
 id: improvement-sidebar-boundary
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -21,4 +21,4 @@ Run focused sidebar cases on desktop and Pixel plus a bounded repeat of the fail
 
 ## Current evidence
 
-Candidate `7aa1877` passed [independent review](../reviews/improvement-sidebar-boundary.md) at `9b542c3` and merged at `efc57de`. Independent original short-mobile repeats passed 2/2 and the complete desktop/Pixel focused suite passed 6/6. Strict top-zero, real touch, progress/budget and containment checks are retained. The task remains in progress until the new exact-source cloud Checks completes; the prior failed cloud run is not reclassified as a pass.
+Candidate `7aa1877` passed [independent review](../reviews/improvement-sidebar-boundary.md) at `9b542c3` and merged at `efc57de`. Independent original short-mobile repeats passed 2/2 and the complete desktop/Pixel focused suite passed 6/6. Strict top-zero, real touch, progress/budget and containment checks are retained. [Fresh exact-source cloud Checks](../reviews/improvement-g1-source-ci.md) passed all four jobs at `aacaa19`, including the early browser gate and complete `check.sh`. This closes the test-helper task; the prior failed cloud run is not reclassified as a pass and physical-device acceptance remains separate.

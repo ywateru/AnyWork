@@ -1,6 +1,6 @@
 # I07b 原生连接观测与关键错误调用链研究
 
-状态：待独立评审的分析提案。源码基线为 `aacaa19b98314976b34e91f11c12326c6ad6ad7c`，研究日期 2026-11-07。本文只读取源码和既有契约；没有编译、安装、运行产品测试、连接真实 Agent、读取账号凭据或修改运行服务。下文“现状”是该基线的事实，“建议”不是已实现能力。
+状态：分析提案已通过[独立评审 `42ed133`](../reviews/improvement-capability-observations.md)，无阻塞发现；字段命名澄清已纳入。源码基线为 `aacaa19b98314976b34e91f11c12326c6ad6ad7c`，研究日期 2026-11-07。本文只读取源码和既有契约；没有编译、安装、运行产品测试、连接真实 Agent、读取账号凭据或修改运行服务。下文“现状”是该基线的事实，“建议”不是已实现能力，b1 仍需明确实施契约。
 
 依据：[能力契约](../../capability-projection.md)、[I07a 模块及验收边界](../../capability-projection-module.md)、[支持矩阵](../../support-matrix.md)、[消息操作契约](../../message-operations.md)、[I02a ledger](../tasks/improvement-message-ledger.md)、[I02b delivery](../tasks/improvement-message-delivery.md)、[项目评审 I07/I08/I10/I11](../../project-improvement-review.md#7-agent-协作与兼容)。任务正文由 root 在主工作树提供；本分析没有修改中央契约、任务或进度。
 
@@ -151,7 +151,7 @@ I02 ledger ── operation / preparation / dispatch / result 的持久权威
 
 [descriptor/connect](../../../crates/server/src/workbuddy.rs#L26)读取私有且非symlink描述，严格5.9.3、有效PID/UUID/configDir/browserId；live `/json/version`核对同源browser path；从`/json/list`选唯一file-backed主renderer，再连接同源page WebSocket；preload验证invoke/eventBridge函数、appVersion、configDir。不能放宽版本、支持任意CDP target、用账号页面或绕登录。
 
-重要区分：descriptor instance_id/PID通过格式校验，并没有与renderer返回的同名boot ID/PID作live equality；live证明的是browserID路径、受控target、preload版本/configDir。Carrier只保存commands sender，丢弃了上述receipt。不能声称“原生instance_id已由握手认证”；可保留它为discovery claim并明确强度，public native_instance用opaque connection-binding或继续unknown，最终字段语义由合同决定。
+重要区分：descriptor instance_id/PID通过格式校验，并没有与renderer返回的同名boot ID/PID作live equality；live证明的是browserID路径、受控target、preload版本/configDir。Carrier只保存commands sender，丢弃了上述receipt。不能声称“原生instance_id已由握手认证”；可保留它为discovery claim并明确强度，public `native_instance` 继续 unknown。如需表达本地连接身份，使用另名 `connection_binding`，不能将自造 UUID 填入原生实例字段。
 
 [Carrier](../../../crates/server/src/workbuddy.rs#L281)拥有CDPactor，发送Runtime.evaluate、30秒等待；CDP异常映射通用失败，关闭清pending，未暴露watch。`invoke`固定allowlist、原生错误code白名单、source白名单并隐藏raw account/provider对象，但最后`bail!`将这些结构化code变成字符串。建议在这一受控边界保留typed kind/source；例如UNAUTHORIZED是该operation返回的受控错误，不能进一步猜为“全局未登录”或安全重试。
 
@@ -232,7 +232,7 @@ custom命令沿managed SDK链，manifest只限定插件协议1，不给运行应
 
 仅重读capabilities、计时tick、ping/pong、任意stdout/JSON、本地缓存加载和旧事件重放都不刷新nativefreshness。WB每500ms验证snapshot可更新；follower只有相关快照/patch/受控readresponse更新；managed或sharedidle长时间无新帧会过期，**允许显示unknown，不偷偷探测来保持绿灯**。未来显式read-only诊断需另定范围与预算；现有connect会resume，不自动改名成纯诊断。
 
-建议每个current runtime最多保存一个current peer snapshot，旧代仅保留不能写入的短期关闭标识；无runtime的记录即时移除，公共读取无插入作用。pending只保留当前已验证occurrence，消失/断线立即移除；设置总量上限（建议每session128、全实例4096）及条目字节预算，达到上限明确unknown/over_budget而非裁剪后仍allow。Runtime/gate和历史缓存现有容量问题另属I06/I24；observation不得再引入无界session墓碑。具体限制需实现合同确认并测边界。
+建议每个current runtime最多保存一个current peer snapshot，旧代仅保留不能写入的短期关闭标识；无runtime的记录即时移除，公共读取无插入作用。pending只保留当前已验证occurrence，消失/断线立即移除；设置总量上限（建议每session128、全实例4096）及条目字节预算，达到上限明确unknown/over_budget而非裁剪后仍allow。receipt 的交付路径也必须有界，不能在 snapshot 之外新增无界 channel 或关闭代次积压；溢出失效为 unknown 并保留关闭信号，不以静默丢弃维持许可。Runtime/gate和历史缓存现有容量问题另属I06/I24；observation不得再引入无界session墓碑。具体限制需实现合同确认并测边界。
 
 ### 6.3 授权、竞态与持久化边界
 
@@ -293,7 +293,7 @@ I02b拥有prepare/dispatch/receipt边界及所有message/queue/main/child调用�
 
 - 是否先接受完全不启用nativeallowed_now的b1，只交生命周期可验证基础；建议是，以免被不完整版本证明迫使放宽规则。
 - public `native_instance`坚持原生实例身份还是另增connection_binding；建议保持原含义并另名表达本地连接代次。版本不可得时保留unknown，I08另定受支持范围，不在本文发明bootID。
-- 创建singleflight采用内部资格还是gate-token；需列锁顺序、attach初始投影的安装时点、取消清理，以及跨session同thread与I02fence关系。
+- 创建singleflight采用内部资格还是gate-token；需列map/peer/gate/Store锁顺序、attach初始投影的安装时点、取消清理，以及跨session同thread与I02fence关系。每个跨 await 的提交点都要重新取得当前资格，不能仅预先比较一次再执行稍后的无保护副作用。
 - 5秒动态TTL与128/4096建议预算需按真实闲置/容量结果审查；无证据时过期unknown，不以隐式probe掩盖。不能直接照搬sidebar12秒运行提示为控制TTL。
 - generic `retryable`的兼容语义与typedHTTPstatus逐类表需b2落实；任何迁移保留legacyerror与显式成功/部分成功合同。
 - 控制类操作的uncertain目前各adapter强弱不同，不能用新observations重连刷新清除它；如需持久跨重启控制fence，单立契约，避免与I02重叠。

@@ -1,7 +1,7 @@
 ---
 id: improvement-capability-observations
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: [improvement-capability-projection]
 ---
 
@@ -31,3 +31,7 @@ Recommend an independently verifiable module boundary with concrete inputs/outpu
 ## Verification
 
 Analysis must cite actual source symbols at the pinned SHA, distinguish proposed behavior from implemented behavior, and state all unresolved design choices. A different reviewer checks the exact committed document and selected source chains before root accepts design or creates implementation tasks. Documentation acceptance is not implementation, native observation acceptance, UI activation or completion of I07.
+
+## Accepted analysis
+
+Candidate `fd4cc870` passed [independent review `42ed133`](../reviews/improvement-capability-observations.md). Root merged the analysis and incorporated the native-instance naming clarification, bounded receipt transport requirement and explicit concurrency-contract prerequisites. This closes the research task only. A b1 implementation contract must decide singleflight/qualification, lock ordering, attach installation, cancellation cleanup and compare-and-commit across awaits before source development. Native-dependent `allowed_now` remains false; errors, Web integration and real native acceptance remain open.

@@ -21,7 +21,7 @@ python3 scripts/source-archive-test.py
 npm run format:check
 ```
 
-Rust: server 151 passed / 4 explicitly ignored; desktop 34 / 4; SDK 5; Codex 3. HTTP/script cases: plugin catalog 2, capability projection 6, integration 25, event scope 4, schema recovery 3 (including its startup-negative matrix), file consistency 6, desktop host 20 and source archive 4, all passed. Format and Clippy passed.
+Rust: server 151 passed / 4 explicitly ignored; desktop 34 / 4; SDK bridge 3; Codex 5. HTTP/script cases: plugin catalog 2, capability projection 6, integration 25, event scope 4, schema recovery 3 (including its startup-negative matrix), file consistency 6, desktop host 20 and source archive 4, all passed. Format and Clippy passed.
 
 These are bounded regressions following the full successful schema command at `a41eec7`; the 611-case browser suite was not repeated for this server-only additive module. A fresh exact-source cloud Checks run remains required for the new mainline. No real native Agent/model, production service, release or installed desktop was changed. Fixture runtime presence never enabled projected native actions.
 

@@ -12,7 +12,7 @@ All registered local check stages have successful evidence after the specific co
 4. Full desktop/mobile browser regression passed **611 cases**, with **one existing intentional skip**, in 12.7 minutes. The subsequent updater command initially lacked the local `PLAYWRIGHT_CHANNEL=chrome` setting and could not locate bundled Chromium. A targeted rerun with that environment setting passed all updater UI checks; no browser assertions were weakened and the full browser suite was not needlessly repeated.
 5. Separate format and bilingual site checks passed, independently run by the file/schema reviewer. Site checks covered English/Chinese at 1440/1024/768/390/320 widths, language negotiation/manual preference/deep links, release metadata ordering and DMG/ZIP fallback.
 
-Workspace Rust results in the initial merged run: server **126 passed / 4 native tests ignored**, desktop **34 passed / 4 ignored**, SDK **5 passed**, Codex **3 passed**; workspace doc tests passed. The file HTTP cases actually exercised case and Unicode aliases on this macOS filesystem. These are local results, not Linux/Windows filesystem or physical crash acceptance.
+Workspace Rust results in the initial merged run: server **126 passed / 4 native tests ignored**, desktop **34 passed / 4 ignored**, SDK bridge **3 passed**, Codex **5 passed**; workspace doc tests passed. The file HTTP cases actually exercised case and Unicode aliases on this macOS filesystem. These are local results, not Linux/Windows filesystem or physical crash acceptance.
 
 Ignored integration artifacts hold the detailed logs: `artifacts/g0-merged-check.log`, `artifacts/g0-remaining-check.log` and `artifacts/g0-updater-check.log`. Accepted source reviews remain the authority for each module's boundaries:
 

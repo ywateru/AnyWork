@@ -11,7 +11,7 @@ Exit code **0**. Evidence is retained in ignored `artifacts/g1-schema-merged-che
 ## Actual merged results
 
 - Desktop UI/server/Web builds, Rust format and workspace/all-target Clippy passed.
-- Workspace tests: server **144 passed / 4 explicit native tests ignored**, desktop **34 passed / 4 ignored**, SDK **5 passed**, Codex **3 passed**; doc tests passed.
+- Workspace tests: server **144 passed / 4 explicit native tests ignored**, desktop **34 passed / 4 ignored**, SDK bridge **3 passed**, Codex **5 passed**; doc tests passed.
 - Web unit tests: **31 files / 317 cases passed**.
 - Registered real HTTP/integration checks passed, including schema **3** methods with twelve malformed-schema startup cases, I01 event scope **4**, conditional files **6**, desktop-host **20**, existing queue/edit/recovery/shared-host/goal/API scenarios and source/version/publisher/release-gate smoke scripts. Tests that print publishing actions use mocked transports.
 - Full browser suite: **611 passed / one existing skip**, desktop plus Pixel Chromium emulation, **12.9 minutes**. Desktop updater UI passed in the same successful command with the Chrome setting inherited correctly.

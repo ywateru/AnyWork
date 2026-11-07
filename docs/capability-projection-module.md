@@ -1,6 +1,6 @@
 # Read-only capability projection module (I07a)
 
-Status: source `b374fe31` passed [independent exact-commit review](plan/reviews/improvement-capability-projection.md) at `1bfd268` and is merged; [bounded merged regressions](plan/reviews/improvement-capability-merged.md) passed at `2942baa`. This is the additive server module of the [projection contract](capability-projection.md), not completion of I07, a Web activation, or native writing acceptance. Actual supported versions/topologies remain governed by the [support matrix](support-matrix.md).
+Status: source `b374fe31` passed [independent exact-commit review](plan/reviews/improvement-capability-projection.md) at `1bfd268` and is merged; [bounded merged regressions](plan/reviews/improvement-capability-merged.md) passed at `2942baa`, followed by [full-source CI](plan/reviews/improvement-g1-source-ci.md) at `aacaa19`. This is the additive server module of the [projection contract](capability-projection.md), not completion of I07, a Web activation, or native writing acceptance. Actual supported versions/topologies remain governed by the [support matrix](support-matrix.md).
 
 ## Inputs, outputs and authority
 
