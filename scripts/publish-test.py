@@ -351,6 +351,25 @@ class PublisherTest(unittest.TestCase):
         with self.assertRaisesRegex(publish.Failure, 'still publish'):
             self.pub.allow_new()
 
+    def test_new_refuses_ambiguous_release_retry_until_newer_attempt_finishes(self):
+        self.pub.prepare('patch')
+        self.pub.finish_prepare()
+        self.pub.install_prepared()
+        self.pub.state['phase'] = 'release'
+        tag, sha = self.pub.state['tag'], self.pub.state['source']
+        self.api.tags[tag] = {'object': {'sha': sha, 'type': 'commit'}}
+        failed = self.api.run('release.yml', sha, tag, conclusion='failure')
+        self.api.run_responses['release.yml'] = [[failed]]
+        self.api.ambiguous = True
+        with self.assertRaisesRegex(publish.Failure, 'Ambiguous'):
+            self.pub.wait_workflow('release.yml', sha, tag, retry=True)
+        with self.assertRaisesRegex(publish.Failure, 'retry is unresolved'):
+            self.pub.allow_new()
+        self.assertEqual(len(self.api.posts), 1)
+        self.api.run_responses['release.yml'] = [[dict(failed, run_attempt=2)]]
+        self.pub.allow_new()
+        self.assertIsNone(self.pub.state)
+
     def test_pages_only_keeps_immutable_release_and_never_pushes_or_bumps(self):
         sha = self.api.main
         version = publish.versions.current_version(self.root)

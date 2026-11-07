@@ -363,11 +363,11 @@ class Publisher:
         state['phase'] = 'checks'
         self.save()
 
-    def mutation(self, key, path, data=None):
+    def mutation(self, key, path, data=None, workflow=None):
         intents = self.state['intents']
         if key in intents:
             return
-        intents[key] = {'requested': int(time.time()), 'outcome': 'unknown'}
+        intents[key] = {'requested': int(time.time()), 'outcome': 'unknown', 'workflow': workflow}
         self.save()
         self.api.json(path, method='POST', data=data)
         intents[key]['outcome'] = 'accepted'
@@ -400,7 +400,7 @@ class Publisher:
                     if retry and workflow not in self.retried:
                         self.retried.add(workflow)
                         endpoint = 'rerun-failed-jobs' if run.get('conclusion') == 'failure' else 'rerun'
-                        self.mutation(key, f'actions/runs/{run["id"]}/{endpoint}')
+                        self.mutation(key, f'actions/runs/{run["id"]}/{endpoint}', workflow=workflow)
                     elif key not in self.state['intents']:
                         raise Failure(f'{workflow} ended with {run.get("conclusion")}: {run["html_url"]}. Use --retry-failed; if already published, use --pages-only {self.state["tag"]}')
                     # A saved retry intent must observe a newer attempt before
@@ -535,6 +535,12 @@ class Publisher:
                 runs = self.runs('release.yml', old['source'], old['tag'])
                 require(runs and all(run.get('status') == 'completed' for run in runs),
                         'Previous tagged release may still publish; wait for it to finish before --new')
+                for key, intent in old.get('intents', {}).items():
+                    if key.startswith('retry:') and intent.get('workflow') == 'release.yml':
+                        _, run_id, attempt = key.split(':')
+                        observed = [run for run in runs if run['id'] == int(run_id)]
+                        require(observed and max(run.get('run_attempt', 1) for run in observed) > int(attempt),
+                                'Previous release retry is unresolved; resume and observe its newer attempt before --new')
         if old:
             archive = self.private / ('state-' + str(time.time_ns()) + '.json')
             atomic_json(archive, old)
