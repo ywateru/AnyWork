@@ -32,3 +32,11 @@ Reviewed exact test-only commits `12959b1` and `e8327a8`. The original Linux Chr
 Independent execution against the existing exact preflight Web assets and an isolated fixture server passed **all six desktop/Android browser cases**. The short Android case took **32.4 seconds**, independently demonstrating the need for its 45-second budget. Both normal and short Android screenshots reach conversation 79 with the footer retained and no document blank area. Prettier and diff checks passed. Browser output stayed in temporary review storage; the production Web directory and actual service were untouched.
 
 **Pass for merge; actual Linux Chromium CI remains required before publication**, alongside the Windows platform gate above. macOS Chrome success is not recorded as Linux acceptance.
+
+## Windows lexical-parent fixture follow-up
+
+Windows gate run `42337544975` passed 96 server tests, including the new drive/UNC/verbatim and actual-junction cases, but failed the portable rooted-path test. The release gate remained closed. Its fixture called `PathBuf::join` on a canonical Windows verbatim root; Rust normalizes parent components during that operation, so the supposed traversal no longer contained `..` when passed to the validator.
+
+Reviewed exact test-only correction `e204f42`. It appends the suffix through `OsString` with native separators, explicitly asserts that a `ParentDir` component survives, and requires the exact lexical rejection error rather than accepting an unrelated filesystem error. The valid existing-file check and all other path boundary assertions remain. Removing the old `exists()` assertion avoids making Windows verbatim filesystem resolution semantics part of a lexical-validation contract; the new component/error preconditions directly prove the required rejection. No production path logic changed.
+
+Independent `cargo test --locked --offline -p anywork harness::` passed **19 tests with one existing native opt-in ignored**; format and diff checks passed. **Pass for merge; the next actual Windows CI run is still required before publication.** This local fixture verification is not a Windows pass claim.
