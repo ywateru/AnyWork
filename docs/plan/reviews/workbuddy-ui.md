@@ -2,7 +2,7 @@
 
 Verdict: **PASS for the committed UI and source-launcher scope**, including independently accepted follow-up `18282dac7a423e6d8e27c5cfb0028db35867f2e7`. The initially reported loading UX finding is resolved; no open UI/launcher findings remain. This is not acceptance of native WorkBuddy interoperability or authorization to release/deploy.
 
-Candidate: `8e17536934ecafb315d50011aa82f41cb995d7f0`, branch `codex/workbuddy-ui`, independently reviewed on 2026-11-07. Contract: [WorkBuddy integration](../../workbuddy-integration.md), [launcher setup](../../workbuddy-launcher.md), and task `/Users/water/work/2026/any-work/docs/plan/tasks/workbuddy-ui.md` from main (the task postdates this candidate's base). The reviewer did not implement product changes.
+Candidate: `8e17536934ecafb315d50011aa82f41cb995d7f0`, branch `codex/workbuddy-ui`, independently reviewed on 2026-11-07. Contract: [WorkBuddy integration](../../workbuddy-integration.md), [launcher setup](../../workbuddy-launcher.md), and [task](../tasks/workbuddy-ui.md) from main (the task postdates this candidate's base). The reviewer did not implement product changes.
 
 ## Code and ownership review
 

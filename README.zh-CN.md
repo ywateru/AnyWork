@@ -24,6 +24,8 @@ Rust 桌面管理器负责启动本地服务、管理连接地址、访问密钥
 
 也可接入已有 DeepSeek Harness Web/桌面主机，与 Codex 并列使用，保留同一原生会话：[共享主机接入与验证](docs/harness-setup.md)。
 
+现可与 Codex 一同浏览已有 dsh 和 WorkBuddy 历史，主机未连接时也能查看已保存的对话和工具结果。桌面管理器默认开启跨项目发现；命令行可设置 `--agent-scope all`。WorkBuddy 桌面共享执行仍为实验功能，详见[接入及当前验收范围](docs/workbuddy-launcher.md)与[历史／同步说明](docs/workbuddy-transcript-updates.md)。
+
 ### 可以完成哪些工作
 
 - **延续已有会话。** 发现本机 Codex 历史，按项目整理会话，缓存消息并恢复事件流。通过支持的桌面共享入口协作，不另起第二个执行引擎。

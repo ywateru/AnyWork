@@ -24,6 +24,8 @@ The Rust desktop manager starts the local service and manages connection address
 
 DeepSeek Harness is also available through its existing local Web/Desktop host: [shared-host setup and verification](docs/harness-setup.md). It preserves native session ownership and keeps Codex available alongside it.
 
+Existing dsh and WorkBuddy histories can be browsed alongside Codex, including saved tool results while their host is disconnected. Desktop-managed services enable cross-project discovery; CLI users can set `--agent-scope all`. WorkBuddy shared desktop execution is experimental: see [setup and current acceptance limits](docs/workbuddy-launcher.md) and [history/synchronization details](docs/workbuddy-transcript-updates.md).
+
 ### What you can do
 
 - **Continue the conversation.** Discover local Codex history, group chats by project, cache conversations and reconnect event streams. Attach to supported desktop sharing interfaces without starting a second execution engine.

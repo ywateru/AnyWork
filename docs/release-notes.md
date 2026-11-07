@@ -2,7 +2,25 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.10 / 本次更新**
+**New in 0.1.11 / 本次更新**
+
+Discover existing local DeepSeek Harness and WorkBuddy histories alongside Codex, including conversations from other projects when `--agent-scope all` is enabled. Desktop-managed service launches enable that scope. Saved text and tool results remain readable without an execution host; native child sessions keep their parent relationship. Existing Agent icons, filters, search, directory ordering and archive controls apply to these histories too.
+
+新增本机 DeepSeek Harness 与 WorkBuddy 历史会话发现，与 Codex 一同显示。启用 `--agent-scope all` 后可查看跨项目历史，桌面管理器启动服务时默认启用该范围。执行入口未连接时仍可查看已保存的文本和工具结果；原生子会话保留父子关系，并沿用 Agent 图标、筛选、搜索、目录排序和归档功能。
+
+Fixes WorkBuddy's injected runtime context appearing as user messages, including already cached records. Latest native snapshots now include in-memory requests and replies, restoring incremental updates after Web or desktop input. Legacy-cache repair preserves message identities, attachments and pending interactions; reconnect does not resend prompts.
+
+修复 WorkBuddy 将注入的运行上下文显示为用户消息的问题，并更正已缓存的错误记录。最新原生快照现在包含内存中的请求与回复，恢复网页和桌面输入后的增量同步。缓存修复保留消息身份、附件及待处理交互，重连不会重新发送提示。
+
+Codex, DeepSeek Harness and WorkBuddy integrations are enabled by default; an absent host stays visible with setup guidance. Adds WorkBuddy's official locally bundled icon and an explicit private desktop launcher. Sidebar wheel/touch scrolling now stays within its bounds instead of exposing a blank area below the application.
+
+默认启用 Codex、DeepSeek Harness 和 WorkBuddy 集成；未连接的主机保留设置引导。新增本地打包的 WorkBuddy 官方图标和显式私有桌面引导程序。修复侧边栏鼠标／触摸滚动越界导致页面底部白屏的问题。
+
+WorkBuddy shared execution remains experimental and version-bound to Desktop 5.9.3. Passive installed-history and read-only native snapshot checks passed; send/stream/approval/reconnect checks use an isolated deterministic carrier with the real AnyWork service and Web UI. Complete installed-native creation/message/collaboration acceptance remains open. Shared execution requires a normally initialized WorkBuddy account and the original desktop launched with its private control entry; no second engine is started. See [WorkBuddy setup](https://github.com/ywateru/AnyWork/blob/main/docs/workbuddy-launcher.md) and [history/synchronization evidence](https://github.com/ywateru/AnyWork/blob/main/docs/workbuddy-transcript-updates.md).
+
+WorkBuddy 共享执行仍为实验功能，当前适配 Desktop 5.9.3。真实安装环境的历史读取和只读原生快照检查已通过；发送、流式输出、审批和重连使用隔离载体配合真实 AnyWork 服务与 Web 界面验证。真实原生创建、消息和协作的完整验收仍待完成。共享执行需要正常初始化的 WorkBuddy 账户，并通过私有控制入口启动原桌面应用，不会启动第二个执行引擎。详见接入说明与同步调查记录。
+
+**Focus restoration fixed in 0.1.10 / 焦点修复**
 
 Restores keyboard focus after model-speed settings finish saving and the control becomes available again. Delayed saves respect deliberate focus changes, menu dismissal and session switches.
 

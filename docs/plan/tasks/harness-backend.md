@@ -14,7 +14,7 @@ Implement a usable DeepSeek Harness agent connected to the existing local Harnes
 - `docs/INDEX.md`
 - `docs/deepseek-harness-integration.md`
 - `docs/plugin-protocol.md`, `docs/architecture.md`
-- Read-only reference clones: `/Users/water/work/2026/any-work/ref/`
+- Read-only reference clones: local ignored `ref/` directory.
 
 ## Path
 

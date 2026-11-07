@@ -12,8 +12,8 @@ Extract and adapt the official DeepSeek Harness conversation body from its sourc
 ## Context
 
 - `docs/INDEX.md`, `docs/deepseek-harness-integration.md`, `docs/ui-design.md`
-- Read-only reference: `/Users/water/work/2026/any-work/ref/deepseek-harness`
-- Screenshot: `/Users/water/.codex/attachments/4c456beb-aad2-4412-927c-ef1b175d68cf/image-1.png`
+- Read-only reference: local ignored `ref/deepseek-harness` checkout.
+- Screenshot: user-supplied private conversation reference, excluded from public source.
 
 ## Path
 
