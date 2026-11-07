@@ -1,4 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type CDPSession,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 async function sidebarFixture(page: Page, mobile: boolean, empty = false) {
   const now = Date.now();
@@ -98,6 +104,35 @@ async function viewportState(page: Page) {
   });
 }
 
+async function scrollGesture(
+  page: Page,
+  list: Locator,
+  cdp: CDPSession | null,
+  direction: "down" | "up",
+) {
+  const bounds = (await list.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  const top = Math.max(0, bounds.y) + 16;
+  const bottom = Math.min(viewport.height, bounds.y + bounds.height) - 16;
+  expect(bottom - top).toBeGreaterThan(32);
+  const x = bounds.x + bounds.width / 2;
+  if (cdp) {
+    // Keep both touch endpoints inside the visible list. A 10,000px drag from
+    // its centre leaves the viewport and can be discarded by Linux Chromium.
+    await cdp.send("Input.synthesizeScrollGesture", {
+      x,
+      y: direction === "down" ? bottom : top,
+      yDistance: (direction === "down" ? -1 : 1) * (bottom - top),
+      speed: 3000,
+      preventFling: true,
+      gestureSourceType: "touch",
+    });
+  } else {
+    await page.mouse.move(x, (top + bottom) / 2);
+    await page.mouse.wheel(0, direction === "down" ? 10000 : -10000);
+  }
+}
+
 for (const short of [false, true]) {
   test(`sidebar contains boundary gestures${short ? " in a short window" : ""}`, async ({
     page,
@@ -112,24 +147,38 @@ for (const short of [false, true]) {
     expect(before.documentHeight).toBe(before.height);
     expect(before.scrollY).toBe(0);
     const bounds = (await list.boundingBox())!;
-    const x = bounds.x + bounds.width / 2;
-    const y = bounds.y + bounds.height / 2;
     const cdp = mobile ? await context.newCDPSession(page) : null;
-    const gesture = async (direction: "down" | "up") => {
-      if (cdp)
-        await cdp.send("Input.synthesizeScrollGesture", {
-          x,
-          y,
-          yDistance: direction === "down" ? -10000 : 10000,
-          speed: 30000,
-          gestureSourceType: "touch",
-        });
-      else {
-        await page.mouse.move(x, y);
-        await page.mouse.wheel(0, direction === "down" ? 10000 : -10000);
+    const gesture = (direction: "down" | "up") =>
+      scrollGesture(page, list, cdp, direction);
+    const distanceToBoundary = (direction: "down" | "up") =>
+      list.evaluate(
+        (el, down) =>
+          down
+            ? el.scrollHeight - el.clientHeight - el.scrollTop
+            : el.scrollTop,
+        direction === "down",
+      );
+    const reachBoundary = async (direction: "down" | "up") => {
+      const remaining = await distanceToBoundary(direction);
+      // Allow touch slop while keeping a finite budget derived from the actual
+      // range and stroke length. Every swipe must make observable progress.
+      const maxGestures = mobile
+        ? Math.ceil(remaining / ((bounds.height - 32) / 2)) + 2
+        : 2;
+      for (let index = 0; index < maxGestures; index++) {
+        const previous = await distanceToBoundary(direction);
+        if (previous <= 1) break;
+        await gesture(direction);
+        await expect
+          .poll(() => distanceToBoundary(direction))
+          .toBeLessThan(previous);
+        expect(await viewportState(page)).toEqual(before);
       }
+      await expect
+        .poll(() => distanceToBoundary(direction))
+        .toBeLessThanOrEqual(1);
     };
-    await gesture("down");
+    await reachBoundary("down");
     await expect
       .poll(() =>
         list.evaluate((el) =>
@@ -155,7 +204,7 @@ for (const short of [false, true]) {
       ),
     ).toBe("none");
 
-    await gesture("up");
+    await reachBoundary("up");
     await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBe(0);
     for (let index = 0; index < 3; index++) await gesture("up");
     expect(await viewportState(page)).toEqual(before);
@@ -196,26 +245,12 @@ test("empty sidebar keeps controls and menus reachable in a short window", async
   const sidebar = await sidebarFixture(page, mobile, true);
   const list = sidebar.getByRole("navigation", { name: "工作目录与会话" });
   const before = await viewportState(page);
-  const bounds = (await list.boundingBox())!;
-  if (mobile) {
-    const cdp = await context.newCDPSession(page);
-    for (const distance of [-600, 600])
-      await cdp.send("Input.synthesizeScrollGesture", {
-        x: bounds.x + bounds.width / 2,
-        y: bounds.y + bounds.height / 2,
-        yDistance: distance,
-        speed: 3000,
-        gestureSourceType: "touch",
-      });
-    await cdp.detach();
-  } else {
-    await page.mouse.move(
-      bounds.x + bounds.width / 2,
-      bounds.y + bounds.height / 2,
-    );
-    await page.mouse.wheel(0, 10000);
-    await page.mouse.wheel(0, -10000);
+  const cdp = mobile ? await context.newCDPSession(page) : null;
+  for (const direction of ["down", "up"] as const) {
+    await scrollGesture(page, list, cdp, direction);
+    expect(await viewportState(page)).toEqual(before);
   }
+  await cdp?.detach();
   expect(await viewportState(page)).toEqual(before);
   expect(before.documentHeight).toBe(before.height);
   expect(before.footer.bottom).toBeLessThanOrEqual(before.height);
