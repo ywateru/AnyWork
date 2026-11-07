@@ -4,7 +4,7 @@ Goal: implement improvements in the priority order of [the review](../project-im
 
 | Stage | Issues | Current state / next evidence |
 | --- | --- | --- |
-| G0 | I01/I04/I20/I22/I25 | [Contract and tasks](tasks/improvement-g0.md), in progress; I01/I04 and delivery safeguard source independently accepted and merged; merged browser regression running, actual container CI evidence still required |
+| G0 | I01/I04/I20/I22/I25 | [Contract and tasks](tasks/improvement-g0.md), in progress; accepted source passed [merged local checks](reviews/improvement-g0-merged.md); actual container CI evidence still required |
 | G1 | I02/I03/I05/I07/I08/I09/I10, critical I11/I12 | Pending after foundational contracts; maintain full scope |
 | G2 | I13—I19, critical I28 | Pending; real native/Android/network evidence remains required |
 | G3 | I06/I21/I23/I24/I26/I27/I29 | Pending; capacity baselines before optimization |
@@ -35,7 +35,7 @@ Independent documentation review of `6bbaa75` passed without blocking findings: 
 
 ### Current integration gates
 
-- The full merged check first stopped at an obsolete exact-response assertion in `desktop-host-http-test.py`: the intentional global poll contract now includes `has_more`. Test-only correction `fc3d148` retains the prior event/cursor/authentication assertions and checks all three response fields explicitly. The developer ran all 20 isolated desktop-host HTTP cases successfully; a different verifier independently passed the poll/authentication and SSE replay cases. The correction is merged. This does not retroactively turn the initial failed full command into a pass; the previously unexecuted tail is being run separately.
+- The full merged check first stopped at an obsolete exact-response assertion in `desktop-host-http-test.py`: the intentional global poll contract now includes `has_more`. Test-only correction `fc3d148` retains the prior event/cursor/authentication assertions and checks all three response fields explicitly. The developer ran all 20 isolated desktop-host HTTP cases successfully; a different verifier independently passed the poll/authentication and SSE replay cases. The correction is merged. The separately executed remaining tail passed 611 browser cases / one existing skip and all registered Python checks. The updater needed a targeted rerun with local Chrome selected, which passed. Rust server 126 / desktop 34 / SDK 5 / Codex 3 and Web 317 unit tests, format and bilingual site checks passed; [merged evidence](reviews/improvement-g0-merged.md) preserves the original failure and exact rerun boundaries. Actual Docker/CI/platform evidence remains separate.
 - The I05a schema candidate `fc2b9aa` is **blocked**, not accepted: independent verification reproduced SQL token-boundary collisions in its whitespace-deleting normalizer. It accepted `TEXTNOTNULL` and `INTEGERPRIMARYKEYAUTOINCREMENT` as though they imposed the required constraints, and the server proceeded to WAL mode. Required correction is structural/token-safe validation plus negative regressions through the real opening path; existing positive tests alone are insufficient. The independent review is still finishing, and no schema candidate has been merged.
 
 The broader objective remains active through G1—G4; G0 progress does not close the full project improvement goal.
