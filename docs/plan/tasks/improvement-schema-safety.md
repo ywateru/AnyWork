@@ -1,8 +1,8 @@
 ---
 id: improvement-schema-safety
 scope: prioritized-project-improvement
-status: pending
-depends-on: [improvement-g0]
+status: ready
+depends-on: []
 ---
 
 # G1 / I05a: Safe schema opening before operation-ledger changes
@@ -10,6 +10,8 @@ depends-on: [improvement-g0]
 ## Objective
 
 Implement the first deliverable of [schema-and-recovery](../../schema-and-recovery.md): explicit transactional schema opening/migration, supported/legacy schema validation, single-service startup ownership and fail-closed future-version handling. This is a dependency of I02's durable operation ledger, not completion of full I05 backup/restore.
+
+Source dependency I01 is independently accepted and merged at `463cb29`; that Store change is the baseline. This task may develop in isolation while the disjoint G0 file/CI candidates are repaired. It does not waive their gates or mark G0 complete.
 
 ## Context
 
