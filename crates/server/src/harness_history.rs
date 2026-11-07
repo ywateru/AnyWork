@@ -960,6 +960,58 @@ mod tests {
         );
     }
     #[test]
+    fn incomplete_tail_retries_and_concurrent_readers_keep_one_native_event_each() {
+        use std::io::Write;
+        let f = Fixture::new();
+        let rows = events();
+        let path = f.log("native", &rows[..3], false);
+        let pending = format!("{}\n", rows[3]);
+        let split = pending.len() / 2;
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(&pending.as_bytes()[..split])
+            .unwrap();
+        let app = f.app();
+        let session = f.session("native");
+        app.store.save(&session).unwrap();
+        for _ in 0..2 {
+            let (found, notice) = import_from_root(&app, &session, &f.0).unwrap();
+            assert!(found && notice.is_some());
+            assert_eq!(app.store.events(&session.id, 0, 100).unwrap().len(), 3);
+        }
+        let mut writer = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        writer.write_all(&pending.as_bytes()[split..]).unwrap();
+        for row in &rows[4..] {
+            writeln!(writer, "{row}").unwrap();
+        }
+        drop(writer);
+        let source_bytes = fs::read(&path).unwrap();
+        let barrier = std::sync::Barrier::new(4);
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                scope.spawn(|| {
+                    barrier.wait();
+                    assert_eq!(
+                        import_from_root(&app, &session, &f.0).unwrap(),
+                        (true, None)
+                    );
+                });
+            }
+        });
+        let projected = app.store.events(&session.id, 0, 100).unwrap();
+        assert_eq!(projected.len(), 6);
+        let keys: HashSet<_> = projected
+            .iter()
+            .map(|event| event.params["harnessEventKey"].as_str().unwrap())
+            .collect();
+        assert_eq!(keys.len(), projected.len());
+        assert!(projected.iter().all(|event| event.request_id.is_none()));
+        assert_eq!(fs::read(&path).unwrap(), source_bytes);
+        assert_eq!(app.store.session(&session.id).unwrap().status, "external");
+    }
+    #[test]
     fn images_are_read_from_verified_objects_and_copied_only_into_anywork() {
         use sha2::{Digest, Sha256};
         let f = Fixture::new();
