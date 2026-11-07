@@ -14,4 +14,13 @@ Default contract:
 
 Development owns scripts/publish.py, focused deterministic tests, package.json entry and (if necessary) minimal CI integration for the focused test. Root owns release documentation, orchestration and merged checks. Independent verifier reviews exact source and tests interruption/resume, SHA binding, immutable tags, API/network/error behavior and credential handling. All tests use temporary Git repositories/mocked GitHub endpoints; no actual publication, version bump in the real checkout, service restart, native prompt or installer launch.
 
-Status: implementing; source-only delivery, no new release requested.
+Status: complete, merged and independently verified; source-only delivery, no new release triggered.
+
+Implementation: development commits `d11b199` and `b766b0c`, merged as `2a1ecbb` and `7e3ff75`. [Independent review](../reviews/one-command-publish.md) accepted the final candidate with no open findings. The entry point, npm alias and CI registration are included; [bilingual release documentation](../../releasing.md) explains normal use and recovery.
+
+Merged verification on 2026-11-07:
+
+- All 26 offline publisher tests passed, plus the independent review's six additional fault-injection probes.
+- All three release-version tests and four source-export tests passed; Python compilation, CLI help, npm alias and diff checks passed.
+- Read-only `--verify-existing v0.1.12` verified the real published tag at `c1d637b9b5705f204018c69e01852f16d7adf90c`, 20 assets, checksum/signature metadata and bilingual website.
+- Read-only `--dry-run` proposed v0.1.13 with `mutations: false`; `--status` remained `not-started`. Application versions remain 0.1.12. No new tag, release, service restart or installed-upgrade test was performed.
