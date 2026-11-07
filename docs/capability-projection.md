@@ -1,6 +1,6 @@
 # Effective capability and readiness contract (G1 / I07)
 
-Status: proposed implementation boundary under the authorized improvement goal, awaiting independent contract review. Not current runtime support. See the [support matrix](support-matrix.md) for actual accepted Agent/topology/platform limits and [message operations](message-operations.md) for delivery uncertainty. Do not infer expert approval from this document.
+Status: implementation boundary under the authorized improvement goal; independent contract review of `fb48eae` found no blocking issues. Not current runtime support or expert/product approval. See the [support matrix](support-matrix.md) for actual accepted Agent/topology/platform limits and [message operations](message-operations.md) for delivery uncertainty.
 
 ## Problem and authority
 
@@ -14,7 +14,7 @@ Integration catalog projection describes enabled registration, interpretable con
 
 Session projection is authenticated and follows current session/workspace/Agent scope. Bind it to Agent, topology, native version/instance when known, thread/session, auxiliary/archive state and the observation generation. Return a revision, observed time/expiry, source and explicit stale/unknown state. Never expose socket paths, descriptors, account identities, credentials or native/provider raw objects as diagnostics.
 
-Readiness fields are orthogonal: enabled, configured, reachable, identity verified, readable and writable may each be true, false or unknown. A disconnected host can have readable persisted history; a registered plugin can have unknown login and unreachable execution. Experimental/support-evidence labels are separate from runtime readiness and include their version/topology scope. Becoming reachable never upgrades an experimental adapter's acceptance level.
+Readiness fields are orthogonal: enabled, configured, transport reachable, identity verified, readable and writable may each be true, false or unknown. Use an explicitly named `transport_reachable` field for raw transport evidence; the support matrix's broader `reachable` definition includes identity verification and is not interchangeable with it. A disconnected host can have readable persisted history; a registered plugin can have unknown login and unreachable execution. Experimental/support-evidence labels are separate from runtime readiness and include their version/topology scope. Becoming reachable never upgrades an experimental adapter's acceptance level.
 
 ## Per-action projection
 
@@ -37,6 +37,8 @@ The additive server module may initially expose catalog/session actions whose po
 ## Observation and side effects
 
 Reading capabilities must not create/resume/rebuild a native thread, instantiate an execution process, send prompts, change model/goal/policy or invoke a mutating probe. Derive the initial projection from known adapter policy, configuration metadata, persisted history and already-existing trusted runtime observations. Checking descriptor structure is only configuration evidence; runtime-map membership alone is not a live-connection proof.
+
+Authorize the session with `app.session` before reading its projection sources. Do not call the catalog sync/import paths, `api::sessions`, shared-host synchronization or persisted-history import merely to answer this endpoint: those paths can write local state. Session status and an Arc in the runtime map cannot manufacture a fresh native observation; without trusted instance/generation/time evidence keep relevant readiness unknown. Do not infer Codex follower topology from `external` alone. Evaluate offline history/local queue actions separately from native writability, and approvals/questions require a current unresolved occurrence plus trustworthy generation evidence rather than a manifest alone.
 
 Explicit diagnosis/connect is a distinct user action. It may perform only documented bounded read-only handshakes for that diagnostic mode; actual native creation/control remains a separate command with its own capability and operation semantics. Do not disguise the current side-effecting composer/models cold-runtime path as pure diagnosis. Existing creation/resume behavior is not changed merely by adding this read-only endpoint.
 
