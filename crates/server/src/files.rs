@@ -2,12 +2,18 @@ use crate::{ApiError, App};
 use axum::{
     Json,
     extract::{Multipart, Path, Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
+    fs::OpenOptions,
+    io::{Read, Write},
     path::{Path as FsPath, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
 
 pub fn within(root: &FsPath, path: &FsPath) -> anyhow::Result<PathBuf> {
@@ -52,43 +58,331 @@ pub async fn list(
             json!({"entries":entries,"path":path.strip_prefix(root)?.to_string_lossy()}),
         ))
     } else {
+        if !std::fs::metadata(&path)?.is_file() {
+            return Err(anyhow::anyhow!("Only regular text files can be previewed").into());
+        }
         if std::fs::metadata(&path)?.len() > 2 * 1024 * 1024 {
             return Err(anyhow::anyhow!("File exceeds the 2 MiB preview limit").into());
         }
-        let content = std::fs::read_to_string(path)?;
-        Ok(Json(json!({"content":content})))
+        let bytes = read_regular(&path).map_err(|error| anyhow::anyhow!(error.message))?;
+        let revision = revision(&bytes);
+        let content = String::from_utf8(bytes)?;
+        Ok(Json(json!({"content":content,"revision":revision})))
+    }
+}
+const MAX_TEXT: u64 = 2 * 1024 * 1024;
+
+fn revision(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+#[derive(Default, Debug)]
+pub enum ExpectedRevision {
+    #[default]
+    Missing,
+    Create,
+    Match(String),
+}
+impl<'de> Deserialize<'de> for ExpectedRevision {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match Option::<String>::deserialize(deserializer)? {
+            Some(value) => Self::Match(value),
+            None => Self::Create,
+        })
     }
 }
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WriteFile {
     pub path: String,
     pub content: String,
+    #[serde(default)]
+    pub expected_revision: ExpectedRevision,
 }
+
+#[derive(Debug)]
+pub struct SaveError {
+    status: StatusCode,
+    code: &'static str,
+    message: String,
+    uncertain: bool,
+}
+impl SaveError {
+    fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            code,
+            message: message.into(),
+            uncertain: false,
+        }
+    }
+    fn conflict() -> Self {
+        Self::new(
+            StatusCode::CONFLICT,
+            "file_revision_conflict",
+            "文件已被修改、删除或创建，请比较最新内容后再保存；当前草稿已保留",
+        )
+    }
+    fn io(error: std::io::Error) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "file_write_failed",
+            format!("文件操作失败：{error}"),
+        )
+    }
+}
+impl IntoResponse for SaveError {
+    fn into_response(self) -> Response {
+        (
+            self.status,
+            Json(json!({"error":self.message,"code":self.code,
+            "delivery_state":if self.uncertain {"uncertain"} else {"not_written"}})),
+        )
+            .into_response()
+    }
+}
+pub enum FileWriteError {
+    Access(ApiError),
+    Save(SaveError),
+}
+impl IntoResponse for FileWriteError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::Access(error) => error.into_response(),
+            Self::Save(error) => error.into_response(),
+        }
+    }
+}
+impl From<SaveError> for FileWriteError {
+    fn from(error: SaveError) -> Self {
+        Self::Save(error)
+    }
+}
+
+/// Open without following a final symlink, reject special files, and cap the
+/// actual bytes read even if the file grows after metadata inspection.
+fn read_regular(path: &FsPath) -> Result<Vec<u8>, SaveError> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(0x00200000);
+    }
+    let file = options.open(path).map_err(SaveError::io)?;
+    let metadata = file.metadata().map_err(SaveError::io)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(SaveError::new(
+            StatusCode::BAD_REQUEST,
+            "file_type_unsupported",
+            "只支持普通文本文件",
+        ));
+    }
+    if metadata.len() > MAX_TEXT {
+        return Err(SaveError::new(
+            StatusCode::BAD_REQUEST,
+            "file_too_large",
+            "File exceeds the 2 MiB preview limit",
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_TEXT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(SaveError::io)?;
+    if bytes.len() as u64 > MAX_TEXT {
+        return Err(SaveError::new(
+            StatusCode::BAD_REQUEST,
+            "file_too_large",
+            "File exceeds the 2 MiB preview limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+type FileLocks = Mutex<HashMap<PathBuf, Weak<Mutex<()>>>>;
+static FILE_LOCKS: OnceLock<FileLocks> = OnceLock::new();
+struct TemporaryFile(PathBuf);
+impl Drop for TemporaryFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn save_file(root: &FsPath, body: WriteFile) -> Result<String, SaveError> {
+    save_file_with(root, body, |_| Ok(()))
+}
+fn save_file_with(
+    root: &FsPath,
+    body: WriteFile,
+    before_commit: impl FnOnce(&FsPath) -> Result<(), SaveError>,
+) -> Result<String, SaveError> {
+    match &body.expected_revision {
+        ExpectedRevision::Missing => {
+            return Err(SaveError::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "file_revision_required",
+                "保存需要文件版本，请刷新 AnyWork 页面后重新读取文件；草稿请先复制保留",
+            ));
+        }
+        ExpectedRevision::Match(value)
+            if value.len() != 71
+                || !value.starts_with("sha256:")
+                || !value[7..]
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) =>
+        {
+            return Err(SaveError::new(
+                StatusCode::BAD_REQUEST,
+                "file_revision_invalid",
+                "无效的文件版本",
+            ));
+        }
+        _ => {}
+    }
+    if body.content.len() as u64 > MAX_TEXT {
+        return Err(SaveError::new(
+            StatusCode::BAD_REQUEST,
+            "file_too_large",
+            "File exceeds 2 MiB",
+        ));
+    }
+    let destination = root.join(&body.path);
+    let parent = within(
+        root,
+        destination.parent().ok_or_else(|| {
+            SaveError::new(StatusCode::BAD_REQUEST, "file_path_invalid", "Invalid path")
+        })?,
+    )
+    .map_err(|error| {
+        SaveError::new(
+            StatusCode::FORBIDDEN,
+            "file_path_forbidden",
+            error.to_string(),
+        )
+    })?;
+    let target = parent.join(destination.file_name().ok_or_else(|| {
+        SaveError::new(
+            StatusCode::BAD_REQUEST,
+            "file_path_invalid",
+            "Invalid filename",
+        )
+    })?);
+    let lock = {
+        let mut locks = FILE_LOCKS.get_or_init(Default::default).lock().unwrap();
+        locks.retain(|_, value| value.strong_count() > 0);
+        if let Some(lock) = locks.get(&target).and_then(Weak::upgrade) {
+            lock
+        } else {
+            let lock = Arc::new(Mutex::new(()));
+            locks.insert(target.clone(), Arc::downgrade(&lock));
+            lock
+        }
+    };
+    let _guard = lock.lock().unwrap();
+    let check = || -> Result<Option<std::fs::Permissions>, SaveError> {
+        match std::fs::symlink_metadata(&target) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(SaveError::new(
+                        StatusCode::BAD_REQUEST,
+                        "file_type_unsupported",
+                        "保存不支持符号链接或特殊文件",
+                    ));
+                }
+                match &body.expected_revision {
+                    ExpectedRevision::Match(expected)
+                        if revision(&read_regular(&target)?) == *expected =>
+                    {
+                        Ok(Some(metadata.permissions()))
+                    }
+                    _ => Err(SaveError::conflict()),
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                match body.expected_revision {
+                    ExpectedRevision::Create => Ok(None),
+                    _ => Err(SaveError::conflict()),
+                }
+            }
+            Err(error) => Err(SaveError::io(error)),
+        }
+    };
+    let permissions = check()?;
+    let temporary = TemporaryFile(parent.join(format!(".anywork-save-{}", uuid::Uuid::new_v4())));
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary.0).map_err(SaveError::io)?;
+    file.write_all(body.content.as_bytes())
+        .map_err(SaveError::io)?;
+    if let Some(permissions) = permissions {
+        file.set_permissions(permissions).map_err(SaveError::io)?;
+    }
+    file.sync_all().map_err(SaveError::io)?;
+    drop(file);
+    before_commit(&target)?;
+    check()?; // Recheck immediately before the atomic publication boundary.
+    match body.expected_revision {
+        ExpectedRevision::Create => std::fs::hard_link(&temporary.0, &target).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                SaveError::conflict()
+            } else {
+                SaveError::io(error)
+            }
+        })?,
+        ExpectedRevision::Match(_) => std::fs::rename(&temporary.0, &target).map_err(|error| {
+            let mut failure = SaveError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "file_save_uncertain",
+                format!("无法确认文件替换结果，请比较最新文件后再操作：{error}"),
+            );
+            failure.uncertain = true;
+            failure
+        })?,
+        ExpectedRevision::Missing => unreachable!(),
+    }
+    #[cfg(unix)]
+    if let Err(error) = std::fs::File::open(&parent).and_then(|directory| directory.sync_all()) {
+        let mut failure = SaveError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "file_save_uncertain",
+            format!("文件已替换，但无法确认目录持久化，请重新读取并比较：{error}"),
+        );
+        failure.uncertain = true;
+        return Err(failure);
+    }
+    Ok(revision(body.content.as_bytes()))
+}
+
 pub async fn write(
     State(app): State<Arc<App>>,
     Path(id): Path<String>,
     Json(body): Json<WriteFile>,
-) -> Result<Json<Value>, ApiError> {
-    let s = app.session(&id)?;
-    let root = PathBuf::from(s.cwd);
-    let dest = root.join(&body.path);
-    let parent = within(
-        &root,
-        dest.parent()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?,
-    )?;
-    let target = parent.join(
-        dest.file_name()
-            .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?,
-    );
-    if target.exists() {
-        within(&root, &target)?;
-    }
-    if body.content.len() > 2 * 1024 * 1024 {
-        return Err(anyhow::anyhow!("File exceeds 2 MiB").into());
-    }
-    std::fs::write(target, body.content)?;
-    Ok(Json(json!({"ok":true})))
+) -> Result<Json<Value>, FileWriteError> {
+    let session = app
+        .session(&id)
+        .map_err(|error| FileWriteError::Access(error.into()))?;
+    let revision = tokio::task::spawn_blocking(move || save_file(FsPath::new(&session.cwd), body))
+        .await
+        .map_err(|_| {
+            let mut failure = SaveError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "file_save_uncertain",
+                "文件保存任务异常，无法确认结果，请比较最新文件后再操作",
+            );
+            failure.uncertain = true;
+            failure
+        })??;
+    Ok(Json(json!({"ok":true,"revision":revision})))
 }
 pub async fn upload(
     State(app): State<Arc<App>>,
@@ -453,6 +747,252 @@ fn document_disposition(name: &str, inline: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            let path =
+                std::env::temp_dir().join(format!("anywork-save-test-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+        fn write(&self, expected: ExpectedRevision, text: &str) -> Result<String, SaveError> {
+            save_file(
+                &self.0,
+                WriteFile {
+                    path: "file.txt".into(),
+                    content: text.into(),
+                    expected_revision: expected,
+                },
+            )
+        }
+        fn path(&self) -> PathBuf {
+            self.0.join("file.txt")
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test]
+    fn write_preconditions_distinguish_missing_null_and_revision() {
+        let missing: WriteFile =
+            serde_json::from_value(json!({"path":"file.txt","content":"new"})).unwrap();
+        assert!(matches!(
+            missing.expected_revision,
+            ExpectedRevision::Missing
+        ));
+        let create: WriteFile = serde_json::from_value(
+            json!({"path":"file.txt","content":"new","expected_revision":null}),
+        )
+        .unwrap();
+        assert!(matches!(create.expected_revision, ExpectedRevision::Create));
+        let fixture = Fixture::new();
+        assert_eq!(
+            save_file(&fixture.0, missing).unwrap_err().status,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+        assert!(!fixture.path().exists());
+        assert_eq!(
+            fixture
+                .write(ExpectedRevision::Match("invalid".into()), "new")
+                .unwrap_err()
+                .code,
+            "file_revision_invalid"
+        );
+    }
+    #[test]
+    fn atomic_save_checks_exact_bytes_and_preserves_original_on_conflict() {
+        let fixture = Fixture::new();
+        let text = "第一行\r\nsecond\n";
+        let first = fixture.write(ExpectedRevision::Create, text).unwrap();
+        assert_eq!(first, revision(&std::fs::read(fixture.path()).unwrap()));
+        assert_eq!(
+            fixture
+                .write(ExpectedRevision::Create, "no")
+                .unwrap_err()
+                .status,
+            StatusCode::CONFLICT
+        );
+        let second = fixture
+            .write(ExpectedRevision::Match(first.clone()), "changed")
+            .unwrap();
+        assert_ne!(first, second);
+        assert_eq!(
+            fixture
+                .write(ExpectedRevision::Match(first), "stale")
+                .unwrap_err()
+                .status,
+            StatusCode::CONFLICT
+        );
+        assert_eq!(std::fs::read_to_string(fixture.path()).unwrap(), "changed");
+        assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 1);
+    }
+    #[test]
+    fn missing_old_file_is_a_conflict_and_create_cannot_clobber_racer() {
+        let fixture = Fixture::new();
+        let old = fixture.write(ExpectedRevision::Create, "old").unwrap();
+        std::fs::remove_file(fixture.path()).unwrap();
+        assert_eq!(
+            fixture
+                .write(ExpectedRevision::Match(old), "not-created")
+                .unwrap_err()
+                .status,
+            StatusCode::CONFLICT
+        );
+        let error = save_file_with(
+            &fixture.0,
+            WriteFile {
+                path: "file.txt".into(),
+                content: "mine".into(),
+                expected_revision: ExpectedRevision::Create,
+            },
+            |target| {
+                std::fs::write(target, "other").unwrap();
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.status, StatusCode::CONFLICT);
+        assert_eq!(std::fs::read_to_string(fixture.path()).unwrap(), "other");
+        assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 1);
+    }
+    #[test]
+    fn late_external_changes_and_prepublication_failure_preserve_content() {
+        let fixture = Fixture::new();
+        let expected = fixture.write(ExpectedRevision::Create, "old").unwrap();
+        let body = || WriteFile {
+            path: "file.txt".into(),
+            content: "mine".into(),
+            expected_revision: ExpectedRevision::Match(expected.clone()),
+        };
+        let error = save_file_with(&fixture.0, body(), |_| {
+            Err(SaveError::io(std::io::Error::other(
+                "injected interrupted write",
+            )))
+        })
+        .unwrap_err();
+        assert!(!error.uncertain);
+        assert_eq!(std::fs::read_to_string(fixture.path()).unwrap(), "old");
+        let error = save_file_with(&fixture.0, body(), |target| {
+            std::fs::write(target, "external").unwrap();
+            Ok(())
+        })
+        .unwrap_err();
+        assert_eq!(error.status, StatusCode::CONFLICT);
+        assert_eq!(std::fs::read_to_string(fixture.path()).unwrap(), "external");
+        assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 1);
+    }
+    #[test]
+    fn anywork_concurrent_writes_with_one_revision_accept_only_one() {
+        let fixture = Fixture::new();
+        let expected = fixture.write(ExpectedRevision::Create, "old").unwrap();
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = ["one", "two"]
+            .into_iter()
+            .map(|text| {
+                let root = fixture.0.clone();
+                let expected = expected.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    save_file(
+                        &root,
+                        WriteFile {
+                            path: "./file.txt".into(),
+                            content: text.into(),
+                            expected_revision: ExpectedRevision::Match(expected),
+                        },
+                    )
+                })
+            })
+            .collect();
+        let results: Vec<_> = threads
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .collect();
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| result
+                    .as_ref()
+                    .is_err_and(|error| error.status == StatusCode::CONFLICT))
+                .count(),
+            1
+        );
+    }
+    #[test]
+    fn rejects_large_text_and_special_targets_without_modifying_them() {
+        let fixture = Fixture::new();
+        let old = fixture.write(ExpectedRevision::Create, "old").unwrap();
+        assert_eq!(
+            fixture
+                .write(
+                    ExpectedRevision::Match(old),
+                    &"a".repeat(MAX_TEXT as usize + 1)
+                )
+                .unwrap_err()
+                .code,
+            "file_too_large"
+        );
+        assert_eq!(std::fs::read_to_string(fixture.path()).unwrap(), "old");
+        std::fs::create_dir(fixture.0.join("directory")).unwrap();
+        assert_eq!(
+            save_file(
+                &fixture.0,
+                WriteFile {
+                    path: "directory".into(),
+                    content: "no".into(),
+                    expected_revision: ExpectedRevision::Create
+                }
+            )
+            .unwrap_err()
+            .code,
+            "file_type_unsupported"
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn saves_preserve_mode_and_reject_symlinks_and_fifos() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let fixture = Fixture::new();
+        let old = fixture.write(ExpectedRevision::Create, "old").unwrap();
+        std::fs::set_permissions(fixture.path(), std::fs::Permissions::from_mode(0o640)).unwrap();
+        fixture
+            .write(ExpectedRevision::Match(old.clone()), "new")
+            .unwrap();
+        assert_eq!(
+            std::fs::metadata(fixture.path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o640
+        );
+        symlink(fixture.path(), fixture.0.join("link")).unwrap();
+        assert_eq!(
+            save_file(
+                &fixture.0,
+                WriteFile {
+                    path: "link".into(),
+                    content: "no".into(),
+                    expected_revision: ExpectedRevision::Match(old)
+                }
+            )
+            .unwrap_err()
+            .code,
+            "file_type_unsupported"
+        );
+        let fifo = fixture.0.join("fifo");
+        let name = std::ffi::CString::new(fifo.to_string_lossy().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        assert_eq!(
+            read_regular(&fifo).unwrap_err().code,
+            "file_type_unsupported"
+        );
+        assert_eq!(std::fs::read_to_string(fixture.path()).unwrap(), "new");
+    }
     #[test]
     fn rejects_traversal_and_symlinks() {
         let root = std::env::temp_dir().join(format!("ra-test-{}", uuid::Uuid::new_v4()));

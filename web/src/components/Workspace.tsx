@@ -17,6 +17,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { Api } from "../api";
+import "./FileSaveStatus.css";
 import Markdown from "./Markdown";
 import ImagePreview from "./ImagePreview";
 import DocumentPreview, { isDocumentPath } from "./DocumentPreview";
@@ -166,6 +167,14 @@ export default function Workspace({
   const [file, setFile] = useState<FileTarget | null>(null),
     [content, setContent] = useState<string | null>(null),
     [original, setOriginal] = useState(""),
+    [revision, setRevision] = useState<string | null>(null),
+    [saving, setSaving] = useState(false),
+    [saveError, setSaveError] = useState(""),
+    [comparing, setComparing] = useState(false),
+    [latest, setLatest] = useState<{
+      content: string;
+      revision: string;
+    } | null>(null),
     [git, setGit] = useState({ status: "", diff: "" }),
     [loading, setLoading] = useState(false),
     [error, setError] = useState(""),
@@ -200,6 +209,81 @@ export default function Workspace({
     }
   }, [target, id]);
   const path = file?.path || "";
+  const owner = useRef({ api, id, path, tab, changes, refresh });
+  if (
+    owner.current.api !== api ||
+    owner.current.id !== id ||
+    owner.current.path !== path ||
+    owner.current.tab !== tab ||
+    owner.current.changes !== changes ||
+    owner.current.refresh !== refresh
+  )
+    owner.current = { api, id, path, tab, changes, refresh };
+  const inFlight = useRef<object | null>(null);
+  useEffect(() => {
+    setSaving(false);
+    setSaveError("");
+    setComparing(false);
+    setLatest(null);
+    setRevision(null);
+    inFlight.current = null;
+  }, [api, id, path, tab, changes, refresh]);
+  async function compareLatest() {
+    const identity = owner.current;
+    setComparing(true);
+    try {
+      const data = await api.request<{ content: string; revision?: string }>(
+        `/sessions/${id}/files?path=${encodeURIComponent(path)}`,
+      );
+      if (owner.current !== identity) return;
+      if (typeof data.content !== "string" || !data.revision)
+        throw new Error("服务未提供文件版本，请先升级本地服务；当前草稿已保留");
+      setLatest({ content: data.content, revision: data.revision });
+    } catch (error) {
+      if (owner.current === identity)
+        setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (owner.current === identity) setComparing(false);
+    }
+  }
+  async function save() {
+    const identity = owner.current;
+    if (!revision || inFlight.current === identity || content === null) return;
+    const submitted = content;
+    const expected = revision;
+    inFlight.current = identity;
+    setSaving(true);
+    setSaveError("");
+    setLatest(null);
+    try {
+      const result = await api.request<{ revision?: string }>(
+        `/sessions/${id}/files`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            path,
+            content: submitted,
+            expected_revision: expected,
+          }),
+        },
+      );
+      if (owner.current !== identity) return;
+      if (!result.revision)
+        throw new Error(
+          "保存结果未包含文件版本，请比较最新文件确认；当前草稿已保留",
+        );
+      // Edits typed while the request is pending remain dirty against this
+      // captured submission rather than being incorrectly marked as saved.
+      setOriginal(submitted);
+      setRevision(result.revision);
+    } catch (error) {
+      if (owner.current === identity)
+        setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (inFlight.current === identity) inFlight.current = null;
+      if (owner.current === identity) setSaving(false);
+    }
+  }
   const markdown = /\.(md|mdx|markdown)$/i.test(path),
     image = isImagePath(path),
     binaryDocument = isDocumentPath(path);
@@ -222,6 +306,7 @@ export default function Workspace({
         if (!controller.signal.aborted) {
           setContent(data.content ?? null);
           setOriginal(data.content ?? "");
+          setRevision(typeof data.revision === "string" ? data.revision : null);
         }
       }
     };
@@ -411,24 +496,68 @@ export default function Workspace({
                 {(!markdown || edit) && (
                   <button
                     className="save-file"
-                    disabled={content === original}
-                    onClick={async () => {
-                      try {
-                        await api.request(`/sessions/${id}/files`, {
-                          method: "PUT",
-                          body: JSON.stringify({ path, content }),
-                        });
-                        setOriginal(content);
-                      } catch (e) {
-                        onError(e);
-                      }
-                    }}
+                    disabled={content === original || saving || !revision}
+                    onClick={() => void save()}
                   >
                     <Save size={14} />
-                    保存
+                    {saving ? "正在保存…" : "保存"}
                   </button>
                 )}
               </div>
+              {!revision && (
+                <p className="file-save-status" role="status">
+                  服务未提供文件版本，暂不能安全保存；请升级本地服务，草稿可复制保留。
+                </p>
+              )}
+              {saveError && (
+                <div className="file-save-status" role="alert">
+                  <p>{saveError}</p>
+                  <p>当前草稿已保留。请先比较最新文件，确认后再保存。</p>
+                  <button
+                    disabled={comparing}
+                    onClick={() => void compareLatest()}
+                  >
+                    {comparing ? "正在读取最新文件…" : "比较最新文件"}
+                  </button>
+                  <button
+                    onClick={() =>
+                      navigator.clipboard.writeText(content).catch(onError)
+                    }
+                  >
+                    复制当前草稿
+                  </button>
+                </div>
+              )}
+              {latest && (
+                <section
+                  className="file-save-comparison"
+                  aria-label="最新文件比较"
+                >
+                  <h4>服务器最新内容（当前草稿保留在编辑框）</h4>
+                  <pre>{latest.content || "（空文件）"}</pre>
+                  <button
+                    onClick={() => {
+                      setOriginal(latest.content);
+                      setRevision(latest.revision);
+                      setSaveError("");
+                      setLatest(null);
+                    }}
+                  >
+                    使用此版本作为保存基线，保留草稿
+                  </button>
+                  <button
+                    onClick={() => {
+                      setContent(latest.content);
+                      setOriginal(latest.content);
+                      setRevision(latest.revision);
+                      setSaveError("");
+                      setLatest(null);
+                    }}
+                  >
+                    放弃草稿并载入最新文件
+                  </button>
+                </section>
+              )}
               {markdown && !edit ? (
                 <div className="markdown document-markdown">
                   <Markdown
