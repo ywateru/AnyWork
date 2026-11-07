@@ -76,6 +76,7 @@ def bundle_info(app):
 
 
 def file_identity(path):
+    path = no_symlinks(path)
     try:
         info = path.lstat()
     except FileNotFoundError:
@@ -209,8 +210,11 @@ def main(argv=None):
             raise SetupError('This WorkBuddy profile is already running or has a stale instance lock. Quit WorkBuddy normally, then run this launcher again. No lock was removed.')
         config.mkdir(mode=0o700, parents=True, exist_ok=True)
         user_data.mkdir(mode=0o700, parents=True, exist_ok=True)
-        active_file = user_data / 'DevToolsActivePort'
-        previous = file_identity(active_file)
+        # Supported profiles use either the session subdirectory (normal 5.9.3
+        # desktop) or the profile root. Observe both before launch; never reuse a
+        # previous desktop's entry or choose between two newly published ones.
+        active_files = [user_data / 'session/DevToolsActivePort', user_data / 'DevToolsActivePort']
+        previous = {path: file_identity(path) for path in active_files}
         for signum in (signal.SIGTERM, signal.SIGINT):
             signal.signal(signum, stop)
         environment = {**os.environ, 'WORKBUDDY_CONFIG_DIR': str(config), 'WORKBUDDY_USER_DATA_DIR': str(user_data), 'WORKBUDDY_REMOTE_DEBUGGING_PORT': '0'}
@@ -221,11 +225,17 @@ def main(argv=None):
         while not stopped and time.monotonic() < deadline:
             if desktop.poll() is not None:
                 raise SetupError('WorkBuddy exited before sharing its entry. An existing profile may already own the desktop. Quit it normally, then retry this launcher; no second engine was started by AnyWork.')
-            current = file_identity(active_file)
-            if current is not None and current != previous:
+            changed = [(path, file_identity(path)) for path in active_files]
+            changed = [(path, identity) for path, identity in changed if identity is not None and identity != previous[path]]
+            if len(changed) > 1:
+                raise SetupError('Multiple fresh desktop entries were published; quit WorkBuddy normally and check the profile before retrying')
+            if changed:
+                active_file, identity = changed[0]
                 try:
                     port, browser_id = read_endpoint(active_file)
                     verify_endpoint(port, browser_id, app)
+                    if file_identity(active_file) != identity:
+                        raise SetupError('The desktop entry changed during verification')
                 except (OSError, ValueError, SetupError, http.client.HTTPException):
                     time.sleep(0.1)
                     continue

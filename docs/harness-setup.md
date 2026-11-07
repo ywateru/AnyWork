@@ -25,7 +25,7 @@ ANYWORK_HARNESS_URL="$(cat /private/path/harness-launch-url)" \
 
 For desktop discovery, install the companion from `integrations/harness-discovery/` following its README. It writes `~/.anywork/harness/host.json` with mode 0600. AnyWork automatically checks that path; no desktop-manager command-line changes are required. After enabling the companion, reload the AnyWork page to see the Agent selector. Override with `--harness-discovery-file /private/path/host.json` / `ANYWORK_HARNESS_DISCOVERY_FILE`. The reader reopens the descriptor on reconnect so host restarts can rotate their token. Explicit URL configuration takes priority over automatic discovery.
 
-桌面主机使用 `integrations/harness-discovery/` 中的配套插件，默认生成 `~/.anywork/harness/host.json`。AnyWork 自动检测；启用插件后重新加载页面，即可在 Agent 选择器看到 DeepSeek Harness。可用 `--harness-discovery-file` 指向单独描述文件。此文件及其 token 均不通过 `/plugins` 返回给网页。它只接受本机 HTTP 地址，Unix 上拒绝符号链接、其他用户所有的文件或公开权限。
+桌面主机使用 `integrations/harness-discovery/` 中的配套插件，默认生成 `~/.anywork/harness/host.json`。AnyWork 默认启用 DeepSeek Harness 接入，Agent 选择器始终显示它；未配置入口时标记“待连接”。启用配套插件后点击“重新检查连接”，即可创建会话。可用 `--harness-discovery-file` 指向单独描述文件。此文件及其 token 均不通过 `/plugins` 返回给网页。它只接受本机 HTTP 地址，Unix 上拒绝符号链接、其他用户所有的文件或公开权限。
 
 ## Supported behavior / 能力范围
 

@@ -42,7 +42,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
   else:self.send_response(404);self.end_headers();return
   self.send_response(200);self.end_headers();self.wfile.write(json.dumps(data).encode())
 server=http.server.HTTPServer(('127.0.0.1',0),Handler)
-if mode!='stale':(profile/'DevToolsActivePort').write_text(f'{server.server_port}\n/devtools/browser/{identity}\n')
+if mode not in ('stale','session-stale'):
+ target=profile/'session/DevToolsActivePort' if mode=='session' else profile/'DevToolsActivePort'
+ target.parent.mkdir(parents=True,exist_ok=True)
+ target.write_text(f'{server.server_port}\n/devtools/browser/{identity}\n')
+ if mode=='ambiguous':
+  (profile/'session').mkdir()
+  (profile/'session/DevToolsActivePort').write_text(f'{server.server_port}\n/devtools/browser/{identity}\n')
 server.serve_forever()
 '''
 
@@ -113,6 +119,48 @@ class LauncherTests(unittest.TestCase):
         os.kill(report['pid'], 0)
         self.assertNotIn(data['browserId'], out + err)
         self.assertNotIn(data['url'], out + err)
+
+    def test_normal_session_directory_is_discovered_without_reusing_stale_root(self):
+        self.profile.mkdir()
+        stale = self.profile / 'DevToolsActivePort'
+        stale.write_text('65534\n/devtools/browser/' + str(uuid.uuid4()) + '\n')
+        before = stale.read_bytes()
+        self.start('session')
+        data = self.wait_descriptor()
+        self.assertEqual(data['pid'], json.loads(self.report.read_text())['pid'])
+        self.assertEqual(stale.read_bytes(), before)
+        self.assertTrue((self.profile / 'session/DevToolsActivePort').is_file())
+
+    def test_ambiguous_fresh_entries_are_rejected_without_terminating_desktop(self):
+        self.start('ambiguous')
+        _, err = self.launcher.communicate(timeout=5)
+        self.assertEqual(self.launcher.returncode, 1)
+        self.assertIn('Multiple fresh desktop entries', err)
+        self.assertFalse(self.descriptor.exists())
+        os.kill(json.loads(self.report.read_text())['pid'], 0)
+
+    def test_session_path_symlink_is_rejected_before_launch(self):
+        self.profile.mkdir()
+        target = self.root / 'session-target'
+        target.mkdir()
+        (self.profile / 'session').symlink_to(target)
+        self.start()
+        _, err = self.launcher.communicate(timeout=5)
+        self.assertEqual(self.launcher.returncode, 1)
+        self.assertIn('symbolic links', err)
+        self.assertFalse(self.report.exists())
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_stale_session_entry_is_not_reused(self):
+        (self.profile / 'session').mkdir(parents=True)
+        active = self.profile / 'session/DevToolsActivePort'
+        active.write_text('65534\n/devtools/browser/' + str(uuid.uuid4()) + '\n')
+        before = active.read_bytes()
+        self.start('session-stale', timeout=0.4)
+        self.launcher.communicate(timeout=5)
+        self.assertEqual(self.launcher.returncode, 1)
+        self.assertEqual(active.read_bytes(), before)
+        self.assertFalse(self.descriptor.exists())
 
     def test_desktop_exit_cleans_own_descriptor(self):
         self.start()

@@ -18,9 +18,18 @@ pub async fn info(State(app): State<Arc<App>>) -> Json<Value> {
     )
 }
 pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
-    Json(
-        json!({"plugins":app.plugins.values().filter(|p|crate::shared_host::available(&app, &p.id)).map(|p|json!({"id":p.id,"name":p.name,"capabilities":p.capabilities,"protocol_version":p.protocol_version})).collect::<Vec<_>>()}),
-    )
+    let mut plugins: Vec<_> = app.plugins.values().collect();
+    plugins.sort_by(|a, b| a.id.cmp(&b.id));
+    Json(json!({"plugins": plugins.into_iter().map(|p| {
+        let available = crate::shared_host::available(&app, &p.id);
+        let setup_hint = match (p.id.as_str(), available) {
+            (crate::harness::AGENT, false) => Some("DeepSeek Harness 插件已启用。请在本机启动 Harness 并启用 discovery 配套插件，然后点击“重新检查连接”。"),
+            (crate::workbuddy::AGENT, false) => Some("WorkBuddy 插件已启用。请通过 AnyWork 的 WorkBuddy 引导程序启动桌面应用，然后点击“重新检查连接”。"),
+            _ => None,
+        };
+        json!({"id":p.id,"name":p.name,"capabilities":p.capabilities,
+            "protocol_version":p.protocol_version,"available":available,"setup_hint":setup_hint})
+    }).collect::<Vec<_>>()}))
 }
 /// Read stored state only: an update check must not start discovery or attach engines.
 pub async fn update_readiness(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiError> {

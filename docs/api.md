@@ -41,6 +41,10 @@
 | GET | `/api/sessions/:id/git` | `{status,diff}`，当前工作树相对 HEAD 的差异 |
 | WS | `/ws/terminal/:id` | PTY 交互终端 |
 
+## 默认 Agent 插件
+
+`GET /api/plugins` 始终包含默认启用的 `codex`、`deepseek-harness`（dsh）和 `workbuddy`，另加用户安装的插件。每项包含 `id`、`name`、`capabilities`、`protocol_version`、`available` 和 `setup_hint`。`available` 表示已配置可尝试连接的入口，不保证主机在线，也不会为了查询启动或连接主机。未配置/无效的共享发现入口返回 `available:false` 与不含密钥的设置提示，插件仍保留在列表中。前端允许选择并阅读提示，入口就绪前禁用创建；完成设置后点击“重新检查连接”重新读取。旧服务省略 `available` 时沿用其“列表中的插件可尝试使用”语义。插件默认启用不会启动独立引擎，也不会绕过共享主机验证。
+
 ## 会话结构
 
 `id` 为 AnyWork 会话 ID；`thread_id` 为厂商会话 ID。其余字段：`title`、`cwd`、`agent`、`model`、`policy`、`status`、`archived`、`created_at`、`updated_at`。时间均为 Unix 毫秒。

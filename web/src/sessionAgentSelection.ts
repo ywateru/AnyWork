@@ -10,3 +10,9 @@ export function sessionAgentSelection(current: string, plugins: Plugin[]) {
     ""
   );
 }
+
+/** Older catalogs contained only usable integrations and omitted this field. */
+export function sessionAgentAvailable(agent: string, plugins: Plugin[]) {
+  const plugin = plugins.find((entry) => entry.id === agent);
+  return !!plugin && plugin.available !== false;
+}

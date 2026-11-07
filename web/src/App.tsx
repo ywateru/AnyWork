@@ -20,7 +20,10 @@ import { useSidebarAgent } from "./hooks/useSidebarAgent";
 import SidebarAgentFilter from "./components/SidebarAgentFilter";
 import AgentIcon from "./components/AgentIcon";
 import { agentName } from "./sidebarAgents";
-import { sessionAgentSelection } from "./sessionAgentSelection";
+import {
+  sessionAgentAvailable,
+  sessionAgentSelection,
+} from "./sessionAgentSelection";
 import { useSessionDraft } from "./hooks/useSessionDraft";
 import { useGoalComposerMode } from "./hooks/useGoalComposerMode";
 import { useMessageEditing } from "./hooks/useMessageEditing";
@@ -385,6 +388,7 @@ export default function App() {
   selectedRef.current = selected;
   const reloading = useRef<Api | null>(null);
   const currentApi = useRef(api);
+  const pluginRequests = useRef(0);
   currentApi.current = api;
   const [statusFresh, setStatusFresh] = useState(false);
   const reload = useCallback(async () => {
@@ -432,17 +436,18 @@ export default function App() {
         if (!cancelled) setInfo(data);
       })
       .catch(fail);
+    const pluginRequest = ++pluginRequests.current;
     api
       .request("/plugins")
       .then((data) => {
-        if (!cancelled) {
+        if (!cancelled && pluginRequests.current === pluginRequest) {
           setPlugins(data.plugins);
           setPluginsLoadedFor(api);
           setPluginsErrorFor(null);
         }
       })
       .catch((error) => {
-        if (!cancelled) {
+        if (!cancelled && pluginRequests.current === pluginRequest) {
           setPluginsErrorFor(api);
           fail(error);
         }
@@ -1981,7 +1986,7 @@ export default function App() {
                   </div>
                   <span className="plugin-installed">
                     <Check size={12} />
-                    已安装
+                    已启用{p.available === false ? " · 待连接" : ""}
                   </span>
                 </div>
               ))}
@@ -2063,6 +2068,28 @@ export default function App() {
                         ? "error"
                         : "loading"
                   }
+                  onRefreshPlugins={async () => {
+                    const request = ++pluginRequests.current;
+                    try {
+                      const data = await api.request("/plugins");
+                      if (
+                        currentApi.current !== api ||
+                        pluginRequests.current !== request
+                      )
+                        return;
+                      setPlugins(data.plugins);
+                      setPluginsLoadedFor(api);
+                      setPluginsErrorFor(null);
+                    } catch (error) {
+                      if (
+                        currentApi.current !== api ||
+                        pluginRequests.current !== request
+                      )
+                        return;
+                      setPluginsErrorFor(api);
+                      throw error;
+                    }
+                  }}
                   workspace={createCwd || info.workspace}
                   workspaces={workspaces}
                   onCreated={async (s) => {
@@ -2187,6 +2214,7 @@ function CreateSession({
   api,
   plugins,
   pluginsState,
+  onRefreshPlugins,
   workspace,
   workspaces,
   onCreated,
@@ -2195,6 +2223,7 @@ function CreateSession({
   api: Api;
   plugins: Plugin[];
   pluginsState: "loading" | "ready" | "error";
+  onRefreshPlugins: () => Promise<void>;
   workspace: string;
   workspaces: WorkspaceInfo[];
   onCreated: (s: Session) => void;
@@ -2204,18 +2233,20 @@ function CreateSession({
     [agent, setAgent] = useState(() => sessionAgentSelection("", plugins)),
     [model, setModel] = useState(""),
     [policy, setPolicy] = useState("manual"),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [checking, setChecking] = useState(false);
   useEffect(() => {
     if (pluginsState === "ready")
       setAgent((current) => sessionAgentSelection(current, plugins));
   }, [plugins, pluginsState]);
+  const selectedPlugin = plugins.find((plugin) => plugin.id === agent);
   const available =
-    pluginsState === "ready" && plugins.some((plugin) => plugin.id === agent);
+    pluginsState === "ready" && sessionAgentAvailable(agent, plugins);
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!available) return;
+        if (!available || checking) return;
         setBusy(true);
         try {
           const data = await api.post("/sessions", {
@@ -2245,7 +2276,7 @@ function CreateSession({
             aria-busy={pluginsState === "loading"}
             onChange={(e) => setAgent(e.target.value)}
           >
-            {!available && (
+            {!selectedPlugin && (
               <option value={agent} disabled>
                 {agent
                   ? `${agentName(agent)}（暂不可用）`
@@ -2259,11 +2290,36 @@ function CreateSession({
             {plugins.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
+                {p.available === false ? "（待连接）" : ""}
               </option>
             ))}
           </select>
         </span>
       </label>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={checking || busy}
+        onClick={async () => {
+          setChecking(true);
+          try {
+            await onRefreshPlugins();
+          } catch (error) {
+            onError(error);
+          } finally {
+            setChecking(false);
+          }
+        }}
+      >
+        {checking ? "正在检查…" : "重新检查连接"}
+      </Button>
+      {selectedPlugin?.available === false && (
+        <p className="hint" role="status">
+          {selectedPlugin.setup_hint ||
+            `${selectedPlugin.name} 插件已启用，本机共享入口尚未就绪。请完成连接设置后点击“重新检查连接”。`}
+        </p>
+      )}
       <label>
         工作目录
         <input
@@ -2297,7 +2353,7 @@ function CreateSession({
           <option value="auto">自动批准 — 在工作区内自动执行</option>
         </select>
       </label>
-      <Button disabled={busy || !available} className="full-width">
+      <Button disabled={busy || checking || !available} className="full-width">
         {busy ? "正在启动 Agent…" : "创建会话"}
         <ArrowUpRight size={16} />
       </Button>

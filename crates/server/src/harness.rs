@@ -137,9 +137,13 @@ impl Config {
         })
     }
     pub fn available(&self) -> bool {
-        !self.optional || self.descriptor.as_ref().is_some_and(|p| p.is_file())
+        !self.optional
+            || self
+                .descriptor
+                .as_ref()
+                .is_some_and(|path| Self::configured(None, None, Some(path.clone())).is_ok())
     }
-    pub fn manifest(&self) -> PluginManifest {
+    pub fn manifest() -> PluginManifest {
         PluginManifest {
             id: AGENT.into(),
             name: "DeepSeek Harness".into(),
