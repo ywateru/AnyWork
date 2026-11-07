@@ -1,7 +1,7 @@
 ---
 id: improvement-message-ledger
 scope: prioritized-project-improvement
-status: pending
+status: in-progress
 depends-on: [improvement-schema-safety]
 ---
 
@@ -38,3 +38,11 @@ The implementation must specify the actual schema, operation fields and transiti
 Real SQLite and production Store methods: fresh/v1→v2/current/future/malformed schema; migration fault rollback; exact source/sequence preservation; same-ID concurrency; semantic digest conflicts; illegal transitions; queue/operation/echo transaction rollback; legacy pending/sending safety; crash/reopen and accepted/unknown recovery; owner refusal and I01 scope regressions. Preserve existing I05a tests. A separate reviewer inspects and executes the exact committed candidate.
 
 Before module acceptance, list the concrete methods consumed by the next [delivery integration](improvement-message-delivery.md) task and their expected inputs/errors. Module pass is not an end-to-end delivery claim. Root runs merged checks and records remaining native/platform boundaries before advancing dependencies.
+
+## Implementation choices
+
+Source dependency I05a has passed independent review and full merged local checks; native platform CI remains a separate open gate. Implement the reviewed design with one ordered migration/opening path, durable singleton store/incarnation, permanent opaque used-ID registry without a session FK, cascade-deletable operation details, typed preparation-step claims and a checked queue association preserving existing FIFO/edit sequence IDs. Registry-only entries are non-executable tombstones. Old untyped queue mutation methods must reject ledger-associated rows rather than bypass the new transactions.
+
+Canonical v1 uses sorted JSON object keys, exact strings/array order and versioned parsed `serde_json::Number` serialization, without claiming RFC 8785 or mathematical numeric equivalence. Compare canonical bytes as well as version/hash. Enforce 22 MiB/depth-128 canonical limits; manifest budgets are at most 16 files, 20 MiB each and 64 MiB total, with checked arithmetic. Actual artifact copying/hashing/native path security remains delivery integration, not a claim inferred from manifest validation.
+
+Detailed DDL/typed method signatures, recovery/fence transitions and selected error/proof formats must be recorded in the module document with the implementation before exact-commit review. No arbitrary phase setter, automatic legacy adoption, native idempotency claim, duplicate migration engine, full event decode or Web/API feature advertisement. Preserve confirmed/unknown preparation and input/goal states across crashes and avoid issuing a second dispatch/side-effect execution qualification on repeated method calls.

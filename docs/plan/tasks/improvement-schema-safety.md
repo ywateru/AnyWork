@@ -1,7 +1,7 @@
 ---
 id: improvement-schema-safety
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -35,4 +35,4 @@ Full I05 consistent backup/restore/retention, G1 stable operation IDs and storag
 
 Candidate `fc2b9aa` was independently reviewed at `ce482da` and remains blocked by B1. Its SQL whitespace normalizer conflates identifiers such as `TEXTNOTNULL` with `TEXT NOT NULL`, and `INTEGERPRIMARYKEYAUTOINCREMENT` with an actual integer primary key. The latter malformed declaration was accepted by the production opening path and recovery inserted a NULL event sequence. Repair must validate actual structural constraints and preserve SQL token/literal identity before WAL changes or recovery. Add real-opening negative regressions that retain seeded active status, queues, journal mode and sequence state after refusal; preserve existing legacy, ownership, future-version and I01 acceptance. A separate verifier must review the exact corrected commit before merge.
 
-Correction `84774c2` passed independent review `9fa5154` and was merged at `d343d0d`; the first candidate remains historical failed evidence. The accepted correction combines token-boundary-safe identity with SQLite structural metadata and additional negative/positive real-opening tests. Merged source has passed server 144 / desktop 34 / SDK 5 / Codex 3 unit tests, Web 317, schema HTTP 3 / I01 HTTP 4 / file HTTP 6 and the other pre-browser checks. Full merged browser/updater regression is running before this task is marked done. Native Linux/Windows ownership execution, physical power loss and the rest of I05 remain separately tracked.
+Correction `84774c2` passed independent review `9fa5154` and was merged at `d343d0d`; the first candidate remains historical failed evidence. The accepted correction combines token-boundary-safe identity with SQLite structural metadata and additional negative/positive real-opening tests. [Full merged checks](../reviews/improvement-schema-merged.md) exited 0: server 144 / desktop 34 / SDK 5 / Codex 3 unit tests, Web 317, all registered HTTP checks including schema 3 / I01 4 / files 6 / desktop-host 20, browser 611 passed / one existing skip and updater. This accepts the scoped local module and unblocks ledger work. New-source Linux/Windows CI, physical power loss and the rest of I05 remain separately tracked.
