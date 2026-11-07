@@ -1,0 +1,11 @@
+-- Exact historical DDL from f42b8e1; application schema was version 1.
+CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS events_session_seq ON events(session_id,seq);
+CREATE TABLE IF NOT EXISTS message_queue(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS queue_settings(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, paused INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS queue_edits(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, seq INTEGER NOT NULL UNIQUE, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS message_feedback(session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, message_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,message_id));
+CREATE TABLE IF NOT EXISTS composer_metadata(session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, client_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,client_id));
+CREATE TABLE IF NOT EXISTS message_edits(operation_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);
+PRAGMA user_version=1;
