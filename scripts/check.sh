@@ -11,6 +11,8 @@ npm run build
 npm test
 python3 scripts/plugin-catalog-test.py
 python3 scripts/integration-test.py
+python3 scripts/event-scope-test.py
+python3 scripts/file-consistency-test.py
 python3 scripts/service-control-test.py
 python3 scripts/shared-history-test.py
 python3 scripts/workbuddy-launch-test.py
@@ -26,5 +28,7 @@ python3 scripts/review-test.py
 python3 scripts/source-archive-test.py
 python3 scripts/release-version-test.py
 python3 scripts/publish-test.py
+python3 scripts/release-ci-test.py
+python3 scripts/container-smoke-script-test.py
 npm run test:e2e
 node scripts/desktop-updater-test.mjs
