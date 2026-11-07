@@ -87,3 +87,42 @@ Independent temporary harnesses were kept under `/private/tmp`, not added to imp
 Return B1 to the developer. Re-review the exact correction commit, including independent valid-token-lookalike negatives, the existing positive legacy fixtures, SQL literal preservation, ownership, sequence and I01 boundary regressions. Do not relax required schema declarations or introduce full-store orphan/event decoding/repair to fix it. Root should register accepted module checks and run merged-contract verification before marking I05a accepted.
 
 This review leaves Linux/Windows guards, network filesystems, real power-loss durability and actual backup/restore/retention unaccepted. I05a's schema/ownership recovery evidence cannot close full I05.
+
+## Follow-up independent review — corrected candidate `84774c2a8fed10294cb82903846214919fd36065`
+
+**Source acceptance: PASS for the declared I05a scope on the tested macOS host. B1 is resolved.** This supplements rather than rewrites the original rejection above. The reviewer inspected and executed the exact correction commit, did not develop or modify its implementation, and found no remaining blocking issue in this follow-up. Root still owns merged acceptance and registration of module checks. No full I05 backup/restore/retention or untested platform acceptance is implied.
+
+### Correction assessment
+
+`store/identity.rs` now compares vectors of SQL tokens, folding only ASCII unquoted words. SQLite ASCII whitespace is consumed between tokens, so real `TEXT`, `NOT`, `NULL` remain distinct from a type named `TEXTNOTNULL`. Non-ASCII characters remain part of identifier tokens; NBSP/EM SPACE/other Unicode separators cannot disappear. Single/double/backtick/bracket quotes, escapes, case and Unicode remain in their tokens. An optional terminal semicolon is handled separately; comments/unfamiliar syntax fail conservatively instead of being interpreted as equivalent. This is an allowlist for known historical DDL, not a general SQL-equivalence parser.
+
+The production schema path additionally compares SQLite's parsed table/index metadata against the reference schema before recovery: column type/nullability/default/PK/hidden state, FK actions, index columns/collation/order and table index uniqueness/origin/partial flags. Only explicitly recognized absent historical replay indexes are omitted from the expected pre-completion index list. The token check retains exact AUTOINCREMENT and expression/predicate identity. These checks do not introduce a database-wide FK/orphan repair or decode hidden event payloads.
+
+The developer's new tests genuinely call the structural validator against real SQLite metadata independently of the lexer, and then call production `Store::open` for refusal. Their full snapshots include version, journal, active session, queued/edit-in-flight state, raw source strings and sequence data. Therefore the lexical and structural defenses are not inferred merely from a parser unit test. The new real-HTTP matrix checks actual service exit and state preservation under both version stamps.
+
+### Independent execution and additional cases
+
+All output/data remained in this worktree or disposable temporary directories. The production Store harness was rebuilt against exact correction source, including the new identity module; no candidate source was edited.
+
+| Check/probe | Actual result |
+| --- | --- |
+| `cargo test --locked --offline -p anywork store::schema::tests -- --nocapture` | **18 passed**, including all prior migration/ownership/recovery/I01 cases and both new lexical/structural cases |
+| `cargo build --locked --offline -p anywork` | Passed; used for HTTP execution |
+| `ANYWORK_BINARY="$PWD/target/debug/anywork" python3 scripts/schema-recovery-test.py` | **3 passed**; includes six valid-SQLite lookalikes × stamps 0/1 (12 real service startups), future refusal and owner/crash/restart/no replay |
+| `ANYWORK_BINARY="$PWD/target/debug/anywork" python3 scripts/event-scope-test.py` | **4 passed**; accepted I01 scope/SSE/poll/cursor behavior retained |
+| Independent production-Store negative matrix | **20/20 refused**, with full logical/journal/version/recovery snapshots unchanged |
+| Independent ASCII formatting/keyword/column-case positives | **2/2 opened**, stamps 0/1; exact source-key/Unicode/quoted/string values and unknown session metadata retained; recovery event sequence 41→42 |
+| Rebuilt independent ownership/recovery harness | Passed canonical/dot/symlink/uppercase same-/cross-process owner refusal, retained SQLite record locks after each rejected opener, killed-owner release and uncommitted SQL rollback, future logical/DELETE-journal preservation, exact composer/event/source metadata and deleted high-water 901, idempotent reopen |
+
+The independent negative matrix is broader than the author's six declaration substitutions. In addition to rechecking the original NOT NULL and primary/AUTOINCREMENT collisions, it executed valid SQLite DDL with:
+
+- `queue_edits.seq INTEGERNOTNULLUNIQUE` instead of the required separate type/NOT NULL/UNIQUE tokens;
+- a `queue_settings.paused` type literally named `"INTEGER NOT NULL DEFAULT 0"`, losing real default/nullability constraints;
+- `session_id TEXTNOTNULL REFERENCES ...`, losing nullability while retaining a real FK;
+- U+3000 IDEOGRAPHIC SPACE and U+2028 LINE SEPARATOR inside apparent constraint type names;
+- source JSON paths with altered `SourceEventKey` case or a trailing space inside the quoted path;
+- an altered replay partial predicate with `AND 1`.
+
+Each was tested under both stamps 0 and 1, with a running session, event sequence 41, sending queue item and starting edit already persisted. Each returned the production schema error without changing the complete SQL logical dump, DELETE journal or version. These variants could not silently enter recovery or reproduce NULL interrupted-event sequences. The two positive fixtures deliberately changed actual unquoted column case as well as keyword/type case and ASCII whitespace; assertions checked these mutations were present, preventing an accidental no-op positive test. User-data strings that resemble schema tokens remained unchanged.
+
+The independent test helper/source files are local `/private/tmp/anywork-schema-review-followup.py` and the rebuilt `/private/tmp/anywork-schema-review-ownership.py`/Store harness; only this review is committed. All child processes and temporary server instances exited. Native Linux/Windows guard/crash behavior, network filesystems and real power-loss/kernel durability remain unverified. The separate Windows locking path still requires native evidence before it is advertised as accepted. Full backup, restore, retention, operation ledger and broad I03 degradation remain open.
