@@ -122,7 +122,12 @@ try{
   await fail('wb:conversations:list',async()=>{const result=await api('/sessions');assert(result.discovery_error.includes('conversations.list'));assert(result.sessions.some(s=>s.id===id));assert(!JSON.stringify(result).includes('NATIVE_ERROR_SECRET'));});
   await fail('wb:models:list',()=>rejected(`/sessions/${id}/models`,undefined,'models.list'));
   await fail('wb:conversations:create',()=>rejected('/sessions',{agent:'workbuddy',cwd:'.'},'conversations.create'));
-  await fail('wb:conversations:get',()=>rejected(`/sessions/${created.id}/composer`,undefined,'conversations.get'));
+  // Safe metadata reads must not attach an unopened native conversation.
+  const beforeOfflineReads=await mutations();
+  const coldGets=()=>page.evaluate(nativeId=>fixture.calls.filter(c=>c.channel==='wb:conversations:get'&&c.args[0]===nativeId).length,created.thread_id);
+  const beforeColdGets=await coldGets();
+  await fail('wb:conversations:get',async()=>{const unavailable=await api(`/sessions/${created.id}/composer`);assert.equal(unavailable.settings_available,false);assert.equal((await api(`/sessions/${created.id}/models`)).settings_available,false);});
+  assert.equal(await coldGets(),beforeColdGets);assert.equal(await mutations(),beforeOfflineReads);
   const beforeErrorSend=await page.evaluate(()=>fixture.sendCount);const beforeErrorEvents=await api(`/sessions/${id}/events/poll?after=0`);
   await fail('wb:conversations:sendPrompt',()=>rejected(`/sessions/${id}/messages`,{text:'must not submit'},'conversations.sendPrompt'));
   assert.equal(await page.evaluate(()=>fixture.sendCount),beforeErrorSend);await delay(700);
