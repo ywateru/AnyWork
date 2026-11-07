@@ -5,6 +5,7 @@
 - [Sidebar Agent filtering and icons](sidebar-agent-filter.md)
 - [WorkBuddy integration contract](workbuddy-integration.md), [investigation](plan/analysis/workbuddy.md)
 - [WorkBuddy launcher / 桌面连接引导](workbuddy-launcher.md)
+- [WorkBuddy visible transcript and live updates](workbuddy-transcript-updates.md)
 - [DeepSeek Harness integration](deepseek-harness-integration.md)
 - [Harness shared-host setup / 共享主机接入](harness-setup.md)
 - [Harness persisted history](harness-persisted-history.md), [WorkBuddy persisted history](workbuddy-persisted-history.md)

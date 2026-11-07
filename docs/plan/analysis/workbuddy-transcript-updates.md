@@ -13,4 +13,4 @@ Follow-up to [native history import](../tasks/shared-agent-history.md), scoped b
 
 The correction must be checked against native-shaped cursor, display metadata, incremental completion and legacy cache fixtures, with independent review of committed code. Actual native observations are read-only. Fixture sends do not establish the separate installed WorkBuddy creation/message/collaboration acceptance gate. No version bump or public publication is required.
 
-This report records investigation; final implementation and validation evidence will be linked from the task when accepted.
+The correction is accepted. [Implementation and REA provenance](../../workbuddy-transcript-updates.md), [independent review](../reviews/workbuddy-transcript-updates.md) and [merged validation/local deployment](../reviews/workbuddy-transcript-updates-merged.md) distinguish the final code, native observations and fixture guarantees.

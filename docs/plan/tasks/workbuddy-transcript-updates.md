@@ -12,4 +12,4 @@ User report: internal injected context is rendered as a user message; a prompt r
 
 Developer investigates/implements in an isolated worktree and commits. A separate verifier reviews exact commits and reproduces acceptance. Root owns docs, merged checks and AnyWork-only local deployment after ensuring no owned task is interrupted. No release/version/public website changes in this follow-up.
 
-Status: investigating.
+Status: completed and deployed locally on 2026-11-07. [Investigation](../analysis/workbuddy-transcript-updates.md), [implementation/evidence](../../workbuddy-transcript-updates.md), [independent review](../reviews/workbuddy-transcript-updates.md) and [merged checks/deployment](../reviews/workbuddy-transcript-updates-merged.md) record the verified correction. No native prompt or public release was part of this follow-up.
