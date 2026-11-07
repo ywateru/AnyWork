@@ -703,11 +703,11 @@ class Integration(unittest.TestCase):
         s=self.create();sid=s["id"]
         listing=self.request(f"/sessions/{sid}/files")
         self.assertIn("README.md",[e["name"] for e in listing["entries"]])
-        self.request(f"/sessions/{sid}/files",{"path":"new.txt","content":"updated"},"PUT")
+        self.request(f"/sessions/{sid}/files",{"path":"new.txt","content":"updated","expected_revision":None},"PUT")
         self.assertEqual(self.request(f"/sessions/{sid}/files?path=new.txt")["content"],"updated")
         with self.assertRaises(urllib.error.HTTPError) as result:self.request(f"/sessions/{sid}/files?path=/etc/passwd")
         self.assertEqual(result.exception.code,403)
-        with self.assertRaises(urllib.error.HTTPError):self.request(f"/sessions/{sid}/files",{"path":"../escape","content":"bad"},"PUT")
+        with self.assertRaises(urllib.error.HTTPError):self.request(f"/sessions/{sid}/files",{"path":"../escape","content":"bad","expected_revision":None},"PUT")
         self.request(f"/sessions/{sid}",{"archived":True,"title":"renamed"},"PATCH")
         with self.assertRaises(urllib.error.HTTPError):self.request(f"/sessions/{sid}/messages",{"text":"hello"})
         self.request(f"/sessions/{sid}",method="DELETE")

@@ -1,0 +1,40 @@
+.file-save-status,
+.file-save-comparison {
+  margin: 12px 20px;
+  padding: 12px;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.file-save-status p,
+.file-save-comparison h4 {
+  margin: 0 0 8px;
+}
+.file-save-status button,
+.file-save-comparison button {
+  margin: 4px 8px 4px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 6px;
+  text-align: left;
+  max-width: 100%;
+}
+.file-save-comparison pre {
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+/* Keep actions in normal flow, including the workbench's collapsed toolbar variant. */
+.anywork-workbench .document-file-actions.file-save-actions {
+  position: static;
+  height: auto;
+  min-height: 36px;
+  padding: 4px 14px;
+  overflow: visible;
+}
+.anywork-workbench .document-file-actions.file-save-actions > button {
+  transform: none;
+}
