@@ -12,6 +12,7 @@ npm test
 python3 scripts/plugin-catalog-test.py
 python3 scripts/integration-test.py
 python3 scripts/event-scope-test.py
+python3 scripts/schema-recovery-test.py
 python3 scripts/file-consistency-test.py
 python3 scripts/service-control-test.py
 python3 scripts/shared-history-test.py
