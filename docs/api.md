@@ -11,6 +11,7 @@
 | GET | `/api/sessions` | `{sessions:[Session],discovery_error?}`；合并本服务及同用户的工作区内 Codex 会话 |
 | POST | `/api/sessions` | `{cwd,agent?,model?,title?,policy?:"manual"|"auto"}` |
 | GET | `/api/sessions/:id` | `{session:Session}` |
+| GET | `/api/sessions/:id/capabilities` | 版本化、按当前会话作用域计算的只读能力建议；不启动进程、连接原生或导入历史 |
 | PATCH | `/api/sessions/:id` | `{title?,archived?,policy?,model?}`；模型只能在空闲时修改 |
 | DELETE | `/api/sessions/:id` | 删除会话、事件及上传附件 |
 | POST | `/api/sessions/:id/messages` | `{text,attachments?:[上传返回的绝对路径],mode?:"steer"或"queue",composer?:{markdown,document}}` |
@@ -50,6 +51,12 @@
 ## 默认 Agent 插件
 
 `GET /api/plugins` 始终包含默认启用的 `codex`、`deepseek-harness`（dsh）和 `workbuddy`，另加用户安装的插件。每项包含 `id`、`name`、`capabilities`、`protocol_version`、`available` 和 `setup_hint`。`available` 表示已配置可尝试连接的入口，不保证主机在线，也不会为了查询启动或连接主机。未配置/无效的共享发现入口返回 `available:false` 与不含密钥的设置提示，插件仍保留在列表中。前端允许选择并阅读提示，入口就绪前禁用创建；完成设置后点击“重新检查连接”重新读取。旧服务省略 `available` 时沿用其“列表中的插件可尝试使用”语义。插件默认启用不会启动独立引擎，也不会绕过共享主机验证。
+
+## 只读能力建议
+
+`/api/info` 的 `capability_projection_v1:true` 表示提供附加能力协议；插件项增加 `capability_projection`，原六个字段的含义保持兼容。`GET /api/sessions/:id/capabilities` 先检查当前会话作用域，再读取本地事件/队列/配置；返回版本、revision、会话/thread/Agent/拓扑绑定、readiness、观测范围及 26 项逐动作建议。`supported` 是 `yes/no/unknown`，`allowed_now` 是当前已知前置条件下的建议，并非命令授权。
+
+当前模块没有可信原生实例/代次观测，因此所有依赖原生的动作均不放行，transport/identity/native freshness 保持未知；本地缓存读取和符合条件的队列局部操作单独判断。`transport_reachable` 不是已验证原生身份的可达性。5 秒有效期仅属于本地读取，不能作为原生在线证明。旧 Web 尚未切换到该建议源，原命令仍执行既有守卫。详见[模块契约](capability-projection-module.md)；不能用此协议宣称完整 I07、原生写入或 WorkBuddy 正式支持已验收。
 
 ## 会话结构
 

@@ -1,6 +1,6 @@
 # Read-only capability projection module (I07a)
 
-Status: developer candidate, awaiting exact-commit independent review. This is the additive server module of the [projection contract](capability-projection.md), not completion of I07, a Web activation, or native writing acceptance. Actual supported versions/topologies remain governed by the [support matrix](support-matrix.md).
+Status: source `b374fe31` passed [independent exact-commit review](plan/reviews/improvement-capability-projection.md) at `1bfd268` and is merged; [bounded merged regressions](plan/reviews/improvement-capability-merged.md) passed at `2942baa`. This is the additive server module of the [projection contract](capability-projection.md), not completion of I07, a Web activation, or native writing acceptance. Actual supported versions/topologies remain governed by the [support matrix](support-matrix.md).
 
 ## Inputs, outputs and authority
 
@@ -54,4 +54,4 @@ All checks below ran in the isolated capability worktree on macOS, with a privat
 - Existing `scripts/plugin-catalog-test.py` preserves exact old values/auth/availability assertions and extends its exact response-key expectation for the one additive field.
 - Isolated server build, Clippy all server targets with warnings denied, Rust formatting, Python compilation and diff checks are required before the candidate commit.
 
-Independent source/HTTP review and root merged checks remain required. No UI, real-native writing, fresh native observation, diagnosis, complete typed-error migration, full I07 or I10 acceptance is claimed. Root owns central check registration and status documentation.
+Independent source/HTTP review passed, including four extra actual-HTTP scenarios for queue/editor guards, changed bindings/expiry, corrupt visible versus hidden cached events and uncertain local removal. Root registered the HTTP script and passed merged Rust/API regressions. No UI, real-native writing, fresh native observation, diagnosis, complete typed-error migration, full I07 or I10 acceptance is claimed. Root owns central check registration and status documentation.

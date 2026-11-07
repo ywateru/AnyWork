@@ -18,3 +18,7 @@ Own only `e2e/sidebar-scroll.spec.ts` in a private worktree. Top must continue r
 ## Verification
 
 Run focused sidebar cases on desktop and Pixel plus a bounded repeat of the failing short-mobile case, using private assets/data and the local Chrome channel. Commit the exact single-file candidate; a different agent independently reviews and executes it before root merges. Then require a new exact-source Checks run; earlier platform job successes do not authorize a different source or replace the previously skipped Linux/schema stages. No release, production restart or native task.
+
+## Current evidence
+
+Candidate `7aa1877` passed [independent review](../reviews/improvement-sidebar-boundary.md) at `9b542c3` and merged at `efc57de`. Independent original short-mobile repeats passed 2/2 and the complete desktop/Pixel focused suite passed 6/6. Strict top-zero, real touch, progress/budget and containment checks are retained. The task remains in progress until the new exact-source cloud Checks completes; the prior failed cloud run is not reclassified as a pass.

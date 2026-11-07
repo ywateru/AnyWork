@@ -1,7 +1,7 @@
 ---
 id: improvement-capability-projection
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -27,3 +27,7 @@ Own a new server capability-policy/observation module, minimal API/catalog routi
 Independently review exact committed source; use real HTTP with fake plugins/private persisted fixture sessions to assert session/current-scope auth, explicit unknown and topology-specific policies, safe experiment labels and absence of leaked descriptor/credential fields. Demonstrate zero spawned execution processes/input/setting changes when catalog or capability endpoints are read repeatedly. Verify descriptor validity is not called liveness, disconnected cached histories remain readable, busy is not unsupported, custom unobserved capabilities are unknown, and stale identity/runtime observations are invalidated. Preserve existing command safety checks and no-competition behavior. Module completion is not activation of the new Web consumer or completion of I07.
 
 Independent contract review of `fb48eae` found no blocking findings. Implementation starts in a separate worktree while the disjoint schema merged/browser and previous-source CI checks run. No module may merge before its own exact-commit independent review and relevant merged checks. Unknown native readiness is an acceptable truthful output when this module has no trustworthy observation source; filling it from runtime membership or stored status is not.
+
+## Accepted module
+
+Source `b374fe31` passed independent review `1bfd268` and merged at `89f5d30`; script registration merged at `2942baa`. [Merged regressions](../reviews/improvement-capability-merged.md) passed at that exact source. This closes only the additive read-only module. Trustworthy native observations, Web consumption, typed critical errors, command enforcement and the remainder of I07/I10 remain open; no native operation was accepted by this task.
