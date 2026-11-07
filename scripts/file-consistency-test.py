@@ -8,6 +8,7 @@ import pathlib
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
@@ -128,6 +129,48 @@ class FileConsistency(unittest.TestCase):
         self.assertEqual(sorted(code for code, _ in created), [200, 409])
         self.assertIn((self.workspace / "new-race.txt").read_text(), ["new one", "new two"])
         self.assertEqual(list(self.workspace.glob(".anywork-save-*")), [])
+
+    def assert_equivalent_name_races(self, first, alias):
+        target = self.workspace / first
+        baseline = b"0" * 524288
+        target.write_bytes(baseline)
+        other = self.workspace / alias
+        if not other.exists() or not os.path.samefile(target, other):
+            self.skipTest("Fixture filesystem treats these spellings as distinct filenames")
+        expected = revision(baseline)
+        for attempt in range(10):
+            target.write_bytes(baseline)
+            barrier = threading.Barrier(2)
+            def save(name, content, sid):
+                barrier.wait(timeout=10)
+                return self.write(name, content, expected, sid)
+            with concurrent.futures.ThreadPoolExecutor(2) as pool:
+                futures = [pool.submit(save, name, content, sid) for name, content, sid in [(first, "1" * 524288, self.sid), (alias, "2" * 524288, self.other)]]
+                results = [future.result() for future in futures]
+            self.assertEqual(sorted(code for code, _ in results), [200, 409], f"alias lost update on attempt {attempt}: {results}")
+            winner = results.index(next(result for result in results if result[0] == 200))
+            self.assertEqual(target.read_bytes(), (b"1" if winner == 0 else b"2") * 524288)
+            loser = results[1 - winner][1]
+            self.assertEqual((loser["code"], loser["delivery_state"]), ("file_revision_conflict", "not_written"))
+            self.assertEqual(list(self.workspace.glob(".anywork-save-*")), [])
+        target.unlink()
+        barrier = threading.Barrier(2)
+        def create(name, content, sid):
+            barrier.wait(timeout=10)
+            return self.write(name, content, None, sid)
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            futures = [pool.submit(create, name, content, sid) for name, content, sid in [(first, "create one", self.sid), (alias, "create two", self.other)]]
+            results = [future.result() for future in futures]
+        self.assertEqual(sorted(code for code, _ in results), [200, 409])
+        self.assertTrue(os.path.samefile(target, other))
+        self.assertIn(target.read_text(), ["create one", "create two"])
+        self.assertEqual(list(self.workspace.glob(".anywork-save-*")), [])
+
+    def test_case_equivalent_aliases_serialize_existing_and_create_saves(self):
+        self.assert_equivalent_name_races("case-race.txt", "CASE-RACE.TXT")
+
+    def test_unicode_equivalent_aliases_serialize_existing_and_create_saves(self):
+        self.assert_equivalent_name_races("caf\u00e9-race.txt", "cafe\u0301-race.txt")
 
     def test_boundaries_permissions_and_unsupported_targets(self):
         outside = self.base / "outside.txt"

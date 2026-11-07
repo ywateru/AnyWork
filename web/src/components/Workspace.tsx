@@ -22,6 +22,10 @@ import Markdown from "./Markdown";
 import ImagePreview from "./ImagePreview";
 import DocumentPreview, { isDocumentPath } from "./DocumentPreview";
 import { isImagePath, type FileTarget } from "../fileLinks";
+function isFileRevision(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
+}
+
 interface Entry {
   name: string;
   path: string;
@@ -232,11 +236,11 @@ export default function Workspace({
     const identity = owner.current;
     setComparing(true);
     try {
-      const data = await api.request<{ content: string; revision?: string }>(
+      const data = await api.request<{ content?: unknown; revision?: unknown }>(
         `/sessions/${id}/files?path=${encodeURIComponent(path)}`,
       );
       if (owner.current !== identity) return;
-      if (typeof data.content !== "string" || !data.revision)
+      if (typeof data?.content !== "string" || !isFileRevision(data.revision))
         throw new Error("服务未提供文件版本，请先升级本地服务；当前草稿已保留");
       setLatest({ content: data.content, revision: data.revision });
     } catch (error) {
@@ -256,7 +260,7 @@ export default function Workspace({
     setSaveError("");
     setLatest(null);
     try {
-      const result = await api.request<{ revision?: string }>(
+      const result = await api.request<{ ok?: unknown; revision?: unknown }>(
         `/sessions/${id}/files`,
         {
           method: "PUT",
@@ -268,10 +272,8 @@ export default function Workspace({
         },
       );
       if (owner.current !== identity) return;
-      if (!result.revision)
-        throw new Error(
-          "保存结果未包含文件版本，请比较最新文件确认；当前草稿已保留",
-        );
+      if (result?.ok !== true || !isFileRevision(result.revision))
+        throw new Error("保存结果无效，请比较最新文件确认；当前草稿已保留");
       // Edits typed while the request is pending remain dirty against this
       // captured submission rather than being incorrectly marked as saved.
       setOriginal(submitted);
@@ -306,7 +308,7 @@ export default function Workspace({
         if (!controller.signal.aborted) {
           setContent(data.content ?? null);
           setOriginal(data.content ?? "");
-          setRevision(typeof data.revision === "string" ? data.revision : null);
+          setRevision(isFileRevision(data.revision) ? data.revision : null);
         }
       }
     };
@@ -474,7 +476,7 @@ export default function Workspace({
             />
           ) : content !== null ? (
             <>
-              <div className="document-file-actions">
+              <div className="document-file-actions file-save-actions">
                 <button
                   title="复制文件内容"
                   aria-label="复制文件内容"

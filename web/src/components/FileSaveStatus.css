@@ -26,3 +26,15 @@
   overflow: auto;
   font-size: 12px;
 }
+
+/* Keep actions in normal flow, including the workbench's collapsed toolbar variant. */
+.anywork-workbench .document-file-actions.file-save-actions {
+  position: static;
+  height: auto;
+  min-height: 36px;
+  padding: 4px 14px;
+  overflow: visible;
+}
+.anywork-workbench .document-file-actions.file-save-actions > button {
+  transform: none;
+}

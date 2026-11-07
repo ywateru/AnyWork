@@ -9,11 +9,10 @@ use serde::{Deserialize, Deserializer};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashMap,
     fs::OpenOptions,
     io::{Read, Write},
     path::{Path as FsPath, PathBuf},
-    sync::{Arc, Mutex, OnceLock, Weak},
+    sync::{Arc, Mutex},
 };
 
 pub fn within(root: &FsPath, path: &FsPath) -> anyhow::Result<PathBuf> {
@@ -204,8 +203,10 @@ fn read_regular(path: &FsPath) -> Result<Vec<u8>, SaveError> {
     Ok(bytes)
 }
 
-type FileLocks = Mutex<HashMap<PathBuf, Weak<Mutex<()>>>>;
-static FILE_LOCKS: OnceLock<FileLocks> = OnceLock::new();
+// A process-wide publication lock intentionally trades parallel save throughput
+// for correct coordination of all host filesystem aliases, including case and
+// Unicode equivalence. Path string normalization cannot identify these portably.
+static FILE_WRITES: Mutex<()> = Mutex::new(());
 struct TemporaryFile(PathBuf);
 impl Drop for TemporaryFile {
     fn drop(&mut self) {
@@ -220,6 +221,23 @@ fn save_file_with(
     root: &FsPath,
     body: WriteFile,
     before_commit: impl FnOnce(&FsPath) -> Result<(), SaveError>,
+) -> Result<String, SaveError> {
+    save_file_with_sync(root, body, before_commit, sync_parent)
+}
+fn sync_parent(parent: &FsPath) -> std::io::Result<()> {
+    #[cfg(unix)]
+    return std::fs::File::open(parent).and_then(|directory| directory.sync_all());
+    #[cfg(not(unix))]
+    {
+        let _ = parent; // Portable Windows directory durability remains unverified.
+        Ok(())
+    }
+}
+fn save_file_with_sync(
+    root: &FsPath,
+    body: WriteFile,
+    before_commit: impl FnOnce(&FsPath) -> Result<(), SaveError>,
+    sync_directory: impl FnOnce(&FsPath) -> std::io::Result<()>,
 ) -> Result<String, SaveError> {
     match &body.expected_revision {
         ExpectedRevision::Missing => {
@@ -251,6 +269,15 @@ fn save_file_with(
             "File exceeds 2 MiB",
         ));
     }
+    let _guard = FILE_WRITES.lock().map_err(|_| {
+        let mut failure = SaveError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "file_save_uncertain",
+            "保存协调状态异常，请比较最新文件并重启服务后再操作",
+        );
+        failure.uncertain = true;
+        failure
+    })?;
     let destination = root.join(&body.path);
     let parent = within(
         root,
@@ -272,18 +299,6 @@ fn save_file_with(
             "Invalid filename",
         )
     })?);
-    let lock = {
-        let mut locks = FILE_LOCKS.get_or_init(Default::default).lock().unwrap();
-        locks.retain(|_, value| value.strong_count() > 0);
-        if let Some(lock) = locks.get(&target).and_then(Weak::upgrade) {
-            lock
-        } else {
-            let lock = Arc::new(Mutex::new(()));
-            locks.insert(target.clone(), Arc::downgrade(&lock));
-            lock
-        }
-    };
-    let _guard = lock.lock().unwrap();
     let check = || -> Result<Option<std::fs::Permissions>, SaveError> {
         match std::fs::symlink_metadata(&target) {
             Ok(metadata) => {
@@ -350,8 +365,7 @@ fn save_file_with(
         })?,
         ExpectedRevision::Missing => unreachable!(),
     }
-    #[cfg(unix)]
-    if let Err(error) = std::fs::File::open(&parent).and_then(|directory| directory.sync_all()) {
+    if let Err(error) = sync_directory(&parent) {
         let mut failure = SaveError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "file_save_uncertain",
@@ -921,6 +935,48 @@ mod tests {
                 .count(),
             1
         );
+    }
+    #[tokio::test]
+    async fn failed_postpublication_sync_reports_uncertain_and_keeps_published_bytes() {
+        for create in [true, false] {
+            let fixture = Fixture::new();
+            let expected = if create {
+                ExpectedRevision::Create
+            } else {
+                ExpectedRevision::Match(fixture.write(ExpectedRevision::Create, "old").unwrap())
+            };
+            let failure = save_file_with_sync(
+                &fixture.0,
+                WriteFile {
+                    path: "file.txt".into(),
+                    content: "published".into(),
+                    expected_revision: expected,
+                },
+                |_| Ok(()),
+                |_| Err(std::io::Error::other("injected directory sync failure")),
+            )
+            .unwrap_err();
+            assert_eq!(failure.status, StatusCode::SERVICE_UNAVAILABLE);
+            assert!(failure.uncertain);
+            assert_eq!(std::fs::read(fixture.path()).unwrap(), b"published");
+            assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 1);
+            let response = failure.into_response();
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            let bytes = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let json: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(json["code"], "file_save_uncertain");
+            assert_eq!(json["delivery_state"], "uncertain");
+            // A lost/uncertain create response never authorizes another create.
+            assert_eq!(
+                fixture
+                    .write(ExpectedRevision::Create, "retry")
+                    .unwrap_err()
+                    .status,
+                StatusCode::CONFLICT
+            );
+        }
     }
     #[test]
     fn rejects_large_text_and_special_targets_without_modifying_them() {

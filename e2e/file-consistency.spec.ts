@@ -139,6 +139,11 @@ test("conflict preserves draft, compares latest, explicitly rebases or reloads",
   ).toBe(200);
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("草稿已保留");
+  const toolbar = await page.locator(".file-save-actions").boundingBox();
+  const banner = await page.getByRole("alert").boundingBox();
+  expect(toolbar).not.toBeNull();
+  expect(banner).not.toBeNull();
+  expect(banner!.y).toBeGreaterThanOrEqual(toolbar!.y + toolbar!.height);
   await expect(editor).toHaveValue("local unsaved draft");
   await page.getByRole("button", { name: "复制当前草稿", exact: true }).click();
   expect(await page.evaluate(() => (window as any).copiedDraft)).toBe(
@@ -256,7 +261,7 @@ test("unknown result and transport failure retain draft without blind retry", as
     await route.fulfill({ json: { ok: true } });
   });
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("保存结果未包含文件版本");
+  await expect(page.getByRole("alert")).toContainText("保存结果无效");
   await expect(editor).toHaveValue("keep uncertain draft");
   await page.unroute(pattern);
   await page.getByRole("button", { name: "比较最新文件", exact: true }).click();
@@ -363,3 +368,117 @@ for (const kind of ["file", "session"] as const) {
     await expect(page.getByRole("alert")).toHaveCount(0);
   });
 }
+
+test("malformed success and comparison revisions never establish a saved baseline", async ({
+  page,
+}, info) => {
+  const { sessions, names } = await setup(page, `schema-${info.project.name}`);
+  const id = sessions[0].id;
+  const editor = page.getByLabel("文件内容", { exact: true });
+  const original = await read(page, id, names[0]);
+  const pattern = `**/api/sessions/${id}/files`;
+  let response: unknown;
+  await page.route(pattern, (route) =>
+    route.request().method() === "PUT"
+      ? route.fulfill({ json: response })
+      : route.continue(),
+  );
+  const malformed = [
+    { ok: false, revision: "invalid-but-truthy" },
+    { ok: false, revision: original.revision },
+    { ok: "true", revision: original.revision },
+    { revision: original.revision },
+    { ok: true, revision: "invalid-but-truthy" },
+    { ok: true, revision: 42 },
+    { ok: true, revision: { value: original.revision } },
+    { ok: true, revision: `sha256:${"A".repeat(64)}` },
+    null,
+  ];
+  for (const [index, invalid] of malformed.entries()) {
+    response = invalid;
+    const draft = `unsaved schema draft ${index}`;
+    await editor.fill(draft);
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("保存结果无效");
+    await expect(
+      page.getByRole("button", { name: "保存", exact: true }),
+    ).toBeEnabled();
+    await expect(editor).toHaveValue(draft);
+    expect((await read(page, id, names[0])).content).toBe(original.content);
+  }
+  await page.unroute(pattern);
+  const comparePattern = `**/api/sessions/${id}/files?path=*`;
+  for (const invalid of [
+    "invalid-but-truthy",
+    42,
+    { hash: original.revision },
+    null,
+  ]) {
+    await page.route(comparePattern, (route) =>
+      route.fulfill({
+        json: { content: "untrusted comparison", revision: invalid },
+      }),
+    );
+    await page
+      .getByRole("button", { name: "比较最新文件", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toContainText("服务未提供文件版本");
+    await expect(
+      page.getByRole("region", { name: "最新文件比较" }),
+    ).toHaveCount(0);
+    await expect(editor).toHaveValue("unsaved schema draft 8");
+    await page.unroute(comparePattern);
+  }
+  // Rejected responses never replace the original digest used for a valid retry.
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "保存", exact: true }),
+  ).toBeDisabled();
+  expect((await read(page, id, names[0])).content).toBe(
+    "unsaved schema draft 8",
+  );
+});
+
+test("uncertain post-publication response retains draft and requires explicit comparison", async ({
+  page,
+}, info) => {
+  const { sessions, names } = await setup(page, `sync-${info.project.name}`);
+  const editor = page.getByLabel("文件内容", { exact: true });
+  await editor.fill("published but durability uncertain");
+  const pattern = `**/api/sessions/${sessions[0].id}/files`;
+  await page.route(pattern, async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    expect((await route.fetch()).status()).toBe(200);
+    await route.fulfill({
+      status: 503,
+      json: {
+        error: "文件已替换，但无法确认目录持久化，请重新读取并比较",
+        code: "file_save_uncertain",
+        delivery_state: "uncertain",
+      },
+    });
+  });
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("无法确认目录持久化");
+  await expect(editor).toHaveValue("published but durability uncertain");
+  await expect(
+    page.getByRole("button", { name: "保存", exact: true }),
+  ).toBeEnabled();
+  await page.unroute(pattern);
+  expect((await read(page, sessions[0].id, names[0])).content).toBe(
+    "published but durability uncertain",
+  );
+  await page.getByRole("button", { name: "比较最新文件", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "最新文件比较" }),
+  ).toContainText("published but durability uncertain");
+  await page
+    .getByRole("button", {
+      name: "使用此版本作为保存基线，保留草稿",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "保存", exact: true }),
+  ).toBeDisabled();
+});
