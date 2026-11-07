@@ -1,6 +1,6 @@
 # G1 / I03: storage degradation and recovery boundaries
 
-Analysis baseline: `aacaa19` (2026-11-07). Status: **design input awaiting independent review**, not an implemented storage-health protocol. The [project review](../../project-improvement-review.md), [message-operation contract](../../message-operations.md) and [schema contract](../../schema-and-recovery.md) remain authoritative for their respective scopes. I02a is still developing; concrete ledger methods must be rechecked against its independently accepted source before integration.
+Analysis baseline: `aacaa19` (2026-11-07). Status: **independently reviewed design input**, not an implemented storage-health protocol or approved implementation contract. [Review `9040174`](../reviews/improvement-storage-analysis.md) passed without blockers; its three nonblocking clarifications are incorporated below. The [project review](../../project-improvement-review.md), [message-operation contract](../../message-operations.md) and [schema contract](../../schema-and-recovery.md) remain authoritative for their respective scopes. I02a is still developing; concrete ledger methods must be rechecked against its independently accepted source before integration.
 
 ## Current creation and call paths
 
@@ -11,11 +11,12 @@ Analysis baseline: `aacaa19` (2026-11-07). Status: **design input awaiting indep
 | Same event loop → `Store::request` → auto approval → `rpc.send` → resolution event | A failed request read skips the response; successful send can be followed by a failed resolution write | Missing local resolution must not authorize repeated automatic approval; request/turn/occurrence and connection generation matter |
 | `api::respond` → scoped request lookup → `rpc.send` → resolution event/status | Non-desktop response is written to native before local resolution; `emit` failure is not propagated | A generic error or missing resolution cannot prove the response was rejected by native |
 | `api::message` / queue worker → preparation/input → echo/status/goal | Multiple local writes and native effects exist | I02 owns their durable intent/preparation/dispatch/acceptance safety, rather than a second I03 message journal |
+| `api::interrupt` → fallible `Store::pause_queue` → runtime/owner/turn checks → native interrupt | A queue-pause storage failure currently exits before native interruption | The proposed safety-action behavior requires a deliberate integration change, not simply ignoring the queue error |
 | Per-session `api::events` → `Store::events` | Storage read failure closes the stream | Reconnection alone cannot explain whether native events were missed or storage remains unavailable |
 | Public `/api/health` | Fixed `status=ok` and package version | Liveness is not authenticated readiness, durable recording health or native synchronization |
 | Desktop/Web transport and cached histories | Existing cached content can remain visible | A last known completion, approval or running label is not fresh evidence during a recording gap |
 
-Native events can still arrive during a disk failure. Closing their transports to reduce local pressure can interrupt collaboration or lose the only available observation; it does not undo already accepted work. Conversely, retaining an unbounded in-memory event backlog is not a recovery strategy. I06 budgets and I07 connection generations must be coordinated with I03, without making either a prerequisite for a claim that writes succeeded.
+Native events can still arrive during a disk failure. Closing their transports to reduce local pressure can interrupt collaboration or lose the only available observation; it does not undo already accepted work. Conversely, retaining an unbounded in-memory event backlog is not a recovery strategy. I06 budgets and I07 connection generations must be coordinated with I03, without making either a prerequisite for a claim that writes succeeded. Accepted I07a supplies neither trustworthy native generations nor authoritative pending-occurrence observations; the [native-observations follow-up](../tasks/improvement-capability-observations.md) must define that interface before I03 consumes it.
 
 ## Authority and desired state
 
@@ -34,8 +35,8 @@ Recovery of item 3 does not prove item 5. A successful test write cannot clear a
 Proposed recording-state model, subject to independent contract review:
 
 ```text
-unverified startup
-      │ required opening/recovery complete
+unverified recording at startup
+      │ checked opening/recording recovery complete
       ▼
 healthy ── failed required read/write ──► degraded
   ▲                                       │
@@ -43,7 +44,7 @@ healthy ── failed required read/write ──► degraded
   └────────────────── recovering ◄────────┘
 ```
 
-Health is scoped conservatively. When the storage error is shared or its scope is unknown, degrade the entire store. A narrower per-session reconciliation gap may be represented only when shared storage health is independently known; it must bind the native thread and current connection generation, not merely a browser selection. Missing/failed checks are unknown, never healthy. Preserve I02's persisted pre-dispatch uncertainty and its in-memory shared-fault fence even if writing an I03 incident record also fails.
+The diagram describes recording health only. Even a healthy recording state leaves native reconciliation freshness unknown until independently established; it does not clear an I02 result fence. Health is scoped conservatively. When the storage error is shared or its scope is unknown, degrade the entire store. A narrower per-session reconciliation gap may be represented only when shared storage health is independently known; it must bind the native thread and current connection generation, not merely a browser selection. Missing/failed checks are unknown, never healthy. Preserve I02's persisted pre-dispatch uncertainty and its in-memory shared-fault fence even if writing an I03 incident record also fails.
 
 ## Minimal safe behavior by operation
 
@@ -52,7 +53,7 @@ Health is scoped conservatively. When the storage error is shared or its scope i
 | New message, steer, queue dispatch, preparation with native side effects | Use I02's write-ahead and result fences. No native input after a failed required pre-input commit; no fresh-ID repair of ambiguous input |
 | Automatic approval or question response | Do not answer from an unrecorded/unreadable occurrence. Repeated notifications are observations, not a second response authorization. A post-send recording failure remains response-unknown until exact native occurrence reconciliation |
 | Manual approval/question response | A current verified native occurrence is still required. Persist a response claim before native effect; on ambiguous send/result, expose unknown and query the same occurrence. Do not claim these requests are protected by the message ledger without their own accepted integration |
-| Interrupt/cancel | Do not silently block an explicitly requested safety action solely because recording is degraded. Preserve actual adapter/owner/turn guards and report native outcome separately from failed local recording. Never claim durable cancellation from a button click or successful transport write alone |
+| Interrupt/cancel | Do not silently block an explicitly requested safety action solely because recording is degraded. Before native interruption, fence local queue dispatch in process memory even if durable queue pause fails; do not permit a concurrent worker to dispatch another input. Preserve actual adapter/owner/turn guards and external teardown waits, and report native outcome separately from failed local recording. Never claim durable cancellation from a button click or successful transport write alone |
 | Native completion/status | Continue bounded transport consumption without fabricating durable cache success. Invalidate freshness when persistence fails; use later native identity-bound snapshots/history for recovery |
 | Read cached history/export | Return actual read errors or explicitly labelled last-known data. Do not substitute empty success or advance durable event cursors for uncommitted events |
 | Local queue edits/deletion/config changes | Require their actual commit. Preserve drafts and uncertain rows; do not show success when only a UI mutation occurred |
