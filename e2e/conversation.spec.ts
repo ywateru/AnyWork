@@ -46,7 +46,7 @@ test("conversation restores draft, previews authenticated PDF and remembers keyb
     (
       await page.request.put(`/api/sessions/${session.id}/files`, {
         headers,
-        data: { path: name, content: pdf },
+        data: { path: name, content: pdf, expected_revision: null },
       })
     ).ok(),
   ).toBe(true);
@@ -57,6 +57,7 @@ test("conversation restores draft, previews authenticated PDF and remembers keyb
         headers,
         data: {
           path: markdownName,
+          expected_revision: null,
           content: `# Document links\n\n[预览 PDF](./${name})`,
         },
       })
