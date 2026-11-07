@@ -34,7 +34,7 @@
 | Windows x64 | Windows 10/11 + WebView2，安装版/便携包，已有原生 release 构建与测试 | 无发行商签名；便携包不自动替换；不支持 Codex 桌面 Unix 热接入 |
 | Linux x64 / arm64 | AppImage/便携包；GTK3/WebKitGTK4.1；基于 Ubuntu 22.04 / 24.04 的不同架构构建 | 实际发行版/桌面环境矩阵未穷尽；glib 告警和可达性风险见[安全说明](../SECURITY.md) |
 | Android | Android 8.0+，Java WebView 宿主；编译/目标 SDK 36、Build Tools 36.0.0、JDK17；签名通用 APK，Keystore 配置加密、系统文件桥、可选 WireGuard | build/lint/unit 与手机浏览器验证不替代实体设备；VPN/Doze/杀进程/系统升级/后台提醒的实际矩阵尚未闭环 |
-| Docker | 已修正为仅构建服务端；CI 已加入干净镜像、非 root、认证、源码绑定 Web 与持久化验收入口 | 源码/离线脚本已独立复核；本机 daemon 不可用，尚无该合并版本的实际镜像运行证据，不称为已验收部署方式 |
+| Docker | 仅构建服务端；Linux x64 CI 已实测干净镜像、非 root、认证、源码绑定 Web/完整文件摘要与持久化 | [精确提交 `83eda6c` 实际容器验收](https://github.com/ywateru/AnyWork/actions/runs/42372270797/job/128402662866)通过；不包含随后 I05a schema 改动，不等同其他架构、原生登录/模型或宿主桌面共享验收；本机 daemon 仍不可用 |
 
 平台依赖与安装步骤见[中文指南](getting-started.zh-CN.md) / [English guide](getting-started.md)。Android applicationId 和既有内部名称保留兼容，不能为了品牌改名破坏覆盖升级和数据。
 

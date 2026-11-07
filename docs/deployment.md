@@ -57,7 +57,7 @@ python3 scripts/container-smoke-test.py --build
 
 该脚本进行无缓存镜像构建，使用唯一命名的容器和卷、随机 loopback 端口及本地 RPC fixture，检查 UID 10001、错误令牌 401、API 版本、Web 构建清单中的应用版本/源码 SHA-256/PWA 指纹及全部文件摘要、`/source` 与源码归档逐字节一致，以及重建容器后会话、工作区和访问令牌保留；退出时只清理本次创建的资源。`--image 镜像` 可检验既有镜像，要求源码归档与镜像对应；不会移除传入的镜像。
 
-Checks 工作流中的 `container` job 会实际执行上述构建和验收，正式发布要求同一源码提交的完整 Checks 成功。当前开发机有 Docker CLI，但 daemon socket 不可用，因此本轮本机只能验证脚本/配置；**实际镜像验收仍待 CI 或具备 Docker daemon 的隔离环境执行**。不要将静态检查或新增 CI 配置视作实际构建成功。
+Checks 工作流中的 `container` job 会实际执行上述构建和验收，正式发布要求同一源码提交的完整 Checks 成功。2026-11-07 的[实际 CI 验收](https://github.com/ywateru/AnyWork/actions/runs/42372270797/job/128402662866)已在精确提交 `83eda6cc78d3171ee60f86a433cd857777ae306e` 通过干净服务端镜像构建、UID 10001、认证、源码绑定 Web 身份及文件摘要、对应源码与会话/工作区/密钥持久化，未调用模型。当前开发机仍无可用 daemon；该结果来自 GitHub Linux x64 runner，不代表所有架构、原生账号或桌面共享拓扑均已验收。后续源码提交仍需重新通过其对应 Checks，不能继承旧提交的发布许可。
 
 ## Android
 

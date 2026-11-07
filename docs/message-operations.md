@@ -1,6 +1,6 @@
 # Durable message operation contract (G1 / I02)
 
-Status: implementation contract under the authorized prioritized improvement goal. Not implemented or accepted merely by publication of this document. Depends on independently accepted [schema safety](schema-and-recovery.md). The first schema candidate is still blocked. Full storage degradation (I03), native support acceptance and backup/restore remain separate deliverables.
+Status: implementation contract under the authorized prioritized improvement goal. Not implemented merely by publication of this document. Depends on independently accepted [schema safety](schema-and-recovery.md): corrected source `84774c2` passed independent review `9fa5154` and is merged; merged regression is next. The operation contract's ledger-incarnation and preparation-state findings were corrected at `53354fc` and rechecked without further blocking findings. Full storage degradation (I03), native support acceptance and backup/restore remain separate deliverables.
 
 ## Purpose and actual boundaries
 

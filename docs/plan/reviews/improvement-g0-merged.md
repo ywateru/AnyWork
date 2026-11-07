@@ -22,7 +22,7 @@ Ignored integration artifacts hold the detailed logs: `artifacts/g0-merged-check
 
 ## Open gates
 
-- Actual clean Docker build/run remains required. The local host lacks a working Docker daemon; seven mocked smoke-script cases are not a substitute. The new Checks container job must produce source/Web identity, authentication, non-root and persistence evidence at the pushed exact commit before I22 is closed.
+- Actual clean Docker build/run was pending at the local checkpoint. It subsequently passed in the [GitHub container job](https://github.com/ywateru/AnyWork/actions/runs/42372270797/job/128402662866) for exact main SHA `83eda6cc78d3171ee60f86a433cd857777ae306e`: clean server image, UID 10001, authentication, source-bound Web identity/full file digests, exact corresponding source and recreated-container session/workspace/access-key persistence; no model requests. This supplies I22's controlled Linux x64 container evidence. The local host still has no working Docker daemon. Full Checks remained in progress when that job finished, and this pre-I05a result does not accept subsequent schema code/platform locks.
 - Live release authorization/publication boundaries were not exercised. No tag or new version is authorized by this verification record.
 - I05a remains an isolated, blocked schema candidate pending token-boundary correction and exact-commit independent re-review. It is not included in the local merged-source results above.
 - Full I05 backup/restore and the remaining G1—G4 issues remain open. This G0 verification does not complete the continuing improvement objective.
