@@ -8,7 +8,7 @@ Harness developer owns `harness_history.rs` and regression coverage. WorkBuddy d
 
 Evidence: failed release run `42336235874`, Windows job `128293715544`; private copied job log is excluded from public source. Windows rerun is the final platform gate. Local complete preflight passed 157 Rust, 309 Web unit and 593 browser cases (one existing desktop-only case skipped on Android), all service/interface checks, Android debug/Lint/unit and updater UI checks before this platform-specific correction.
 
-Status: exact path and fixture fixes passed independent source review and merged macOS Rust checks (159 passed, 8 explicit opt-ins ignored). A permanent Windows native job is running before the next tag; release remains blocked until platform tests and packaging pass.
+Status: v0.1.12 published. Cross-platform CI, the complete installer matrix and public website acceptance passed. See final publication evidence and the separate live-update network limitation below.
 
 Additional merged-CI gate: Linux browser CI run `42335902885` passed 591 cases but two Android sidebar boundary gesture cases failed to reach the list end (document containment assertions were not reached). Investigate actual Linux Chromium touch behavior versus the macOS preflight before publication. Preserve containment/scrollability assertions; use real bounded gestures if the synthetic oversize gesture is invalid, and fix product scrolling if evidence shows a product defect. Harness developer owns the narrow investigation/fix; independent reviewer validates evidence and exact changes. Add permanent Windows native CI to catch platform failures before tags.
 
@@ -16,3 +16,8 @@ Second Linux gate `42338652717`: Windows native and Android jobs passed. Linux p
 
 
 Final pre-tag acceptance: Checks run `42340635712` succeeded on Windows native, Android and Linux server/Web. Both focused browser files, the full check script, formatting and bilingual website tests passed. Source fixes and test-only follow-ups passed independent review; the newer v0.1.12 can now enter the complete installer/signature matrix. Published assets and Pages remain subject to post-build verification.
+
+
+Publication evidence: immutable tag `v0.1.12` resolves to `c1d637b9b5705f204018c69e01852f16d7adf90c`. Release workflow `42341902158` and Pages `42342925982` succeeded. Public validation confirmed 20 uploaded assets, 19 matching GitHub SHA-256 digests/checksum entries, five version-bound updater signatures and both DMG downloads. Independent live Chrome checks confirmed embedded v0.1.12 metadata, all ten download links, four browser language choices, manual preference persistence and Chinese/English 320px/1440px layouts without overflow or script errors.
+
+Additional live-upgrade check: the genuine 0.1.10-to-0.1.12 isolated-copy test did not reach installation. The public package download received about 27.8 MiB of 31.88 MiB before its existing 900-second download timeout. An independent 1 MiB HTTPS range download also measured about 19 KB/s. Record this as an incomplete live-upgrade acceptance caused by the observed slow network, not a successful installation test. Public manifest/signature verification and installer checks passed; no installed application, real service or agent was changed.
