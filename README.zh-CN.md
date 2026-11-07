@@ -104,6 +104,8 @@ Codex 已有桌面的共享协作依赖版本相关的 Unix 本地接口，已�
 
 ## 开发
 
+维护者执行 `python3 scripts/publish.py`（或 `npm run release`）即可自动递增版本、等待同一提交的 CI、构建发行包、更新官网并完成可续跑的核验。详见[发布说明](docs/releasing.md)。
+
 ```bash
 npm run dev                     # Web 开发服务器
 npm test                        # Web 单元测试

@@ -13,7 +13,47 @@ Git 只保存源码、自动化测试、依赖锁文件、配置模板、许可�
 
 `.gitignore` 默认忽略截图与录屏，仅精确放行应用图标、官网社交分享图和已核对来源的 Agent 标识。文档截图如需对外展示，应使用虚构数据制作并单独审查；不要直接使用真实会话截图。
 
-## 发布前检查
+## 一键发布 / One-command publication
+
+在 `main` 上提交需要发布的源码和双语发行说明，保持工作区干净，然后只运行：
+
+```bash
+python3 scripts/publish.py
+# 或 / or
+npm run release
+```
+
+脚本默认递增 patch，统一更新所有应用版本及 Android versionCode，提交版本变更并推送 `main`。它等待**精确源码提交**的 Checks 成功后才推送不可变 tag，继续等待全部平台的 Release 与官网部署，最后核对发布文件、校验清单、更新签名元数据和中英文网页。无需在本机先跑一遍完整构建；相同提交已通过的远端检查会在续跑时复用。
+
+Start from a clean, committed `main` checkout. The script advances every embedded version and Android versionCode, commits the version change, pushes main, waits for Checks for that exact SHA, then publishes an immutable tag and waits for installers and Pages. It verifies release assets and bilingual download metadata without repeating local builds or downloading every installer.
+
+凭据优先读取 `GH_TOKEN`、`GITHUB_TOKEN`，否则读取已有的 `~/.ssh/ghp`；也可以使用 `--token-file PATH`。只需 Python 3 和 Git，不依赖临时脚本或 `gh`。发行签名继续使用 GitHub Actions secrets，脚本不读取本机签名私钥。GitHub Token 需要此仓库的 contents 与 actions 写权限。Fork 的仓库、签名和网站配置需要单独适配。
+
+Authentication comes from `GH_TOKEN`, `GITHUB_TOKEN`, or `~/.ssh/ghp`, with `--token-file PATH` available. Only Python 3 and Git are required. Existing Actions secrets sign the builds; the local signing key is not used. Keep credentials out of commits and command arguments.
+
+```bash
+python3 scripts/publish.py --dry-run                 # 只预览；不改版本或远端
+python3 scripts/publish.py --status                  # 查看本机进度
+python3 scripts/publish.py --bump minor              # 新任务使用 minor；默认 patch
+python3 scripts/publish.py --verify-existing v0.1.12 # 轻量核验现有发布和官网
+python3 scripts/publish.py --retry-failed            # 显式重试失败的工作流并继续
+python3 scripts/publish.py --pages-only v0.1.12     # 已发布安装包，只修复或核验官网
+python3 scripts/publish.py --new                    # 修复源码并提交后，安全开始下一版
+```
+
+进度原子保存于 Git 私有目录 `anywork-publish/`，不进入源码包；进程锁阻止两个调用同时发布。Ctrl-C、终端关闭或网络暂时中断后，重新执行同一个命令会继续未完成步骤，不再次递增版本。完成且源码未变化时再次执行会直接结束。真正的测试失败会返回非零状态和 Actions 链接，不会把失败当成成功或无限重试。
+
+Progress is stored atomically under Git's private common directory, protected by a process lock. Run the same command after interruption to resume. Completed work is reused; an unchanged completed source is a no-op. Failed workflows return a nonzero exit and a public Actions URL. `--retry-failed` explicitly requests a retry instead of silently looping failing tests.
+
+如果失败来自源码，修复并提交后使用 `--new`；脚本会先确认旧发行构建已经结束，再归档旧进度并选择新的版本，不移动旧 tag。如果安装包已发布但 Pages 失败，使用 `--pages-only v版本号`，只核验已有发行并修复网站，避免重新构建或重复创建 Release。原工作流的失败记录仍保留。
+
+After committing a source fix, use `--new` to start a fresh version once the previous release build is no longer active. Existing tags are never moved. If installers are already published but Pages failed, use `--pages-only vX.Y.Z` to verify the immutable release and repair the website without rebuilding or creating another Release. The original failed workflow remains visible.
+
+轻量核验包括 20 个发行文件、19 个 SHA-256 条目与 GitHub 文件摘要、5 个更新目标的 `.sig`／清单一致性和版本绑定，以及官网静态内嵌版本和下载链接。它不把签名元数据检查描述为完整安装验收，也不默认运行需要下载大型更新包的可选真实升级测试。真实设备、网络和升级安装验收仍可按需单独执行。
+
+Light verification checks all 20 assets, 19 checksum entries against GitHub digests, five updater signature-file/manifest/version bindings, and the website's embedded version and download URLs. It does not claim full binary signature or installed-upgrade testing without downloading the packages. Optional live-upgrade and hardware tests remain separate from publication.
+
+## 手动排查检查 / Manual diagnostic checks
 
 ```bash
 npm ci
@@ -83,6 +123,6 @@ node scripts/site-test.mjs
 
 See [updates.md](updates.md) for the update lifecycle and key requirements. Configure `TAURI_SIGNING_PRIVATE_KEY` before running the release workflow. All five native desktop targets are required to publish `latest.json`. Windows now also builds a per-user NSIS installer; Linux builds AppImages. Portable downloads remain available for manual updates.
 
-For a new release, run **Release new version** in Actions (patch/minor/major). It increments every embedded version plus Android versionCode, commits and dispatches the build. Or run `npm run version:patch`, commit, and push the matching tag. Never reuse a published tag or overwrite its artifacts: the preflight rejects duplicate/backwards releases. The signing CLI binds each signature to its application version.
+Use `python3 scripts/publish.py` for normal releases; it waits for exact-SHA Checks before tagging and verifies the website afterward. The older **Release new version** Action and manual version/tag commands remain advanced alternatives and do not provide the same local resume/report lifecycle. Never reuse a published tag or overwrite its artifacts: the preflight rejects duplicate/backwards releases. The signing CLI binds each signature to its application version.
 
-正式发布需要先配置 `TAURI_SIGNING_PRIVATE_KEY`。五个原生桌面目标全部成功后，才发布 `latest.json`；签名绑定应用版本。可以使用 Actions 的 **Release new version** 自动递增、提交并构建；也可用 `npm run version:patch`。不复用已发布版本，不覆盖旧附件。保管好 Git 之外的发行私钥。
+正式发布需要先配置 `TAURI_SIGNING_PRIVATE_KEY`。五个原生桌面目标全部成功后，才发布 `latest.json`；签名绑定应用版本。常规发布使用 `python3 scripts/publish.py`，自动等待检查、构建、官网与轻量核验；旧的 **Release new version** Action 和 `npm run version:patch` 仅保留为手动维护方式。不复用已发布版本，不覆盖旧附件。保管好 Git 之外的发行私钥。

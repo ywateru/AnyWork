@@ -47,3 +47,7 @@ The user requested dsh and WorkBuddy history parity with Codex. [Contract and ta
 ## WorkBuddy transcript and update correction
 
 The user reported injected context appearing as a user message and missing Web updates after successful native execution. [Investigation and correction](tasks/workbuddy-transcript-updates.md) cover native visible-content projection, latest-page cursor semantics and repairing already imported cache rows. The correction passed [independent review](reviews/workbuddy-transcript-updates.md), merged and passed [merged checks/local deployment](reviews/workbuddy-transcript-updates-merged.md). The affected native conversation now exposes all three completed turns with clean user input. All 101 sessions, the key, native applications and the tunnel were preserved; native testing remained read-only and no public release was made.
+
+## One-command publication
+
+The user requested reusable release automation after v0.1.12 publication. The [task contract](tasks/one-command-publish.md) defines a resumable publisher for exact-commit Checks, immutable releases, website deployment and lightweight final validation. Implementation and independent verification run separately. This task delivers source and documentation without publishing another version or changing the local service.

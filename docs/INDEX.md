@@ -14,4 +14,5 @@
 - [Harness UI source provenance](harness-ui-provenance.md)
 - [Delivery plan](plan/README.md)
 - [Getting started](getting-started.md), [中文入门](getting-started.zh-CN.md)
+- [Release automation and recovery / 一键发布与恢复](releasing.md)
 

@@ -104,6 +104,8 @@ Full goal creation/resume/edit/delete needs a compatible shared engine; the desk
 
 ## Development
 
+Maintainers can publish with `python3 scripts/publish.py` (or `npm run release`): version bump, exact-commit CI, release builds, website deployment and resumable verification run automatically. See the [release guide](docs/releasing.md).
+
 ```bash
 npm run dev                     # Web dev server
 npm test                        # Web unit tests
