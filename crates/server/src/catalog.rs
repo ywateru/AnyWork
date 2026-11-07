@@ -157,8 +157,7 @@ impl Catalog {
                         persisted_complete = true;
                     }
                     for (thread, archived) in rows {
-                        let scope = (app.codex_scope != crate::CodexScope::All)
-                            .then_some(app.workspace.as_path());
+                        let scope = (!app.history_all("codex")).then_some(app.workspace.as_path());
                         if let Some(session) = imported_session(&thread, archived, scope, &managed)
                         {
                             if imported_ids.insert(session.id.clone()) {
@@ -484,8 +483,12 @@ pub async fn history_item(
         if session.agent == crate::workbuddy::AGENT
             && event.params["item"]["nativeCallId"].is_string()
         {
-            let rt = app.ensure_runtime(&session).await?;
-            return Ok(Json(rt.rpc.call("anywork/item/detail",json!({"threadId":session.thread_id,"turnId":event.params["turnId"],"item":event.params["item"]})).await?));
+            let runtime = app.runtimes.lock().await.get(&id).cloned();
+            if event.params["persisted_history"] != true
+                && let Some(rt) = runtime
+            {
+                return Ok(Json(rt.rpc.call("anywork/item/detail",json!({"threadId":session.thread_id,"turnId":event.params["turnId"],"item":event.params["item"]})).await?));
+            }
         }
         return Ok(Json(json!({"item":event.params["item"]})));
     }
@@ -645,10 +648,23 @@ pub async fn read_history(
     Query(q): Query<HistoryQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let s = app.session(&id)?;
-    if crate::shared_host::is_shared(&s.agent) {
-        let gate = app.gate(&id).await;
-        let _lock = gate.lock().await;
-        app.ensure_runtime(&s).await?;
+    let mut persisted_notice = None;
+    if crate::shared_host::is_shared(&s.agent) && !app.runtimes.lock().await.contains_key(&id) {
+        let saved = !app.store.events(&id, 0, 1)?.is_empty();
+        match crate::shared_host::read_persisted_history(&app, &s).await {
+            Ok((true, notice)) => persisted_notice = notice,
+            Ok((false, _)) if saved => {}
+            Ok((false, _)) => {
+                let gate = app.gate(&id).await;
+                let _lock = gate.lock().await;
+                app.ensure_runtime(&s).await?;
+            }
+            Err(error) if saved => {
+                persisted_notice =
+                    Some(format!("原生历史暂不可读取，已保留此前加载的记录：{error}"))
+            }
+            Err(error) => return Err(error.into()),
+        }
     }
     let limit = q.limit.unwrap_or(5).clamp(1, 20);
     if !s.external || s.agent != "codex" {
@@ -664,7 +680,7 @@ pub async fn read_history(
         let mut events = compact_history(events, &app.store.completed_item_ids(&id)?);
         defer_history_details(&s, &mut events);
         return Ok(Json(
-            json!({"events":events,"next_cursor":next_cursor,"latest_seq":latest_seq}),
+            json!({"events":events,"next_cursor":next_cursor,"latest_seq":latest_seq,"history_notice":persisted_notice}),
         ));
     }
     #[cfg(unix)]
@@ -846,7 +862,10 @@ pub async fn workspaces(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiE
     let mut counts = HashMap::<String, usize>::new();
     for session in app.store.sessions()? {
         if app
-            .session_directory(&session.cwd, session.external && session.agent == "codex")
+            .session_in_scope(
+                &session.cwd,
+                if session.external { &session.agent } else { "" },
+            )
             .is_ok()
         {
             let count = counts.entry(session.cwd).or_default();

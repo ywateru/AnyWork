@@ -61,3 +61,20 @@ python3 scripts/harness-integration-test.py \
 ```
 
 The test starts and stops only its own isolated AnyWork process on an ephemeral port. It checks native-created history, native-client traffic after attach, host creation, tools, one-time approval, image upload/history/preview, image tool results and survival of the external host after disconnect. The caller separately stops its model/host fixtures when finished. Logs and credentials stay under `TEST_ROOT` and must not be committed.
+
+## Existing local history / 本机已有历史
+
+[Persisted history](harness-persisted-history.md) is discovered passively from the supported native catalog, independently of the live connection. Historical sessions retain native IDs and can be read while the host is unavailable. Execution still requires the original shared host.
+
+本机已有会话会从受支持的原生历史目录自动发现，沿用原始会话标识。共享主机暂不可用时仍可查看历史；发送和控制仍需连接原主机。所有项目的发现需要显式启用 `--agent-scope all`，旧的 `--codex-scope all` 仍只控制 Codex。
+
+Explicitly selected URLs/discovery files may belong to a different native profile. In that case, bind its history root explicitly; AnyWork does not combine it with the default HOME catalog:
+
+```sh
+./target/debug/anywork --workspace /absolute/project/root --agent-scope all \
+  --harness-url http://127.0.0.1:3080/ \
+  --harness-token-file /private/path/harness-token \
+  --harness-history-root /absolute/native-dsh-home
+```
+
+显式指定主机地址或发现文件时，需用 `--harness-history-root`（或 `ANYWORK_HARNESS_HISTORY_ROOT`）指定该 profile 的原生数据根目录，目录内应有 `sessions`、`storages` 和 `attachments`。未指定时不会混入默认用户目录的历史。没有显式主机配置时，默认只读 `$DSH_HOME` 或 `~/.dsh`；该根目录选项也可独立用于离线查看。

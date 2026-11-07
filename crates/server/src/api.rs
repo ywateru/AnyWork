@@ -14,7 +14,7 @@ use std::{path::PathBuf, sync::Arc};
 
 pub async fn info(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"client_presence":true,"local_service_control":true,"product":"AnyWork","version":env!("CARGO_PKG_VERSION"),"workspace":app.workspace,"codex_scope":if app.codex_scope == crate::CodexScope::All { "all" } else { "workspace" },"hostname":std::env::var("ANYWORK_HOSTNAME").or_else(|_|std::env::var("REMOTE_AGENT_HOSTNAME")).or_else(|_|std::env::var("HOSTNAME")).unwrap_or_else(|_|"Local machine".into())}),
+        json!({"client_presence":true,"local_service_control":true,"product":"AnyWork","version":env!("CARGO_PKG_VERSION"),"workspace":app.workspace,"agent_scope":if app.agent_scope == crate::CodexScope::All { "all" } else { "workspace" },"codex_scope":if app.codex_scope == crate::CodexScope::All { "all" } else { "workspace" },"hostname":std::env::var("ANYWORK_HOSTNAME").or_else(|_|std::env::var("REMOTE_AGENT_HOSTNAME")).or_else(|_|std::env::var("HOSTNAME")).unwrap_or_else(|_|"Local machine".into())}),
     )
 }
 pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
@@ -117,6 +117,10 @@ pub async fn sessions(State(app): State<Arc<App>>) -> Result<Json<Value>, ApiErr
         );
     }
     let mut sessions = app.store.sessions()?;
+    sessions.retain(|s| {
+        app.session_in_scope(&s.cwd, if s.external { &s.agent } else { "" })
+            .is_ok()
+    });
     #[cfg(unix)]
     {
         let runtimes = app.runtimes.lock().await;
@@ -865,9 +869,19 @@ pub async fn models(
     State(app): State<Arc<App>>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
+    let s = app.session(&id)?;
+    if crate::shared_host::is_shared(&s.agent) {
+        let existing = app.runtimes.lock().await.get(&id).cloned();
+        return if let Some(rt) = existing {
+            Ok(Json(rt.rpc.call("model/list", json!({})).await?))
+        } else {
+            Ok(Json(
+                json!({"data":[],"settings_available":false,"settings_error":"连接原生 Agent 后可选择模型；本地历史仍可查看"}),
+            ))
+        };
+    }
     let gate = app.gate(&id).await;
     let _lock = gate.lock().await;
-    let s = app.session(&id)?;
     if s.external && s.agent == "codex" {
         drop(_lock);
         return Ok(Json(

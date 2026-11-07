@@ -18,12 +18,15 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
 use url::Url;
+#[path = "workbuddy_history.rs"]
+mod persisted;
 pub const AGENT: &str = "workbuddy";
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 #[derive(Clone)]
 pub struct Config {
     path: Option<PathBuf>,
     optional: bool,
+    history_cache: Arc<tokio::sync::Mutex<persisted::Cache>>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,7 +48,11 @@ impl Config {
                 .or_else(|| std::env::var_os("USERPROFILE"))
                 .map(|p| PathBuf::from(p).join(".anywork/workbuddy/host.json"))
         });
-        let c = Self { path, optional };
+        let c = Self {
+            path,
+            optional,
+            history_cache: Default::default(),
+        };
         if !optional {
             c.descriptor()?;
         }
@@ -382,7 +389,7 @@ fn allowed(channel: &str) -> bool {
             | "wb:conversations:childAgentLoadToolDetail"
     )
 }
-fn imported(row: &Value, workspace: &Path) -> Option<Session> {
+fn imported(row: &Value, workspace: Option<&Path>) -> Option<Session> {
     let id = row["id"].as_str()?;
     if id.is_empty()
         || id.len() > 256
@@ -393,7 +400,10 @@ fn imported(row: &Value, workspace: &Path) -> Option<Session> {
         return None;
     }
     let cwd = row["space"]["cwd"].as_str()?;
-    if row["transport"] != "local" || crate::files::within(workspace, Path::new(cwd)).is_err() {
+    if row["transport"] != "local"
+        || !Path::new(cwd).is_absolute()
+        || workspace.is_some_and(|root| crate::files::within(root, Path::new(cwd)).is_err())
+    {
         return None;
     }
     Some(Session {
@@ -421,17 +431,23 @@ fn state_status(state: &Value) -> &'static str {
     }
 }
 pub async fn sync(app: &Arc<App>) -> Result<()> {
+    let mut last = app.workbuddy_sync.lock().await;
+    if last.is_some_and(|t| t.elapsed() < Duration::from_secs(2)) {
+        return Ok(());
+    }
+    *last = Some(std::time::Instant::now());
+    persisted::sync(app).await?;
     if !app.workbuddy.available() {
         if app.workbuddy.optional {
             return Ok(());
         }
         bail!("WorkBuddy launcher entry unavailable");
     }
-    let mut last = app.workbuddy_sync.lock().await;
-    if last.is_some_and(|t| t.elapsed() < Duration::from_secs(2)) {
-        return Ok(());
-    }
-    *last = Some(std::time::Instant::now());
+    tokio::time::timeout(Duration::from_millis(750), sync_live(app))
+        .await
+        .context("WorkBuddy live catalog unavailable; persisted history retained")?
+}
+async fn sync_live(app: &Arc<App>) -> Result<()> {
     let host = app.workbuddy.connect().await?;
     let mut page = 1;
     let mut rows = vec![];
@@ -450,7 +466,9 @@ pub async fn sync(app: &Arc<App>) -> Result<()> {
             .as_array()
             .context("Invalid WorkBuddy conversation catalog")?;
         for row in items {
-            if let Some(s) = imported(row, &app.workspace) {
+            if let Some(s) =
+                imported(row, None).filter(|s| app.session_in_scope(&s.cwd, AGENT).is_ok())
+            {
                 rows.push(s);
             }
         }
@@ -479,7 +497,7 @@ pub async fn create(
             json!([{"transport":"local","cwd":cwd,"title":title,"model":model}]),
         )
         .await?;
-    let s=imported(&v["info"],&app.workspace).context("WorkBuddy did not return a local conversation in the selected workspace; do not repeat creation")?;
+    let s=imported(&v["info"],None).filter(|s|app.session_in_scope(&s.cwd,AGENT).is_ok()).context("WorkBuddy did not return a local conversation in the selected workspace; do not repeat creation")?;
     app.store.save_shared_observation(&s)?;
     Ok(s)
 }
@@ -607,7 +625,7 @@ impl Projection {
                     "text" => {
                         json!({"id":item_id,"type":"agentMessage","text":b["text"],"phase":"final_answer"})
                     }
-                    "thought" | "thinking" => {
+                    "thought" | "thinking" | "reasoning" => {
                         json!({"id":item_id,"type":"reasoning","summary":[{"text":b["text"]}],"source":"workbuddy"})
                     }
                     "tool" => {
@@ -1485,6 +1503,13 @@ async fn observe_children(
     Ok(())
 }
 
+pub async fn read_persisted_history(
+    app: &Arc<App>,
+    session: &Session,
+) -> Result<(bool, Option<String>)> {
+    persisted::read(app, session).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1729,17 +1754,17 @@ mod tests {
     fn imported_catalog_never_inherits_codex_global_scope() {
         let root = std::env::current_dir().unwrap();
         let row = json!({"id":"native","transport":"local","space":{"cwd":root},"title":"Native","state":"working","lifecycle":"archived","createdAt":1,"updatedAt":2});
-        let s = imported(&row, &root).unwrap();
+        let s = imported(&row, Some(&root)).unwrap();
         assert!(s.external && s.archived);
         assert_eq!(s.agent, AGENT);
         assert_eq!(s.status, "running");
         assert_eq!(s.updated_at, 2);
         let mut outside = row.clone();
         outside["space"]["cwd"] = json!(root.parent().unwrap());
-        assert!(imported(&outside, &root).is_none());
+        assert!(imported(&outside, Some(&root)).is_none());
         outside = row;
         outside["id"] = json!("../../escape");
-        assert!(imported(&outside, &root).is_none());
+        assert!(imported(&outside, Some(&root)).is_none());
     }
     #[cfg(unix)]
     #[test]

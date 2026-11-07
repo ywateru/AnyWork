@@ -60,6 +60,9 @@ use tower_http::{
 struct Args {
     #[arg(long, env = "ANYWORK_CODEX_DISCOVERY", default_value_t = true, action = clap::ArgAction::Set)]
     codex_discovery: bool,
+    /// Native dsh data home for passive persisted history, including custom hosts.
+    #[arg(long, env = "ANYWORK_HARNESS_HISTORY_ROOT")]
+    harness_history_root: Option<PathBuf>,
     /// Existing local Harness launch URL (with token); never starts another engine.
     #[arg(long, env = "ANYWORK_HARNESS_URL")]
     harness_url: Option<String>,
@@ -77,6 +80,14 @@ struct Args {
         default_value = "workspace"
     )]
     codex_scope: CodexScope,
+    /// Discover built-in Agent history across projects, or restrict it to --workspace.
+    #[arg(
+        long,
+        env = "ANYWORK_AGENT_SCOPE",
+        value_enum,
+        default_value = "workspace"
+    )]
+    agent_scope: CodexScope,
     /// Existing desktop owner/follower socket; overrides desktop-host.json.
     #[arg(long, env = "ANYWORK_DESKTOP_IPC_SOCKET")]
     desktop_ipc_socket: Option<PathBuf>,
@@ -142,11 +153,13 @@ impl Args {
 pub struct App {
     catalog: Mutex<catalog::Catalog>,
     harness: Option<harness::Config>,
+    harness_history_root: Option<PathBuf>,
     harness_sync: Mutex<Option<std::time::Instant>>,
     workbuddy: workbuddy::Config,
     workbuddy_sync: Mutex<Option<std::time::Instant>>,
     codex_discovery: bool,
     codex_scope: CodexScope,
+    agent_scope: CodexScope,
     #[cfg(unix)]
     desktop_ipc_socket: Option<PathBuf>,
     #[cfg(unix)]
@@ -169,13 +182,28 @@ pub struct App {
 impl App {
     fn session(&self, id: &str) -> Result<Session> {
         let s = self.store.session(id)?;
-        self.session_directory(&s.cwd, s.external && s.agent == "codex")?;
+        if s.external {
+            self.session_in_scope(&s.cwd, &s.agent)?;
+        } else {
+            self.session_directory(&s.cwd, false)?;
+        }
         Ok(s)
     }
+    fn history_all(&self, agent: &str) -> bool {
+        (agent == "codex" && self.codex_scope == CodexScope::All)
+            || (matches!(agent, "codex" | "deepseek-harness" | "workbuddy")
+                && self.agent_scope == CodexScope::All)
+    }
+    fn session_in_scope(&self, cwd: &str, agent: &str) -> Result<PathBuf> {
+        self.scoped_directory(cwd, self.history_all(agent))
+    }
     fn session_directory(&self, cwd: &str, external: bool) -> Result<PathBuf> {
-        let path = if external && self.codex_scope == CodexScope::All {
+        self.scoped_directory(cwd, external && self.history_all("codex"))
+    }
+    fn scoped_directory(&self, cwd: &str, all: bool) -> Result<PathBuf> {
+        let path = if all {
             let path = PathBuf::from(cwd);
-            anyhow::ensure!(path.is_absolute(), "Invalid Codex working directory");
+            anyhow::ensure!(path.is_absolute(), "Invalid Agent working directory");
             match path.canonicalize() {
                 Ok(path) => path,
                 // A removed worktree must not hide its conversation history.
@@ -330,11 +358,13 @@ async fn main() -> Result<()> {
     let app = Arc::new(App {
         catalog: Mutex::new(catalog::Catalog::default()),
         harness,
+        harness_history_root: args.harness_history_root,
         harness_sync: Mutex::new(None),
         workbuddy,
         workbuddy_sync: Mutex::new(None),
         codex_discovery: args.codex_discovery,
         codex_scope: args.codex_scope,
+        agent_scope: args.agent_scope,
         #[cfg(unix)]
         desktop_ipc_socket: desktop::configured(&data_dir, args.desktop_ipc_socket)?,
         #[cfg(unix)]

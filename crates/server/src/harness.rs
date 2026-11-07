@@ -17,6 +17,9 @@ use tokio_tungstenite::{
     tungstenite::{Message, client::IntoClientRequest},
 };
 
+#[path = "harness_history.rs"]
+mod persisted;
+
 pub const AGENT: &str = "deepseek-harness";
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 #[derive(Clone)]
@@ -318,17 +321,23 @@ fn session_id(thread: &str) -> String {
 
 /// Passive catalog discovery: no create, resume, prompt or background activation.
 pub async fn sync(app: &Arc<App>) -> Result<()> {
+    let mut last = app.harness_sync.lock().await;
+    if last.is_some_and(|t| t.elapsed() < Duration::from_secs(2)) {
+        return Ok(());
+    }
+    *last = Some(std::time::Instant::now());
+    persisted::sync(app).await?;
     let Some(config) = &app.harness else {
         return Ok(());
     };
     if !config.available() {
         return Ok(());
     }
-    let mut last = app.harness_sync.lock().await;
-    if last.is_some_and(|t| t.elapsed() < Duration::from_secs(2)) {
-        return Ok(());
-    }
-    *last = Some(std::time::Instant::now());
+    tokio::time::timeout(Duration::from_millis(750), sync_host(app, config))
+        .await
+        .context("Harness 共享入口暂不可用，本地历史已保留")?
+}
+async fn sync_host(app: &Arc<App>, config: &Config) -> Result<()> {
     let mut host = config.connect().await?;
     let baseline = host
         .first("workspaces", "workspace/follow", json!({}))
@@ -348,7 +357,7 @@ pub async fn sync(app: &Arc<App>) -> Result<()> {
         let Some(cwd) = workspace["path"].as_str() else {
             continue;
         };
-        if crate::files::within(&app.workspace, &PathBuf::from(cwd)).is_err() {
+        if app.session_in_scope(cwd, AGENT).is_err() {
             continue;
         }
         for thread in workspace["sessionIds"]
@@ -387,7 +396,7 @@ pub async fn sync(app: &Arc<App>) -> Result<()> {
                     "idle"
                 }
                 .into(),
-                archived: false,
+                archived: old.as_ref().is_some_and(|s| s.archived),
                 created_at: old.as_ref().map_or(now(), |s| s.created_at),
                 updated_at: row["updatedAt"].as_i64().unwrap_or_else(now),
                 external: true,
@@ -397,6 +406,11 @@ pub async fn sync(app: &Arc<App>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Read existing local history without acquiring a native execution host.
+pub fn read_persisted_history(app: &Arc<App>, session: &Session) -> Result<(bool, Option<String>)> {
+    persisted::import(app, session)
 }
 
 pub async fn create(app: &Arc<App>, cwd: &str, title: Option<String>) -> Result<Session> {
