@@ -38,3 +38,25 @@ Typecheck and focused tests cover real Agent IDs, configured/unavailable/unknown
 ## Implementation notes
 
 The scoped preference uses `anywork.sidebar-agent.<JSON server URL>` in browser local storage, with the empty string representing All Agents. If browser storage is disabled, the filter remains usable in memory and defaults to All Agents on reload. Unknown and unavailable saved IDs remain visible; missing options never silently switch the selected filter. Branding assets and source/checksum records are shipped under `web/public/agents/`; the exact two Codex PNGs are allowlisted in Git and the source archive.
+
+## Viewport and scroll ownership
+
+```text
+viewport
++ sidebar -------------------+ main -----------------------+
+| heading / actions / filter | conversation header          |
+| chats heading              |                             |
+| + chat list (scrolls) ----+ | conversation (scrolls)        |
+| | row [position:relative]| |                             |
+| | accessible label stays| |                             |
+| | in the row            | |                             |
+| +-----------------------+ | composer                     |
+| settings / AnyWork footer |                             |
++---------------------------+-----------------------------+
+```
+
+The shell remains one dynamic viewport high. Sidebar and list have explicit zero minimum heights, allowing the list to shrink in short windows. Session rows establish the containing block for their absolutely positioned screen-reader labels. Those labels must not escape the list's clipping ancestry or contribute to document overflow. The sidebar itself does not clip its anchored menus.
+
+The list contains vertical overscroll. While the conversation shell is mounted, the document root disables vertical elastic overscroll; login and other pages retain their normal document behavior. No global body scrolling lock, wheel interception or touch prevention is used. Settings dialogs and document previews retain their own scroll areas.
+
+Regression evidence: with 80 directory groups in a 960×480 viewport, uncontained absolute labels made the document **5,787px** high and focus moved it to `scrollY=333`. Establishing each row's containing block alone restored document height to **480px** and `scrollY=0`. Desktop wheel and mobile touch gesture tests cover both list ends at normal and short heights, final-row access, fixed header/footer, and short-window empty-state/menu reachability. Headless Chrome does not render native macOS elastic bounce; the scoped root and list overscroll policies are asserted separately.
