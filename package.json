@@ -17,7 +17,8 @@
     "format:check": "prettier --check web/src web/scripts web/vite.config.ts e2e playwright.config.ts",
     "build:desktop-ui": "npm run build -w anywork-desktop-ui",
     "version:patch": "python3 scripts/bump-version.py patch",
-    "test:desktop-updater": "npm run build:desktop-ui && node scripts/desktop-updater-test.mjs"
+    "test:desktop-updater": "npm run build:desktop-ui && node scripts/desktop-updater-test.mjs",
+    "release": "python3 scripts/publish.py"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
