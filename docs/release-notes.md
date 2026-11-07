@@ -2,7 +2,7 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.11 / 本次更新**
+**New in 0.1.12 / 本次更新**
 
 Discover existing local DeepSeek Harness and WorkBuddy histories alongside Codex, including conversations from other projects when `--agent-scope all` is enabled. Desktop-managed service launches enable that scope. Saved text and tool results remain readable without an execution host; native child sessions keep their parent relationship. Existing Agent icons, filters, search, directory ordering, archive state and filtering apply to these histories too.
 
@@ -19,6 +19,10 @@ Codex, DeepSeek Harness and WorkBuddy integrations are enabled by default; an ab
 WorkBuddy shared execution remains experimental and version-bound to Desktop 5.9.3. Passive installed-history and read-only native snapshot checks passed; send/stream/approval/reconnect checks use an isolated deterministic carrier with the real AnyWork service and Web UI. Complete installed-native creation/message/collaboration acceptance remains open. Shared execution requires a normally initialized WorkBuddy account and the original desktop launched with its private control entry; no second engine is started. See [WorkBuddy setup](https://github.com/ywateru/AnyWork/blob/main/docs/workbuddy-launcher.md) and [history/synchronization evidence](https://github.com/ywateru/AnyWork/blob/main/docs/workbuddy-transcript-updates.md).
 
 WorkBuddy 共享执行仍为实验功能，当前适配 Desktop 5.9.3。真实安装环境的历史读取和只读原生快照检查已通过；发送、流式输出、审批和重连使用隔离载体配合真实 AnyWork 服务与 Web 界面验证。真实原生创建、消息和协作的完整验收仍待完成。共享执行需要正常初始化的 WorkBuddy 账户，并通过私有控制入口启动原桌面应用，不会启动第二个执行引擎。详见接入说明与同步调查记录。
+
+Windows persisted Harness history now validates complete drive and UNC roots before reading metadata, including verbatim paths, while retaining junction/reparse-point rejection and read-only boundaries. Native Windows tests now run on main before releases. Version 0.1.11 was not published because its Windows gate failed.
+
+修复 Windows 下 Harness 历史读取对盘符、UNC 及 verbatim 路径的检查，保留 junction／reparse point 拒绝策略和只读边界。主分支新增 Windows 原生测试，提前验证发行兼容性。0.1.11 因 Windows 验证未通过而未发布。
 
 **Focus restoration fixed in 0.1.10 / 焦点修复**
 
