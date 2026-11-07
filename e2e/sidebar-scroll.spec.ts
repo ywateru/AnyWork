@@ -168,6 +168,9 @@ for (const short of [false, true]) {
       );
     const reachBoundary = async (direction: "down" | "up") => {
       const remaining = await distanceToBoundary(direction);
+      // The top assertion requires exactly zero; a final 1px remainder still
+      // needs a real gesture. Retain the existing 1px tolerance at the bottom.
+      const tolerance = direction === "up" ? 0 : 1;
       // Allow touch slop while keeping a finite budget derived from the actual
       // range and stroke length. Every swipe must make observable progress.
       const maxGestures = mobile
@@ -175,7 +178,7 @@ for (const short of [false, true]) {
         : 2;
       for (let index = 0; index < maxGestures; index++) {
         const previous = await distanceToBoundary(direction);
-        if (previous <= 1) break;
+        if (previous <= tolerance) break;
         const diagnostic = mobile && direction === "down" && index === 0;
         if (diagnostic) await observeTouchInput(page, ".session-list");
         try {
@@ -194,7 +197,7 @@ for (const short of [false, true]) {
       }
       await expect
         .poll(() => distanceToBoundary(direction))
-        .toBeLessThanOrEqual(1);
+        .toBeLessThanOrEqual(tolerance);
     };
     await reachBoundary("down");
     await expect
