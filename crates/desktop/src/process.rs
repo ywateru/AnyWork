@@ -61,6 +61,8 @@ impl LaunchPlan {
             resources.join("plugins").display().to_string(),
             "--codex-scope".into(),
             "all".into(),
+            "--agent-scope".into(),
+            "all".into(),
             "--trust-local-proxy".into(),
         ];
         let socket = config::home().join(".codex/ipc/ipc.sock");

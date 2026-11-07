@@ -226,4 +226,6 @@ commit来源必须带`commit=<SHA>`，只接受7至64位十六进制对象前缀
 
 POST connect 成功连接时返回 `{ok:true,connected:true,mode:"control"}`。外部会话的执行进程暂不可连接时返回 HTTP 200 与 `{ok:true,connected:false,mode:"history",reason:string,code:string}`；独立 writer 仍持有时 code 为 `owner_unavailable`，其他不可用情况为 `control_unavailable`。客户端应继续呈现历史，不能把 ok:true 等同于已控制执行。Web 自动连接重试间隔30秒，也可手动重试。外部会话发送前显式检查 connect；connected:false 时保留正文、附件和目标标记，不继续 POST messages。连接成功后立即更新控制状态和模型设置。用户主动发送/停止仍要求原执行入口，不支持的操作仍返回错误，不会另起执行进程。
 
-`/api/info` 新增 codex_scope，值为 workspace 或 all。all 改变本机 Codex 历史发现范围；新建自管会话仍使用配置工作区，文件路径仍按当前会话 cwd 检查。
+`/api/info` 提供 codex_scope 与 agent_scope，均为 workspace 或 all。`--agent-scope all`（ANYWORK_AGENT_SCOPE）明确启用 Codex、dsh、WorkBuddy 跨项目历史；旧 `--codex-scope all` 仍仅影响 Codex。桌面管理服务显式启用通用 all。新建自管会话仍使用配置工作区，文件路径仍按当前会话 cwd 检查。
+
+dsh 与 WorkBuddy 可从选定本机 profile 只读加载历史，原进程离线不阻止 `/history` 与按 seq 的工具详情读取。部分历史通过 history_notice 说明，旧缓存不因源暂不可读而清空；models/composer 无实时入口时返回 HTTP 200 与 settings_available:false。详见 [dsh 历史](harness-persisted-history.md) 和 [WorkBuddy 历史](workbuddy-persisted-history.md)。

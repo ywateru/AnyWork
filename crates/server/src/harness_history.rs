@@ -379,7 +379,7 @@ fn archived(root: &Path) -> Result<HashSet<String>> {
         v["unit"]["name"] == "workspace" && v["unit"]["version"] == 2,
         "Unsupported Harness workspace metadata"
     );
-    Ok(v["global"]["archivedSessionIds"]
+    v["global"]["archivedSessionIds"]
         .as_array()
         .context("Invalid Harness archived session catalog")?
         .iter()
@@ -388,7 +388,7 @@ fn archived(root: &Path) -> Result<HashSet<String>> {
                 .map(str::to_owned)
                 .context("Invalid Harness archived session identity")
         })
-        .collect::<Result<_>>()?)
+        .collect::<Result<_>>()
 }
 fn title(root: &Path, h: &Header) -> Result<Option<String>> {
     let path = root

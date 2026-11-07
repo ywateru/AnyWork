@@ -544,7 +544,7 @@ impl Store {
             .as_str()
             .or_else(|| data["harnessEventKey"].as_str())
         {
-            let saved: Option<(i64, String)> = db.query_row("SELECT seq,data FROM events WHERE session_id=?1 AND coalesce(json_extract(data,'$.params.sourceEventKey'),json_extract(data,'$.params.harnessEventKey'))=?2", params![id,key], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
+            let saved: Option<(i64, String)> = db.query_row("SELECT seq,data FROM events WHERE session_id=?1 AND json_extract(data,'$.params.sourceEventKey')=?2 UNION ALL SELECT seq,data FROM events WHERE session_id=?1 AND json_extract(data,'$.params.harnessEventKey')=?2 AND json_extract(data,'$.params.sourceEventKey') IS NULL ORDER BY seq LIMIT 1", params![id,key], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
             if let Some((seq, raw)) = saved {
                 let mut event: Event = serde_json::from_str(&raw)?;
                 event.seq = seq;
@@ -570,6 +570,57 @@ impl Store {
         )?;
         event.seq = db.last_insert_rowid();
         Ok(event)
+    }
+    /// Reconcile only passive WorkBuddy rows after a complete native branch read.
+    /// Live events and requests always retain their original replay identity.
+    pub fn prune_persisted_history(
+        &self,
+        id: &str,
+        keys: &std::collections::HashSet<String>,
+    ) -> Result<bool> {
+        let mut db = self.0.lock().unwrap();
+        let tx = db.transaction()?;
+        let stale = {
+            let mut query = tx.prepare("SELECT seq,data FROM events WHERE session_id=?1 AND json_extract(data,'$.params.persisted_history')=1")?;
+            let rows =
+                query.query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+            let mut stale = vec![];
+            for row in rows {
+                let (seq, raw) = row?;
+                let event: Event = serde_json::from_str(&raw)?;
+                if event.request_id.is_none()
+                    && event.params["sourceEventKey"]
+                        .as_str()
+                        .is_some_and(|key| !keys.contains(key))
+                {
+                    stale.push(seq);
+                }
+            }
+            stale
+        };
+        let changed = !stale.is_empty();
+        for seq in stale {
+            tx.execute(
+                "DELETE FROM events WHERE session_id=?1 AND seq=?2",
+                params![id, seq],
+            )?;
+        }
+        if changed {
+            let marker = Event {
+                seq: 0,
+                session_id: id.into(),
+                method: "history/reset".into(),
+                params: json!({"reason":"native_history_branch"}),
+                request_id: None,
+                created_at: now(),
+            };
+            tx.execute(
+                "INSERT INTO events(session_id,data) VALUES(?1,?2)",
+                params![id, serde_json::to_string(&marker)?],
+            )?;
+        }
+        tx.commit()?;
+        Ok(changed)
     }
     pub fn events(&self, id: &str, after: i64, limit: usize) -> Result<Vec<Event>> {
         let db = self.0.lock().unwrap();
@@ -783,6 +834,91 @@ mod tests {
             assert!(db.session(id).is_ok());
             assert_eq!(db.events(id, 0, 10).unwrap().len(), 1);
         }
+    }
+    #[test]
+    fn replay_lookup_retains_coalesce_precedence_and_indexed_large_import_speed() {
+        let db = Store::open(Path::new(":memory:")).unwrap();
+        db.save(&composer_session("s")).unwrap();
+        let source = db
+            .event(
+                "s",
+                "item/completed",
+                json!({"sourceEventKey":"source","harnessEventKey":"shadowed"}),
+                None,
+            )
+            .unwrap();
+        let harness = db
+            .event(
+                "s",
+                "item/completed",
+                json!({"harnessEventKey":"legacy"}),
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            db.event("s", "x", json!({"harnessEventKey":"source"}), None)
+                .unwrap()
+                .seq,
+            source.seq
+        );
+        assert_eq!(
+            db.event("s", "x", json!({"sourceEventKey":"legacy"}), None)
+                .unwrap()
+                .seq,
+            harness.seq
+        );
+        assert_ne!(
+            db.event("s", "x", json!({"sourceEventKey":"shadowed"}), None)
+                .unwrap()
+                .seq,
+            source.seq
+        );
+        let start = std::time::Instant::now();
+        for n in 0..6000 {
+            db.event(
+                "s",
+                "item/completed",
+                json!({"sourceEventKey":format!("bulk-{n}"),"item":{"text":"x".repeat(400)}}),
+                None,
+            )
+            .unwrap();
+        }
+        // A generous bound catches the old quadratic scan without requiring a fast disk.
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "indexed replay import regressed: {:?}",
+            start.elapsed()
+        );
+    }
+    #[test]
+    fn persisted_branch_reconciliation_preserves_live_and_requests_and_marks_reset() {
+        let db = Store::open(Path::new(":memory:")).unwrap();
+        db.save(&composer_session("s")).unwrap();
+        for (key, disk, request) in [
+            ("old", true, None),
+            ("kept", true, None),
+            ("live", false, None),
+            ("pending", true, Some(json!(7))),
+        ] {
+            db.event(
+                "s",
+                "item/completed",
+                json!({"sourceEventKey":key,"persisted_history":disk}),
+                request,
+            )
+            .unwrap();
+        }
+        db.prune_persisted_history("s", &std::collections::HashSet::from(["kept".into()]))
+            .unwrap();
+        let events = db.events("s", 0, 20).unwrap();
+        assert_eq!(events.len(), 4);
+        assert!(!events.iter().any(|e| e.params["sourceEventKey"] == "old"));
+        assert!(events.iter().any(|e| e.params["sourceEventKey"] == "live"));
+        assert!(events.iter().any(|e| e.request_id == Some(json!(7))));
+        assert_eq!(events.last().unwrap().method, "history/reset");
+        db.prune_persisted_history("s", &std::collections::HashSet::from(["kept".into()]))
+            .unwrap();
+        assert_eq!(db.events("s", 0, 20).unwrap().len(), 4);
     }
     #[test]
     fn generic_shared_event_identity_deduplicates_without_changing_old_harness_keys() {

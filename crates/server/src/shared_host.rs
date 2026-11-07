@@ -18,10 +18,11 @@ pub fn available(app: &App, agent: &str) -> bool {
 }
 pub async fn sync(app: &Arc<App>) -> Vec<String> {
     let mut errors = Vec::new();
-    if let Err(e) = crate::harness::sync(app).await {
+    let (harness, workbuddy) = tokio::join!(crate::harness::sync(app), crate::workbuddy::sync(app));
+    if let Err(e) = harness {
         errors.push(format!("Harness 会话同步失败：{e}"));
     }
-    if let Err(e) = crate::workbuddy::sync(app).await {
+    if let Err(e) = workbuddy {
         errors.push(format!("WorkBuddy 会话同步失败：{e}"));
     }
     errors
@@ -63,5 +64,19 @@ pub fn settings_method(agent: &str) -> &'static str {
         "anywork/harness/settings"
     } else {
         "anywork/session/settings"
+    }
+}
+
+/// Persisted reads never acquire a thread writer or wait for a live host.
+pub async fn read_persisted_history(app: &Arc<App>, s: &Session) -> Result<(bool, Option<String>)> {
+    match s.agent.as_str() {
+        crate::harness::AGENT => {
+            let app = app.clone();
+            let s = s.clone();
+            tokio::task::spawn_blocking(move || crate::harness::read_persisted_history(&app, &s))
+                .await?
+        }
+        crate::workbuddy::AGENT => crate::workbuddy::read_persisted_history(app, s).await,
+        _ => Ok((false, None)),
     }
 }

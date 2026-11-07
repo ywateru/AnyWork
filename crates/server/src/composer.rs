@@ -181,8 +181,6 @@ pub async fn read(
     Path(id): Path<String>,
     Query(query): Query<ReadQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let gate = app.gate(&id).await;
-    let _lock = gate.lock().await;
     let s = app.session(&id)?;
     // Reading the composer must never cold-resume a thread. An unrelated CLI
     // can hold its writer while metadata and saved history remain readable.
@@ -192,8 +190,21 @@ pub async fn read(
         ));
     }
     if crate::shared_host::is_shared(&s.agent) {
-        let rt = app.ensure_runtime(&s).await?;
-        drop(_lock);
+        let Some(rt) = app.runtimes.lock().await.get(&id).cloned() else {
+            let mut result = controls(
+                &json!({"model":s.model}),
+                &[],
+                false,
+                Some("连接原生 Agent 后可修改设置；本地历史仍可查看".into()),
+                &Value::Null,
+                None,
+            );
+            result["plan_available"] = json!(false);
+            result["goal"] = Value::Null;
+            result["goal_capabilities"] =
+                json!({"create":false,"edit":false,"resume":false,"clear":false,"pause":false});
+            return Ok(Json(result));
+        };
         let settings = rt
             .rpc
             .call(crate::shared_host::settings_method(&s.agent), json!({}))
@@ -206,6 +217,8 @@ pub async fn read(
         result["goal_capabilities"] = json!({"create":false,"edit":false,"resume":false,"clear":false,"pause":false,"reason":"当前 Agent 目标控制暂未接入"});
         return Ok(Json(result));
     }
+    let gate = app.gate(&id).await;
+    let _lock = gate.lock().await;
     let existing = app.runtimes.lock().await.get(&id).cloned();
     if s.external && existing.is_none() || s.archived {
         // Metadata reads must not keep message submission behind slow catalog IO.
