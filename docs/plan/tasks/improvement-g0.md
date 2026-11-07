@@ -1,7 +1,7 @@
 ---
 id: improvement-g0
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -48,3 +48,7 @@ Container builds only `anywork`, does not depend on desktop UI or GTK/Tauri. Val
 Each developer commits focused source and meaningful tests, then a separate verifier reviews exact commits and runs integration boundaries in an isolated worktree. Use worktree-specific build targets and Web output; never overwrite running service assets or shared binaries while another candidate is being tested. Root merges accepted commits sequentially and runs merged Rust/HTTP/Web checks appropriate to the cross-cutting changes, then records actual results. Existing fixture clients sending file PUT must adopt the read revision; do not weaken conflict protection to satisfy them.
 
 After G0, continue with G1 (I02/I03/I05/I07/I08/I09/I10 and critical I11/I12), then G2/G3 and approved G4 choices. Preserve all uncompleted issues and acceptance gaps in the continuing tracker.
+
+## Acceptance
+
+Source fixes, independent reviews and [merged local verification](../reviews/improvement-g0-merged.md) passed. Exact merged SHA `83eda6cc78d3171ee60f86a433cd857777ae306e` then passed all four [Checks jobs](https://github.com/ywateru/AnyWork/actions/runs/42372270797), including an actual clean Linux x64 container build/auth/non-root/Web/source/persistence run. A bounded read-only invocation of `scripts/check-release-ci.py --sha 83eda6cc78d3171ee60f86a433cd857777ae306e --timeout 30` returned success and selected that exact trusted run. No tag/release or production restart was performed. Live release publishing was not exercised; later commits still require their own Checks. Platform/native/file-system limits remain in the support matrix and module reviews. This closes G0's scoped delivery, not the full improvement objective or subsequent schema work.
