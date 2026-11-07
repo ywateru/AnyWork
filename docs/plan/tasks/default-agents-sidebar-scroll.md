@@ -6,7 +6,7 @@ User-authorized follow-up: enable dsh (DeepSeek Harness) and WorkBuddy by defaul
 
 All three built-in integrations (Codex, DeepSeek Harness, WorkBuddy) are registered and exposed by default, independently of host discovery. `/plugins` separates integration registration from host availability with explicit metadata; it never exposes local descriptors or credentials. Existing host validation and command availability gates remain intact. Disconnected built-ins remain visible and selectable in the new-session selector, with actionable connection guidance and creation disabled until available. Legacy servers that omit availability metadata preserve their existing catalog semantics. Explicit Agent selection never silently changes. Sidebar filtering remains a presentation projection and retains native Agent identities.
 
-WorkBuddy's normal supported desktop writes DevToolsActivePort under its session directory. The launcher must support that actual location while preserving endpoint identity, private-file and owned-listener validation, compatibility with the existing profile-root location, and strict refusal of ambiguous/stale entries. Tests must use isolated fixtures only.
+WorkBuddy's normal supported desktop writes DevToolsActivePort under its session directory. The launcher must support that actual location while preserving endpoint identity, private-file validation and launched-host identity binding, compatibility with the existing profile-root location, and strict refusal of ambiguous/stale entries. Tests must use isolated fixtures only.
 
 ## Layout and scrolling
 
