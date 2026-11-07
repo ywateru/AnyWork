@@ -4,7 +4,7 @@ Reviewed exact candidate `9e14b96758565509c6cfd38fa4f5526701109031` on 2026-11-0
 
 ## Result
 
-**Changes requested. One blocking same-process lost-update case was independently reproduced.** The revision/precondition protocol, publication strategy and Web response-generation protection address the main intended problems, but the mutex does not identify equivalent filenames on the tested case-insensitive macOS filesystem. This is within the promised AnyWork coordination boundary, not the documented arbitrary external-writer CAS limitation.
+**Initial result at `9e14b96`: changes requested. Follow-up `629992a` is now independently accepted for source integration; see the final section.** The revision/precondition protocol, publication strategy and Web response-generation protection address the main intended problems, but the mutex does not identify equivalent filenames on the tested case-insensitive macOS filesystem. This is within the promised AnyWork coordination boundary, not the documented arbitrary external-writer CAS limitation.
 
 ## Blocking finding
 
@@ -51,3 +51,26 @@ No root target/dist mutation, product implementation edit, real account/token-fi
 ## Follow-up acceptance
 
 Re-review the exact follow-up commit after B1 and its regression are added. Retain the documented non-CAS/cross-platform boundaries. Root should register the HTTP script in the merged check pipeline, run merged-contract checks, and record independent acceptance before marking I04 resolved. This review does not close other G0 or continuing improvement issues.
+
+
+## Independent follow-up review: 629992a
+
+Reviewed exact follow-up `629992a8f9056bb863530ee25f97f71b8f2ff793`. **Pass for source integration: B1 and N1/N2/N3 are resolved; no open source-review findings.** The earlier sections retain the failures and limitations of the initial candidate, not new failures against this follow-up.
+
+- **B1 resolved with actual filesystem/HTTP evidence:** the lock is now process-wide and held through path resolution, both revision checks, temporary writing, publication and directory synchronization. It does not guess filesystem equality from lowercase/Unicode strings. This conservatively serializes unrelated saves, an explicit throughput tradeoff. The updated real HTTP suite passed all six tests without skipping the case or NFC/NFD equivalent-name cases. Each alias group performs ten 512-KiB existing-file races and an absent-file create race, verifies `[200,409]`, exact winner bytes, conflict JSON and cleanup. Separately, the reviewer ran **12 rounds each** of case-equivalent and NFC/NFD-equivalent names with **1-MiB** contents over two actual HTTP fixture sessions. `os.path.samefile` confirmed both groups alias on this host; all 24 additional races returned one 200/one 409 and retained exactly the successful submitter's bytes, with no leftover temporary files.
+- **N1 resolved:** save success requires `ok === true` plus a lowercase SHA-256 revision string; comparison and initial read use the same revision-format guard. The actual browser malformed-success matrix covers false/missing/nonboolean ok and invalid/nonstring/null/uppercase revisions, and malformed comparison cannot replace the baseline. The reviewer independently repeated the original `{ok:false,revision:"invalid-but-truthy"}` response injection on both desktop and Pixel views: an error appeared, the draft remained visible and Save remained enabled/dirty, with no backend write.
+- **N2 resolved at the intended abstraction:** the real save path now accepts an injected directory-sync function for deterministic testing. Create and update both publish bytes, then a forced sync error yields 503 / `file_save_uncertain` / `delivery_state:uncertain`, keeps published bytes and removes the temporary entry. A repeated create remains conflict. Browser coverage makes a real successful fixture PUT, replaces its delivered response with 503 uncertain, then proves draft retention and explicit comparison/adoption. This verifies the application outcome contract; it does not simulate a physical power cut or establish untested filesystem durability.
+- **N3 resolved and visually rechecked:** tools now occupy their own normal-flow row. Independent fresh desktop (1440×1000) and Pixel 7 (412 CSS-pixel width) long-name/long-content screenshots were opened and inspected. Both have a **12-pixel gap** between toolbar bottom and conflict banner top, no document horizontal overflow, wrapped comparison text and visible adoption/discard/close controls. Local ignored evidence is under `artifacts/file-review-fix/desktop-conflict.png` and `pixel-conflict.png`. Pixel remains narrow with the optional tree open, but the controls remain usable; no new blocking layout issue was found.
+
+| Independent check on the exact follow-up | Result |
+| --- | --- |
+| `cargo test --locked -p anywork files::tests -- --nocapture` | 9 passed, including post-publication sync injection |
+| `python3 scripts/file-consistency-test.py` | 6 passed; actual case/Unicode cases ran, no skips |
+| Additional 1-MiB real HTTP equivalent-name concurrency | 24/24 rounds: one success, one conflict, exact winner bytes |
+| `PLAYWRIGHT_CHANNEL=chrome ANYWORK_E2E_PORT=3278 ANYWORK_E2E_OUTPUT_DIR=test-results-independent-file-fix npx playwright test e2e/file-consistency.spec.ts` | 18 passed across desktop Chrome and Pixel emulation |
+| Independent malformed-success browser reproduction | Both sizes rejected, preserved draft and kept dirty state |
+| Independent screenshot/layout inspection | Both sizes: separate toolbar, no horizontal overflow; 12-pixel banner clearance |
+
+The 25-case existing integration suite was reported by the developer and not unnecessarily rerun by this reviewer; the direct changed-contract HTTP/browser layers were run independently as listed. Only this review document was edited. The extra port-3281 screenshot fixture service was explicitly stopped after verification; no production service, root target/dist, account/key file, native Agent task or external publishing endpoint was touched.
+
+Root should integrate the exact accepted candidate and review, run merged G0 contract checks, and register the focused HTTP script. The process-wide lock coordinates only this AnyWork process. Arbitrary external writers/multiple server processes, physical crashes, Windows/Linux/network-filesystem behavior and real Android devices remain explicitly outside this review's tested guarantee. Those limits remain visible and do not convert this source pass into a claim of portable native CAS or full I05 recovery.
