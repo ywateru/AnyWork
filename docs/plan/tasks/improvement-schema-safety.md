@@ -30,3 +30,7 @@ Root owns check-pipeline registration and central API/architecture/progress docu
 Use real SQLite transactions and production `Store::open`. Cover fresh/current/recognized legacy/future/foreign/malformed schema, interrupted/failed DDL, concurrent-owner refusal, crash/reopen, sequence preservation and atomic startup recovery. Add a real isolated HTTP restart smoke with a fake Agent proving no automatic replay. Developer commits focused changes and evidence; another agent independently reviews the exact candidate, including forward-version no-application-mutation and legacy compatibility. Root merges only an accepted candidate and runs merged checks.
 
 Full I05 consistent backup/restore/retention, G1 stable operation IDs and storage-degraded state remain tracked independently.
+
+## Review gate
+
+Candidate `fc2b9aa` was independently reviewed at `ce482da` and remains blocked by B1. Its SQL whitespace normalizer conflates identifiers such as `TEXTNOTNULL` with `TEXT NOT NULL`, and `INTEGERPRIMARYKEYAUTOINCREMENT` with an actual integer primary key. The latter malformed declaration was accepted by the production opening path and recovery inserted a NULL event sequence. Repair must validate actual structural constraints and preserve SQL token/literal identity before WAL changes or recovery. Add real-opening negative regressions that retain seeded active status, queues, journal mode and sequence state after refusal; preserve existing legacy, ownership, future-version and I01 acceptance. A separate verifier must review the exact corrected commit before merge.
