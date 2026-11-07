@@ -51,6 +51,6 @@ Use `python3 scripts/publish.py` (or `npm run release`) for normal publication: 
 
 常规发布执行 `python3 scripts/publish.py`（或 `npm run release`），自动递增一次版本、等待精确提交 Checks、构建、更新网站并完成可恢复核验。高级手动入口同样必须经过发布门禁，状态见[发布与恢复](releasing.md)。构建前拒绝重复或倒退版本；平台、macOS DMG 缺失或签名版本不符时，不发布 `latest.json`。每个 Mac 构建机只读挂载 DMG，检查安装说明、Applications 入口、应用签名和架构，并与原生更新包逐文件比较。
 
-Current source caveat (2026-11-07): the old manual/tag workflow paths do not yet enforce the publisher's exact-SHA Checks gate themselves. The unified gate remains an isolated, unaccepted candidate tracked by [I20](project-improvement-review.md#i20--ci-门禁放在所有发版入口的共同边界); use the normal publisher while this gap remains.
+Current source status (2026-11-07): the Release workflow now enforces trusted exact-source Checks and remote tag-to-commit binding before builds and immediately before publication; the old prepare shortcut is retired. This I20 change passed independent source/offline review and is merged, but no new release was created to exercise the live publishing path. Use the normal publisher; see [current delivery evidence](plan/improvement-progress.md) for the remaining validation.
 
-当前源码限制（2026-11-07）：旧手动/tag 工作流入口尚未自行强制执行发布脚本的精确 SHA Checks 门禁。统一门禁仍为隔离、未验收候选，跟踪 [I20](project-improvement-review.md#i20--ci-门禁放在所有发版入口的共同边界)；该缺口关闭前使用常规发布脚本。
+当前源码状态（2026-11-07）：Release 工作流已在构建前及正式发布前强制检查可信精确源码的 Checks 与远端标签绑定，旧 prepare 捷径已停用。I20 已通过独立源码/离线审查并合入；本轮未创建新发行来验证真实发布链。常规使用发布脚本，剩余验收见[交付进度](plan/improvement-progress.md)。
