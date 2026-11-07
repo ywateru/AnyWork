@@ -304,10 +304,8 @@ async fn main() -> Result<()> {
     let mut plugins = HashMap::new();
     let manifest = workbuddy.manifest();
     plugins.insert(manifest.id.clone(), manifest);
-    if let Some(config) = &harness {
-        let manifest = config.manifest();
-        plugins.insert(manifest.id.clone(), manifest);
-    }
+    let manifest = harness::Config::manifest();
+    plugins.insert(manifest.id.clone(), manifest);
     let codex = remote_agent_codex::CodexPlugin.manifest();
     plugins.insert(codex.id.clone(), codex);
     if args.plugins_dir.exists() {

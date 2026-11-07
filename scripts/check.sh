@@ -9,6 +9,7 @@ cargo test --workspace
 cargo build
 npm run build
 npm test
+python3 scripts/plugin-catalog-test.py
 python3 scripts/integration-test.py
 python3 scripts/service-control-test.py
 python3 scripts/workbuddy-launch-test.py

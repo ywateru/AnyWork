@@ -18,6 +18,10 @@ Quit WorkBuddy normally first, then run from the AnyWork source directory with P
 python3 scripts/workbuddy-launch.py
 ```
 
+AnyWork enables the WorkBuddy integration by default. Its new-session option remains visible as “待连接” until the launcher publishes a valid entry; click “重新检查连接” after setup. The launcher accepts a fresh `session/DevToolsActivePort` (normal desktop) or profile-root `DevToolsActivePort`, rejects ambiguous fresh entries, and never reuses a stale entry.
+
+AnyWork 默认启用 WorkBuddy 接入。未发现有效入口时，新建会话列表仍显示 WorkBuddy 并标记“待连接”；完成引导后点击“重新检查连接”。引导兼容正常桌面的 `session/DevToolsActivePort` 及原资料目录根路径，只接受本次启动新生成的入口；多个新入口冲突时报错，不复用陈旧入口。
+
 Keep the launcher running while AnyWork uses this entry. The default WorkBuddy configuration is `~/.workbuddy`, its Electron profile is `~/.workbuddy/app`, and the private discovery file is `~/.anywork/workbuddy/host.json`. AnyWork auto-discovery reads that descriptor; it contains a local endpoint and browser identity, not an account token. Do not upload or publish this file.
 
 使用时保持引导程序运行。默认沿用 `~/.workbuddy` 配置和 `~/.workbuddy/app` 桌面资料目录，连接描述文件为 `~/.anywork/workbuddy/host.json`。该文件只供本机 AnyWork 发现桌面，包含本机连接入口与浏览器身份，不包含账号令牌。请勿上传或公开该文件。

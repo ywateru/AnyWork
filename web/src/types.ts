@@ -20,6 +20,9 @@ export interface WorkspaceInfo {
   sessions: number;
 }
 export interface Plugin {
+  /** A configured entry can be attempted; this is not a host liveness probe. */
+  available?: boolean;
+  setup_hint?: string | null;
   id: string;
   name: string;
   capabilities: string[];
