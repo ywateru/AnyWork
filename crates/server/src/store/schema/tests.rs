@@ -168,7 +168,7 @@ fn fresh_current_and_historical_layouts_preserve_data_sequences_and_recover_atom
             fixture.legacy(ver, replay);
             fixture.seed();
             let store = Store::open(&fixture.path).unwrap();
-            assert_eq!(version(&store.0.lock().unwrap()).unwrap(), 1);
+            assert_eq!(version(&store.0.lock().unwrap()).unwrap(), CURRENT_VERSION);
             assert_eq!(store.sessions().unwrap()[0].status, "disconnected");
             let events = store.events("one", 0, 500).unwrap();
             assert_eq!(events[0].seq, 41);
