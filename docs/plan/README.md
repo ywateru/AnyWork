@@ -38,4 +38,4 @@ The [backend review](reviews/workbuddy-backend.md) accepts product commit `46fed
 
 ## Default integration and sidebar scrolling follow-up
 
-The user requested default dsh/WorkBuddy visibility and bounded sidebar scrolling. [Contract and delivery tasks](tasks/default-agents-sidebar-scroll.md) separate enabled integration registration from native-host connection readiness. Two isolated implementations and an independent review are in progress. This follow-up does not publish a release or send messages to native sessions.
+The user requested default dsh/WorkBuddy visibility and bounded sidebar scrolling. [Contract and delivery tasks](tasks/default-agents-sidebar-scroll.md) separate enabled integration registration from native-host connection readiness. Both isolated implementations passed [independent review](reviews/default-agents-sidebar-scroll.md), merged, and passed [merged checks and local deployment](reviews/default-agents-sidebar-scroll-merged.md). All 70 prior sessions and the access key were retained. This follow-up does not publish a release or send messages to native sessions.

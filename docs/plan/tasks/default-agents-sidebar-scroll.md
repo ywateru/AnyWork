@@ -29,3 +29,5 @@ The viewport owns the shell's height. Sidebar is a bounded flex column; only its
 ## Delivery
 
 Two isolated developer tasks: (1) default catalog + connection UI/launcher contract, (2) sidebar scroll reproduction/fix. A separate verifier reviews committed changes and runs focused tests in isolated services. Root merges and runs merged checks. No production hosts, prompts, keys or tunnels are modified by developers/reviewer.
+
+Status: independently accepted and merged. [Merged validation and local deployment](../reviews/default-agents-sidebar-scroll-merged.md) are complete; no release was published.
