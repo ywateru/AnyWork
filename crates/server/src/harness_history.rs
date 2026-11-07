@@ -51,23 +51,63 @@ fn home(app: &App) -> Result<Option<PathBuf>> {
     }
     default_home()
 }
-fn safe_path(path: &Path) -> Result<()> {
+// Windows prefixes (D:, UNC shares and verbatim roots) are not complete
+// filesystem paths until their RootDir is appended. Inspect only rooted paths;
+// querying a bare prefix can resolve against drive-local cwd or fail with
+// ERROR_INVALID_FUNCTION for a verbatim prefix returned by canonicalize().
+fn absolute_ancestors(path: &Path) -> Result<Vec<PathBuf>> {
     ensure!(path.is_absolute(), "Harness history path must be absolute");
     let mut cursor = PathBuf::new();
+    let mut ancestors = Vec::new();
     for part in path.components() {
         ensure!(
             !matches!(part, std::path::Component::ParentDir),
             "Invalid Harness history path"
         );
         cursor.push(part.as_os_str());
+        if let std::path::Component::Prefix(prefix) = part {
+            ensure!(
+                matches!(
+                    prefix.kind(),
+                    std::path::Prefix::Disk(_)
+                        | std::path::Prefix::UNC(_, _)
+                        | std::path::Prefix::VerbatimDisk(_)
+                        | std::path::Prefix::VerbatimUNC(_, _)
+                ),
+                "Unsupported Harness history path namespace"
+            );
+            continue;
+        }
+        ensure!(
+            cursor.is_absolute(),
+            "Harness history path must be absolute"
+        );
+        ancestors.push(cursor.clone());
+    }
+    ensure!(!ancestors.is_empty(), "Harness history path has no root");
+    Ok(ancestors)
+}
+fn safe_path(path: &Path) -> Result<()> {
+    for cursor in absolute_ancestors(path)? {
         let meta = fs::symlink_metadata(&cursor).context("Harness history path is unavailable")?;
         ensure!(
             !meta.file_type().is_symlink(),
             "Harness history paths must not contain symlinks"
         );
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            // FILE_ATTRIBUTE_REPARSE_POINT also covers directory junctions,
+            // whose FileType need not be classified as a symbolic link.
+            ensure!(
+                meta.file_attributes() & 0x400 == 0,
+                "Harness history paths must not contain reparse points"
+            );
+        }
     }
     Ok(())
 }
+
 fn revision(path: &Path) -> Result<Revision> {
     safe_path(path)?;
     let meta = fs::metadata(path)?;
@@ -343,6 +383,9 @@ fn headers(root: &Path) -> Result<Vec<Header>> {
         if !project.file_type()?.is_dir() {
             continue;
         }
+        // In particular, reject Windows directory junctions before enumerating
+        // them; FileType::is_symlink alone does not cover every reparse point.
+        safe_path(&project.path())?;
         for dir in fs::read_dir(project.path())? {
             count += 1;
             ensure!(
@@ -1061,6 +1104,100 @@ mod tests {
         assert_eq!(home(&app).unwrap(), None);
         Arc::get_mut(&mut app).unwrap().harness_history_root = Some(PathBuf::from("relative"));
         assert!(home(&app).is_err());
+    }
+    #[test]
+    fn rooted_paths_remain_readable_and_relative_or_parent_paths_are_refused() {
+        let f = Fixture::new();
+        let path = f.log("native", &events(), false);
+        safe_path(&path).unwrap();
+        let ancestors = absolute_ancestors(&path).unwrap();
+        assert!(ancestors.iter().all(|ancestor| ancestor.is_absolute()));
+        assert_eq!(ancestors.last(), Some(&path));
+        assert!(safe_path(Path::new("sessions/project/native")).is_err());
+        let traversal =
+            f.0.join("sessions/project/../project/native/session.v4.jsonl");
+        assert!(traversal.exists());
+        assert!(safe_path(&traversal).is_err());
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_drive_unc_and_verbatim_prefixes_are_checked_only_with_their_root() {
+        for (path, expected_root) in [
+            (r"C:\history\session", r"C:\"),
+            (r"\\?\C:\history\session", r"\\?\C:\"),
+            (r"\\server\share\history\session", r"\\server\share\"),
+            (
+                r"\\?\UNC\server\share\history\session",
+                r"\\?\UNC\server\share\",
+            ),
+        ] {
+            let ancestors = absolute_ancestors(Path::new(path)).unwrap();
+            assert_eq!(ancestors.first().unwrap(), Path::new(expected_root));
+            assert_eq!(ancestors.len(), 3);
+            assert!(ancestors.iter().all(|ancestor| ancestor.is_absolute()));
+            assert_eq!(ancestors.last().unwrap(), Path::new(path));
+        }
+        for invalid in [
+            r"C:history",
+            r"\history",
+            r"history\session",
+            r"C:\history\..\session",
+            r"\\server\share\history\..\session",
+            r"\\?\C:\history\..\session",
+            r"\\?\UNC\server\share\history\..\session",
+            r"\\.\C:\history",
+            r"\\?\GLOBALROOT\Device\HarddiskVolume1\history",
+        ] {
+            assert!(absolute_ancestors(Path::new(invalid)).is_err(), "{invalid}");
+        }
+        // Fixture roots come from canonicalize(), which returns the verbatim
+        // prefix that caused the original release failures.
+        let f = Fixture::new();
+        let path = f.log("native", &events(), true);
+        assert!(
+            matches!(path.components().next(), Some(std::path::Component::Prefix(prefix))
+            if matches!(prefix.kind(), std::path::Prefix::VerbatimDisk(_)))
+        );
+        let conventional = PathBuf::from(path.to_str().unwrap().strip_prefix(r"\\?\").unwrap());
+        for source in [path, conventional] {
+            assert_eq!(
+                read_body(&header(source).unwrap()).unwrap(),
+                (events(), false)
+            );
+        }
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_directory_junctions_cannot_redirect_native_history_reads() {
+        let f = Fixture::new();
+        let native = f.log("native", &events(), false);
+        let junction = f.0.join("redirect");
+        let target = native.parent().unwrap();
+        // Directory junction creation needs no developer-mode symlink privilege.
+        let make_junction = |link: &Path, target: &Path| {
+            let status = std::process::Command::new("cmd.exe")
+                .args(["/C", "mklink", "/J"])
+                .arg(link.to_str().unwrap().strip_prefix(r"\\?\").unwrap())
+                .arg(target.to_str().unwrap().strip_prefix(r"\\?\").unwrap())
+                .output()
+                .unwrap();
+            assert!(
+                status.status.success(),
+                "Could not create isolated test junction"
+            );
+        };
+        make_junction(&junction, target);
+        assert!(safe_path(&junction.join("session.v4.jsonl")).is_err());
+        let redirected_project = f.0.join("sessions/redirected-project");
+        make_junction(&redirected_project, target.parent().unwrap());
+        assert!(headers(&f.0).is_err());
+        // Remove only the junctions, leaving the native fixture source intact.
+        fs::remove_dir(&redirected_project).unwrap();
+        fs::remove_dir(&junction).unwrap();
+        assert_eq!(
+            read_body(&header(native).unwrap()).unwrap(),
+            (events(), false)
+        );
     }
     #[cfg(unix)]
     #[test]
