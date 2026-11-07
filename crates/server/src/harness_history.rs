@@ -1114,10 +1114,32 @@ mod tests {
         assert!(ancestors.iter().all(|ancestor| ancestor.is_absolute()));
         assert_eq!(ancestors.last(), Some(&path));
         assert!(safe_path(Path::new("sessions/project/native")).is_err());
-        let traversal =
-            f.0.join("sessions/project/../project/native/session.v4.jsonl");
-        assert!(traversal.exists());
-        assert!(safe_path(&traversal).is_err());
+        // PathBuf::join normalizes .. away when its Windows base has a
+        // verbatim prefix. Append raw native separators so the validator
+        // receives the parent component rather than an already-normalized path.
+        let mut raw = f.0.as_os_str().to_os_string();
+        raw.push(std::path::MAIN_SEPARATOR_STR);
+        raw.push(
+            [
+                "sessions",
+                "project",
+                "..",
+                "project",
+                "native",
+                "session.v4.jsonl",
+            ]
+            .join(std::path::MAIN_SEPARATOR_STR),
+        );
+        let traversal = PathBuf::from(raw);
+        assert!(
+            traversal
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir))
+        );
+        assert_eq!(
+            safe_path(&traversal).unwrap_err().to_string(),
+            "Invalid Harness history path",
+        );
     }
     #[cfg(windows)]
     #[test]
