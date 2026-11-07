@@ -32,6 +32,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Build focused browser prerequisites
+        run: |
+          npm run build:desktop-ui
+          cargo build --locked -p anywork
+          npm run build
+      - name: Check sidebar gestures and model picker focus early
+        run: npx playwright test e2e/sidebar-scroll.spec.ts e2e/model-picker.spec.ts
       - run: ./scripts/check.sh
       - run: npm run format:check
       - run: python3 scripts/build-site.py && node scripts/site-test.mjs
