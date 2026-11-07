@@ -256,25 +256,61 @@ interface RenderTaskWindow extends Window {
   modelPickerTasks: {
     hold: boolean;
     pending: (() => void)[];
+    pendingMicrotasks: number;
+    decodedSaves: number;
     release: () => void;
   };
 }
 
-// A browser can deliver an animation frame before React's MessageChannel task.
-// Hold that task for two frames after the save response, without changing focus
-// APIs, requestAnimationFrame, React or the actual native settings request.
+// Hold both native root-scheduling microtasks and MessageChannel work across
+// two real frames after the save response. Holding only MessageChannel leaves
+// React's root microtask free to synchronously flush work before task release.
+// Focus APIs, requestAnimationFrame, React and the save request stay unchanged.
 async function controlledRenderTasks(page: Page) {
   await page.addInitScript(() => {
     const pending: (() => void)[] = [];
     const state = {
       hold: false,
       pending,
+      pendingMicrotasks: 0,
+      decodedSaves: 0,
       release: () => {
         state.hold = false;
         for (const run of pending.splice(0)) run();
       },
     };
     Object.assign(window, { modelPickerTasks: state });
+    // A response event signals headers, not consumption by the application.
+    // Observe the real POST body's decode so the two frames cannot run before
+    // the save continuation has even received its result.
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const response = await nativeFetch(input, init);
+      if (
+        init?.method === "POST" &&
+        new URL(response.url).pathname.endsWith("/composer")
+      ) {
+        const nativeJson = response.json.bind(response);
+        response.json = async () => {
+          const value = await nativeJson();
+          state.decodedSaves++;
+          return value;
+        };
+      }
+      return response;
+    };
+    const nativeMicrotask = window.queueMicrotask.bind(window);
+    window.queueMicrotask = (callback) => {
+      nativeMicrotask(() => {
+        if (state.hold) {
+          state.pendingMicrotasks++;
+          pending.push(() => {
+            state.pendingMicrotasks--;
+            nativeMicrotask(callback);
+          });
+        } else callback();
+      });
+    };
     const NativeChannel = window.MessageChannel;
     const onmessage = Object.getOwnPropertyDescriptor(
       MessagePort.prototype,
@@ -352,7 +388,14 @@ for (const rejected of [false, true]) {
     await expect
       .poll(() =>
         page.evaluate(
-          () => (window as RenderTaskWindow).modelPickerTasks.pending.length,
+          () => (window as RenderTaskWindow).modelPickerTasks.decodedSaves,
+        ),
+      )
+      .toBe(1);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as RenderTaskWindow).modelPickerTasks.pendingMicrotasks,
         ),
       )
       .toBeGreaterThan(0);
@@ -367,6 +410,12 @@ for (const rejected of [false, true]) {
       (window as RenderTaskWindow).modelPickerTasks.release();
     });
     await expect(fast).toBeEnabled();
+    expect(
+      await page.evaluate(() => {
+        const state = (window as RenderTaskWindow).modelPickerTasks;
+        return [state.hold, state.pendingMicrotasks, state.pending.length];
+      }),
+    ).toEqual([false, 0, 0]);
     await expect(fast).toHaveAttribute("aria-checked", String(!rejected));
     await expect(fast).toBeFocused();
     if (rejected)
