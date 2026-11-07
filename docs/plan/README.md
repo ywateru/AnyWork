@@ -51,3 +51,7 @@ The user reported injected context appearing as a user message and missing Web u
 ## One-command publication
 
 The user requested reusable release automation after v0.1.12 publication. The [task contract](tasks/one-command-publish.md) defines a resumable publisher for exact-commit Checks, immutable releases, website deployment and lightweight final validation. Implementation passed [independent review](reviews/one-command-publish.md) and merged checks: 26 publisher tests, release-version/source-export checks and a read-only verification of the real v0.1.12 release and bilingual site. The delivered [one-command workflow](../releasing.md) includes progress recovery, explicit failed-job retry and Pages-only repair. This task delivers source and documentation without publishing another version or changing the local service.
+
+## Project-wide expert review
+
+The [2026-11-07 improvement review](../project-improvement-review.md) examines the source at `db7f2ab`, current contracts and existing acceptance records. It records 30 proposed improvements, evidence levels, acceptance directions, staged dependencies and 11 expert decisions. Backend, Agent and client reviews informed the draft; two independent directions checked the consolidated document. This is analysis for expert discussion, not approval or implementation of the proposed work. No product code, running service or release changed.
