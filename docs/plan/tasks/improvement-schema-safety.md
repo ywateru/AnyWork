@@ -9,7 +9,7 @@ depends-on: [improvement-g0]
 
 ## Objective
 
-Implement the first deliverable of [schema-and-recovery](../../schema-and-recovery.md): explicit transactional schema opening/migration, supported/legacy schema validation and fail-closed future-version handling. This is a dependency of I02's durable operation ledger, not completion of full I05 backup/restore.
+Implement the first deliverable of [schema-and-recovery](../../schema-and-recovery.md): explicit transactional schema opening/migration, supported/legacy schema validation, single-service startup ownership and fail-closed future-version handling. This is a dependency of I02's durable operation ledger, not completion of full I05 backup/restore.
 
 ## Context
 
@@ -25,6 +25,6 @@ Root owns check-pipeline registration and central API/architecture/progress docu
 
 ## Verification
 
-Use real SQLite transactions and production `Store::open`. Cover fresh/current/recognized legacy/future/foreign/malformed schema, interrupted/failed DDL, concurrent open, sequence preservation and safe startup recovery. Add a real isolated HTTP restart smoke with a fake Agent proving no automatic replay. Developer commits focused changes and evidence; another agent independently reviews the exact candidate, including forward-version no-mutation and legacy compatibility. Root merges only an accepted candidate and runs merged checks.
+Use real SQLite transactions and production `Store::open`. Cover fresh/current/recognized legacy/future/foreign/malformed schema, interrupted/failed DDL, concurrent-owner refusal, crash/reopen, sequence preservation and atomic startup recovery. Add a real isolated HTTP restart smoke with a fake Agent proving no automatic replay. Developer commits focused changes and evidence; another agent independently reviews the exact candidate, including forward-version no-application-mutation and legacy compatibility. Root merges only an accepted candidate and runs merged checks.
 
 Full I05 consistent backup/restore/retention, G1 stable operation IDs and storage-degraded state remain tracked independently.

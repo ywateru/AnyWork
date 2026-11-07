@@ -4,7 +4,7 @@ Goal: implement improvements in the priority order of [the review](../project-im
 
 | Stage | Issues | Current state / next evidence |
 | --- | --- | --- |
-| G0 | I01/I04/I20/I22/I25 | [Contract and tasks](tasks/improvement-g0.md), in progress; independent verification required |
+| G0 | I01/I04/I20/I22/I25 | [Contract and tasks](tasks/improvement-g0.md), in progress; I01 independently accepted and merged, other candidates remain under review/fix |
 | G1 | I02/I03/I05/I07/I08/I09/I10, critical I11/I12 | Pending after foundational contracts; maintain full scope |
 | G2 | I13—I19, critical I28 | Pending; real native/Android/network evidence remains required |
 | G3 | I06/I21/I23/I24/I26/I27/I29 | Pending; capacity baselines before optimization |
@@ -25,3 +25,12 @@ The current user-facing deliverable is the complete project review document. Exi
 Counts above describe developer reports for those exact candidates, not independent acceptance or new mainline results. Full details stay in each candidate's module documentation until review and integration.
 
 Independent documentation review of `6bbaa75` passed without blocking findings: 30 issue IDs, 11 decision IDs and 212 local links checked, with targeted source/evidence cross-checks. This is acceptance of the review material, not of the three source candidates. The non-blocking wording clarification about still-ungated legacy release paths was applied to `docs/updates.md`.
+
+## Continuing delivery — 2026-11-07
+
+- **I01 accepted and merged** at `463cb29`, following independent exact-candidate review `b9bde38`. Merged-source checks in `.worktrees/improve-g0-merged`: server 118 passed / 4 explicit native tests ignored; real isolated event HTTP 4 passed; Web typecheck and all 317 unit tests passed. No production rebuild/restart. Current SSE reconnect may re-scan hidden tail rows; the scan is bounded and reveals no hidden payload. The module and API documents record that limitation.
+- **I04 changes required**: independent real HTTP reproduced two successful conflicting writes to differently cased aliases of one macOS file. This violates same-process serialization, so the candidate is not accepted despite earlier green tests. Alias/concurrency regression and a robust locking fix are required before re-review; platform/external-writer limitations remain separate.
+- **I20/I22 changes required**: independent review `170480b` found missing remote tag→authorized commit binding and incomplete container Web identity verification. The developer is fixing them with negative regressions. Actual Docker clean build/run remains unverified locally because the daemon is unavailable.
+- **G1 preparation**: [schema safety task](tasks/improvement-schema-safety.md) defines the dependency before adding durable operations. Contract review clarified single-service ownership, future-version application-write refusal, atomic recovery and schema constraint validation. Full backup/restore, I02 and I03 remain open.
+
+The broader objective remains active through G1—G4; G0 progress does not close the full project improvement goal.

@@ -22,6 +22,8 @@
 | POST | `/api/sessions/:id/respond` | 审批 `{request_id,result}` 或兼容 `{request_id,accept:boolean}`；问答 `{request_id,result}`，详见审批决策 |
 | GET | `/api/sessions/:id/events?after=0` | SSE 重放及实时事件 |
 | GET | `/api/sessions/:id/events/poll?after=0` | 增量 JSON 事件，最多 500 条，供不支持 SSE 的中转使用 |
+| GET | `/api/events?after=N` | 当前会话作用域内的全局 SSE；省略 after 从当前水位开始 |
+| GET | `/api/events/poll?after=N` | 全局增量 `{events,cursor,has_more}`；cursor 是扫描水位，包含不可见行的推进 |
 | GET | `/api/sessions/:id/export` | `{session,events,feedback}` 完整 JSON 导出 |
 | GET | `/api/sessions/:id/history?paged=true&cursor=...&limit=5` | 最近消息快照 `{events,next_cursor,latest_seq?}`，省略 cursor 读取最新页；返回事件按时间正序，上滑使用 next_cursor 读取更早页 |
 | GET | `/api/sessions/:id/history/item?seq=...` | 本服务大型工具结果按需读取 `{item}`；导入会话使用 `turn_id`、`item_id` |
@@ -56,6 +58,8 @@
 ## SSE
 
 事件数据为 `{seq,session_id,method,params,request_id?,created_at}`。SSE 的 `id` 等于 `seq`。重连时把最新已处理序号传入 `after`；所有事件持久化后才能供客户端读取。定期发送 keepalive。
+
+全局事件与会话列表/单会话访问使用同一 Agent/workspace 范围，不因共用旧数据库而暴露范围外 payload。全局 poll 每次扫描最多 500 行；即使 `events` 为空也应使用返回的 `cursor`，按 `has_more` 继续读取，不能由可见事件数量推断是否读完。省略 after 仅建立当前水位；负数或格式错误拒绝。全局 SSE 可能返回只有 `id`、`event: cursor` 而无 `data` 的检查点，它不是 AgentEvent，不应投影为消息。旧客户端可忽略检查点，重连时可能重扫隐藏尾页。详见[全局事件契约](global-event-scope.md)。
 
 ## WebSocket
 

@@ -4,6 +4,7 @@
 - [当前支持与验收矩阵 / Support matrix](support-matrix.md)
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)
 - [Schema safety and recovery contract (G1 / I05)](schema-and-recovery.md)
+- [Global event scope and cursor contract (I01)](global-event-scope.md)
 - [Conversation UI](ui-design.md), [conversation panels](conversation-panels.md)
 - [Sidebar Agent filtering and icons](sidebar-agent-filter.md)
 - [WorkBuddy integration contract](workbuddy-integration.md), [investigation](plan/analysis/workbuddy.md)
