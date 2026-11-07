@@ -532,6 +532,97 @@ impl Store {
             .execute("DELETE FROM sessions WHERE id=?1", [id])?;
         Ok(())
     }
+    /// An authoritative WorkBuddy display snapshot can repair the same native
+    /// user's older passive/live projection without inventing a second input.
+    fn reconcile_workbuddy_user(&self, id: &str, data: &Value) -> Result<()> {
+        let session = self.session(id)?;
+        anyhow::ensure!(
+            session.agent == "workbuddy" && session.external,
+            "Invalid WorkBuddy user snapshot owner"
+        );
+        let thread = session
+            .thread_id
+            .as_deref()
+            .context("Missing WorkBuddy native identity")?;
+        let key = data["sourceEventKey"]
+            .as_str()
+            .context("Missing WorkBuddy user snapshot identity")?;
+        anyhow::ensure!(
+            key.starts_with(&format!("workbuddy:{thread}:")) && key.ends_with(":user"),
+            "Invalid WorkBuddy user snapshot identity"
+        );
+        let mut db = self.0.lock().unwrap();
+        let tx = db.transaction()?;
+        let previous: Option<(i64,String)> = tx.query_row("SELECT seq,data FROM events WHERE session_id=?1 AND json_extract(data,'$.params.sourceEventKey')=?2",params![id,key],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
+        let Some((seq, raw)) = previous else {
+            return Ok(());
+        };
+        let mut event: Event = serde_json::from_str(&raw)?;
+        if event.method != "user/message" || event.request_id.is_some() {
+            return Ok(());
+        }
+        if data["persisted_history"] == true
+            && event.params["workbuddy_user_snapshot"] == true
+            && event.params["persisted_history"] != true
+        {
+            // A possibly lagging transcript must not replace canonical live display.
+            return Ok(());
+        }
+        let hidden = data["workbuddy_user_hidden"] == true;
+        let before = event.params.clone();
+        for field in [
+            "text",
+            "display_text",
+            "input",
+            "attachments",
+            "history_id",
+            "history_turn_id",
+            "workbuddy_user_snapshot",
+            "workbuddy_user_hidden",
+        ] {
+            event.params[field] = data[field].clone();
+        }
+        if data["clientUserMessageId"].is_string() {
+            event.params["clientUserMessageId"] = data["clientUserMessageId"].clone();
+        }
+        // A native live observation supersedes passive provenance, while a later
+        // offline read must never downgrade a previously live user's ownership.
+        if data["persisted_history"] != true {
+            event
+                .params
+                .as_object_mut()
+                .unwrap()
+                .remove("persisted_history");
+        }
+        if !hidden && before == event.params {
+            return Ok(());
+        }
+        if hidden {
+            tx.execute(
+                "DELETE FROM events WHERE session_id=?1 AND seq=?2",
+                params![id, seq],
+            )?;
+        } else {
+            tx.execute(
+                "UPDATE events SET data=?3 WHERE session_id=?1 AND seq=?2",
+                params![id, seq, serde_json::to_string(&event)?],
+            )?;
+        }
+        let reset = Event {
+            seq: 0,
+            session_id: id.into(),
+            method: "history/reset".into(),
+            params: json!({"reason":"workbuddy_user_display","history_turn_id":data["history_turn_id"]}),
+            request_id: None,
+            created_at: now(),
+        };
+        tx.execute(
+            "INSERT INTO events(session_id,data) VALUES(?1,?2)",
+            params![id, serde_json::to_string(&reset)?],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
     pub fn event(
         &self,
         id: &str,
@@ -539,6 +630,28 @@ impl Store {
         data: Value,
         request_id: Option<Value>,
     ) -> Result<Event> {
+        let mut data = data;
+        let hidden = method == "user/message"
+            && data["workbuddy_user_snapshot"] == true
+            && data["workbuddy_user_hidden"] == true;
+        if method == "user/message" && data["workbuddy_user_snapshot"] == true {
+            anyhow::ensure!(
+                request_id.is_none(),
+                "WorkBuddy user snapshots cannot replace pending requests"
+            );
+            self.reconcile_workbuddy_user(id, &data)?;
+            if hidden {
+                data["sourceEventKey"] = json!(format!(
+                    "{}:hidden",
+                    data["sourceEventKey"].as_str().unwrap()
+                ));
+            }
+        }
+        let method = if hidden {
+            "workbuddy/user/hidden"
+        } else {
+            method
+        };
         let db = self.0.lock().unwrap();
         if let Some(key) = data["sourceEventKey"]
             .as_str()
@@ -889,6 +1002,76 @@ mod tests {
             "indexed replay import regressed: {:?}",
             start.elapsed()
         );
+    }
+    #[test]
+    fn authoritative_workbuddy_user_repairs_old_cache_without_replaying_or_hiding_other_events() {
+        let db = Store::open(Path::new(":memory:")).unwrap();
+        let mut row = composer_session("s");
+        row.agent = "workbuddy".into();
+        row.external = true;
+        row.thread_id = Some("native".into());
+        db.save(&row).unwrap();
+        let key = "workbuddy:native:turn:user";
+        let old=db.event("s","user/message",json!({"sourceEventKey":key,"text":"SECRET_IDENTITY","display_text":"SECRET_IDENTITY","input":[{"type":"text","text":"SECRET_IDENTITY"}],"persisted_history":true,"clientUserMessageId":"retained-client"}),None).unwrap();
+        let pending = db
+            .event(
+                "s",
+                "requestApproval",
+                json!({"tool":"bash"}),
+                Some(json!(55)),
+            )
+            .unwrap();
+        let answer = db
+            .event(
+                "s",
+                "item/completed",
+                json!({"item":{"id":"answer","text":"keep answer"}}),
+                None,
+            )
+            .unwrap();
+        let clean = json!({"sourceEventKey":key,"text":"clean literal <system-reminder>keep</system-reminder>","display_text":"clean literal <system-reminder>keep</system-reminder>","input":[{"type":"text","text":"clean literal <system-reminder>keep</system-reminder>"}],"attachments":[],"history_turn_id":"turn","history_id":"turn:user","workbuddy_user_snapshot":true,"workbuddy_user_hidden":false});
+        let updated = db.event("s", "user/message", clean.clone(), None).unwrap();
+        assert_eq!(updated.seq, old.seq);
+        assert_eq!(updated.params["clientUserMessageId"], "retained-client");
+        let events = db.events("s", 0, 30).unwrap();
+        assert!(
+            !serde_json::to_string(&events)
+                .unwrap()
+                .contains("SECRET_IDENTITY")
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e.seq == pending.seq && e.request_id == Some(json!(55)))
+        );
+        assert!(events.iter().any(|e| e.seq == answer.seq));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e.method == "history/reset")
+                .count(),
+            1
+        );
+        db.event("s", "user/message", clean.clone(), None).unwrap();
+        assert_eq!(db.events("s", 0, 30).unwrap().len(), events.len());
+        let mut lagging = clean.clone();
+        lagging["persisted_history"] = json!(true);
+        lagging["text"] = json!("lagging disk");
+        lagging["input"] = json!([]);
+        assert_eq!(
+            db.event("s", "user/message", lagging, None).unwrap().params["text"],
+            clean["text"]
+        );
+        let mut hidden = clean;
+        hidden["workbuddy_user_hidden"] = json!(true);
+        hidden["text"] = json!("");
+        hidden["display_text"] = json!("");
+        hidden["input"] = json!([]);
+        db.event("s", "user/message", hidden, None).unwrap();
+        let events = db.events("s", 0, 30).unwrap();
+        assert!(!events.iter().any(|e| e.method == "user/message"));
+        assert!(events.iter().any(|e| e.seq == pending.seq));
+        assert!(events.iter().any(|e| e.seq == answer.seq));
     }
     #[test]
     fn persisted_branch_reconciliation_preserves_live_and_requests_and_marks_reset() {

@@ -7,7 +7,7 @@ import {mkdtemp, mkdir, writeFile, readFile, chmod, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {createServer} from 'node:http';
 import net from 'node:net';
 import {chromium} from 'playwright';
@@ -22,7 +22,7 @@ await writeFile(image,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
 const document=path.join(workspace,'notes.txt');await writeFile(document,'native document fixture');
 const html=path.join(root,'app.asar/renderer/index.html');await mkdir(path.dirname(html),{recursive:true});await writeFile(html,'<!doctype html><title>WorkBuddy carrier fixture</title>');
 const port=async()=>{const s=net.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;};
-let context,server,relay;const sockets=new Set();let log='';
+let context,webContext,server,relay;const sockets=new Set();let log='';
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(test,label){const end=Date.now()+15000;while(Date.now()<end){const v=await test();if(v)return v;await delay(100);}throw Error(`Timed out: ${label}`);}
 try{
@@ -31,8 +31,9 @@ try{
   await context.addInitScript(({workspace,configDir,image,document})=>{
     const info=id=>({id,title:`Native ${id}`,transport:'local',space:{type:'local',cwd:workspace},state:'idle',lifecycle:'active',createdAt:1700000000000,updatedAt:1700000000001});
     const record=(id,text,state='completed')=>({id,state,timestamp:1700000000000,finishTimestamp:state==='completed'?1700000000001:undefined,userMessage:{content:[{type:'text',text}]},systemMessage:{content:[{type:'text',text:'PRIVATE_SYSTEM_CONTEXT'}]},assistantMessage:{content:[{type:'text',text:'native seed response'},{type:'tool',toolCallId:'same-call',status:'completed',_meta:{'codebuddy.ai/toolName':'read_file'},rawInput:{path:document},rawOutput:'native tool result',content:[{type:'content',content:{type:'resource_link',uri:document,name:'notes.txt'}},{type:'content',content:{type:'image',uri:image}}]}]}});
-    const s={infos:{one:info('one'),two:info('two')},records:{one:[record('seed-turn','native seed')],two:[]},pending:{},errors:{},calls:[],sendCount:0,answers:0,ready:0};
+    const s={infos:{one:info('one'),two:info('two')},records:{one:[record('seed-turn','native seed')],two:[]},pending:{},errors:{},calls:[],sendCount:0,answers:0,ready:0}; s.durable=structuredClone(s.records);
     const finish=(id,state='completed')=>{const r=s.records[id].at(-1);r.state=state;r.finishTimestamp=Date.now();r.assistantMessage={content:[{type:'text',text:`native response ${r.id}`}]};s.infos[id].state='idle';delete s.pending[id];};
+    window.fixtureDesktopProgressive=()=>{const r=record('desktop-progressive','desktop-origin user','streaming');r.assistantMessage={content:[{type:'text',text:'desktop first'}]};s.records.one.push(r);s.infos.one.state='working';setTimeout(()=>r.assistantMessage.content[0].text='desktop partial',700);setTimeout(()=>finish('one'),1700);};
     window.fixtureAdvanceApproval=()=>{const original=s.pending.one;finish('one');s.records.one.push(record('native-desktop-turn-'+Date.now(),'native desktop approval','streaming'));s.infos.one.state='working';s.pending.one=original;};
     window.workbuddyDesktop={appVersion:'5.9.3',configDir};window.__wbEventBridge=()=>()=>{};window.fixture=s;
     window.__wbInvoke=async(channel,_context,...args)=>{
@@ -42,7 +43,7 @@ try{
         case 'wb:conversations:list':return{items:Object.values(s.infos),total:Object.keys(s.infos).length,page:{current:1,size:100},partial:false};
         case 'wb:conversations:get':return s.infos[id]?{info:s.infos[id],configManager:{model:s.infos[id].model||'fixture-model',thoughtLevel:s.infos[id].effort||'low',connectors:[{apiKey:'CONNECTOR_SECRET'}]}}:undefined;
         case 'wb:conversations:create':{const id=`created-${Object.keys(s.infos).length}`;s.infos[id]=info(id);s.infos[id].space.cwd=args[0].cwd;s.infos[id].model=args[0].model||'fixture-model';s.records[id]=[];return{info:s.infos[id],configManager:{model:s.infos[id].model,connectors:[{apiKey:'CONNECTOR_SECRET'}]}};}
-        case 'wb:conversations:requestEntries':if(s.ready++===0)return{requests:[],entries:[],hasOlder:false,historyReady:false,historyKnownEmpty:false};return{requests:s.records[id]||[],entries:[],hasOlder:false,historyReady:true};
+        case 'wb:conversations:requestEntries':if(s.ready++===0)return{requests:[],entries:[],hasOlder:false,historyReady:false,historyKnownEmpty:false};return{requests:(args[1]?.beforeRequestId===null?s.durable[id]:s.records[id])||[],entries:[],hasOlder:false,historyReady:true};
         case 'wb:conversations:getPendingInfo':return s.pending[id];
         case 'wb:conversations:childAgentSnapshots':return id==='one'?[{kind:'subagent',projectionId:'child-projection',conversationid:'native-child',parentRequestId:'seed-turn',state:'completed',requests:[record('child-turn','child task')],hasOlder:false}]:[];
         case 'wb:conversations:loadToolDetail': case 'wb:conversations:childAgentLoadToolDetail':return{toolCallId:args.at(-1),rawInput:{path:document},rawOutput:'hydrated native tool output'};
@@ -55,6 +56,7 @@ try{
           const r=record(rid,text,'streaming');r.userMessage.content=content;r.assistantMessage={content:[{type:'text',text:'started'}]};s.records[id].push(r);s.infos[id].state='working';
           if(text==='approval'){s.pending[id]={id:'same-native-permission',category:'tool',toolName:'bash',options:[{optionId:'allow',kind:'allow_once',name:'Allow once'},{optionId:'reject',kind:'reject_once',name:'Reject'},{optionId:'forever',kind:'allow_always',name:'Always'}]};}
           else if(text==='question'){s.pending[id]={id:'native-question',category:'question',questions:[{id:'q',header:'Choice',question:'Choose',options:[{label:'A'},{label:'B'}]}]};}
+          else if(text==='progressive'){setTimeout(()=>r.assistantMessage.content[0].text='native progressive partial',700);setTimeout(()=>finish(id),1700);}
           else if(text!=='hold'){setTimeout(()=>finish(id),250);}
           return;
         }
@@ -71,7 +73,7 @@ try{
   await new Promise(r=>relay.listen(0,'127.0.0.1',r));
   const descriptor=path.join(root,'entry/host.json');await writeFile(descriptor,JSON.stringify({version:1,agent:'workbuddy',appVersion:'5.9.3',pid:process.pid,url:`http://127.0.0.1:${relay.address().port}/`,browserId,configDir,instanceId:crypto.randomUUID()}),{mode:0o600});
   const servicePort=await port(),base=`http://127.0.0.1:${servicePort}`,token='anywork-fixture-token-0123456789';
-  server=spawn(binary,['--bind',`127.0.0.1:${servicePort}`,'--workspace',workspace,'--data-dir',path.join(root,'data'),'--plugins-dir',path.join(root,'plugins'),'--web-dir',path.join(root,'no-web'),'--codex-discovery=false','--workbuddy-discovery-file',descriptor,'--token',token],{cwd:repo,env:{...process.env,HOME:path.join(root,'home'),ANYWORK_HARNESS_DISCOVERY_FILE:undefined,ANYWORK_HARNESS_URL:undefined,ANYWORK_HARNESS_TOKEN_FILE:undefined},stdio:['ignore','pipe','pipe']});
+  server=spawn(binary,['--bind',`127.0.0.1:${servicePort}`,'--workspace',workspace,'--data-dir',path.join(root,'data'),'--plugins-dir',path.join(root,'plugins'),'--web-dir',process.env.ANYWORK_TEST_WEB_DIR||path.join(repo,'web/dist'),'--codex-discovery=false','--workbuddy-discovery-file',descriptor,'--token',token],{cwd:repo,env:{...process.env,HOME:path.join(root,'home'),ANYWORK_HARNESS_DISCOVERY_FILE:undefined,ANYWORK_HARNESS_URL:undefined,ANYWORK_HARNESS_TOKEN_FILE:undefined},stdio:['ignore','pipe','pipe']});
   server.stdout.on('data',b=>{log=(log+b).slice(-32000)});server.stderr.on('data',b=>{log=(log+b).slice(-32000)});
   const api=async(route,body,expected=200)=>{const r=await fetch(base+'/api'+route,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const value=await r.json();assert.equal(r.status,expected,`${route} ${JSON.stringify(value)}`);return value;};
   await until(async()=>{try{return (await fetch(base+'/api/health')).ok}catch{return false}},'server');
@@ -143,12 +145,52 @@ try{
   await api(`/sessions/${id}/messages`,{text:'approval'});const failedApproval=await until(()=>pending(id),'native error permission');const answersBefore=await page.evaluate(()=>fixture.answers);
   await fail('wb:conversations:resolvePending',()=>rejected(`/sessions/${id}/respond`,{request_id:failedApproval.request_id,accept:true},'conversations.resolvePending'));assert.equal(await page.evaluate(()=>fixture.answers),answersBefore);assert.equal((await pending(id)).request_id,failedApproval.request_id);
   await api(`/sessions/${id}/respond`,{request_id:failedApproval.request_id,accept:true});assert.equal(await page.evaluate(()=>fixture.answers),answersBefore+1);
+  // Canonical latest-page queries OMIT the cursor. JSON null yields only
+  // durable records in the native implementation, excluding the live assembler.
+  assert((await page.evaluate(()=>fixture.calls.filter(c=>c.channel==='wb:conversations:requestEntries'))).every(c=>!Object.hasOwn(c.args[1],'beforeRequestId')));
+  const legacyTurn=await page.evaluate(()=>fixture.records.one.at(-1).id),legacyText=await page.evaluate(()=>fixture.records.one.at(-1).userMessage.content.filter(b=>b.type==='text').map(b=>b.text).join(''));
+  webContext=await context.browser().newContext();
+  await webContext.addInitScript(({base,token})=>localStorage.setItem('ra.connection',JSON.stringify({url:base,token})),{base,token});
+  const web=await webContext.newPage();await web.goto(base+'/#'+id);await web.locator('.chat-scroll').getByText(`native response ${legacyTurn}`,{exact:true}).waitFor();
+  // Seed precisely an older AnyWork user's stable-key projection in our own
+  // temporary database. It must repair text, display_text AND raw input in place.
+  const mutation=spawnSync('python3',['-c',`import sqlite3,json,sys
+with sqlite3.connect(sys.argv[1]) as db:
+ seq,raw=db.execute("SELECT seq,data FROM events WHERE session_id='workbuddy-one' AND json_extract(data,'$.params.sourceEventKey')=?",('workbuddy:one:'+sys.argv[2]+':user',)).fetchone()
+ e=json.loads(raw);e['params'].update(text='PRIVATE_CONTEXT_FROM_OLD_CACHE',display_text='PRIVATE_CONTEXT_FROM_OLD_CACHE',input=[{'type':'text','text':'PRIVATE_CONTEXT_FROM_OLD_CACHE'}]);e['params'].pop('workbuddy_user_snapshot',None)
+ db.execute('UPDATE events SET data=? WHERE seq=?',(json.dumps(e),seq))
+`,path.join(root,'data/remote-agent.sqlite'),legacyTurn]);assert.equal(mutation.status,0,mutation.stderr?.toString());
+  await web.reload();await web.locator('.chat-scroll').getByText('PRIVATE_CONTEXT_FROM_OLD_CACHE',{exact:true}).waitFor();
+  const cursor=(await api(`/sessions/${id}/events/poll?after=0`)).events.at(-1).seq;
+  const controller=new AbortController(),streamed=[];
+  const pump=(async()=>{const response=await fetch(base+`/api/sessions/${id}/events?after=${cursor}`,{headers:{Authorization:`Bearer ${token}`},signal:controller.signal});assert.equal(response.status,200);const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';for(;;){const {done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let split;while((split=buffer.indexOf('\n\n'))>=0){const frame=buffer.slice(0,split);buffer=buffer.slice(split+2);const data=frame.split('\n').find(l=>l.startsWith('data:'));if(data)streamed.push(JSON.parse(data.slice(5).trim()));}}})().catch(e=>{if(e.name!=='AbortError')throw e;});
+  try {
+    await page.evaluate(nativeId=>fixture.records.one.find(r=>r.id===nativeId).snapshotRevision=2,legacyTurn);
+    await until(async()=>!(await web.locator('.chat-scroll').getByText('PRIVATE_CONTEXT_FROM_OLD_CACHE').count()),'cached user repaired in browser');assert((await web.locator('.chat-scroll .message.user').last().innerText()).includes(legacyText));assert.equal(await web.locator('.chat-scroll').getByText('PRIVATE_CONTEXT_FROM_OLD_CACHE').count(),0);
+    await until(()=>streamed.some(e=>e.method==='history/reset'&&e.params.reason==='workbuddy_user_display'),'authoritative user reset over SSE');
+    const repaired=(await api(`/sessions/${id}/export`)).events;assert(!JSON.stringify(repaired).includes('PRIVATE_CONTEXT_FROM_OLD_CACHE'));assert.equal(repaired.filter(e=>e.method==='user/message'&&e.params.sourceEventKey===`workbuddy:one:${legacyTurn}:user`).length,1);
+    const sentBefore=await page.evaluate(()=>fixture.sendCount);
+    // This prompt enters through the real composer, HTTP server and CDP adapter.
+    await web.getByRole('textbox',{name:'消息',exact:true}).fill('progressive');await web.getByRole('button',{name:'发送',exact:true}).click();
+    await until(()=>streamed.some(e=>e.method==='item/started'&&e.params.item?.text==='native progressive partial'),'incremental reply over SSE');
+    await web.locator('.chat-scroll').getByText('native progressive partial',{exact:true}).waitFor();
+    await until(()=>page.evaluate(()=>fixture.records.one.at(-1).state==='completed'),'native reply completion');
+    const rid=await page.evaluate(()=>fixture.records.one.at(-1).id);await web.locator('.chat-scroll').getByText(`native response ${rid}`,{exact:true}).waitFor();
+    await until(()=>streamed.some(e=>e.method==='turn/completed'&&e.params.turn.id===rid),'completed native turn over SSE');assert.equal(await page.evaluate(()=>fixture.sendCount),sentBefore+1);
+    await page.evaluate(()=>fixtureDesktopProgressive());await web.locator('.chat-scroll').getByText('desktop partial',{exact:true}).waitFor();await web.locator('.chat-scroll').getByText('native response desktop-progressive',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.sendCount),sentBefore+1);
+    const repeated=(await api(`/sessions/${id}/export`)).events;await delay(1200);const afterRepeat=(await api(`/sessions/${id}/export`)).events;assert.equal(afterRepeat.length,repeated.length);assert.equal(afterRepeat.filter(e=>e.method==='user/message'&&e.params.history_turn_id===rid).length,1);
+    // Meta-only prompts remain associated with their answer, without creating
+    // an empty user bubble or exposing private content through history/input.
+    const userBubbles=await web.locator('.chat-scroll .message.user').count();
+    await page.evaluate(()=>{const r=structuredClone(fixture.records.one[0]);r.id='meta-only';r.userMessage.content=[{type:'text',text:'PRIVATE_META_CONTEXT',_meta:{isMeta:true}}];r.assistantMessage.content=[{type:'text',text:'meta-only visible answer'}];fixture.records.one.push(r);});
+    await web.locator('.chat-scroll').getByText('meta-only visible answer',{exact:true}).waitFor();assert.equal(await web.locator('.chat-scroll .message.user').count(),userBubbles);assert(!JSON.stringify((await api(`/sessions/${id}/export`)).events).includes('PRIVATE_META_CONTEXT'));
+  } finally {controller.abort();await pump;}
   assert(!log.includes('NATIVE_ERROR_SECRET')&&!log.includes('PRIVATE_TOKEN')&&!log.includes('PRIVATE_SOURCE_SECRET'));
   assert(!log.includes('MODEL_SECRET')&&!log.includes('CONNECTOR_SECRET')&&!log.includes('PRIVATE_PROVIDER'));
   assert(!(await page.evaluate(()=>fixture.calls)).some(c=>c.channel.includes('subscription')||c.channel.includes('dispose')||c.channel.includes('configSetPermission')));
   server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));server=undefined;assert.equal(await page.evaluate(()=>typeof __wbInvoke),'function');
-  console.log('PASS: actual CDP carrier, private descriptor, shared catalog/history/tools/children/models, fixed evaluation injection resistance, create/send/image, local busy queue/cancel, pending cross-session/generation/cross-turn/exactly-once, native error envelopes rejected before every read/mutation confirmation, failed-send status recovery, and detach ownership. Native preload is a deterministic fixture; real installed WorkBuddy acceptance is separate.');
+  console.log('PASS: actual CDP carrier, private descriptor, shared catalog/history/tools/children/models, fixed evaluation injection resistance, create/send/image, local busy queue/cancel, pending cross-session/generation/cross-turn/exactly-once, native error envelopes rejected before every read/mutation confirmation, failed-send status recovery, null-sensitive latest snapshots, real-browser legacy-cache repair/reset, Web and desktop incremental replies, meta-only hiding, replay idempotence, and detach ownership. Native preload is a deterministic fixture; real installed WorkBuddy acceptance is separate.');
 }finally{
   if(server){server.kill('SIGTERM');await Promise.race([new Promise(r=>server.once('exit',r)),delay(3000)]);}
-  for(const s of sockets)s.destroy();if(relay)await new Promise(r=>relay.close(r));if(context)await context.close();await rm(root,{recursive:true,force:true});
+  for(const s of sockets)s.destroy();if(relay)await new Promise(r=>relay.close(r));if(webContext)await webContext.close();if(context)await context.close();await rm(root,{recursive:true,force:true});
 }

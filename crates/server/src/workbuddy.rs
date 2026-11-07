@@ -528,6 +528,30 @@ fn text_blocks(v: &Value) -> String {
         .collect::<Vec<_>>()
         .join("")
 }
+fn meta_prompt(value: &Value) -> bool {
+    value["_meta"]["isMeta"] == true || value["_meta"]["codebuddy.ai"]["isMeta"] == true
+}
+fn visible_user_content(message: &Value) -> Vec<Value> {
+    if meta_prompt(message) {
+        return vec![];
+    }
+    message["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|b| !meta_prompt(b))
+        .cloned()
+        .collect()
+}
+fn history_query(before: &Value) -> Value {
+    let mut query = json!({"byteLength":512*1024,"resultScope":"page"});
+    // Native pageByIds includes the live assembler only for JS undefined.
+    // JSON null is an explicit historical cursor and omits current requests.
+    if !before.is_null() {
+        query["beforeRequestId"] = before.clone();
+    }
+    query
+}
 struct Projection {
     thread: String,
     generation: String,
@@ -601,13 +625,19 @@ impl Projection {
                     None,
                 )?;
             }
-            let body = text_blocks(&r["userMessage"]["content"]);
+            let content = visible_user_content(&r["userMessage"]);
+            let body = text_blocks(&json!(content));
+            let hidden = meta_prompt(&r["userMessage"])
+                || (r["userMessage"]["content"]
+                    .as_array()
+                    .is_some_and(|a| !a.is_empty())
+                    && content.is_empty());
             let mut images = vec![];
             let mut files = vec![];
-            referenced_media(&r["userMessage"], &mut images, &mut files);
+            referenced_media(&json!({"content":content}), &mut images, &mut files);
             let attachments = images.into_iter().chain(files).collect::<Vec<_>>();
-            if !body.is_empty() || !attachments.is_empty() {
-                self.emit(tx,"user/message",json!({"text":body,"attachments":attachments,"history_id":format!("{id}:user"),"history_turn_id":id,"clientUserMessageId":self.clients.get(id),"input":r["userMessage"]["content"]}),Some(format!("{id}:user")),time,None)?;
+            if !body.is_empty() || !attachments.is_empty() || hidden {
+                self.emit(tx,"user/message",json!({"text":body,"display_text":body,"attachments":attachments,"history_id":format!("{id}:user"),"history_turn_id":id,"clientUserMessageId":self.clients.get(id),"input":content,"workbuddy_user_snapshot":true,"workbuddy_user_hidden":hidden}),Some(format!("{id}:user")),time,None)?;
             }
             // Native hidden system/context messages are never user-visible chat.
             for (index, b) in r["assistantMessage"]["content"]
@@ -817,7 +847,12 @@ async fn read_records(host: &Carrier, thread: &str, all: bool) -> Result<Vec<Val
         let mut before = Value::Null;
         let mut records = vec![];
         loop {
-            let page=host.invoke("wb:conversations:childAgentRequests",json!([child.parent,child.projection,{"byteLength":512*1024,"beforeRequestId":before}])).await?;
+            let page = host
+                .invoke(
+                    "wb:conversations:childAgentRequests",
+                    json!([child.parent, child.projection, history_query(&before)]),
+                )
+                .await?;
             let rows = page["items"]
                 .as_array()
                 .context("Invalid WorkBuddy child history")?;
@@ -849,7 +884,12 @@ async fn read_records(host: &Carrier, thread: &str, all: bool) -> Result<Vec<Val
     let mut collected = Vec::new();
     let mut attempts = 0;
     loop {
-        let page=host.invoke("wb:conversations:requestEntries",json!([thread,{"byteLength":512*1024,"beforeRequestId":before,"resultScope":"page"}])).await?;
+        let page = host
+            .invoke(
+                "wb:conversations:requestEntries",
+                json!([thread, history_query(&before)]),
+            )
+            .await?;
         if page["historyReady"] == false && page["historyKnownEmpty"] != true && before.is_null() {
             attempts += 1;
             ensure!(
@@ -1581,6 +1621,37 @@ mod tests {
             events.push(v)
         }
         events
+    }
+    #[test]
+    fn latest_native_query_omits_cursor_and_visible_input_uses_native_metadata() {
+        assert!(history_query(&Value::Null).get("beforeRequestId").is_none());
+        assert_eq!(history_query(&json!("older"))["beforeRequestId"], "older");
+        let literal =
+            "literal <system-reminder>keep this</system-reminder> ## My request: keep all";
+        let mut r = record("native-user", "completed");
+        r["userMessage"]["content"] = json!([{"type":"text","text":"SECRET_CONTEXT","_meta":{"isMeta":true}},{"type":"text","text":literal},{"type":"localImage","path":"/image.png"}]);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut p = Projection::new("native".into());
+        p.records(&[r.clone()], &tx).unwrap();
+        let mut events = vec![];
+        while let Ok(e) = rx.try_recv() {
+            events.push(e);
+        }
+        let user = events
+            .iter()
+            .find(|e| e["method"] == "user/message")
+            .unwrap();
+        assert_eq!(user["params"]["text"], literal);
+        assert_eq!(user["params"]["display_text"], literal);
+        assert!(!user.to_string().contains("SECRET_CONTEXT"));
+        assert_eq!(user["params"]["attachments"], json!(["/image.png"]));
+        r["userMessage"]["content"] = json!([{"type":"text","text":"SECRET_CONTEXT","_meta":{"codebuddy.ai":{"isMeta":true}}}]);
+        p.records(&[r], &tx).unwrap();
+        let hidden = std::iter::from_fn(|| rx.try_recv().ok())
+            .find(|e| e["method"] == "user/message")
+            .unwrap();
+        assert_eq!(hidden["params"]["workbuddy_user_hidden"], true);
+        assert_eq!(hidden["params"]["input"], json!([]));
     }
     #[test]
     fn snapshots_preserve_native_identity_hide_context_and_do_not_repeat_lifecycle() {
