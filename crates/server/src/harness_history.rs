@@ -28,7 +28,7 @@ type HeaderCache = HashMap<PathBuf, (Revision, Value)>;
 static HEADERS: OnceLock<Mutex<HeaderCache>> = OnceLock::new();
 static IMPORTED: OnceLock<Mutex<HashMap<(PathBuf, PathBuf), Revision>>> = OnceLock::new();
 
-fn home() -> Result<Option<PathBuf>> {
+fn default_home() -> Result<Option<PathBuf>> {
     let root = std::env::var_os("DSH_HOME").map(PathBuf::from).or_else(|| {
         std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
@@ -38,6 +38,18 @@ fn home() -> Result<Option<PathBuf>> {
         ensure!(root.is_absolute(), "Harness history root must be absolute");
     }
     Ok(root)
+}
+// Explicit hosts can belong to another profile. Their private launch credential
+// carries no data-directory identity, so never pair one with an assumed HOME.
+fn home(app: &App) -> Result<Option<PathBuf>> {
+    if let Some(root) = &app.harness_history_root {
+        ensure!(root.is_absolute(), "Harness history root must be absolute");
+        return Ok(Some(root.clone()));
+    }
+    if app.harness.as_ref().is_some_and(|config| !config.optional) {
+        return Ok(None);
+    }
+    default_home()
 }
 fn safe_path(path: &Path) -> Result<()> {
     ensure!(path.is_absolute(), "Harness history path must be absolute");
@@ -399,6 +411,8 @@ fn title(root: &Path, h: &Header) -> Result<Option<String>> {
     if identity["createdAt"] != h.value["createdAt"]
         || identity["cwd"] != h.value["cwd"]
         || identity["formatVersion"] != h.value["version"]
+        || identity["isSeeded"].as_bool().unwrap_or(false)
+            != h.value["isSeeded"].as_bool().unwrap_or(false)
     {
         return Ok(None);
     }
@@ -411,7 +425,7 @@ fn title(root: &Path, h: &Header) -> Result<Option<String>> {
 }
 /// Catalog reads headers and projection hints only; conversation bodies stay cold.
 pub(super) async fn sync(app: &Arc<App>) -> Result<()> {
-    let Some(root) = home()? else {
+    let Some(root) = home(app)? else {
         return Ok(());
     };
     let archive = archived(&root)?;
@@ -605,7 +619,7 @@ fn materialize_attachments(
     Ok(())
 }
 pub(super) fn import(app: &Arc<App>, session: &Session) -> Result<(bool, Option<String>)> {
-    let Some(root) = home()? else {
+    let Some(root) = home(app)? else {
         return Ok((false, None));
     };
     import_from_root(app, session, &root)
@@ -619,6 +633,10 @@ fn import_from_root(
         .thread_id
         .as_deref()
         .context("Missing Harness native identity")?;
+    ensure!(
+        session.agent == AGENT && session.id == super::session_id(thread),
+        "Harness history session identity mismatch"
+    );
     let Some(h) = headers(root)?.into_iter().find(|h| h.value["id"] == thread) else {
         return Ok((false, None));
     };
@@ -712,6 +730,7 @@ mod tests {
             Arc::new(App {
                 catalog: Default::default(),
                 harness: None,
+                harness_history_root: None,
                 harness_sync: Default::default(),
                 workbuddy: crate::workbuddy::Config::configured(None).unwrap(),
                 workbuddy_sync: Default::default(),
@@ -961,6 +980,36 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), data);
         assert_eq!(fs::read(source).unwrap(), data);
     }
+    #[tokio::test]
+    async fn explicit_host_does_not_assume_default_profile_but_root_override_works() {
+        let f = Fixture::new();
+        f.log("native", &events(), false);
+        let mut app = f.app();
+        assert_eq!(home(&app).unwrap(), default_home().unwrap());
+        let config =
+            super::super::Config::new("http://127.0.0.1:3080/?token=isolated-fixture", None)
+                .unwrap();
+        Arc::get_mut(&mut app).unwrap().harness = Some(config.clone());
+        assert_eq!(home(&app).unwrap(), None);
+        sync(&app).await.unwrap();
+        assert!(!import(&app, &f.session("native")).unwrap().0);
+        Arc::get_mut(&mut app).unwrap().harness_history_root = Some(f.0.clone());
+        assert_eq!(home(&app).unwrap(), Some(f.0.clone()));
+        sync(&app).await.unwrap();
+        assert!(import(&app, &f.session("native")).unwrap().0);
+        // Explicit descriptor configuration also has optional=false; selecting
+        // a descriptor does not prove that its profile uses the default HOME.
+        Arc::get_mut(&mut app)
+            .unwrap()
+            .harness
+            .as_mut()
+            .unwrap()
+            .descriptor = Some(f.0.join("host.json"));
+        Arc::get_mut(&mut app).unwrap().harness_history_root = None;
+        assert_eq!(home(&app).unwrap(), None);
+        Arc::get_mut(&mut app).unwrap().harness_history_root = Some(PathBuf::from("relative"));
+        assert!(home(&app).is_err());
+    }
     #[cfg(unix)]
     #[test]
     fn symlinked_catalogs_generations_and_attachments_are_refused() {
@@ -984,7 +1033,7 @@ mod tests {
             std::env::var("ANYWORK_TEST_HARNESS_NATIVE_HISTORY").as_deref(),
             Ok("1")
         );
-        let root = home().unwrap().unwrap();
+        let root = default_home().unwrap().unwrap();
         let all = headers(&root).unwrap();
         let root_count = all
             .iter()
