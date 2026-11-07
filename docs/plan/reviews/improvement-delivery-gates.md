@@ -4,7 +4,7 @@ Task: [G0 contract](../tasks/improvement-g0.md). Reviewed exact candidate `511ae
 
 ## Result
 
-**Changes requested: one release-source binding defect and one missing container acceptance assertion remain blocking.** The new Checks authorization logic correctly rejects untrusted run metadata, but the release being created is not yet bound to that authorized source when an existing tag differs. The Docker build target is corrected and a realistic clean-build CI entry exists; actual image execution remains **open**, because this host's Docker daemon is unavailable. Passing the offline script suites is not actual container acceptance.
+**Initial result at `511ae21`: changes requested; B1/B2 were blocking. Follow-up `5e41034` is now independently accepted for source integration; see the final section.** The new Checks authorization logic correctly rejects untrusted run metadata, but the release being created is not yet bound to that authorized source when an existing tag differs. The Docker build target is corrected and a realistic clean-build CI entry exists; actual image execution remains **open**, because this host's Docker daemon is unavailable. Passing the offline script suites is not actual container acceptance.
 
 ## Blocking findings
 
@@ -61,3 +61,29 @@ Mock publisher output mentioning prospective release URLs is fixture output and 
 ## Remaining evidence
 
 After B1/B2 fixes, independently recheck the exact follow-up commit and retain the negative regressions. Root must register the focused offline scripts in the merged checks, run the merged contract regression, and record the exact merged source. **Actual clean container build/run/persistence evidence remains open until the exact candidate executes successfully in CI or an isolated Docker-enabled environment.** Platform installation and native-agent functional acceptance are separate evidence layers and are not established by this container smoke.
+
+
+## Independent follow-up review: 5e41034
+
+Reviewed exact follow-up `5e41034` after the initial review above. **Pass for source integration: B1/B2/N1/N2 are resolved; no open source-review findings. Actual clean Docker execution remains open.** The earlier sections preserve what failed in the original candidate and must not be read as open findings against this follow-up.
+
+- **B1 resolved:** both publishing gates now receive `--tag`. The helper reads the exact remote ref, peels bounded annotated chains, verifies each returned object identity and ultimately requires the pinned workflow commit. Wrong-source, moved, missing, malformed and cyclic tags fail closed. Manual publication now requires an existing correct tag; `--target` is removed and both publication paths use `--verify-tag`. The actual CLI path was independently exercised with mocked GitHub: trusted exact-source Checks succeeded, then an existing wrong-source tag was rejected. No real API request occurred. A tag writer racing the last read/create API gap is expressly excluded from an atomic guarantee and requires repository tag protection; actual protection settings were not inspected.
+- **B2 resolved:** Docker runs the new identity generator after building the PWA. The served identity includes expected application version, exact source-archive SHA-256, PWA fingerprint and hashes for the full generated file set. Acceptance validates identity structure, safe paths, source/version association, each served file digest, entrypoint JavaScript membership and matching HTML fingerprint. An independent temporary-dist probe used the actual Node generator and Python validator: the valid generated output passed, then replacing its JavaScript with unrelated nonempty stale bytes failed. This addresses the original false positive without pretending that self-declared metadata is a supply-chain attestation.
+- **N1 resolved:** volume creation is inside cleanup ownership, and attempted names are recorded before each creation. A partial or ambiguous setup failure still attempts cleanup only for this run's unique names. The offline regression actually injects the second-volume failure.
+- **N2 resolved:** build output is captured to a temporary file rather than an unbounded in-memory buffer; only a bounded, scrubbed tail is printed/stored for build failure or timeout, and CI retains that specific failure artifact. Runtime logs are withheld. Redaction is a defense for known credential/URL forms, not a universal guarantee for arbitrary confidential compiler output; the isolated build supplies no native accounts or production secrets.
+
+Independent commands on the exact follow-up:
+
+| Command / probe | Result |
+| --- | --- |
+| `python3 scripts/release-ci-test.py` | 10 passed |
+| `python3 scripts/container-smoke-script-test.py` | 7 passed |
+| `python3 scripts/release-version-test.py` | 3 passed |
+| `python3 scripts/source-archive.py` and `python3 scripts/source-archive-test.py` | Worktree export generated; 4 passed |
+| Actual gate CLI with mocked successful Checks then wrong tag | Rejected after the trusted Checks lookup |
+| Actual Node identity generator + Python validator against temporary files | Valid output passed; stale nonempty JavaScript rejected |
+| All four workflow YAML files / Python compile / `git diff --check` | Passed structural parsing/compilation/diff checks; no live Actions or actionlint claim |
+
+The existing 26 publisher tests passed in the initial independent review; `scripts/publish.py` was unchanged in the follow-up and was not needlessly rerun. All follow-up probes are offline and isolated; no implementation edit, root output mutation, real GitHub write, key/account access, release, production restart or model task occurred.
+
+**Required remaining evidence:** run the complete container job at the exact accepted merged source in a Docker-enabled environment, retain successful clean-build/non-root/auth/Web/source/persistence evidence, and keep platform installation/native-agent checks separate. The present host still lacks a working Docker daemon; neither the seven mock cases nor this source-review pass closes actual container acceptance. Root should register the focused scripts in merged checks, run the relevant combined G0 regressions and record that distinction in the progress/support documents.
