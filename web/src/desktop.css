@@ -74,6 +74,11 @@ summary:focus-visible {
   outline: 2px solid var(--accent-ring);
   outline-offset: 2px;
 }
+/* Conversation pages own their scroll areas; login and other pages retain
+   their normal document scrolling and overscroll behavior. */
+html:has(.codex-shell) {
+  overscroll-behavior-y: none;
+}
 .codex-shell {
   height: 100dvh;
   background: var(--panel);
@@ -96,6 +101,7 @@ summary:focus-visible {
   display: flex;
   flex-direction: column;
   width: var(--sidebar-width);
+  min-height: 0;
   padding: 0 8px 8px;
   border-right: 1px solid var(--line);
   background: var(--panel);
@@ -266,6 +272,8 @@ summary:focus-visible {
   font-size: 12px;
 }
 .session-list {
+  min-height: 0;
+  overscroll-behavior-y: contain;
   padding: 2px 0 12px;
   margin: 0;
   flex: 1;
@@ -1551,6 +1559,11 @@ summary:focus-visible {
   border: 1px solid var(--line);
   border-radius: 6px;
   margin-top: 6px;
+}
+/* Keep accessible labels inside their row's scroll/clip ancestry. Without a
+   containing block, their static positions inflate the outer document. */
+.session-row {
+  position: relative;
 }
 .session-row .sr-only {
   position: absolute;
