@@ -460,6 +460,45 @@ fn parsed(value: &Value) -> Value {
         value.clone()
     }
 }
+/// Decode only a complete known native runtime envelope. Canonical display
+/// blocks and literal user text are never passed through this decoder.
+fn persisted_prompt_text(text: &str, record: &Value, block: &Value) -> String {
+    let native =
+        record["providerData"]["startsNewUserRequest"] == true || block["type"] == "input_text";
+    if !native {
+        return text.to_owned();
+    }
+    let mut remaining = text.trim();
+    let mut contexts = 0;
+    while remaining.starts_with("<system-reminder") {
+        let Some(end) = remaining.find('>') else {
+            return text.to_owned();
+        };
+        let opening = &remaining[..=end];
+        if !["user-context", "additional-data", "team-project-context"]
+            .iter()
+            .any(|role| {
+                opening.contains(&format!("data-role=\"{role}\""))
+                    || opening.contains(&format!("data-role='{role}'"))
+            })
+        {
+            return text.to_owned();
+        }
+        let Some(close) = remaining[end + 1..].find("</system-reminder>") else {
+            return text.to_owned();
+        };
+        remaining = remaining[end + 1 + close + "</system-reminder>".len()..].trim_start();
+        contexts += 1;
+    }
+    if contexts > 0
+        && let Some(query) = remaining
+            .strip_prefix("<user_query>")
+            .and_then(|s| s.strip_suffix("</user_query>"))
+    {
+        return query.to_owned();
+    }
+    text.to_owned()
+}
 fn requests(records: &[Value]) -> Result<Vec<Value>> {
     let mut groups: Vec<Value> = vec![];
     let mut by_id = HashMap::new();
@@ -502,10 +541,12 @@ fn requests(records: &[Value]) -> Result<Vec<Value>> {
                     if let Some(t) = b["text"].as_str()
                         && (b["type"] == "text" || b["type"] == "input_text")
                     {
-                        g["userMessage"]["content"]
-                            .as_array_mut()
-                            .unwrap()
-                            .push(json!({"type":"text","text":crate::user_text::body(t)}));
+                        g["userMessage"]["content"].as_array_mut().unwrap().push({
+                            let mut block = b.clone();
+                            block["type"] = json!("text");
+                            block["text"] = json!(persisted_prompt_text(t, r, b));
+                            block
+                        });
                         continue;
                     }
                     if let Some("localImage" | "localFile" | "image" | "resource") =
@@ -626,9 +667,13 @@ pub(super) async fn read(app: &Arc<App>, session: &Session) -> Result<(bool, Opt
         let keys = events
             .iter()
             .filter_map(|event| {
-                event["params"]["sourceEventKey"]
-                    .as_str()
-                    .map(str::to_owned)
+                event["params"]["sourceEventKey"].as_str().map(|key| {
+                    if event["params"]["workbuddy_user_hidden"] == true {
+                        format!("{key}:hidden")
+                    } else {
+                        key.to_owned()
+                    }
+                })
             })
             .collect();
         if app.store.prune_persisted_history(&session.id, &keys)? {
@@ -647,6 +692,7 @@ pub(super) async fn read(app: &Arc<App>, session: &Session) -> Result<(bool, Opt
             None,
         )?;
     }
+    app.changed.notify_waiters();
     cache.insert(session.id.clone(), (revision, notice.clone()));
     Ok((true, notice))
 }
@@ -762,6 +808,41 @@ mod tests {
             events
                 .iter()
                 .any(|e| e["params"]["item"]["type"] == "reasoning")
+        );
+    }
+    #[test]
+    fn generated_runtime_prompt_decodes_only_complete_known_envelope() {
+        let literal =
+            "Discuss <system-reminder>literal example</system-reminder> ## My request: preserve";
+        let wrapped = format!(
+            "<system-reminder data-role=\"user-context\">SECRET_IDENTITY</system-reminder>\n<system-reminder data-role='additional-data'>SECRET_CONTEXT</system-reminder>\n<user_query>{literal}</user_query>"
+        );
+        let native = json!({"providerData":{"startsNewUserRequest":true}});
+        assert_eq!(
+            persisted_prompt_text(&wrapped, &native, &json!({"type":"text"})),
+            literal
+        );
+        assert_eq!(
+            persisted_prompt_text(literal, &native, &json!({"type":"text"})),
+            literal
+        );
+        assert_eq!(
+            persisted_prompt_text(&wrapped, &json!({}), &json!({"type":"text"})),
+            wrapped
+        );
+        let broken = wrapped.replace("</user_query>", "");
+        assert_eq!(
+            persisted_prompt_text(&broken, &native, &json!({"type":"text"})),
+            broken
+        );
+        let rows = vec![
+            json!({"id":"u","type":"message","role":"user","content":[{"type":"text","text":wrapped},{"type":"text","text":"hidden","_meta":{"isMeta":true}}],"providerData":{"startsNewUserRequest":true}}),
+        ];
+        let projected = requests(&rows).unwrap();
+        assert_eq!(projected[0]["userMessage"]["content"][0]["text"], literal);
+        assert_eq!(
+            projected[0]["userMessage"]["content"][1]["_meta"]["isMeta"],
+            true
         );
     }
     #[test]
