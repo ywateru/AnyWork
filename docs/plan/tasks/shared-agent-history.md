@@ -2,6 +2,8 @@
 
 User request: list dsh and WorkBuddy historical sessions in the sidebar like Codex, including existing native histories rather than only newly created AnyWork sessions.
 
+Status: completed and deployed locally on 2026-11-07. [Independent review](../reviews/shared-agent-history.md) and [merged validation/deployment](../reviews/shared-agent-history-merged.md) record acceptance, actual native history counts and the separate native-writing limitation.
+
 ## Required behavior
 
 - Discover the current OS user's existing native dsh and WorkBuddy history passively, even if no shared execution endpoint is available. Confirm actual storage formats from pinned source or shipped-artifact evidence; use native read-only catalog interfaces where available and verified file readers otherwise. Never start a second engine or modify an installed application's data.

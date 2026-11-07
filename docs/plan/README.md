@@ -42,4 +42,4 @@ The user requested default dsh/WorkBuddy visibility and bounded sidebar scrollin
 
 ## Shared Agent historical sessions
 
-The user requested dsh and WorkBuddy history parity with Codex. [Contract and tasks](tasks/shared-agent-history.md) cover passive native persisted catalogs, disconnected history reading and explicit all-Agent directory scope. Separate implementations and independent review are in progress; no native prompts, release or public deployment are requested.
+The user requested dsh and WorkBuddy history parity with Codex. [Contract and tasks](tasks/shared-agent-history.md) cover passive native persisted catalogs, disconnected history reading and explicit all-Agent directory scope. Separate implementations passed [independent review](reviews/shared-agent-history.md), merged, and passed [merged checks and local deployment](reviews/shared-agent-history-merged.md). The local service now lists 71 retained Codex sessions, 22 dsh roots (including 4 archived) and 8 WorkBuddy sessions. No native prompts, version bump, release or public deployment were part of this follow-up. The separate installed WorkBuddy native-writing acceptance gate remains open.
