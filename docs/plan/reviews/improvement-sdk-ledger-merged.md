@@ -13,13 +13,15 @@ PLAYWRIGHT_CHANNEL=chrome ANYWORK_E2E_PORT=3239 bash scripts/check.sh
 
 Source stayed at the exact SHA throughout. Outputs/data/processes were private, with root Node dependencies linked read-only; production release binary, Web dist, sessions and applications were untouched. Current main's later workflow/docs changes do not change this tested crate source. Local evidence: `.worktrees/improve-ledger-merged/artifacts/sdk-ledger-merged/{check.log,check.exit}`. Original failure trace and actual touch/geometry diagnostics remain in that tree's `test-results/sidebar-scroll-sidebar-con-8ba47--gestures-in-a-short-window-android-web/`.
 
+A retained copy of the original failed browser case also resides under `artifacts/sdk-ledger-merged/original-browser-failure`, so a later test invocation cannot erase its trace/JSON/screenshot. Future corrected runs must use separate log and browser-output directories.
+
 ## Observed results
 
 - Rust format, workspace Clippy, build and tests passed: server **185 passed / 5 ignored**, desktop **34 / 4**, Codex **5**, SDK **18 unit + 5 actual fake-endpoint + 3 legacy bridge**. These are local Darwin results.
 - Web type/build and all **317 unit tests** passed. Private desktop UI build passed.
 - Every registered Python/HTTP check preceding browsers passed, including real SQLite schema/recovery, operation Store tests, capabilities/events/files/queue/desktop-host protocols, release/source/publisher/container-script fixtures. These are fixture/source checks, not a new connected operation protocol or actual container build.
 - Complete browser invocation: **610 passed / one existing skip / one failure**, 20.8 minutes. Failure: Android short-window sidebar containment case at `e2e/sidebar-scroll.spec.ts:142`, 45-second whole-test timeout during `reachBoundary(up)` progress polling. The single skip remains the desktop-reference combined-header case on Android.
-- The script stopped before its final updater UI command. That suffix is being run separately; it cannot change this full invocation's exit status.
+- The script stopped before its final updater UI command. A separate suffix run subsequently passed the desktop updater UI checks (quiet download/failure, deferral, preferences, confirmation, stale-version rejection and explicit install), exit 0 in `updater.log`/`updater.exit`; it does not change the full invocation's exit status.
 
 ## Open failure and required next evidence
 
