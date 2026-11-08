@@ -63,7 +63,7 @@ jobs:
       - name: Build native applications
         run: cargo build --locked --release -p anywork -p anywork-desktop
       - name: Test native applications
-        run: cargo test --locked --release -p anywork -p anywork-desktop
+        run: cargo test --locked --release -p anywork -p anywork-desktop -p remote-agent-sdk
   android:
     runs-on: ubuntu-latest
     steps:
