@@ -1,11 +1,13 @@
 ---
 id: improvement-sidebar-touch-runtime
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: [improvement-sidebar-boundary]
 ---
 
 # Merged regression: diagnose short-mobile real-touch timeout
+
+Candidate `064ccd2` passed independent review `6977e1f` and is merged. The failure was reproduced as cumulative driver round-trip cost, not a demonstrated product scroll stall. Two native move samples replace four; the original sidebar spec, 45-second deadline, 80 groups and strict boundaries are unchanged. Developer and independent focused suites each passed 6/6 plus short-mobile repeats 2/2. See [analysis](../analysis/sidebar-touch-runtime.md) and [independent review](../reviews/improvement-sidebar-touch-runtime.md). This closes the focused driver task only; the original merged full-check failure remains failed evidence, and release-source full Checks are a separate gate.
 
 ## Objective and actual failure
 
