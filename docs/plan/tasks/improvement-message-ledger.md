@@ -1,7 +1,7 @@
 ---
 id: improvement-message-ledger
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: [improvement-schema-safety]
 ---
 
@@ -58,3 +58,5 @@ Independent review `800950fa0e9779c05043978d21c8288692e782eb` requires changes f
 The clarification at `ca0eaaf` passed independent static review `32739c17f83e29f966386e6f2d57d870490a0429`. Corrected source `8d579347831ee5c17cf2561e14ef95efd17c9ae9` is committed and undergoing exact-source re-review. Its typed `DispatchAuthority::{Immediate,QueueWorker,ExplicitQueueSelection}` preserves native routing as a separate choice. Developer evidence: ledger 34 passed / 1 internal crash-child entry ignored, server 178 passed / 5 ignored, Clippy/build/fmt/diff passed, schema HTTP 3 / I01 HTTP 4 / legacy queue HTTP 4 passed. The developer stopped editing before re-review; these reports are not independent acceptance or new merged/platform evidence.
 
 Independent re-review `c3117a8f4f93ba5319dd1e05bcd413caa4005aaf` passed the exact corrected source and closed B1/B2/B3 with all seven additional production-Store tests passing. Exact-source server 178 / 5 ignored, schema HTTP 3, I01 HTTP 4, legacy queue HTTP 4, restored-source Clippy/build/fmt also passed independently. Root merged at `a26d6f437b8296649d346cac04626f69e7777af8` and started one full isolated `scripts/check.sh` invocation in `codex/improve-ledger-merged`; task completion still awaits that result. The root production service/data/Web assets were not used; local test caches are reused only between private accepted/review trees. New v2 platform CI and connected delivery remain separate gates.
+
+That single complete merged invocation subsequently exited 0: [full merged evidence](../reviews/improvement-message-ledger-merged.md) records server 185 / 5 ignored, desktop 34 / 4, Codex 5, SDK bridge 3, Web 317, all registered HTTP/Python suites, 611 browser cases / one existing Android skip, updater UI, format and bilingual site passes. Task is done for the scoped Store/schema module. Fresh v2 source CI remains explicitly pending, along with all I02b, native/platform proof and full I03/I05 work. No current API sending path has acquired the ledger contract merely because this module is accepted.
