@@ -37,6 +37,6 @@ The server's ignored count includes the internal crash-child entry exercised by 
 
 ## Remaining gates
 
-New v2 source still requires fresh exact-source Linux/Windows/Android/container Checks. Earlier `aacaa19` CI proves the pre-ledger source only. A task-module pass does not implement first-party HTTP IDs, the Web journal, immutable file snapshots/ACL enforcement, actual native acceptance proof, native idempotency or all-entry-point recording fences. Those remain I02b and coordinated lifecycle B/C work. Full I03 health/approval/reconciliation and I05 backup/restore remain open.
+Fresh v2 source `66bd6f0` subsequently passed all four exact-source Linux/Windows/Android/container Checks; see [separate cloud evidence](improvement-ledger-source-ci.md). Earlier `aacaa19` CI proves the pre-ledger source only. A task-module pass does not implement first-party HTTP IDs, the Web journal, immutable file snapshots/ACL enforcement, actual native acceptance proof, native idempotency or all-entry-point recording fences. Those remain I02b and coordinated lifecycle B/C work. Full I03 health/approval/reconciliation and I05 backup/restore remain open.
 
 The SDK qualified transport candidate `123cc1c` and acceptance-proof research `a21f793` are under separate independent reviews; neither is part of this tested merge. No version bump, tag, Release, production restart, native prompt or public-site update was performed by this local acceptance.
