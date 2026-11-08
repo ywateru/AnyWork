@@ -1,6 +1,6 @@
 # Dormant qualified SDK transport (I07b1-A)
 
-Status: implementation candidate, not independently accepted. The [lifecycle contract](runtime-lifecycle.md) remains authoritative. Only `crates/agent-sdk` is implemented here; production Runtime/server/adapters/Store/Web do not consume this API. Native-positive capability actions remain denied. Full B/C, durable preparation/creation, native writing and platform acceptance remain open.
+Status: source candidate `123cc1c` independently accepted at review `bb16eff`; merged local regression is pending. The [lifecycle contract](runtime-lifecycle.md) remains authoritative. Only `crates/agent-sdk` is implemented here; production Runtime/server/adapters/Store/Web do not consume this API. Native-positive capability actions remain denied. Full B/C, durable preparation/creation, native writing and platform acceptance remain open.
 
 ## Selected API and authority
 
@@ -44,3 +44,5 @@ Wire and ownership assertions include:
 - Independent count/item/aggregate receipt bounds, encoded Unicode item size, pending cap, independent outbound count and aggregate limits, incoming count/aggregate limits including held packets, and release-on-drop. Full metadata queues cannot hide EOF, writer failure, explicit close, or response-receipt overflow; that overflow cannot escape as success. Authority panic fails closed before wire admission without poisoning cleanup. A started non-abortable fake task proves CleanupUnknown retains the supervisor until a barrier allows quiescence.
 
 No server/runtime/adapter code or capability projection changes. No native account, real application process, production service, message, publication or credential was accessed. Windows/Linux native execution, real agent interoperability, the complete connected B/C lifecycle, same-Arc reconnection, durable preparation/restart fencing and I06's legacy input/caches remain unverified or unimplemented here. The new opt-in API is intentionally dormant; no current runtime becomes safe merely because these module tests pass.
+
+Independent review additionally exercised three actual owned-process negatives (queued cancellation/expiry under pipe backpressure, response receipt overflow, held replies across close) and passed SDK lint/dependent workspace compilation. See [exact review](plan/reviews/improvement-runtime-transport.md). The injected Clock seam named in the lifecycle delivery table is not delivered by A; B/C owns that seam and native five-second observation freshness. Explicit SDK monotonic deadlines are implemented, and must not be described as native freshness.

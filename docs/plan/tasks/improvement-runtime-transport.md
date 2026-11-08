@@ -44,3 +44,7 @@ A different reviewer checks the exact committed candidate and independently exer
 ## Dispatch evidence
 
 Independent static review `6290eeee123f430b8cac4e6dbcc07598279cbec6` passed exact task `3e980bf20e0eb4ab6e6c66738b2541223e131e28`, with the unmigrated bridge seam explicitly retained as an implementation gate. Development is dispatched in `codex/improve-runtime-transport` from that accepted baseline. No source candidate or transport-test evidence exists at dispatch; implementation and exact-source review remain open.
+
+## Exact source review
+
+Source `123cc1c` passed independent review `bb16eff` and is merged at `612e1b8`. Root merged regression is pending. The injected-clock seam/native freshness remains B/C-owned per the nonblocking review note; no production runtime consumes this module.

@@ -1,7 +1,7 @@
 ---
 id: improvement-delivery-proofs
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: [improvement-runtime-lifecycle-design]
 ---
 
@@ -33,3 +33,7 @@ List all durable correlation data I02b must store before invoke and make availab
 ## Verification
 
 Static trace tables must cite exact product/reference revisions and source paths/lines. Recheck every claimed producer-to-adapter-to-native/response-to-event-to-ledger relationship in real code; label synthetic adapter fields explicitly. Provide concrete future real-fake-transport/HTTP negative tests with exact input counts, response loss, late echoes, restart, rejected/unknown responses and identity mismatch. No new test is claimed executed. A different reviewer checks the exact committed analysis and key chains before it informs the connected API/ledger proof contract.
+
+## Independent acceptance
+
+Exact research `a21f793` passed independent static review `c45c558` and is merged. Root incorporated N1 Harness synchronous-memory/asynchronous-persistence detail; no new receipt or native behavior is accepted. Ledger source is accepted/merged separately at `a26d6f4`; original candidate references remain exact historical source locators.

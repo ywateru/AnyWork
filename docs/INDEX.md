@@ -10,6 +10,8 @@
 - [Read-only capability projection module (I07a)](capability-projection-module.md)
 - [Native observation and error call-path research (I07b design input)](plan/analysis/capability-observations.md)
 - [Qualified runtime lifecycle and generation fencing contract (I07b1)](runtime-lifecycle.md)
+- [Dormant qualified SDK transport module (I07b1-A)](runtime-transport-module.md)
+- [Native input acceptance evidence research (I02b design input)](plan/analysis/delivery-proofs.md)
 - [Storage degradation and recovery analysis (I03 design input)](plan/analysis/storage-degradation.md)
 - [Global event scope and cursor contract (I01)](global-event-scope.md)
 - [Conditional file editing and conflict recovery (I04)](file-edit-consistency.md)

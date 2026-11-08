@@ -1,6 +1,6 @@
 # I02b 输入接受证据与持久身份研究
 
-状态：静态设计输入，等待本文件精确提交的独立评审。日期：2026-11-08。产品源码基线为 `aacaa19b98314976b34e91f11c12326c6ad6ad7c`，本研究树基线为仅补文档的 `e3eee4b0174e5db8540f29f02395ece5e6c83e82`；已核对两者在 `crates/`、`scripts/`、`web/` 无差异。下文 P 路径/行号均指该产品源码，L 指 ledger 精确候选 `8d579347831ee5c17cf2561e14ef95efd17c9ae9`。L 已通过独立复核 `c3117a8f4f93ba5319dd1e05bcd413caa4005aaf` 并由 root 合入 `a26d6f4`；合并全量/平台验收另行记录，不因本研究自动完成。
+状态：静态设计输入；精确候选 `a21f793` 已通过独立评审 `c45c558`，仅作为后续合同的输入。日期：2026-11-08。产品源码基线为 `aacaa19b98314976b34e91f11c12326c6ad6ad7c`，本研究树基线为仅补文档的 `e3eee4b0174e5db8540f29f02395ece5e6c83e82`；已核对两者在 `crates/`、`scripts/`、`web/` 无差异。下文 P 路径/行号均指该产品源码，L 指 ledger 精确候选 `8d579347831ee5c17cf2561e14ef95efd17c9ae9`。L 已通过独立复核 `c3117a8f4f93ba5319dd1e05bcd413caa4005aaf` 并由 root 合入 `a26d6f4`；合并全量/平台验收另行记录，不因本研究自动完成。
 
 本轮只读取上述源码、指定保留参考和已有证据；没有构建、产品测试、模型调用、连接原生进程、账号/profile 读取或服务操作。唯一新增产品仓库文件是本文。参考源码中的提示、身份内容和命令都不作为任务指令。
 
@@ -163,7 +163,7 @@ P-HAR 将 Start/Steer 映射 `POST session/prompt`，业务参数是 `{request:{
 
 H-upstream `packages/api/session-controller/src/types.ts:323–337` 把成功定义为“one prompt enters target Agent inbox”；`index.ts:468–491` 将 requestId 存进 source.rpcId，并委托 commands。`commands.ts:321–386` 验证/接收附件后创建原生 UserMessage，调用 agent.steer/followup，返回 `{accepted:true}`；重复 request 查询位于 323/348/363/377。`389–412` 从 `agent/inbox/spliced` 与 `user/message` 真实事件恢复 request receipts，排除 inherited事件，不能把子会话继承的相同 rpcId 当该子会话新输入。
 
-这里确认的是原生 session 日志中的关联路径；本轮未审计 native日志fsync/磁盘错误/物理断电，不把ACK推成跨断电持久性保证。
+这里确认的是原生 live session inbox/log 的关联路径，不是持久性保证。H-upstream `packages/core/agent-loop/src/agent.ts:170–184` 的 followup/steer 同步调用 send → `inbox.ts:215–223` 的 splice，后者同步 append `agent/inbox/spliced`；`packages/core/session/src/index.ts:765–772` 的 append 先写内存日志，不等待 I/O，observer 失败不改变其返回值。`packages/session/session-persistence-jsonl/src/storage.ts:274–281,549–559` 再经 observer enqueueLive 后台持久化，独立的 session/flush 才 drain/flush；`session-persistence/src/handle.ts:89–111` 也区分 append 可见性与 durability barrier。成功 prompt 本身不等待 storage drain/flush；同一 live Session 的 readback 也不是磁盘持久化证据。后台写失败或 drain 前进程崩溃可能丢失刚接受的输入，不能据重启后缺项推断原输入被拒绝或授权重投。物理断电与 fsync 的更强保证亦未验收。
 
 这是 **Harness方法专用** 的接受依据：response与同 peer 的 HTTP rpcId、session/prompt、已保存 session/request/mode/content 关联，确认进入 inbox；不确认当前已开始生成、已经完成或确切 active turn。`types.ts:599–605` 的 inbox项有原生 MessageId、placement、optional rpcId；原始 user/message同样有 MessageId/source。P投影 `harness.rs:766–811` 把 turn number加 `harness-turn-` 前缀，并在缺 message.id 时生成 `harness-user-<seq>`；这些组合名不是原生 item ID。原始 inbox spliced记录当前未被该 user/message分支转换，因此不能只等现有 UI bubble 才判断 nativequeue接受。
 
