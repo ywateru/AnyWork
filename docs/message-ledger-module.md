@@ -24,7 +24,7 @@ Prepared manifests allow at most 16 attachments, each 20 MiB, total 64 MiB with 
 
 ## Checked method contract
 
-All ledger writes use the Store connection lock and one immediate transaction; expected identity and session/Agent/thread bindings are rechecked within the transaction. API callers must first authorize with `app.session`; Store cannot implement HTTP scope/token policy. Single-operation queries require the owning session, and listing is per-session and bounded. An unavailable read is an error, never `NeverRecorded`. A healthy missing ID is only authoritative for the exact store/incarnation pair. Registry-only IDs return tombstones; cross-session IDs never expose content.
+All ledger writes use the Store connection lock and one immediate transaction; expected identity and session/Agent/thread bindings are rechecked within the transaction. API callers must first authorize with `app.session`; Store cannot implement HTTP scope/token policy. Single-operation queries require the owning session, and listing is per-session and bounded. An unavailable read is an error, never `NeverRecorded`. The missing-ID decision and process-global recording-fence check hold the same Store connection mutex as result recording. A known-fenced missing ID returns `Fenced`, even when SELECT succeeds; lookup does not probe storage health or clear a fence. Existing records and registry-only tombstones remain inspectable. A healthy missing ID is only authoritative for the exact store/incarnation pair; cross-session IDs never expose content.
 
 The concrete exported methods are recorded alongside their Rust signatures. The interface families are:
 
@@ -121,6 +121,7 @@ pub fn begin_operation_dispatch(
         sid: &str,
         id: &str,
         v: i64,
+        authority: DispatchAuthority,
         route: Route,
         expected_turn: Option<&str>,
     ) -> Result<DispatchPermit>;
@@ -275,7 +276,15 @@ pub fn detach_rejected_queue(
 
 `PreparationClaim::New(PreparationPermit)` alone qualifies the exact preparation step. `Existing { claim_id, phase, receipt }` conveys committed state and **never** another execution permit. Confirm/fail consume a reference to the qualification but validate active phase/claim so repeated calls cannot reapply a result. Native preparation uncertainty can reconcile only through that exact stable claim and a matching typed receipt, or the known-undispatched input can be explicitly abandoned. `finish_preparation` derives the immutable bundle from confirmed receipts; opening also checks exact bundle/receipt equality. It does not rerun steps, read original files, or claim artifact bytes were verified.
 
-`DispatchPermit` and `GoalPermit` have private constructors and are not cloneable. Dispatch returns qualification only after its durable transaction. Same-ID repeated dispatch calls fail rather than yield another permit. `record_*` validate the exact attempt/claim; stale/terminal results cannot change another attempt. `select_operation_route` saves a one-time immediate route/turn; queue dispatch chooses and persists its actual start/steer route once. Native liveness, route choice, permissions, exact expected turn validity and wire behavior remain I02b responsibilities. Queue start enforces FIFO and the pause/editor guard; manual steer is explicit and does not pretend to be FIFO execution.
+`DispatchPermit` and `GoalPermit` have private constructors and are not cloneable. Dispatch returns qualification only after its durable transaction. Same-ID repeated dispatch calls fail rather than yield another permit. `record_*` validate the exact attempt/claim; stale/terminal results cannot change another attempt. `select_operation_route` saves a one-time immediate route/turn; queue dispatch chooses and persists its actual start/steer route once. Native liveness, route choice, permissions, exact expected turn validity and wire behavior remain I02b responsibilities. Scheduling authority is a separate typed argument and is persisted with the dispatch attempt; it is never inferred from `Start`/`Steer`:
+
+| `DispatchAuthority` | Required I02b caller and qualification |
+| --- | --- |
+| `Immediate` | Direct-message dispatch with no queue association; actual route and expected turn must match the saved immediate route. |
+| `QueueWorker` | Automatic queue worker only. Actual route must be `Start` for an independently verified idle thread. The selected physical row must be pending, the queue unpaused, and its sequence the minimum across **both** `message_queue` and `queue_edits`. An editor-held head therefore blocks later rows; an edited middle does not block an earlier row. Choosing `Steer` cannot bypass these checks. |
+| `ExplicitQueueSelection` | Explicit authenticated user queue action on the exact selected pending physical queue row. I02b chooses actual `Start` when idle or `Steer` with an exact active-turn identity. Pause and FIFO position do not block this explicit choice; the queue remains paused and unrelated head/editor rows are unchanged. An editor-held selected row still cannot dispatch. |
+
+Every authority retains the same identity/session/thread binding, archive/auxiliary, revision, preparation, global/per-binding fence and single-permit guards. `Start` cannot carry an expected active turn; `Steer` requires a nonempty expected turn. Store does not establish idle/active native state merely by accepting an argument. I02b must pass the authority for the actual caller, never relabel worker work as explicit selection. The optional persisted `dispatch_authority` defaults to absent for pre-fix v2 records, retaining inspectability without inventing their original caller. Old accepted/uncertain/dispatching records gain no new execution qualification; new dispatch claims always persist an authority.
 
 `replace_operation_queue` takes expected old ID/revision/sequence and a **pre-journaled new ID**. One transaction supersedes the old known-undispatched intent, adopts the same FIFO sequence, and publishes both operation events. Repeating that exact replacement resolves by new ID and immutable intent rather than superseding again. `adopt_legacy_pending` compares the entire expected row and preserves sequence and editing location; unknown/sending/rejected legacy rows cannot be adopted as pending. Original queue mutators reject associated rows. Unlinked legacy compatibility entry points continue to exist and are not newly advertised as ledger-backed.
 
@@ -325,3 +334,24 @@ Meaningful production-path regressions include 12 concurrent same-ID admissions 
 Two failed developer runs exposed real gaps before final source: an additional native preparation could initially receive qualification while another was in flight; the default JSON parser initially rejected valid canonical depth-128 content on readback. Both have actual regression tests and corrected production boundaries. A subsequent result-fence extension intentionally caused the old prep test's next action to be refused until explicit health verification; the test now proves that fence rather than assuming successful recording clears it. Earlier module-level unused-code lint suppression was removed; only concrete staged public interfaces have expectations as described above. One server build was interrupted by ENOSPC while writing an incremental query cache; only this worktree's reproducible package cache was cleaned, and the affected build plus final checks completed with `CARGO_INCREMENTAL=0`. These failed/interrupted runs are not claimed as successful checks.
 
 Unverified: native Linux/Windows guard/crash behavior, network filesystems, physical power loss/disk-controller persistence, actual Agent ACK/query/echo/proof semantics, private artifact byte copying/ACL/hash checks, HTTP operation endpoints, Web durable journals, all-entry-point runtime fences, native WorkBuddy writing and complete backup/restore/retention. The isolated HTTP checks here preserve current behavior; they do not exercise a ledger HTTP protocol because none is activated. Independent exact-commit review and root's merged regression remain required. I02a does not close I02/I03/I05.
+
+## Blocker correction verification (2026-11-08)
+
+The original developer record above describes candidate `35cbd01002143ef09bac442f6650cfb5e238e7e6`; it does not supersede the independent review failures. Independent review `800950fa0e9779c05043978d21c8288692e782eb` reproduced B1 (known-fenced absence), B2 (worker bypass of an editor-held FIFO head), and B3 (paused/non-head explicit queue selection rejected because scheduling origin was inferred from native route). The accepted clarification of `docs/message-operations.md` is synchronized from `ca0eaaf2783793ca1975203d6051fecf3338a9f2`. This correction changes only the internal Store module and its tests; no existing HTTP/Agent/Web dispatch caller consumes the new interface yet.
+
+Six added production-Store regressions cover real `PRAGMA query_only` result failure and failed/successful storage-health verification; Found/tombstone inspection during a global fence; retained input/preparation binding fences after health verification; editor-head restore/cancel/new-ID replacement without renumbering; edited-middle behavior; on-disk restart; paused non-head explicit idle Start and active Steer; and rejection snapshots proving no operation/registry/preparation/queue/editor/event mutation or permit on invalid qualifications. The normal and explicit dispatch paths retain one qualification per attempt. The tests do not invoke native Agents, and the HTTP compatibility checks do not advertise a ledger protocol.
+
+Executed on macOS with private worktree build outputs and disposable data. Logs are under `artifacts/ledger-blocker-fixes/`:
+
+| Correction command | Actual result / log |
+| --- | --- |
+| `CARGO_INCREMENTAL=0 cargo test --locked --offline -p anywork store::operations::tests` | 34 passed, 1 ignored child entry (executed by its parent test); `focused.log`. |
+| `CARGO_INCREMENTAL=0 cargo test --locked --offline -p anywork` | 178 passed, 5 ignored; `server-tests.log`. The six additional tests are the blocker regressions above; existing ignored native/profile gates remain unchanged. |
+| `CARGO_INCREMENTAL=0 cargo clippy --locked --offline -p anywork --all-targets -- -D warnings` | Passed; `clippy.log`. |
+| `CARGO_INCREMENTAL=0 cargo build --locked --offline -p anywork` | Passed; `build.log`. |
+| `ANYWORK_BINARY="$PWD/target/debug/anywork" python3 scripts/schema-recovery-test.py` | 3 passed; `schema-http.log`. |
+| `ANYWORK_BINARY="$PWD/target/debug/anywork" python3 scripts/event-scope-test.py` | 4 passed; `event-http.log`. |
+| Selected real `scripts/integration-test.py` queue-if-busy/FIFO-edit-steer-stop/edit-position/unknown-not-resent methods | 4 passed; `queue-http.log`. |
+| `cargo fmt --all -- --check`, `git diff --check` | Passed; `fmt.log`, `diff-check.log`. |
+
+Independent exact-candidate re-review and merged regression remain required. Native Linux/Windows, physical power-loss behavior, I02b runtime authority selection/native liveness and the previously listed integration gaps remain unverified. No HTTP operation protocol, native delivery safety, complete I02 or complete I03 is claimed.

@@ -388,6 +388,15 @@ pub enum Route {
     Steer,
     Queue,
 }
+/// Scheduling authority supplied by the trusted I02b caller, never inferred
+/// from native Start/Steer. This does not prove native liveness or acceptance.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DispatchAuthority {
+    Immediate,
+    QueueWorker,
+    ExplicitQueueSelection,
+}
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Artifact {
@@ -496,6 +505,8 @@ pub struct Data {
     pub route: Option<Route>,
     pub expected_turn: Option<String>,
     pub dispatch_route: Option<Route>,
+    #[serde(default)]
+    pub dispatch_authority: Option<DispatchAuthority>,
     pub dispatch_attempt_id: Option<String>,
     pub prepared: Option<Prepared>,
     pub input_receipt: Option<InputReceipt>,
@@ -764,6 +775,17 @@ fn validate_operation(op: &Operation) -> Result<()> {
     if let Some(id) = &op.data.dispatch_attempt_id {
         uuid(id)?;
     }
+    if let Some(authority) = op.data.dispatch_authority {
+        require(
+            op.data.dispatch_attempt_id.is_some()
+                && (authority == DispatchAuthority::Immediate)
+                    == (op.data.route != Some(Route::Queue))
+                && (authority != DispatchAuthority::QueueWorker
+                    || op.data.dispatch_route == Some(Route::Start)),
+            ErrorKind::Corrupt,
+            "Dispatch authority/route mismatch",
+        )?;
+    }
     if let Some(id) = &op.data.goal_claim_id {
         uuid(id)?;
     }
@@ -931,6 +953,7 @@ fn insert(
         route: None,
         expected_turn: None,
         dispatch_route: None,
+        dispatch_authority: None,
         dispatch_attempt_id: None,
         prepared: None,
         input_receipt: None,
@@ -1131,7 +1154,18 @@ impl Store {
             .map_err(|_| err(ErrorKind::Storage, "Store lock poisoned"))?;
         pair(&db, p)?;
         session(&db, sid)?;
-        load(&db, sid, id)
+        let state = load(&db, sid, id)?;
+        if matches!(state, Lookup::NeverRecorded) {
+            // record_result raises the fence while holding this same lock.
+            // Readable existing state remains inspectable, but SELECT success
+            // alone must not become a write-health/absence proof.
+            require(
+                !self.2.load(Ordering::SeqCst),
+                ErrorKind::Fenced,
+                "Authoritative absence unavailable until verified storage recovery",
+            )?;
+        }
+        Ok(state)
     }
     #[cfg_attr(
         not(test),
@@ -1638,12 +1672,17 @@ impl Store {
             reason = "I02b will consume Store::begin_operation_dispatch; remove at dispatch integration"
         )
     )]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Atomic dispatch checks scheduling authority separately from actual native route and expected turn"
+    )]
     pub fn begin_operation_dispatch(
         &self,
         p: &Identity,
         sid: &str,
         id: &str,
         v: i64,
+        authority: DispatchAuthority,
         route: Route,
         expected_turn: Option<&str>,
     ) -> Result<DispatchPermit> {
@@ -1685,11 +1724,18 @@ impl Store {
                     "Saved dispatch route/turn changed",
                 )?;
             }
-            if route == Route::Steer {
-                nonempty(
-                    expected_turn
-                        .ok_or_else(|| err(ErrorKind::Invalid, "Steer requires expected turn"))?,
-                )?;
+            match route {
+                Route::Start => require(
+                    expected_turn.is_none(),
+                    ErrorKind::Invalid,
+                    "Start cannot carry an expected active turn",
+                )?,
+                Route::Steer => nonempty(expected_turn.ok_or_else(|| {
+                    err(ErrorKind::Invalid, "Steer requires expected turn")
+                })?)?,
+                Route::Queue => {
+                    return Err(err(ErrorKind::Invalid, "Queue is not a native dispatch route"));
+                }
             }
             let link = queue_link(db, &op)?;
             require(
@@ -1698,35 +1744,58 @@ impl Store {
                 ErrorKind::IllegalTransition,
                 "Saved route/queue association mismatch",
             )?;
-            if let Some((seq, location)) = link {
-                if route == Route::Start {
-                    let first: i64 = db.query_row(
-                        "SELECT MIN(seq) FROM message_queue WHERE session_id=?1",
-                        [sid],
-                        |r| r.get(0),
+            match (authority, link) {
+                (DispatchAuthority::Immediate, None) => {}
+                (
+                    DispatchAuthority::QueueWorker | DispatchAuthority::ExplicitQueueSelection,
+                    Some((seq, location)),
+                ) => {
+                    require(
+                        location == "queue",
+                        ErrorKind::IllegalTransition,
+                        "Queue held for editing",
                     )?;
-                    require(seq == first, ErrorKind::Conflict, "FIFO queue head changed")?;
+                    let row = queue_data(db, sid, seq, false)?;
+                    require(
+                        row["status"] == "pending",
+                        ErrorKind::IllegalTransition,
+                        "Only a pending queued row can dispatch",
+                    )?;
+                    if authority == DispatchAuthority::QueueWorker {
+                        require(
+                            route == Route::Start,
+                            ErrorKind::Invalid,
+                            "Automatic queue work may only start an idle turn",
+                        )?;
+                        let first: i64 = db.query_row(
+                            "SELECT MIN(seq) FROM (SELECT seq FROM message_queue WHERE session_id=?1 UNION ALL SELECT seq FROM queue_edits WHERE session_id=?1)",
+                            [sid],
+                            |r| r.get(0),
+                        )?;
+                        require(
+                            seq == first,
+                            ErrorKind::Conflict,
+                            "Recoverable FIFO queue head changed",
+                        )?;
+                        let paused: bool = db.query_row(
+                            "SELECT COALESCE((SELECT paused FROM queue_settings WHERE session_id=?1),0)",
+                            [sid],
+                            |r| r.get(0),
+                        )?;
+                        require(!paused, ErrorKind::IllegalTransition, "Local queue is paused")?;
+                    }
                 }
-
-                require(
-                    location == "queue",
-                    ErrorKind::IllegalTransition,
-                    "Queue held for editing",
-                )?;
-                let paused: bool = db.query_row(
-                    "SELECT COALESCE((SELECT paused FROM queue_settings WHERE session_id=?1),0)",
-                    [sid],
-                    |r| r.get(0),
-                )?;
-                require(
-                    !paused,
-                    ErrorKind::IllegalTransition,
-                    "Local queue is paused",
-                )?;
+                _ => {
+                    return Err(err(
+                        ErrorKind::IllegalTransition,
+                        "Dispatch authority does not match saved queue origin",
+                    ));
+                }
             }
             let attempt_id = Uuid::new_v4().to_string();
             op.data.dispatch_attempt_id = Some(attempt_id.clone());
             op.data.dispatch_route = Some(route);
+            op.data.dispatch_authority = Some(authority);
             op.data.expected_turn = expected_turn.map(Into::into);
             op.phase = InputPhase::Dispatching;
             op.recording = Recording::ResultPending;

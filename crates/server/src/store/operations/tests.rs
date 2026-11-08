@@ -94,7 +94,19 @@ fn ready(s: &Store, p: &Identity, oid: &str, queued: bool) -> Operation {
 fn dispatch(s: &Store, p: &Identity, oid: &str, queued: bool) -> DispatchPermit {
     let op = ready(s, p, oid, queued);
     let permit = s
-        .begin_operation_dispatch(p, "one", oid, op.revision, Route::Start, None)
+        .begin_operation_dispatch(
+            p,
+            "one",
+            oid,
+            op.revision,
+            if queued {
+                DispatchAuthority::QueueWorker
+            } else {
+                DispatchAuthority::Immediate
+            },
+            Route::Start,
+            None,
+        )
         .unwrap();
     assert_eq!(permit.operation_id(), oid);
     assert_eq!(
@@ -380,7 +392,15 @@ fn intent_queue_admission_and_dispatch_commit_failures_roll_back_every_row() {
     ] {
         fails(
             at(stage, || {
-                s.begin_operation_dispatch(&p, "one", &oid, op.revision, Route::Start, None)
+                s.begin_operation_dispatch(
+                    &p,
+                    "one",
+                    &oid,
+                    op.revision,
+                    DispatchAuthority::QueueWorker,
+                    Route::Start,
+                    None,
+                )
             }),
             ErrorKind::Storage,
         );
@@ -571,13 +591,29 @@ fn dispatch_acceptance_echo_queue_atomicity_and_result_fence_reconciliation() {
     s.admit_operation(&p, "one", &other, &intent(), &b).unwrap();
     let otherop = ready(&s, &p, &other, false);
     fails(
-        s.begin_operation_dispatch(&p, "one", &other, otherop.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &other,
+            otherop.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::Fenced,
     );
     s.verify_ledger_storage_recovery(&p).unwrap();
     assert_eq!(get(&s, &p, &oid).phase, InputPhase::Uncertain);
     fails(
-        s.begin_operation_dispatch(&p, "one", &other, otherop.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &other,
+            otherop.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::Fenced,
     );
     let accepted = s.reconcile_input_accepted(&p, "one", &oid, &rc).unwrap();
@@ -594,12 +630,28 @@ fn dispatch_acceptance_echo_queue_atomicity_and_result_fence_reconciliation() {
         1
     );
     fails(
-        s.begin_operation_dispatch(&p, "one", &oid, accepted.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &oid,
+            accepted.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::IllegalTransition,
     );
     assert!(
-        s.begin_operation_dispatch(&p, "one", &other, otherop.revision, Route::Start, None)
-            .is_ok()
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &other,
+            otherop.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None
+        )
+        .is_ok()
     );
 }
 #[test]
@@ -734,7 +786,15 @@ fn goal_is_separate_claim_uncertainty_never_reexecutes_input() {
         ErrorKind::IllegalTransition,
     );
     fails(
-        s.begin_operation_dispatch(&p, "one", &oid, op.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &oid,
+            op.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::IllegalTransition,
     );
 }
@@ -834,7 +894,15 @@ fn crash_child() {
         FAIL_AT.with(|v| *v.borrow_mut() = Some("crash_dispatch"));
     }
     let permit = store
-        .begin_operation_dispatch(&p, "one", &oid, op.revision, Route::Start, None)
+        .begin_operation_dispatch(
+            &p,
+            "one",
+            &oid,
+            op.revision,
+            DispatchAuthority::QueueWorker,
+            Route::Start,
+            None,
+        )
         .unwrap();
     if mode == "accepted" || mode == "goal" {
         let op = get(&store, &p, &oid);
@@ -1123,7 +1191,15 @@ fn pre_input_rejection_and_exact_negative_reconcile_do_not_reactivate_unknown() 
     );
     assert_eq!(op.phase, InputPhase::Rejected);
     fails(
-        s.begin_operation_dispatch(&p, "one", &a, op.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &a,
+            op.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::IllegalTransition,
     );
 }
@@ -1167,13 +1243,29 @@ fn real_readonly_post_result_failure_fences_alias_and_health_does_not_erase_unkn
         .finish_preparation(&p, "alias", &aid, op.revision)
         .unwrap();
     fails(
-        s.begin_operation_dispatch(&p, "alias", &aid, op.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "alias",
+            &aid,
+            op.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::Fenced,
     );
     s.reconcile_input_accepted(&p, "one", &a, &rc).unwrap();
     assert!(
-        s.begin_operation_dispatch(&p, "alias", &aid, op.revision, Route::Start, None)
-            .is_ok()
+        s.begin_operation_dispatch(
+            &p,
+            "alias",
+            &aid,
+            op.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None
+        )
+        .is_ok()
     );
 }
 #[test]
@@ -1252,13 +1344,29 @@ fn recorded_busy_routing_then_queue_admission_and_fifo_are_checked() {
         .unwrap();
     let secondop = ready(&s, &p, &second, true);
     fails(
-        s.begin_operation_dispatch(&p, "one", &second, secondop.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &second,
+            secondop.revision,
+            DispatchAuthority::QueueWorker,
+            Route::Start,
+            None,
+        ),
         ErrorKind::Conflict,
     );
     let op = ready(&s, &p, &a, true);
     s.pause_queue("one", true).unwrap();
     fails(
-        s.begin_operation_dispatch(&p, "one", &a, op.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &a,
+            op.revision,
+            DispatchAuthority::QueueWorker,
+            Route::Start,
+            None,
+        ),
         ErrorKind::IllegalTransition,
     );
 }
@@ -1584,7 +1692,15 @@ fn detach_unknown_queue_removes_display_only_and_never_requalifies_input() {
             .is_empty()
     );
     fails(
-        s.begin_operation_dispatch(&p, "one", &oid, op.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &oid,
+            op.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::IllegalTransition,
     );
 }
@@ -1610,7 +1726,15 @@ fn native_preparation_result_storage_failure_fences_input_and_recovers_without_r
     s.admit_operation(&p, "one", &other, &intent(), &b).unwrap();
     let otherop = ready(&s, &p, &other, false);
     fails(
-        s.begin_operation_dispatch(&p, "one", &other, otherop.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &other,
+            otherop.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::Fenced,
     );
     let receipt = PreparationReceipt::Thread {
@@ -1648,7 +1772,15 @@ fn native_preparation_result_storage_failure_fences_input_and_recovers_without_r
         }
     ));
     fails(
-        s.begin_operation_dispatch(&p, "one", &other, otherop.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &other,
+            otherop.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::Fenced,
     );
     let op = s
@@ -1656,8 +1788,16 @@ fn native_preparation_result_storage_failure_fences_input_and_recovers_without_r
         .unwrap();
     s.finish_preparation(&p, "one", &a, op.revision).unwrap();
     assert!(
-        s.begin_operation_dispatch(&p, "one", &other, otherop.revision, Route::Start, None)
-            .is_ok()
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &other,
+            otherop.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None
+        )
+        .is_ok()
     );
 }
 
@@ -1685,7 +1825,15 @@ fn recording_fence_survives_same_session_native_thread_retarget() {
         .unwrap();
     let op = ready(&s, &p, &other, false);
     fails(
-        s.begin_operation_dispatch(&p, "one", &other, op.revision, Route::Start, None),
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &other,
+            op.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
         ErrorKind::Fenced,
     );
 }
@@ -1765,4 +1913,548 @@ fn admitted_canonical_depth_boundary_remains_readable_after_real_open() {
     for (oid, body) in accepted {
         assert_eq!(get(&reopened, &p, &oid).intent().unwrap(), body);
     }
+}
+
+fn linked_seq(s: &Store, oid: &str) -> i64 {
+    s.0.lock()
+        .unwrap()
+        .query_row(
+            "SELECT queue_seq FROM message_operation_queue WHERE operation_id=?1",
+            [oid],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+fn queued_ready(s: &Store, p: &Identity, b: &Binding) -> String {
+    let oid = id();
+    s.admit_queued_operation(p, "one", &oid, &intent(), b)
+        .unwrap();
+    ready(s, p, &oid, true);
+    oid
+}
+fn denied_dispatch_unchanged(
+    s: &Store,
+    p: &Identity,
+    oid: &str,
+    authority: DispatchAuthority,
+    route: Route,
+    turn: Option<&str>,
+    kind: ErrorKind,
+) {
+    let op = get(s, p, oid);
+    let before = snapshot(s);
+    fails(
+        s.begin_operation_dispatch(p, "one", oid, op.revision, authority, route, turn),
+        kind,
+    );
+    assert_eq!(
+        snapshot(s),
+        before,
+        "denial must return no qualification and commit no operation/queue/event change"
+    );
+}
+
+#[test]
+fn fenced_absence_is_not_authoritative_but_existing_and_tombstone_remain_inspectable() {
+    let (s, p, b) = fresh();
+    let tomb = id();
+    s.admit_operation(&p, "one", &tomb, &intent(), &b).unwrap();
+    // Preserve a permanent registry entry while deleting only its private detail.
+    s.0.lock()
+        .unwrap()
+        .execute(
+            "DELETE FROM message_operations WHERE operation_id=?1",
+            [&tomb],
+        )
+        .unwrap();
+    let active = id();
+    s.admit_operation(&p, "one", &active, &intent(), &b)
+        .unwrap();
+    let permit = dispatch(&s, &p, &active, false);
+    let op = get(&s, &p, &active);
+    let prep_binding = seed(&s, "two");
+    let prep = id();
+    let prep_op = s
+        .admit_operation(&p, "two", &prep, &intent(), &prep_binding)
+        .unwrap()
+        .operation;
+    let _prep_permit = s
+        .claim_preparation_step(
+            &p,
+            "two",
+            &prep,
+            prep_op.revision,
+            &PreparationSpec::ThreadResume,
+        )
+        .unwrap();
+    let missing = id();
+    assert!(matches!(
+        s.lookup_operation(&p, "one", &missing).unwrap(),
+        Lookup::NeverRecorded
+    ));
+    s.0.lock()
+        .unwrap()
+        .execute_batch("PRAGMA query_only=ON")
+        .unwrap();
+    fails(
+        s.record_input_accepted(&p, "one", &permit, &receipt(&op)),
+        ErrorKind::RecordingFailure,
+    );
+    assert!(s.2.load(Ordering::SeqCst));
+    assert!(matches!(
+        s.lookup_operation(&p, "one", &active).unwrap(),
+        Lookup::Found(_)
+    ));
+    assert!(matches!(
+        s.lookup_operation(&p, "one", &tomb).unwrap(),
+        Lookup::Tombstone
+    ));
+    let before = snapshot(&s);
+    fails(s.lookup_operation(&p, "one", &missing), ErrorKind::Fenced);
+    assert_eq!(snapshot(&s), before);
+    fails(s.verify_ledger_storage_recovery(&p), ErrorKind::Storage);
+    fails(s.lookup_operation(&p, "one", &missing), ErrorKind::Fenced);
+    s.0.lock()
+        .unwrap()
+        .execute_batch("PRAGMA query_only=OFF")
+        .unwrap();
+    // Readability without the explicitly verified recovery still cannot prove absence.
+    fails(s.lookup_operation(&p, "one", &missing), ErrorKind::Fenced);
+    s.verify_ledger_storage_recovery(&p).unwrap();
+    assert!(matches!(
+        s.lookup_operation(&p, "one", &missing).unwrap(),
+        Lookup::NeverRecorded
+    ));
+    let recovered = get(&s, &p, &active);
+    assert_eq!(
+        (recovered.phase, recovered.recording),
+        (InputPhase::Uncertain, Recording::RecoveryRequired)
+    );
+    let recovered = match s.lookup_operation(&p, "two", &prep).unwrap() {
+        Lookup::Found(op) => op,
+        _ => panic!(),
+    };
+    assert_eq!(recovered.preparation, PreparationPhase::Uncertain);
+    let later = id();
+    s.admit_operation(&p, "one", &later, &intent(), &b).unwrap();
+    ready(&s, &p, &later, false);
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &later,
+        DispatchAuthority::Immediate,
+        Route::Start,
+        None,
+        ErrorKind::Fenced,
+    );
+    let later = id();
+    let op = s
+        .admit_operation(&p, "two", &later, &intent(), &prep_binding)
+        .unwrap()
+        .operation;
+    let op = s
+        .select_operation_route(&p, "two", &later, op.revision, Route::Start, None)
+        .unwrap();
+    let op = s
+        .finish_preparation(&p, "two", &later, op.revision)
+        .unwrap();
+    let before = snapshot(&s);
+    fails(
+        s.begin_operation_dispatch(
+            &p,
+            "two",
+            &later,
+            op.revision,
+            DispatchAuthority::Immediate,
+            Route::Start,
+            None,
+        ),
+        ErrorKind::Fenced,
+    );
+    assert_eq!(snapshot(&s), before);
+}
+
+#[test]
+fn worker_respects_editor_head_across_restore_cancel_and_replace_without_renumbering() {
+    for replace in [false, true] {
+        let (s, p, b) = fresh();
+        let head = queued_ready(&s, &p, &b);
+        let tail = queued_ready(&s, &p, &b);
+        let seq = linked_seq(&s, &head);
+        let op = get(&s, &p, &head);
+        s.take_operation_queue_edit(&p, "one", &head, op.revision, seq)
+            .unwrap();
+        denied_dispatch_unchanged(
+            &s,
+            &p,
+            &tail,
+            DispatchAuthority::QueueWorker,
+            Route::Start,
+            None,
+            ErrorKind::Conflict,
+        );
+        denied_dispatch_unchanged(
+            &s,
+            &p,
+            &tail,
+            DispatchAuthority::QueueWorker,
+            Route::Steer,
+            Some("turn-current"),
+            ErrorKind::Invalid,
+        );
+        let current_head = if replace {
+            let replacement = id();
+            let op = get(&s, &p, &head);
+            let changed = Intent {
+                text: "edited head".into(),
+                ..intent()
+            };
+            s.replace_operation_queue(
+                &p,
+                "one",
+                &head,
+                op.revision,
+                seq,
+                &replacement,
+                &changed,
+                &b,
+            )
+            .unwrap();
+            ready(&s, &p, &replacement, true);
+            assert_eq!(get(&s, &p, &head).phase, InputPhase::Superseded);
+            assert_eq!(linked_seq(&s, &replacement), seq);
+            replacement
+        } else {
+            let op = get(&s, &p, &head);
+            s.restore_operation_queue_edit(&p, "one", &head, op.revision, seq)
+                .unwrap();
+            assert_eq!(linked_seq(&s, &head), seq);
+            head
+        };
+        denied_dispatch_unchanged(
+            &s,
+            &p,
+            &tail,
+            DispatchAuthority::QueueWorker,
+            Route::Start,
+            None,
+            ErrorKind::Conflict,
+        );
+        let op = get(&s, &p, &current_head);
+        s.cancel_undispatched_operation(&p, "one", &current_head, op.revision)
+            .unwrap();
+        let op = get(&s, &p, &tail);
+        let permit = s
+            .begin_operation_dispatch(
+                &p,
+                "one",
+                &tail,
+                op.revision,
+                DispatchAuthority::QueueWorker,
+                Route::Start,
+                None,
+            )
+            .unwrap();
+        assert_eq!(permit.operation_id(), tail);
+        assert_eq!(
+            get(&s, &p, &tail).data.dispatch_authority,
+            Some(DispatchAuthority::QueueWorker)
+        );
+    }
+}
+
+#[test]
+fn edited_middle_allows_earlier_worker_but_blocks_later_and_selected_editor_never_dispatches() {
+    let (s, p, b) = fresh();
+    let head = queued_ready(&s, &p, &b);
+    let middle = queued_ready(&s, &p, &b);
+    let tail = queued_ready(&s, &p, &b);
+    let op = get(&s, &p, &middle);
+    s.take_operation_queue_edit(&p, "one", &middle, op.revision, linked_seq(&s, &middle))
+        .unwrap();
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &middle,
+        DispatchAuthority::ExplicitQueueSelection,
+        Route::Start,
+        None,
+        ErrorKind::IllegalTransition,
+    );
+    let op = get(&s, &p, &head);
+    let permit = s
+        .begin_operation_dispatch(
+            &p,
+            "one",
+            &head,
+            op.revision,
+            DispatchAuthority::QueueWorker,
+            Route::Start,
+            None,
+        )
+        .unwrap();
+    let op = get(&s, &p, &head);
+    s.record_input_accepted(&p, "one", &permit, &receipt(&op))
+        .unwrap();
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &tail,
+        DispatchAuthority::QueueWorker,
+        Route::Start,
+        None,
+        ErrorKind::Conflict,
+    );
+    assert_eq!(
+        s.queue("one").unwrap()["editing"]["id"],
+        linked_seq(&s, &middle)
+    );
+}
+
+#[test]
+fn restart_keeps_editor_fifo_identity_and_requires_unpause_without_overtaking() {
+    let f = Fixture::new();
+    let s = f.open();
+    let p = s.ledger_identity().unwrap();
+    let b = seed(&s, "one");
+    let head = queued_ready(&s, &p, &b);
+    let tail = queued_ready(&s, &p, &b);
+    let seq = linked_seq(&s, &head);
+    let op = get(&s, &p, &head);
+    s.take_operation_queue_edit(&p, "one", &head, op.revision, seq)
+        .unwrap();
+    drop(s);
+    let s = f.open();
+    assert_eq!(s.queue("one").unwrap()["paused"], true);
+    assert_eq!(linked_seq(&s, &head), seq);
+    s.pause_queue("one", false).unwrap();
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &tail,
+        DispatchAuthority::QueueWorker,
+        Route::Start,
+        None,
+        ErrorKind::Conflict,
+    );
+    let op = get(&s, &p, &head);
+    s.restore_operation_queue_edit(&p, "one", &head, op.revision, seq)
+        .unwrap();
+    let op = get(&s, &p, &head);
+    let permit = s
+        .begin_operation_dispatch(
+            &p,
+            "one",
+            &head,
+            op.revision,
+            DispatchAuthority::QueueWorker,
+            Route::Start,
+            None,
+        )
+        .unwrap();
+    let op = get(&s, &p, &head);
+    s.record_input_accepted(&p, "one", &permit, &receipt(&op))
+        .unwrap();
+    drop(s);
+    let s = f.open();
+    assert_eq!(
+        get(&s, &p, &head).data.dispatch_authority,
+        Some(DispatchAuthority::QueueWorker)
+    );
+    assert_eq!(get(&s, &p, &head).phase, InputPhase::Accepted);
+    let op = get(&s, &p, &tail);
+    fails(
+        s.begin_operation_dispatch(
+            &p,
+            "one",
+            &tail,
+            op.revision,
+            DispatchAuthority::QueueWorker,
+            Route::Start,
+            None,
+        ),
+        ErrorKind::IllegalTransition,
+    );
+}
+
+#[test]
+fn explicit_paused_nonhead_selection_supports_idle_start_and_active_steer_without_changing_others()
+{
+    for (route, turn) in [
+        (Route::Start, None),
+        (Route::Steer, Some("exact-active-turn")),
+    ] {
+        let (s, p, b) = fresh();
+        let head = queued_ready(&s, &p, &b);
+        let selected = queued_ready(&s, &p, &b);
+        let head_seq = linked_seq(&s, &head);
+        let op = get(&s, &p, &head);
+        s.take_operation_queue_edit(&p, "one", &head, op.revision, head_seq)
+            .unwrap();
+        s.pause_queue("one", true).unwrap();
+        let queue = s.queue("one").unwrap();
+        let head_before = get(&s, &p, &head).revision;
+        denied_dispatch_unchanged(
+            &s,
+            &p,
+            &selected,
+            DispatchAuthority::QueueWorker,
+            Route::Steer,
+            turn.or(Some("exact-active-turn")),
+            ErrorKind::Invalid,
+        );
+        denied_dispatch_unchanged(
+            &s,
+            &p,
+            &selected,
+            DispatchAuthority::Immediate,
+            route,
+            turn,
+            ErrorKind::IllegalTransition,
+        );
+        let op = get(&s, &p, &selected);
+        let permit = s
+            .begin_operation_dispatch(
+                &p,
+                "one",
+                &selected,
+                op.revision,
+                DispatchAuthority::ExplicitQueueSelection,
+                route,
+                turn,
+            )
+            .unwrap();
+        let op = get(&s, &p, &selected);
+        assert_eq!(
+            op.data.dispatch_authority,
+            Some(DispatchAuthority::ExplicitQueueSelection)
+        );
+        assert_eq!(op.data.dispatch_route, Some(route));
+        assert_eq!(op.data.expected_turn.as_deref(), turn);
+        assert_eq!(s.queue("one").unwrap()["paused"], true);
+        assert_eq!(s.queue("one").unwrap()["editing"], queue["editing"]);
+        assert_eq!(get(&s, &p, &head).revision, head_before);
+        denied_dispatch_unchanged(
+            &s,
+            &p,
+            &selected,
+            DispatchAuthority::ExplicitQueueSelection,
+            route,
+            turn,
+            ErrorKind::IllegalTransition,
+        );
+        s.record_input_accepted(&p, "one", &permit, &receipt(&op))
+            .unwrap();
+        assert_eq!(s.queue("one").unwrap()["paused"], true);
+        assert_eq!(s.queue("one").unwrap()["editing"], queue["editing"]);
+        assert!(
+            s.queue("one").unwrap()["items"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn dispatch_authority_never_bypasses_route_pause_preparation_binding_or_archive_guards() {
+    let (s, p, b) = fresh();
+    let selected = queued_ready(&s, &p, &b);
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &selected,
+        DispatchAuthority::ExplicitQueueSelection,
+        Route::Start,
+        Some("not-idle"),
+        ErrorKind::Invalid,
+    );
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &selected,
+        DispatchAuthority::ExplicitQueueSelection,
+        Route::Steer,
+        None,
+        ErrorKind::Invalid,
+    );
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &selected,
+        DispatchAuthority::QueueWorker,
+        Route::Steer,
+        Some("turn"),
+        ErrorKind::Invalid,
+    );
+    s.pause_queue("one", true).unwrap();
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &selected,
+        DispatchAuthority::QueueWorker,
+        Route::Start,
+        None,
+        ErrorKind::IllegalTransition,
+    );
+    let mut session = s.session("one").unwrap();
+    session.archived = true;
+    s.save(&session).unwrap();
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &selected,
+        DispatchAuthority::ExplicitQueueSelection,
+        Route::Start,
+        None,
+        ErrorKind::IllegalTransition,
+    );
+    session.archived = false;
+    session.thread_id = Some("changed-thread".into());
+    s.save(&session).unwrap();
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &selected,
+        DispatchAuthority::ExplicitQueueSelection,
+        Route::Start,
+        None,
+        ErrorKind::BindingConflict,
+    );
+    session.thread_id = b.thread_id.clone();
+    s.save(&session).unwrap();
+    let pending = id();
+    s.admit_queued_operation(&p, "one", &pending, &intent(), &b)
+        .unwrap();
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &pending,
+        DispatchAuthority::ExplicitQueueSelection,
+        Route::Start,
+        None,
+        ErrorKind::IllegalTransition,
+    );
+    let immediate = id();
+    s.admit_operation(&p, "one", &immediate, &intent(), &b)
+        .unwrap();
+    ready(&s, &p, &immediate, false);
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &immediate,
+        DispatchAuthority::QueueWorker,
+        Route::Start,
+        None,
+        ErrorKind::IllegalTransition,
+    );
+    denied_dispatch_unchanged(
+        &s,
+        &p,
+        &immediate,
+        DispatchAuthority::ExplicitQueueSelection,
+        Route::Start,
+        None,
+        ErrorKind::IllegalTransition,
+    );
 }
