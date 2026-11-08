@@ -1,6 +1,6 @@
 # Durable message operation contract (G1 / I02)
 
-Status: implementation contract under the authorized prioritized improvement goal. Not implemented merely by publication of this document. Depends on independently accepted [schema safety](schema-and-recovery.md): corrected source `84774c2` passed independent review `9fa5154`, is merged and passed full local merged regression. The operation contract's ledger-incarnation and preparation-state findings were corrected at `53354fc` and rechecked without further blocking findings. Ledger module development is next; full storage degradation (I03), native support acceptance and backup/restore remain separate deliverables.
+Status: implementation contract under the authorized prioritized improvement goal. Not implemented merely by publication of this document. Depends on independently accepted [schema safety](schema-and-recovery.md): corrected source `84774c2` passed independent review `9fa5154`, is merged and passed full local merged regression. The operation contract's ledger-incarnation and preparation-state findings were corrected at `53354fc` and rechecked without further blocking findings. The corrected ledger module `8d57934` passed independent review `c3117a8`, is merged and passed full local regression at `a26d6f4`. Current HTTP/native/Web sending does not yet consume it; the [connected integration task](plan/tasks/improvement-message-delivery.md) remains open. Full storage degradation (I03), native support acceptance and backup/restore remain separate deliverables.
 
 ## Purpose and actual boundaries
 
