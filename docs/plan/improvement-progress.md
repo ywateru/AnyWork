@@ -5,7 +5,7 @@ Goal: implement improvements in the priority order of [the review](../project-im
 | Stage | Issues | Current state / next evidence |
 | --- | --- | --- |
 | G0 | I01/I04/I20/I22/I25 | Done for scoped source delivery: independent reviews, [merged local checks](reviews/improvement-g0-merged.md), all four exact-source Checks jobs and actual read-only gate selection passed at `83eda6c`; later source requires its own Checks |
-| G1 | I02/I03/I05/I07/I08/I09/I10, critical I11/I12 | I05a passed [full merged local checks](reviews/improvement-schema-merged.md); I02a candidate `35cbd01` under independent review, I07a additive module independently accepted/merged with bounded merged regressions passed; fresh exact-source Linux/Windows/Android/container CI passed at `aacaa19`; other deliverables remain open |
+| G1 | I02/I03/I05/I07/I08/I09/I10, critical I11/I12 | I05a passed [full merged local checks](reviews/improvement-schema-merged.md); corrected I02a `8d57934` under independent re-review after three first-review blockers; I07a additive module accepted/merged and b1 design accepted, dormant SDK transport in development; fresh Linux/Windows/Android/container CI passed at `aacaa19` only; new ledger/transport and other deliverables remain open |
 | G2 | I13—I19, critical I28 | Pending; real native/Android/network evidence remains required |
 | G3 | I06/I21/I23/I24/I26/I27/I29 | Pending; capacity baselines before optimization |
 | G4 | I30 selected extensions | Product choices after core reliability; do not implement fake capabilities |
