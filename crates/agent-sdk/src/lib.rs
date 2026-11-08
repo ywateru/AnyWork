@@ -1,5 +1,6 @@
 //! JSON-RPC plugin transport over owned stdio processes or existing Unix WebSockets.
 //! Attached sockets never own the external execution process.
+pub mod qualified;
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
