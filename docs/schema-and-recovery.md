@@ -1,6 +1,6 @@
 # Schema migration and recovery contract
 
-I05a opening/ownership safety was accepted in [its task](plan/tasks/improvement-schema-safety.md) and [merged evidence](plan/improvement-progress.md). The I02a version-2 ledger is an implementation candidate awaiting its own independent acceptance; see [module contract](message-ledger-module.md).
+I05a opening/ownership safety was accepted in [its task](plan/tasks/improvement-schema-safety.md) and [merged evidence](plan/improvement-progress.md). The I02a version-2 ledger passed independent module re-review at `c3117a8` and is merged at `a26d6f4`; full merged regression and new v2 platform CI remain open. See the [module contract](message-ledger-module.md) for the exact source and integration limits.
 
 Status: implementation contract under the authorized prioritized improvement goal; not a claim of implemented backup/restore or expert approval. I05 covers migration, full backup, restore and retention. The first deliverable below establishes schema safety before I02 adds durable operation records. Other I05 deliverables remain open.
 

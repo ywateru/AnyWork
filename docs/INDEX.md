@@ -5,6 +5,7 @@
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)
 - [Schema safety and recovery contract (G1 / I05)](schema-and-recovery.md)
 - [Durable message operations contract (G1 / I02)](message-operations.md)
+- [Internal durable operation ledger module (I02a)](message-ledger-module.md)
 - [Effective capabilities and readiness contract (G1 / I07)](capability-projection.md)
 - [Read-only capability projection module (I07a)](capability-projection-module.md)
 - [Native observation and error call-path research (I07b design input)](plan/analysis/capability-observations.md)
