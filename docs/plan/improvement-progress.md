@@ -5,7 +5,7 @@ Goal: implement improvements in the priority order of [the review](../project-im
 | Stage | Issues | Current state / next evidence |
 | --- | --- | --- |
 | G0 | I01/I04/I20/I22/I25 | Done for scoped source delivery: independent reviews, [merged local checks](reviews/improvement-g0-merged.md), all four exact-source Checks jobs and actual read-only gate selection passed at `83eda6c`; later source requires its own Checks |
-| G1 | I02/I03/I05/I07/I08/I09/I10, critical I11/I12 | I05a passed [full merged local checks](reviews/improvement-schema-merged.md); I02 ledger developing, I07a additive module independently accepted/merged with bounded merged regressions passed; fresh exact-source Linux/Windows/Android/container CI passed at `aacaa19`; other deliverables remain open |
+| G1 | I02/I03/I05/I07/I08/I09/I10, critical I11/I12 | I05a passed [full merged local checks](reviews/improvement-schema-merged.md); I02a candidate `35cbd01` under independent review, I07a additive module independently accepted/merged with bounded merged regressions passed; fresh exact-source Linux/Windows/Android/container CI passed at `aacaa19`; other deliverables remain open |
 | G2 | I13—I19, critical I28 | Pending; real native/Android/network evidence remains required |
 | G3 | I06/I21/I23/I24/I26/I27/I29 | Pending; capacity baselines before optimization |
 | G4 | I30 selected extensions | Product choices after core reliability; do not implement fake capabilities |
@@ -43,3 +43,11 @@ Independent documentation review of `6bbaa75` passed without blocking findings: 
 - Follow-up design inputs remain separate from accepted implementation: the [I07b research](analysis/capability-observations.md) traces actual native identities/generations and controlled error boundaries and passed [independent review `42ed133`](reviews/improvement-capability-observations.md), with native-instance naming, bounded receipt delivery and concurrency prerequisites incorporated. The [I03 storage-degradation analysis](analysis/storage-degradation.md) enumerates event, approval, diagnostic and recovery gaps beyond I02's minimum send fence; [independent review `9040174`](reviews/improvement-storage-analysis.md) passed as design input, with native-observation, interrupt/queue-fence and startup-scope clarifications incorporated. Neither is an approved implementation contract or closes its parent issue.
 
 The broader objective remains active through G1—G4; G0 progress does not close the full project improvement goal.
+
+## Resume after user-requested pause and cleanup — 2026-11-08
+
+The user resumed the goal after pausing it and requesting disk cleanup. Cleanup removed reproducible build targets, old UI preview bundles and already merged worktrees; source/commits, session data, pending ledger/design trees and accepted logs were retained. Earlier merged logs/test results now reside in ignored `artifacts/accepted-g0-g1-merged-evidence`; original command/source boundaries above remain unchanged. No test is claimed to have rerun merely because its artifacts moved.
+
+- I02a `35cbd01` is undergoing independent exact-source review in the retained private ledger tree. It is not merged, activated or advertised as an HTTP/Web delivery guarantee.
+- The [I07b1 lifecycle contract task](tasks/improvement-runtime-lifecycle-design.md) continues in a separate retained tree, with no native capability activation or product-source changes before its independent contract review.
+- New builds use `CARGO_INCREMENTAL=0` to limit cache growth. No version bump, Release, production restart or real native task is authorized by this isolated implementation checkpoint.
