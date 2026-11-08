@@ -18,10 +18,13 @@ Integrate the accepted ledger into actual API → preparation → native adapter
 - [Schema/recovery](../../schema-and-recovery.md)
 - [Support matrix](../../support-matrix.md)
 - [Review](../../project-improvement-review.md), I02/I03/I07/I10
+- [Accepted runtime lifecycle contract](../../runtime-lifecycle.md) and [SDK transport module task](improvement-runtime-transport.md)
 
 ## Paths and ownership
 
 Server API/runtime/preparation/Store integration, native identity mapping in the three adapters, shared Web submission journal and both main/child composers, queue editing, all first-party message callers/fixtures and focused real HTTP/browser tests. Root owns central docs/check registration. Develop in isolation; use only deterministic fake Agents/private data/ephemeral ports. No production assets, installed native app changes, native messages, version bump or release.
+
+Coordinate runtime/preparation/adapter changes serially with lifecycle B/C. The accepted design now requires final-writer qualification, initial attach/history/media/child effects and same-Arc peer validation; SDK A alone is dormant and cannot be treated as an installed control boundary. Before dispatching overlapping source tasks, root must assign one owner for `deliver`, cold preparation and adapter native-ID dispatch, identify the exact accepted SDK/ledger interfaces, and settle the separately typed non-message creation authority. A lifecycle ticket is not an I02 preparation claim, and an artificial message operation must not stand in for create/connect. Web journal work can be split only when the actual connected API/projection contract is pinned; the combined HTTP/SQLite/fake-Agent/browser gate remains mandatory.
 
 ## Required connected behavior
 
