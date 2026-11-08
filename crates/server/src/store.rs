@@ -58,16 +58,22 @@ pub struct Feedback {
     pub updated_at: i64,
 }
 
+pub(crate) mod operations;
 mod schema;
 
 pub struct Store(
     Mutex<Connection>,
     #[allow(dead_code)] Option<schema::OwnerGuard>,
+    std::sync::atomic::AtomicBool,
 );
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         let (db, owner) = schema::open(path)?;
-        Ok(Self(Mutex::new(db), owner))
+        Ok(Self(
+            Mutex::new(db),
+            owner,
+            std::sync::atomic::AtomicBool::new(false),
+        ))
     }
     /// Local editing metadata is associated only with the client id supplied to
     /// the native request. Text, item order and turn ids are never identities.
@@ -339,6 +345,7 @@ impl Store {
     pub fn queue_begin_edit(&self, id: &str, seq: i64) -> Result<()> {
         let mut db = self.0.lock().unwrap();
         let tx = db.transaction()?;
+        operations::require_unlinked(&tx, id, seq)?;
         let data: String = tx.query_row(
             "SELECT data FROM message_queue WHERE session_id=?1 AND seq=?2",
             params![id, seq],
@@ -363,6 +370,7 @@ impl Store {
     pub fn queue_restore_edit(&self, id: &str, seq: i64, replacement: Option<Value>) -> Result<()> {
         let mut db = self.0.lock().unwrap();
         let tx = db.transaction()?;
+        operations::require_unlinked(&tx, id, seq)?;
         let original: String = tx.query_row(
             "SELECT data FROM queue_edits WHERE session_id=?1 AND seq=?2",
             params![id, seq],
@@ -391,6 +399,7 @@ impl Store {
     }
     pub fn queue_write(&self, id: &str, seq: i64, data: Option<Value>) -> Result<()> {
         let db = self.0.lock().unwrap();
+        operations::require_unlinked(&db, id, seq)?;
         let count = if let Some(data) = data {
             db.execute(
                 "UPDATE message_queue SET data=?3 WHERE session_id=?1 AND seq=?2",

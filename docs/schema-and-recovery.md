@@ -1,16 +1,18 @@
 # Schema migration and recovery contract
 
+I05a opening/ownership safety was accepted in [its task](plan/tasks/improvement-schema-safety.md) and [merged evidence](plan/improvement-progress.md). The I02a version-2 ledger is an implementation candidate awaiting its own independent acceptance; see [module contract](message-ledger-module.md).
+
 Status: implementation contract under the authorized prioritized improvement goal; not a claim of implemented backup/restore or expert approval. I05 covers migration, full backup, restore and retention. The first deliverable below establishes schema safety before I02 adds durable operation records. Other I05 deliverables remain open.
 
 ## Authority and boundaries
 
 AnyWork's SQLite database owns its local session mapping, event cache, queue/edit state, composer metadata and feedback. Native histories and Agent account state outside the data directory retain their own authority. Uploaded attachments reside in the data directory; a JSON conversation export is not a full backup. The service token and native account credentials must not appear in public diagnostics or test artifacts.
 
-Replacing application binaries does not roll back the database. An older binary must refuse an unsupported newer schema rather than resetting `user_version`, attempting repair or resuming tasks. A restore must never automatically deliver queued/uncertain work.
+Replacing application binaries does not roll back the database. An older binary must refuse an unsupported newer schema rather than resetting `user_version`, attempting repair or resuming tasks. A restore must never automatically deliver queued/uncertain work. **Do not open a version-2 store with the published 0.1.12 binary**: that older release predates future-schema refusal and can mutate a newer database. The current source guard cannot protect against code absent from an old executable. Binary downgrade is not database downgrade; use a compatible binary and keep the old store out of unsupported binaries. This work does not implement a backup/restore procedure.
 
 ## First deliverable: versioned opening and migrations (I05a)
 
-The existing schema is version 1. Opening a database first reads its version and checks that it is supported, **before** mutating journal mode, tables, indexes, recovery state or `user_version`. New databases and recognized legacy version-0 layouts are bootstrapped transactionally to version 1. A foreign or malformed database must produce an actionable error instead of being silently converted into an AnyWork store. For future versions, “no mutation” means no application write SQL, journal-mode change, checkpoint, DDL, recovery or version write before refusal; it does not promise byte-for-byte invariance of SQLite's own open/recovery/sidecar housekeeping. Tests must distinguish these claims.
+The accepted I05a baseline schema was version 1; the current I02a candidate advances it to version 2 with the actual operation-ledger tables. Opening a database first reads its version and checks that it is supported, **before** mutating journal mode, tables, indexes, recovery state or `user_version`. New databases and recognized legacy version-0 layouts are bootstrapped through the ordered version-1 baseline and, in the I02a candidate, the real version-2 ledger migration in the same opening transaction. A foreign or malformed database must produce an actionable error instead of being silently converted into an AnyWork store. For future versions, “no mutation” means no application write SQL, journal-mode change, checkpoint, DDL, recovery or version write before refusal; it does not promise byte-for-byte invariance of SQLite's own open/recovery/sidecar housekeeping. Tests must distinguish these claims.
 
 Use an explicit ordered migration registry with a declared current version. Each step and version update commit in one SQLite transaction. Future schema versions fail closed without modifying logical contents. Failed schema/DDL operations roll back and must not run session/queue/edit startup recovery. Known versioned schemas must be validated for the tables, columns and indexes relied on by the application; a version number alone is insufficient proof of compatibility. Include primary/unique keys, cascading foreign keys, AUTOINCREMENT and sequence preservation, replay-index expressions/partial predicates and a defined unknown-table/index/trigger policy. Do not accept an unexpected trigger merely because required object names are present.
 
@@ -20,7 +22,7 @@ Only after schema validation/migration succeeds may existing startup recovery ma
 
 Migration serialization is not authorization to recover another live service's work. Acquire an OS-released exclusive ownership guard for this database before application migrations/recovery and retain it for the Store/service lifetime; reject a second active opener with an actionable already-in-use error, without performing recovery. A PID file's existence is not sufficient proof of ownership or safe recovery. Define canonical-path/alias behavior and private lock-file permissions. Recheck the schema version under the migration transaction even after the guard. Concurrent startup tests must prove one owner, loser refusal without state mutation, and safe acquisition/reopen after the owner exits or crashes; they must not claim two live recovery-capable services are supported.
 
-At this stage, avoid a fake version-2 migration that changes nothing. The next actual feature introduces its migration with meaningful legacy-to-current fixtures. Do not introduce a downgrade path or copy a live database file as an implicit backup.
+I05a introduced no fake version-2 placeholder. I02a now introduces the actual version-2 migration and identity/ledger tables with meaningful legacy-to-current fixtures. Do not introduce a downgrade path or copy a live database file as an implicit backup.
 
 ## Later I05 deliverables (not fulfilled by I05a)
 
@@ -41,15 +43,17 @@ These require their own accepted contracts and end-to-end evidence. I05 cannot b
 
 ## I05a implemented opening path and recognized layouts
 
-The candidate opens through `Store::open` → `store::schema::open`; there is no parallel test-only migrator. The declared current version remains **1**. An ordered registry contains the real version-0 → version-1 bootstrap. Within the same immediate transaction, an explicit compatibility step completes the replay indexes that historical version-1 releases added without incrementing their version. Each transaction validates the version again, validates schema/data, completes schema/version changes and performs startup recovery before committing. No version-2 placeholder or downgrade is introduced. Only after successful commit does the connection select WAL.
+The current candidate opens through `Store::open` → `store::schema::open`; there is no parallel test-only migrator. The declared current version is **2** for I02a. The sole ordered registry contains the accepted real version-0 → version-1 bootstrap followed by version-1 → version-2 ledger DDL and random identity initialization. The original I05a candidate declared version 1; its historical test counts below remain unchanged. Within the same immediate transaction, an explicit compatibility step completes the replay indexes that historical version-1 releases added without incrementing their version. Each transaction validates the version again, validates schema/data, completes schema/version changes and performs startup recovery before committing. Version-2 existing stores must already have valid singleton identity and ledger schema/data before recovery; they are not silently repaired. No downgrade is introduced. Only after successful commit does the connection select WAL.
 
-Accepted nonempty layouts contain **all eight original tables**, their exact primary/unique keys, cascading foreign keys, defaults and AUTOINCREMENT declarations, plus `events_session_seq`. Checked-in SQL fixtures retain the actual historical DDL:
+Accepted nonempty version-0/version-1 historical layouts contain **all eight original tables**, their exact primary/unique keys, cascading foreign keys, defaults and AUTOINCREMENT declarations, plus `events_session_seq`. Checked-in SQL fixtures retain the actual historical DDL:
 
 | Shape | Historical source / fixture | Allowed replay indexes before opening |
 | --- | --- | --- |
 | Original | `f42b8e1`, `store/fixtures/schema-v1-original.sql` | Neither |
 | Harness | `613649d`, `store/fixtures/schema-v1-harness.sql` | `harness_replay_identity` only |
 | Current | `cd6699a`, `store/fixtures/schema-v1-current.sql` | Harness and source indexes |
+
+Version 2 additionally requires all five ledger tables and their exact constrained keys/indexes from [the ledger module](message-ledger-module.md); it cannot be treated as a partially migrated legacy layout. Ledger relationships and typed metadata are validated before recovery, without adding an all-events decode or whole-store foreign-key-repair gate.
 
 Those commits already stamped version 1. Version 0 is recognized **only** when its nonempty schema exactly matches one of these known shapes with a missing version stamp; the fixture tests deliberately clear that stamp. This is not a claim that a published version-0 release existed. No missing feature table is guessed or repaired. A genuinely new version-0 database must contain no schema objects. A source-only replay-index layout is not historical and is refused. Missing unique replay indexes are created transactionally; duplicate native source keys cause the opening to fail without deleting/deduplicating data or committing recovery.
 
@@ -75,7 +79,7 @@ External replacement/unlinking of a live database or its guard is outside this o
 
 Future-version refusal guarantees no application write SQL, journal-mode change, DDL, checkpoint, recovery or version write before rejection. Acquiring/creating the private ownership sidecar is filesystem bookkeeping and does not modify database logical contents. SQLite's own open/recovery/sidecar housekeeping remains outside the byte-for-byte invariance claim.
 
-## I05a candidate verification evidence
+## Historical I05a candidate verification evidence
 
 The original developer candidate `fc2b9aa` was blocked by independent review `ce482da`: deleting all SQL whitespace conflated real constraints with type-name lookalikes, and recovery could insert an event with a NULL sequence. The follow-up replaces that normalizer with token identity plus parsed-metadata checks. It does not alter the accepted ownership/recovery/I01 contracts; independent follow-up acceptance is still required.
 

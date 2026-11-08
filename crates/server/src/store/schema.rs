@@ -10,7 +10,7 @@ mod identity;
 #[path = "ownership.rs"]
 mod ownership;
 pub(super) use ownership::OwnerGuard;
-pub(super) const CURRENT_VERSION: i64 = 1;
+pub(super) const CURRENT_VERSION: i64 = 2;
 
 const BASE: &str = "
 CREATE TABLE sessions(id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -24,7 +24,7 @@ CREATE TABLE composer_metadata(session_id TEXT NOT NULL REFERENCES sessions(id) 
 CREATE TABLE message_edits(operation_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, data TEXT NOT NULL);";
 const HARNESS_INDEX: &str = "CREATE UNIQUE INDEX harness_replay_identity ON events(session_id,json_extract(data,'$.params.harnessEventKey')) WHERE json_extract(data,'$.params.harnessEventKey') IS NOT NULL;";
 const SOURCE_INDEX: &str = "CREATE UNIQUE INDEX source_replay_identity ON events(session_id,json_extract(data,'$.params.sourceEventKey')) WHERE json_extract(data,'$.params.sourceEventKey') IS NOT NULL;";
-const MIGRATIONS: &[(i64, &str)] = &[(1, BASE)];
+const MIGRATIONS: &[(i64, &str)] = &[(1, BASE), (2, super::operations::DDL)];
 
 static OPENING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -55,10 +55,16 @@ pub(super) fn open(path: &Path) -> Result<(Connection, Option<OwnerGuard>)> {
         supported(original)?;
         let shape = validate_schema(&tx, original)?;
         validate_rows(&tx, shape.empty)?;
+        if original == 2 {
+            super::operations::validate(&tx)?;
+        }
         for &(target, ddl) in MIGRATIONS {
             if original < target {
-                if shape.empty {
+                if target != 1 || shape.empty {
                     tx.execute_batch(ddl)?;
+                }
+                if target == 2 {
+                    super::operations::initialize(&tx)?;
                 }
                 fault("after_ddl")?;
                 tx.pragma_update(None, "user_version", target)?;
@@ -77,7 +83,10 @@ pub(super) fn open(path: &Path) -> Result<(Connection, Option<OwnerGuard>)> {
         }
         fault("before_recovery")?;
         validate_schema(&tx, CURRENT_VERSION)?;
+        super::operations::validate(&tx)?;
         recover(&tx)?;
+        super::operations::recover(&tx)?;
+        super::operations::validate(&tx)?;
         fault("before_commit")?;
         tx.commit()?;
     }
@@ -126,6 +135,9 @@ fn validate_schema(db: &Connection, ver: i64) -> Result<Shape> {
     reference.execute_batch(BASE)?;
     reference.execute_batch(HARNESS_INDEX)?;
     reference.execute_batch(SOURCE_INDEX)?;
+    if ver == 2 {
+        reference.execute_batch(super::operations::DDL)?;
+    }
     let expected = objects(&reference)?;
     let has_harness = found.contains_key("harness_replay_identity");
     let has_source = found.contains_key("source_replay_identity");
@@ -142,10 +154,11 @@ fn validate_schema(db: &Connection, ver: i64) -> Result<Shape> {
         );
     }
     for name in expected.keys().filter(|name| {
-        !matches!(
-            name.as_str(),
-            "harness_replay_identity" | "source_replay_identity"
-        )
+        ver == 2
+            || !matches!(
+                name.as_str(),
+                "harness_replay_identity" | "source_replay_identity"
+            )
     }) {
         anyhow::ensure!(
             found.contains_key(name),
