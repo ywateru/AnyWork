@@ -1,7 +1,7 @@
 ---
 id: improvement-runtime-lifecycle-design
 scope: prioritized-project-improvement
-status: in-progress
+status: done
 depends-on: [improvement-capability-observations]
 ---
 
@@ -36,3 +36,7 @@ Explain interaction with I02 preparation claims/immutable native identity, I03 r
 ## Verification
 
 Provide concrete module, real fake-native HTTP and actor/cancellation tests with call counts: two concurrent creates; setup failure/cancel/timeout/session deletion; attachment initial emissions; replacement across each await; old actor/event/exited/automatic response; same-Arc reconnect; invalid peer/snapshot/version; no prompt replay; current occurrence binding; closure/overflow/clock expiry; scoped reads with zero native calls/Store writes. Cover lock/liveness with bounded timeouts rather than sleeps or forced scheduling assumptions. List public/legacy protocol effects and real upstream/platform gaps. A different reviewer checks exact committed contract and key source chains; a design pass does not complete runtime source or native acceptance.
+
+## Accepted design, not source implementation
+
+Candidate `1d92f714f829bc79079016cfed58451190cff8ff` passed independent static/source-chain review `cb924b8563d7c279da60f059d98949a798c7599b` and was merged with its review record. Both P2 implementation clarifications are made explicit in the contract: automatic-response gate waits must not block the normal event consumer, and native Start/Steer cannot stand in for I02's worker/manual authority. No code/build/native test was performed for this design-only gate. SDK primitives, complete connected runtime/adapter migration, durable non-message creation authority and real native/platform acceptance remain separate deliverables; I07 is not complete.
