@@ -1,6 +1,6 @@
 # Dormant qualified SDK transport (I07b1-A)
 
-Status: source candidate `123cc1c` independently accepted at review `bb16eff`; merged local regression is pending. The [lifecycle contract](runtime-lifecycle.md) remains authoritative. Only `crates/agent-sdk` is implemented here; production Runtime/server/adapters/Store/Web do not consume this API. Native-positive capability actions remain denied. Full B/C, durable preparation/creation, native writing and platform acceptance remain open.
+Status: source candidate `123cc1c` independently accepted at review `bb16eff`; merged local regression remains open after a short-mobile browser timeout; see [exact evidence](plan/reviews/improvement-sdk-ledger-merged.md). The [lifecycle contract](runtime-lifecycle.md) remains authoritative. Only `crates/agent-sdk` is implemented here; production Runtime/server/adapters/Store/Web do not consume this API. Native-positive capability actions remain denied. Full B/C, durable preparation/creation, native writing and platform acceptance remain open.
 
 ## Selected API and authority
 
