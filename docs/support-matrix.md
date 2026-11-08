@@ -1,6 +1,6 @@
 # 支持与验收矩阵 / Support and acceptance matrix
 
-更新日期：2026-11-07。维护位置：本文是当前 Agent/拓扑、平台和验收边界的统一入口；原生协议细节与历史测试计数保留在链接的专门契约/验收记录中。应用版本仍为 0.1.12；后续未发行源码改进见[交付进度](plan/improvement-progress.md)。不把源码已合并自动视为已发布或已实机验收。
+更新日期：2026-11-08。维护位置：本文是当前 Agent/拓扑、平台和验收边界的统一入口；原生协议细节与历史测试计数保留在链接的专门契约/验收记录中。公开版本以 [GitHub Release](https://github.com/ywateru/AnyWork/releases/latest) 为准，源码改进及对应验收见[交付进度](plan/improvement-progress.md)。不把源码已合并自动视为已发布或已实机验收。
 
 ## 状态的含义 / State definitions
 

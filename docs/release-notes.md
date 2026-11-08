@@ -2,7 +2,33 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.12 / 本次更新**
+**New in 0.1.13 / 本次更新**
+
+Global event streams and polling now enforce the same workspace and Agent scope as the conversation list. Bounded scan cursors advance through hidden records so reconnecting and polling can reach subsequent visible updates without exposing out-of-scope message bodies.
+
+全局事件流与轮询现在遵循与会话列表一致的工作目录及 Agent 范围。扫描游标可以越过不可见记录，继续接收后续可见更新，避免泄露范围外的消息正文。
+
+The file editor now uses content revisions for conditional saves. Conflicts and uncertain results retain the draft, with explicit comparison and baseline selection before another save. Concurrent saves through one AnyWork service are serialized across path aliases. Native editors and Agents do not share this lock; arbitrary external writes are not an atomic compare-and-swap guarantee.
+
+文件编辑器新增基于内容版本的条件保存。冲突或保存结果不确定时保留草稿，支持比较最新文件并明确选择新的保存基线。同一 AnyWork 服务内的并发保存统一协调路径别名；原生编辑器与 Agent 不共享此锁，不能保证对任意外部写入实现原子比较替换。
+
+Database opening now validates known schemas, takes exclusive service ownership and commits migration/startup recovery transactionally. This release introduces **schema version 2** and internal durable-operation storage. Restart recovery preserves uncertain work without automatically replaying Agent commands. Full backup/restore tooling remains future work.
+
+数据库打开新增已知结构验证、服务独占保护，以及迁移和启动恢复的事务处理。本版引入 **数据库结构版本 2** 和内部持久操作记录模块；重启恢复保留不确定状态，不自动重放 Agent 命令。完整备份与恢复工具仍待后续实现。
+
+**Upgrade caution:** stop the old service before upgrading. If a rollback may be needed, privately preserve the complete stopped data directory, including attachments and any remaining SQLite sidecars, before the first new-version startup. Published 0.1.12 and earlier must **not** open a directory already migrated to v2; replacing the application does not downgrade data. Use an untouched pre-upgrade copy for a rollback. See [schema and recovery](https://github.com/ywateru/AnyWork/blob/main/docs/schema-and-recovery.md).
+
+**升级注意：**先停止旧服务。若需保留回退可能，应在首次启动新版之前，私下保存停止状态下的完整数据目录，包括附件和仍存在的 SQLite 附属文件。**不要使用已发布的 0.1.12 或更早版本打开已经升级至 v2 的目录**；更换程序不能回退数据结构。回退时应使用未被新版打开过的升级前副本，详见数据库与恢复说明。
+
+Adds a read-only capability projection and dormant qualified SDK transport/operation-ledger foundations. These modules do not activate a new sending path, universal hot takeover or end-to-end exactly-once delivery. Agent-specific execution limits, including experimental WorkBuddy sharing, remain in the [support matrix](https://github.com/ywateru/AnyWork/blob/main/docs/support-matrix.md).
+
+新增只读能力投影，以及尚未接入现有执行路径的限定 SDK 传输与持久操作基础模块。这些模块不代表已启用新的消息发送链路、任意进程热接管或端到端仅执行一次保证。各 Agent 的执行边界（包括实验性的 WorkBuddy 共享）继续以支持矩阵为准。
+
+Publication is now a resumable single command: `python3 scripts/publish.py`. Exact-source Checks gate immutable releases; the workflow builds all installers, refreshes the bilingual website and verifies asset digests and update metadata. Checks include actual container acceptance and SDK package tests on Windows using isolated fake processes, not native-Agent acceptance. Publication verification does not replace installed-upgrade testing. Long-list mobile touch coverage retains real gestures and strict scroll boundaries with a more efficient input driver.
+
+发布统一为可续跑的一条命令：`python3 scripts/publish.py`。精确源码检查通过后才创建不可变发行，自动构建各平台安装包、刷新双语网站并核验文件摘要与更新元数据。检查包含实际容器验收，以及使用隔离假进程在 Windows 上运行的 SDK 包测试，不代表真实 Agent 验收；发行核验也不替代实装升级测试。长列表移动端回归保留真实触摸及严格滚动边界，改进输入驱动效率。
+
+**History and WorkBuddy fixes in 0.1.12 / 历史会话与 WorkBuddy 修复**
 
 Discover existing local DeepSeek Harness and WorkBuddy histories alongside Codex, including conversations from other projects when `--agent-scope all` is enabled. Desktop-managed service launches enable that scope. Saved text and tool results remain readable without an execution host; native child sessions keep their parent relationship. Existing Agent icons, filters, search, directory ordering, archive state and filtering apply to these histories too.
 

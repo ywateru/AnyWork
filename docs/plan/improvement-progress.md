@@ -2,6 +2,8 @@
 
 Goal: implement improvements in the priority order of [the review](../project-improvement-review.md). User authorized continued work on 2026-11-07. Review baseline is immutable historical evidence; this tracker records later implementation/verification so old findings are not silently rewritten.
 
+**Current scope — 2026-11-08:** the user paused the broad improvement goal, then separately authorized organizing the project and publishing an updated version. Only the known touch-test release blocker, release documentation and publication are proceeding. Unreviewed connected-delivery/Desktop research remains isolated and excluded. Historical activity statements below describe their original checkpoints, not a resumption of G1—G4.
+
 | Stage | Issues | Current state / next evidence |
 | --- | --- | --- |
 | G0 | I01/I04/I20/I22/I25 | Done for scoped source delivery: independent reviews, [merged local checks](reviews/improvement-g0-merged.md), all four exact-source Checks jobs and actual read-only gate selection passed at `83eda6c`; later source requires its own Checks |
