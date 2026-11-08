@@ -25,11 +25,15 @@ export async function touchStroke(
     type: "touchStart",
     touchPoints: point(from),
   });
-  for (let step = 1; step <= 4; step++) {
+  // Two frame-separated move samples cover the full stroke, including a real
+  // midpoint after touch slop. More samples add a CDP/RAF round trip each and
+  // dominate long, short-viewport boundary traversals without adding coverage.
+  const samples = 2;
+  for (let step = 1; step <= samples; step++) {
     await animationFrame(page);
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchMove",
-      touchPoints: point(from + ((to - from) * step) / 4),
+      touchPoints: point(from + ((to - from) * step) / samples),
     });
   }
   await animationFrame(page);
