@@ -1,7 +1,7 @@
 ---
 id: improvement-runtime-transport
 scope: prioritized-project-improvement
-status: ready
+status: in-progress
 depends-on: [improvement-runtime-lifecycle-design]
 ---
 
@@ -40,3 +40,7 @@ The server manager will eventually construct and consume the qualifying authorit
 Use the actual SDK transports and deterministic fake endpoints with barriers/oneshots and bounded timeouts: revoke before enqueue, while queued, immediately before admission and after admission; assert exact wire/invoke counts and uncertainty classification. Cover partial stdio writes, socket queue pressure, bridge consumer refusal/mandatory admission, pending-call cancellation, EOF/close/producer failure with full metadata queues, repeated close and nonrevivable old bindings. Assert receipt byte/count bounds and resource reclamation. Owned child shutdown must reap the test process; external teardown must leave its fake host alive. Existing SDK/bridge tests and dependent workspace compilation must pass without production integrations changing behavior.
 
 A different reviewer checks the exact committed candidate and independently exercises negative final-writer/closure cases. Root merges only after that pass and appropriate merged regressions. Complete B/C still requires internal runtime singleflight, qualified attach/history/media/child effects, all existing callers, same-Arc reconnect validation, nonblocking automatic responses and durable preparation/creation integration. This task cannot retire those gates or enable native-positive capabilities.
+
+## Dispatch evidence
+
+Independent static review `6290eeee123f430b8cac4e6dbcc07598279cbec6` passed exact task `3e980bf20e0eb4ab6e6c66738b2541223e131e28`, with the unmigrated bridge seam explicitly retained as an implementation gate. Development is dispatched in `codex/improve-runtime-transport` from that accepted baseline. No source candidate or transport-test evidence exists at dispatch; implementation and exact-source review remain open.
