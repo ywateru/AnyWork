@@ -1,5 +1,6 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 use anywork_desktop::{
+    accounts,
     bridge::{self, DesktopState},
     config,
     manager::{self, Phase, Snapshot},
@@ -70,6 +71,8 @@ fn run() -> anyhow::Result<()> {
     } else {
         manager::start(options)?
     };
+    let account = accounts::Handle::new(config::support_dir(), handle.clone(), preview.is_some())?;
+    let quit_account = account.clone();
     let quitting = Arc::new(AtomicBool::new(false));
     let finished = Arc::new(AtomicBool::new(false));
     let finished_event = finished.clone();
@@ -77,12 +80,24 @@ fn run() -> anyhow::Result<()> {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updater.clone())
+        .manage(account.clone())
         .manage(DesktopState {
             handle: handle.clone(),
             preview,
         })
         .invoke_handler(tauri::generate_handler![
             bridge::desktop_snapshot,
+            accounts::account_snapshot,
+            accounts::account_begin,
+            accounts::account_open,
+            accounts::account_fetch,
+            accounts::account_wait_callback,
+            accounts::account_commit,
+            accounts::account_cancel,
+            accounts::account_enable,
+            accounts::account_recover,
+            accounts::account_disable,
+            accounts::account_logout,
             bridge::desktop_preview,
             bridge::desktop_cloudflared_status,
             bridge::desktop_install_cloudflared,
@@ -154,9 +169,11 @@ fn run() -> anyhow::Result<()> {
             api.prevent_exit();
             if !quitting.swap(true, Ordering::SeqCst) {
                 let handle = quit_handle.clone();
+                let account = quit_account.clone();
                 let app = app.clone();
                 let finished = finished_event.clone();
                 tauri::async_runtime::spawn(async move {
+                    account.disable().await;
                     handle.shutdown().await;
                     finished.store(true, Ordering::SeqCst);
                     app.exit(0);
@@ -164,7 +181,10 @@ fn run() -> anyhow::Result<()> {
             }
         }
     });
-    runtime.block_on(handle.shutdown());
+    runtime.block_on(async {
+        account.disable().await;
+        handle.shutdown().await;
+    });
     runtime.shutdown_timeout(std::time::Duration::from_secs(2));
     Ok(())
 }
