@@ -37,7 +37,7 @@ export default function RequestCard(props: RequestCardProps) {
   return (
     <RequestCardContent
       key={JSON.stringify([
-        props.api.connection.url,
+        props.api.connection.scope ?? props.api.connection.url,
         props.api.connection.token,
         props.event.session_id,
         props.event.method,

@@ -175,7 +175,7 @@ export default function ReviewPanel({
   useEffect(() => {
     const controller = new AbortController();
     let loading = false;
-    const key = `${api.connection.url}:${id}:${query}`;
+    const key = `${api.connection.scope ?? api.connection.url}:${id}:${query}`;
     if (dataKey.current !== key) {
       setData(null);
       setError("");

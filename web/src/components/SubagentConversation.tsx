@@ -126,7 +126,7 @@ export default function SubagentConversation({
                 latestWorking={
                   index === view.turns.length - 1 && agent.status === "active"
                 }
-                storageKey={`${api.connection.url}:${child.id}:${turn.id}`}
+                storageKey={`${api.connection.scope ?? api.connection.url}:${child.id}:${turn.id}`}
                 render={(message) => (
                   <ConversationMessage
                     key={message.id}
