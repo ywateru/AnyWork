@@ -13,7 +13,18 @@ import {
 import { ShieldCheck } from "lucide-react";
 import { createLocalJWKSet, jwtVerify, type JSONWebKeySet } from "jose";
 
-type AccountSnapshot = {
+type AuthorizationStatus =
+  | "signedOut"
+  | "authorizing"
+  | "loginInterrupted"
+  | "signedIn"
+  | "checkpointPending"
+  | "reauthRequired"
+  | "cleanupRequired"
+  | "unsupported";
+export type AccountSnapshot = {
+  authorizationStatus: AuthorizationStatus;
+  transactionId: string | null;
   signedIn: boolean;
   subject: string | null;
   enabled: boolean;
@@ -45,7 +56,25 @@ const message = "账号操作未完成，请检查登录状态、系统钥匙串
 let loginOwner:
   | { transactionId: string; client: LogtoClient; memory: Map<string, string> }
   | undefined;
-async function login(): Promise<void> {
+async function clearLogin(transactionId?: string): Promise<void> {
+  const owner = loginOwner;
+  const snapshot = await invoke<AccountSnapshot>("account_snapshot");
+  const id = transactionId ?? owner?.transactionId ?? snapshot.transactionId;
+  if (id && snapshot.transactionId === id) {
+    try {
+      await invoke("account_cancel", { transactionId: id });
+    } catch {
+      const after = await invoke<AccountSnapshot>("account_snapshot");
+      if (after.transactionId === id) throw new Error(message);
+    }
+  }
+  if (owner && (!id || owner.transactionId === id)) {
+    await owner.client.clearAllTokens();
+    owner.memory.clear();
+    if (loginOwner === owner) loginOwner = undefined;
+  }
+}
+async function login(mode: "register" | "signIn"): Promise<void> {
   if (loginOwner) throw new Error("上次登录仍在收尾，请先取消或退出账号。");
   const begin = await invoke<Begin>("account_begin");
   if (begin.restored) return;
@@ -150,6 +179,7 @@ async function login(): Promise<void> {
     await client.signIn({
       redirectUri: begin.redirectUri,
       prompt: [Prompt.Login, Prompt.Consent],
+      firstScreen: mode,
     });
     const callback = await invoke<string>("account_wait_callback", {
       transactionId: begin.transactionId,
@@ -178,10 +208,7 @@ async function login(): Promise<void> {
   } catch {
     if (!handedOff) {
       try {
-        await invoke("account_cancel", { transactionId: begin.transactionId });
-        await client.clearAllTokens();
-        memory.clear();
-        loginOwner = undefined;
+        await clearLogin(begin.transactionId);
       } catch {
         /* Retain the JS owner without refreshing until native ownership is resolved. */
       }
@@ -189,9 +216,10 @@ async function login(): Promise<void> {
     throw new Error(message);
   }
 }
-export function AccountPage({ localReady }: { localReady: boolean }) {
+export function useAccountController() {
   const [state, setState] = useState<AccountSnapshot | null>(null);
-  const [pending, setPending] = useState(false);
+  const [operations, setOperations] = useState(0);
+  const pending = operations > 0;
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
@@ -211,17 +239,157 @@ export function AccountPage({ localReady }: { localReady: boolean }) {
     };
   }, []);
   async function action(fn: () => Promise<unknown>) {
-    setPending(true);
+    setOperations((count) => count + 1);
     setError("");
     try {
       await fn();
-      setState(await invoke<AccountSnapshot>("account_snapshot"));
     } catch {
       setError(message);
     } finally {
-      setPending(false);
+      try {
+        setState(await invoke<AccountSnapshot>("account_snapshot"));
+      } catch {
+        setError(message);
+      }
+      setOperations((count) => count - 1);
     }
   }
+  // If IPC failed during cleanup, retain an explicit cancellation action for
+  // the matching memory adapter even when a later native snapshot is signed out.
+  const visibleState =
+    state?.authorizationStatus === "signedOut" && loginOwner
+      ? {
+          ...state,
+          authorizationStatus: pending
+            ? ("authorizing" as const)
+            : ("loginInterrupted" as const),
+        }
+      : state;
+  return {
+    state: visibleState,
+    pending,
+    error,
+    action,
+    signIn: (mode: "register" | "signIn") => action(() => login(mode)),
+    cancel: () => action(() => clearLogin()),
+    logout: () =>
+      action(async () => {
+        await invoke("account_logout");
+        await clearLogin();
+      }),
+  };
+}
+type AccountController = ReturnType<typeof useAccountController>;
+const statusLabels: Record<AuthorizationStatus, string> = {
+  signedOut: "尚未登录",
+  authorizing: "等待浏览器完成登录",
+  loginInterrupted: "登录已结束，请取消本次登录后重试",
+  signedIn: "已登录",
+  checkpointPending: "账号授权待保存",
+  reauthRequired: "本机授权需要重新登录",
+  cleanupRequired: "本机保存的授权需要检查",
+  unsupported: "当前平台暂不支持账号远程访问",
+};
+function AccountActions({ controller }: { controller: AccountController }) {
+  const { state, pending, signIn, cancel, logout, action } = controller;
+  if (!state) return <span role="status">正在读取账号状态</span>;
+  switch (state.authorizationStatus) {
+    case "signedOut":
+      return (
+        <>
+          <button disabled={pending} onClick={() => void signIn("register")}>
+            注册
+          </button>
+          <button
+            className="primary"
+            disabled={pending}
+            onClick={() => void signIn("signIn")}
+          >
+            登录
+          </button>
+        </>
+      );
+    case "authorizing":
+    case "loginInterrupted":
+      return <button onClick={() => void cancel()}>取消登录</button>;
+    case "signedIn":
+      return (
+        <button disabled={pending} onClick={() => void logout()}>
+          退出账号
+        </button>
+      );
+    case "checkpointPending":
+      return (
+        <>
+          <button
+            disabled={pending}
+            onClick={() => void action(() => invoke("account_recover"))}
+          >
+            重试保存账号
+          </button>
+          <button disabled={pending} onClick={() => void logout()}>
+            清理本机授权
+          </button>
+        </>
+      );
+    case "cleanupRequired":
+      return (
+        <>
+          <button disabled={pending} onClick={() => void signIn("signIn")}>
+            重试检查授权
+          </button>
+          <button disabled={pending} onClick={() => void logout()}>
+            清理本机授权
+          </button>
+        </>
+      );
+    case "reauthRequired":
+      return (
+        <button disabled={pending} onClick={() => void logout()}>
+          清理本机授权后重新登录
+        </button>
+      );
+    case "unsupported":
+      return null;
+  }
+}
+export function AccountEntry({
+  controller,
+  open,
+}: {
+  controller: AccountController;
+  open: () => void;
+}) {
+  return (
+    <section className="account-entry" aria-label="AnyWork 账号入口">
+      <div>
+        <strong>AnyWork 账号</strong>
+        <p role="status">
+          {controller.state
+            ? statusLabels[controller.state.authorizationStatus]
+            : "正在读取账号状态"}
+        </p>
+      </div>
+      <div className="account-entry-actions">
+        <AccountActions controller={controller} />
+        <button onClick={open}>账号与远程访问</button>
+      </div>
+      {controller.error && (
+        <p className="error" role="alert">
+          {controller.error}
+        </p>
+      )}
+    </section>
+  );
+}
+export function AccountPage({
+  localReady,
+  controller,
+}: {
+  localReady: boolean;
+  controller: AccountController;
+}) {
+  const { state, pending, error, action } = controller;
   return (
     <>
       <header>
@@ -235,57 +403,11 @@ export function AccountPage({ localReady }: { localReady: boolean }) {
         <h2>AnyWork 账号</h2>
         <p className="hint">注册和密码输入在登录服务中完成。</p>
         <p role="status">
-          {state?.signedIn
-            ? "已登录"
-            : state?.busy
-              ? "等待浏览器完成登录"
-              : "尚未登录"}
+          {state ? statusLabels[state.authorizationStatus] : "正在读取账号状态"}
         </p>
-        {state?.signedIn ||
-        state?.subject ||
-        state?.checkpointPending ||
-        error ? (
-          <button
-            disabled={pending}
-            onClick={() =>
-              void action(async () => {
-                await invoke("account_logout");
-                if (loginOwner) {
-                  await loginOwner.client.clearAllTokens();
-                  loginOwner.memory.clear();
-                  loginOwner = undefined;
-                }
-              })
-            }
-          >
-            退出账号
-          </button>
-        ) : (
-          <button
-            disabled={pending || state?.busy}
-            onClick={() => void action(login)}
-          >
-            注册 / 登录
-          </button>
-        )}
-        {(state?.busy || loginOwner) && (
-          <button
-            onClick={() =>
-              void action(async () => {
-                if (loginOwner) {
-                  await invoke("account_cancel", {
-                    transactionId: loginOwner.transactionId,
-                  });
-                  await loginOwner.client.clearAllTokens();
-                  loginOwner.memory.clear();
-                  loginOwner = undefined;
-                }
-              })
-            }
-          >
-            取消登录
-          </button>
-        )}
+        <div className="account-entry-actions">
+          <AccountActions controller={controller} />
+        </div>
       </section>
       <section className="settings-section">
         <h2>允许我的其他设备访问</h2>
@@ -341,14 +463,6 @@ export function AccountPage({ localReady }: { localReady: boolean }) {
           <p className="hint">开启远程访问后，可在此核对本机身份与公钥。</p>
         )}
 
-        {state?.checkpointPending && (
-          <button
-            disabled={pending}
-            onClick={() => void action(() => invoke("account_recover"))}
-          >
-            重试保存账号
-          </button>
-        )}
         {state?.checkpointPending && (
           <p role="alert">
             系统钥匙串保存未完成。访问令牌尚未提供给远程连接，请恢复钥匙串或退出账号后重试。

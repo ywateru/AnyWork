@@ -10,7 +10,7 @@ Account login alone does not enable remote access. The local user clicks “允�
 
 The public device index at `customData.anywork.devices[installationId]` includes `label`, `platform`, `publicKey`, `keyVersion:1`, `gridDeviceId`. The last field only joins the current authenticated CyberGrid directory; it is not an authorization claim. Private installation keys and refresh grants remain in the OS store. Account API writes preserve valid existing user aliases (the browser's 80 UTF-16 unit/no-control-character label contract), other devices, preferences and other namespaces. They are locally serialized, bounded and checked by comparing the complete customData read after writing; cross-device read/replace races remain possible. Device removal from this display index does not revoke a local owner.
 
-Public service configuration has safe release defaults and may be overridden by the local public `account-cloud.json` in the manager support directory for isolated integration environments. It contains endpoint/issuer/native and SPA client IDs/resource/Grid URL/frontend origin only; it cannot configure an arbitrary bearer or bypass encryption/JWT verification. Environment configuration and cloud-account billing status must be recorded independently from source acceptance.
+The current release defaults use the existing `ueg42e` Logto Development tenant and `anywork-cybergrid-dev` service, as explicitly requested for this stage. This is not a paid/production Logto tenant. The complete local public `account-cloud.json` in the manager support directory overrides those defaults for isolated environments or future self-hosting. It contains endpoint/issuer/native and SPA client IDs/resource/Grid URL/frontend origin only; it cannot configure an arbitrary bearer or bypass encryption/JWT verification. Environment configuration and cloud-account billing status must be recorded independently from source acceptance.
 
 ```text
 ┌ Account ───────────────────────────────────────────────┐
@@ -69,3 +69,44 @@ D3 author validation: desktop library 50 passed, four existing external tests ig
 用户明确要求当前客户端增加注册或登录。本阶段默认使用 `ueg42e` Development 租户及其专用 SPA/Native/resource/Grid，不等待 Cloud 生产套餐；后续部署自有 Logto。当前主界面必须有清晰的注册/登录入口，进入现有账号与远程访问页；注册和登录由官方托管页面完成，本机显式授权远程访问保持独立。失败或取消登录后必须可以重试，不应仅因已记录错误而显示“退出账号”。如果确有待恢复的本机授权，仍提供恢复/退出，不把它误标为普通未登录状态。
 
 `account-cloud.json` 是现有完整公开配置覆盖机制。自部署切换须一起更改 endpoint/issuer、SPA/Native IDs、resource、CyberGrid信任配置和精确回跳；使用新认证命名空间和新登录，不能复用旧issuer授权。本机不得加入管理令牌或后端业务存储。
+
+## Current client entry and failed-login recovery
+
+The overview and initial welcome screen directly show separate **注册** and **登录** actions beside the account status. The existing account/remote-access page remains available. Both entry points share one local controller and one official Logto adapter; `firstScreen:register` and `firstScreen:signIn` request the respective hosted screens. Registration does not grant remote access automatically.
+
+```text
+┌ AnyWork 账号 ───────────────────────────────────────────────┐
+│ 尚未登录                  [注册] [登录] [账号与远程访问] │
+└────────────────────────────────────────────────────────────┘
+  Existing overview / local service / advanced connections
+```
+
+An ordinary login/network error is display text, never evidence of an account grant. Native `authorizationStatus` owns the controls: signedOut shows registration/login; authorizing and loginInterrupted retain cancellation; signedIn offers logout; checkpointPending retains save retry/cleanup; reauthRequired retains cleanup/relogin; cleanupRequired offers re-reading or cleaning persisted authorization. Windows reports unsupported explicitly. A failed action immediately re-reads the native snapshot. Cancellation uses the native transaction ID even if the UI adapter was remounted, and an already completed cancellation clears only the matching JS adapter. Concurrent cancel/login completion cannot make a stale adapter block the next sign-in.
+
+Native cleanupRequired is raised only for persisted grant/config restoration problems, not an HTTP error. A callback timeout with no grant can cancel back to signedOut. A retained grant, uncertain rotation or failed checkpoint remains visible with recovery controls; it is never silently dropped to make the login buttons appear.
+
+## Development defaults and self-hosted override
+
+The default endpoint is `https://ueg42e.logto.app`, issuer `/oidc`, resource `https://anywork-cybergrid-dev.vercel.app/api`, Grid `https://anywork-cybergrid-dev.vercel.app`, frontend origin `https://anywork-tau.vercel.app`; native/SPA public IDs match the existing Development applications documented in [cloud configuration](cloud-configuration.md). No cloud-only environment variable is needed for this desktop default.
+
+For self-hosting, write all eight public fields in `<manager support>/account-cloud.json` before launching the manager. This file is a complete replacement; missing fields, unknown fields, insecure service URLs or an issuer inconsistent with the endpoint are rejected rather than merged with cloud defaults.
+
+```json
+{
+  "endpoint": "https://identity.example.org",
+  "issuer": "https://identity.example.org/oidc",
+  "nativeClientId": "self-hosted-native-app",
+  "spaClientId": "self-hosted-browser-app",
+  "resource": "https://grid.example.org/api",
+  "cybergridUrl": "https://grid.example.org",
+  "frontendOrigin": "https://work.example.org"
+}
+```
+
+Register the fixed native callback `http://127.0.0.1:17897/callback` at that issuer and align the browser/Grid public configuration and existing scope/signature/Account API contracts. The frontend origin is an exact browser Origin; HTTP is accepted only for explicit localhost/127.0.0.1 development origins. Keys, bearer tokens and user work data do not belong in this public configuration.
+
+The credential namespace now hashes the complete public configuration plus the local manager support directory. Any field change isolates both grants and installation identity and requires fresh authorization/registration. It never scans/imports credentials from old configurations. **Before migration, disable remote access and log out/revoke while the old configuration is active.** This namespace format also intentionally does not auto-import the earlier issuer/client-only namespace; use the earlier application/configuration to clean an earlier grant if one exists. If migration already happened, retain the old public config privately and return to it for cleanup; do not copy grants or private keys into the new environment. Unknown rotated grants retain the previously documented provider-revocation limitation.
+
+Client-entry author checks: 20 native account tests cover ordinary broker failure/callback interruption versus real grant/checkpoint recovery, Development defaults, complete self-hosted override/rejection and every public field's namespace isolation. `npm run test:account-entry --workspace desktop/ui -- http://127.0.0.1:3229` runs a synthetic Tauri bridge against a separately started desktop Vite server on that port; it exercises actual rendered controls, both official hosted-screen URLs, no-grant failure/retry, pending-login cancellation race and visible recovery states. It performs no cloud/OAuth/Keychain operations. Root performs the real native test-user login separately; this headless bridge is not a real native acceptance claim.
+
+Final client-entry checks: workspace clippy with `--all-targets -- -D warnings`, Rust formatting, desktop library 54 passed/four existing external tests ignored, UI TypeScript/production build and rendered entry regressions passed. The UI regression also covers an IPC cleanup-read failure after native cancellation: a retained memory adapter keeps an explicit cancellation action until cleaned, and never turns a generic error into logout. Welcome registration is keyboard reachable. A fresh macOS arm64 `target/debug/anywork-desktop` includes the built UI and Development defaults for the orchestrator's isolated real-user native acceptance; building it does not establish that acceptance.

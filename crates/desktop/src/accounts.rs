@@ -36,17 +36,37 @@ pub struct PublicConfig {
 impl Default for PublicConfig {
     fn default() -> Self {
         Self {
-            endpoint: "https://afwf0u.logto.app".into(),
-            issuer: "https://afwf0u.logto.app/oidc".into(),
-            native_client_id: "wqikraeyfzcsx5h6d4e9n".into(),
-            spa_client_id: "client3ico1d90eb82nd10ekz2a".into(),
-            resource: "https://anywork-cybergrid.vercel.app/api".into(),
-            cybergrid_url: "https://anywork-cybergrid.vercel.app".into(),
+            endpoint: "https://ueg42e.logto.app".into(),
+            issuer: "https://ueg42e.logto.app/oidc".into(),
+            native_client_id: "xfo4o0pmacag9qui4mrmf".into(),
+            spa_client_id: "4wu64isauau1xh9gkrh85".into(),
+            resource: "https://anywork-cybergrid-dev.vercel.app/api".into(),
+            cybergrid_url: "https://anywork-cybergrid-dev.vercel.app".into(),
             frontend_origin: "https://anywork-tau.vercel.app".into(),
         }
     }
 }
 impl PublicConfig {
+    fn load(support: &std::path::Path) -> Result<Self> {
+        let path = support.join("account-cloud.json");
+        let config = if path.exists() {
+            let bytes = std::fs::read(path)?;
+            if bytes.len() > 8192 {
+                bail!("INVALID_ACCOUNT_CONFIG")
+            }
+            serde_json::from_slice(&bytes)?
+        } else {
+            Self::default()
+        };
+        config.validate()?;
+        Ok(config)
+    }
+    fn namespace(&self, support: &std::path::Path) -> Result<String> {
+        let mut binding = serde_json::to_vec(self)?;
+        binding.push(0);
+        binding.extend_from_slice(support.as_os_str().as_encoded_bytes());
+        Ok(format!("account-{:x}", Sha256::digest(&binding)))
+    }
     fn validate(&self) -> Result<()> {
         for value in [
             &self.endpoint,
@@ -82,9 +102,23 @@ impl PublicConfig {
         Ok(())
     }
 }
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AuthorizationStatus {
+    #[default]
+    SignedOut,
+    Authorizing,
+    LoginInterrupted,
+    SignedIn,
+    CheckpointPending,
+    ReauthRequired,
+    CleanupRequired,
+}
 #[derive(Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    pub authorization_status: AuthorizationStatus,
+    pub transaction_id: Option<String>,
     pub signed_in: bool,
     pub subject: Option<String>,
     pub enabled: bool,
@@ -214,10 +248,14 @@ fn restore_grant(secrets: &dyn Secrets, config: &PublicConfig) -> Result<Option<
     let grant = if saved.is_empty() {
         None
     } else {
-        Some(serde_json::from_str::<Grant>(&saved)?)
+        Some(
+            serde_json::from_str::<Grant>(&saved)
+                .map_err(|_| anyhow::anyhow!("SAVED_AUTHORIZATION_NEEDS_CLEANUP"))?,
+        )
     };
     if !pending.is_empty() {
-        let value: Value = serde_json::from_str(&pending)?;
+        let value: Value = serde_json::from_str(&pending)
+            .map_err(|_| anyhow::anyhow!("PENDING_AUTHORIZATION_NEEDS_CLEANUP"))?;
         let expected_config = serde_json::to_value(config)?;
         if value.get("uncertain").is_some_and(|flag| flag != false)
             || !grant.as_ref().is_some_and(|grant| {
@@ -455,24 +493,8 @@ impl Secrets for AccountSecrets {
 }
 impl Handle {
     pub fn new(support: PathBuf, manager: manager::Handle, read_only: bool) -> Result<Self> {
-        let path = support.join("account-cloud.json");
-        let config: PublicConfig = if path.exists() {
-            let bytes = std::fs::read(&path)?;
-            if bytes.len() > 8192 {
-                bail!("INVALID_ACCOUNT_CONFIG")
-            };
-            serde_json::from_slice(&bytes)?
-        } else {
-            PublicConfig::default()
-        };
-        config.validate()?;
-        let binding = format!(
-            "{}\0{}\0{}",
-            config.issuer,
-            config.native_client_id,
-            support.display()
-        );
-        let prefix = format!("account-{:x}", Sha256::digest(binding.as_bytes()));
+        let config = PublicConfig::load(&support)?;
+        let prefix = config.namespace(&support)?;
         Ok(Self(Arc::new(Inner {
             read_only,
             config,
@@ -492,13 +514,26 @@ impl Handle {
     pub async fn snapshot(&self) -> Snapshot {
         let state = self.0.state.lock().await;
         let mut snapshot = state.snapshot.clone();
+        snapshot.transaction_id = state.transaction.as_ref().map(|tx| tx.id.clone());
         if let Some(owner) = &state.owner {
             let grant = owner.state.lock().await;
             snapshot.checkpoint_pending = grant.pending;
-            if grant.invalid || grant.uncertain {
-                snapshot.signed_in = false;
-                snapshot.error = Some("账号授权已失效，请退出账号后重新登录。".into());
-            }
+            snapshot.signed_in = !grant.pending && !grant.invalid && !grant.uncertain;
+            snapshot.authorization_status = if grant.invalid || grant.uncertain {
+                snapshot.error = Some("本机授权需要重新登录，请先清理已知授权。".into());
+                AuthorizationStatus::ReauthRequired
+            } else if grant.pending {
+                AuthorizationStatus::CheckpointPending
+            } else {
+                AuthorizationStatus::SignedIn
+            };
+        } else if let Some(tx) = &state.transaction {
+            snapshot.busy = !tx.stop.is_cancelled();
+            snapshot.authorization_status = if tx.stop.is_cancelled() {
+                AuthorizationStatus::LoginInterrupted
+            } else {
+                AuthorizationStatus::Authorizing
+            };
         }
         snapshot
     }
@@ -525,7 +560,26 @@ impl Handle {
         if state.transaction.is_some() || state.owner.is_some() {
             bail!("ACCOUNT_OPERATION_IN_PROGRESS")
         }
-        if let Some(grant) = restore_grant(self.0.secrets.as_ref(), &self.0.config)? {
+        let restored = match restore_grant(self.0.secrets.as_ref(), &self.0.config) {
+            Ok(grant) => grant,
+            Err(error) => {
+                if [
+                    "PENDING_AUTHORIZATION_NEEDS_CLEANUP",
+                    "SAVED_AUTHORIZATION_NEEDS_CLEANUP",
+                    "ACCOUNT_CONFIG_CHANGED",
+                ]
+                .contains(&error.to_string().as_str())
+                {
+                    state.snapshot.authorization_status = AuthorizationStatus::CleanupRequired;
+                    state.snapshot.error =
+                        Some("本机保存的授权需要检查；可重试读取或清理已知授权。".into());
+                }
+                return Err(error);
+            }
+        };
+        state.snapshot.authorization_status = AuthorizationStatus::SignedOut;
+        state.snapshot.error = None;
+        if let Some(grant) = restored {
             state.owner = Some(Arc::new(GrantOwner::new(
                 grant.clone(),
                 self.0.secrets.clone(),
@@ -1046,6 +1100,8 @@ impl Handle {
         let mut state = self.0.state.lock().await;
         state.transaction = None;
         state.snapshot.busy = false;
+        state.snapshot.authorization_status = AuthorizationStatus::SignedOut;
+        state.snapshot.error = None;
         Ok(())
     }
     async fn revoke(&self, refresh: &str) -> Result<()> {
@@ -1605,6 +1661,10 @@ mod tests {
         let (handle, secrets, calls) = cleanup_handle(axum::http::StatusCode::OK).await;
         persist_cleanup_grant(&handle, &secrets, true);
         assert!(handle.begin().await.is_err()); // No RAM owner after config mismatch.
+        assert_eq!(
+            handle.snapshot().await.authorization_status,
+            AuthorizationStatus::CleanupRequired
+        );
         assert!(handle.0.state.lock().await.owner.is_none());
         handle.logout().await.unwrap();
         assert_eq!(*calls.lock().unwrap(), vec!["persisted-only-grant"]);
@@ -1740,6 +1800,139 @@ mod tests {
         let saved: Grant = serde_json::from_str(&secrets.read(GRANT_KEY).unwrap()).unwrap();
         assert_eq!(saved.refresh, "newest-without-access");
         assert_eq!(owner.state.lock().await.grant.refresh, saved.refresh);
+    }
+    #[tokio::test]
+    async fn interrupted_login_without_grant_can_cancel_back_to_signed_out() {
+        let (handle, _, _) = cleanup_handle(axum::http::StatusCode::OK).await;
+        let tx = Arc::new(Transaction {
+            id: "test-login".into(),
+            expected_state: Mutex::new(None),
+            callback: Mutex::new(None),
+            notify: Notify::new(),
+            stop: CancellationToken::new(),
+            operation: Mutex::new(()),
+            latest: Mutex::new(None),
+        });
+        handle.0.state.lock().await.transaction = Some(tx.clone());
+        assert_eq!(
+            handle.snapshot().await.authorization_status,
+            AuthorizationStatus::Authorizing
+        );
+        // A failed network request is not evidence of a grant or cleanup state.
+        let response = handle
+            .fetch(
+                &tx.id,
+                BrowserRequest {
+                    url: format!("{}/jwks", handle.0.config.issuer),
+                    method: "GET".into(),
+                    headers: BTreeMap::new(),
+                    body: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status, 404);
+        assert_eq!(
+            handle.snapshot().await.authorization_status,
+            AuthorizationStatus::Authorizing
+        );
+        tx.stop.cancel(); // Models the bounded callback timeout.
+        let interrupted = handle.snapshot().await;
+        assert_eq!(
+            interrupted.authorization_status,
+            AuthorizationStatus::LoginInterrupted
+        );
+        assert_eq!(interrupted.transaction_id.as_deref(), Some("test-login"));
+        handle.cancel(&tx.id).await.unwrap();
+        let after = handle.snapshot().await;
+        assert_eq!(after.authorization_status, AuthorizationStatus::SignedOut);
+        assert!(!after.busy && !after.signed_in && !after.checkpoint_pending);
+        assert!(after.transaction_id.is_none());
+    }
+    #[tokio::test]
+    async fn checkpoint_and_uncertain_grants_remain_explicit_recovery_states() {
+        let (handle, secrets, _) = cleanup_handle(axum::http::StatusCode::OK).await;
+        let grant = persist_cleanup_grant(&handle, &secrets, false);
+        let owner = Arc::new(GrantOwner::new(grant, secrets).unwrap());
+        handle.0.state.lock().await.owner = Some(owner.clone());
+        assert_eq!(
+            handle.snapshot().await.authorization_status,
+            AuthorizationStatus::SignedIn
+        );
+        owner.state.lock().await.pending = true;
+        let pending = handle.snapshot().await;
+        assert_eq!(
+            pending.authorization_status,
+            AuthorizationStatus::CheckpointPending
+        );
+        assert!(!pending.signed_in && pending.checkpoint_pending);
+        {
+            let mut state = owner.state.lock().await;
+            state.pending = false;
+            state.uncertain = true;
+        }
+        assert_eq!(
+            handle.snapshot().await.authorization_status,
+            AuthorizationStatus::ReauthRequired
+        );
+        assert!(handle.recover_checkpoint().await.is_err());
+    }
+    #[test]
+    fn development_defaults_and_complete_self_hosted_override_are_validated() {
+        let dir = tempfile::tempdir().unwrap();
+        let defaults = PublicConfig::load(dir.path()).unwrap();
+        assert_eq!(defaults.endpoint, "https://ueg42e.logto.app");
+        assert_eq!(
+            defaults.cybergrid_url,
+            "https://anywork-cybergrid-dev.vercel.app"
+        );
+        let custom = PublicConfig {
+            endpoint: "https://identity.example.org".into(),
+            issuer: "https://identity.example.org/oidc".into(),
+            native_client_id: "self-native".into(),
+            spa_client_id: "self-spa".into(),
+            resource: "https://grid.example.org/api".into(),
+            cybergrid_url: "https://grid.example.org".into(),
+            frontend_origin: "https://work.example.org".into(),
+        };
+        let path = dir.path().join("account-cloud.json");
+        std::fs::write(&path, serde_json::to_vec(&custom).unwrap()).unwrap();
+        assert!(PublicConfig::load(dir.path()).unwrap() == custom);
+        let mut incomplete = serde_json::to_value(&custom).unwrap();
+        incomplete.as_object_mut().unwrap().remove("spaClientId");
+        std::fs::write(&path, serde_json::to_vec(&incomplete).unwrap()).unwrap();
+        assert!(PublicConfig::load(dir.path()).is_err());
+        let mut insecure = custom;
+        insecure.endpoint = "http://identity.example.org".into();
+        std::fs::write(&path, serde_json::to_vec(&insecure).unwrap()).unwrap();
+        assert!(PublicConfig::load(dir.path()).is_err());
+    }
+    #[test]
+    fn all_public_config_changes_isolate_grant_and_installation_namespace() {
+        let support = std::path::Path::new("/isolated-manager");
+        let defaults = PublicConfig::default();
+        let expected = defaults.namespace(support).unwrap();
+        assert_eq!(expected, defaults.clone().namespace(support).unwrap());
+        for key in [
+            "endpoint",
+            "issuer",
+            "nativeClientId",
+            "spaClientId",
+            "resource",
+            "cybergridUrl",
+            "frontendOrigin",
+        ] {
+            let mut changed = serde_json::to_value(&defaults).unwrap();
+            changed[key] = json!(format!("{}-changed", changed[key].as_str().unwrap()));
+            let config: PublicConfig = serde_json::from_value(changed).unwrap();
+            assert_ne!(config.namespace(support).unwrap(), expected, "{key}");
+        }
+        assert_ne!(
+            defaults
+                .namespace(std::path::Path::new("/another-manager"))
+                .unwrap(),
+            expected
+        );
     }
     #[test]
     fn public_configuration_rejects_insecure_or_crossissuer_endpoints() {
