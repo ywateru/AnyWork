@@ -75,3 +75,27 @@ The previous design persisted grants/private keys and used checkpoint/write-ahea
 An earlier native acceptance attempt stopped at the exact computer-use error “The Mac is locked and automatic unlock could not unlock it. Ask the user to unlock the Mac manually before continuing.” No consent screen or full Keychain/Grid chain was validated then. The outside-repository `/tmp/anywork-native-runtime.py` runner was an isolated test helper with empty workspace/history and disconnected fixture descriptors; it must be reviewed against the current candidate before reuse. Never read/migrate old test or user Keychain grants for memory-only acceptance. Keep existing user processes/history untouched.
 
 Memory-only author checks for this candidate: `CARGO_INCREMENTAL=0 cargo test -p anywork-desktop --lib` passed 45 tests with four existing external tests ignored (11 current account tests); desktop TypeScript/production build and rendered `test:account-entry` regression passed. These tests accessed no real Keychain, OAuth grants, user history or existing services. Full clippy/debug-binary checks are reported separately with the delivered candidate.
+
+## Safe enable-stage diagnostics
+
+An enable failure returns one fixed typed stage code through the native boundary. The UI accepts only the exact allowlist, renders a fixed explanation with that code, and keeps retries manual. Unknown IPC errors retain the generic message. Underlying provider/SDK/HTTP errors are discarded at this boundary, never appended or logged; tokens, public tunnel URLs and provider response bodies cannot become diagnostics. These codes identify the failed step, not its root cause or a successful restart acceptance.
+
+| Code suffix (`REMOTE_ENABLE_…`) | Step |
+| --- | --- |
+| `IDENTITY` | Read public installation ID / prepare fresh local key |
+| `GATEWAY` | Prepare JWT verifier / start local encrypted gateway |
+| `PROVIDER` | Resolve/start/configure public tunnel or await its URL |
+| `GRID_CLIENT` | Construct the RAM-only coordination client |
+| `GRID_CONFIG` | Fetch and verify pinned coordination auth configuration |
+| `RESOURCE_TOKEN` | Refresh Grid authorization through the sole RAM owner |
+| `GRID_REGISTER` | Register and install the new coordination session |
+| `GRID_EXPOSE` | Publish the encrypted gateway port |
+| `INDEX_TOKEN` | Refresh opaque Account API authorization |
+| `INDEX_READ` | Read the public account index and verify account identity |
+| `INDEX_SCHEMA` | Validate/merge index, key version, aliases and capacity |
+| `INDEX_WRITE` | Write the merged public index |
+| `INDEX_READBACK` | Read and compare the result after writing |
+
+The actual first memory-only native acceptance connected through a public Noise gateway and disable disconnected the browser. The subsequent same-manager restart correctly started signed out, but re-enabling after another login failed before updating the existing version-1 public record. This remains an integration blocker pending a targeted run with these diagnostics; it is not recorded as successful restart acceptance.
+
+Diagnostics author validation: desktop library 47 passed/four existing external tests ignored; the additional tests exercise all 13 fixed codes, discard a synthetic secret/URL cause, and call the real index-publication path against isolated token/read/schema/write/readback failures while counting requests. UI build and rendered regression verify stage visibility, one request per click, and generic fallback for arbitrary URL-bearing errors. These checks do not establish the real restart failure's cause.

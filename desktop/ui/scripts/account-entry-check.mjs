@@ -58,10 +58,10 @@ try {
               token: "",
               secrets: ["", "", ""],
               secrets_loaded: false,
-              service: "off",
+              service: window.fixtureLocalReady ? "running" : "off",
               owned: false,
               external: false,
-              authorized: false,
+              authorized: Boolean(window.fixtureLocalReady),
               clients: [],
               routes: [0, 1, 2].map(() => ({
                 phase: "off",
@@ -146,6 +146,7 @@ try {
             callbackReject?.(new Error("fixture cancelled"));
             return;
           }
+          if (command === "account_enable") throw window.fixtureEnableError;
           if (command === "account_logout") {
             window.fixtureAccount = signedOut();
             return;
@@ -260,6 +261,48 @@ try {
     page.getByRole("button", { name: "重试保存账号", exact: true }),
   ).toHaveCount(0);
   await page.evaluate(() => {
+    window.fixtureLocalReady = true;
+  });
+  const enable = page.getByRole("button", {
+    name: "开启远程访问",
+    exact: true,
+  });
+  await expect(enable).toBeEnabled();
+  for (const code of [
+    "REMOTE_ENABLE_PROVIDER",
+    "REMOTE_ENABLE_GRID_REGISTER",
+    "REMOTE_ENABLE_INDEX_READ",
+    "REMOTE_ENABLE_INDEX_SCHEMA",
+    "REMOTE_ENABLE_INDEX_WRITE",
+    "REMOTE_ENABLE_INDEX_READBACK",
+  ]) {
+    await page.evaluate((code) => {
+      window.fixtureEnableError = code;
+    }, code);
+    const before = await page.evaluate(
+      () => window.fixtureCalls.filter((v) => v === "account_enable").length,
+    );
+    await enable.click();
+    await expect(page.getByRole("alert")).toContainText(`（${code}）`);
+    assert.equal(
+      await page.evaluate(
+        () => window.fixtureCalls.filter((v) => v === "account_enable").length,
+      ),
+      before + 1,
+    );
+  }
+  await page.evaluate(() => {
+    window.fixtureEnableError =
+      "provider body https://secret.invalid/?token=do-not-display";
+  });
+  await enable.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "账号操作未完成，请检查登录状态和网络后重试。",
+  );
+  await expect(page.getByText("do-not-display", { exact: false })).toHaveCount(
+    0,
+  );
+  await page.evaluate(() => {
     window.fixtureAccount = {
       ...window.fixtureAccount,
       authorizationStatus: "reauthRequired",
@@ -294,7 +337,7 @@ try {
   });
   assert.deepEqual(errors, []);
   console.log(
-    "Desktop account entry: failure retry, separate official screens, pending cancellation race, memory-only notice, account identity and reauth controls passed.",
+    "Desktop account entry: failure retry, separate official screens, pending cancellation race, memory-only notice, account identity, reauth and safe enable-stage controls passed.",
   );
 } finally {
   await browser.close();
