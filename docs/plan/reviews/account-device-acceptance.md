@@ -2,17 +2,19 @@
 
 > 当前交付修订：本阶段使用 Development Logto，不购买生产套餐；现有客户端注册/登录入口见[当前任务](../tasks/account-client-entry.md)。用户进一步要求不使用本地钥匙串，新账号授权/私钥改为进程内存，退出后重新登录；旧Keychain实现及测试为历史证据。修订源码已独立验收；真实重启链路阻断及当前结果见下节。
 
-状态：本阶段的现有客户端入口、Development配置和纯内存原生账号修订已独立审查并合并，合并系统检查通过。真实原生首次登录→启用→Web发现→加密访问→关闭已通过；同安装重启后再次开启失败仍阻断最终交付。尚未部署新版官网、更新安装客户端或既有用户服务。用户授权实施、整体测试并更新；方案见 [设计](../../account-device-cloud-review.md)，任务见 [当前交付](../tasks/account-client-entry.md)。下方早期基线记录保留为历史，不代表当前修订结果。
+状态：现有客户端入口、Development配置、纯内存原生账号及安全诊断修订已独立审查并合并。真实隔离原生首次开启、同安装进程重启后重新登录/换钥、Web公网加密工作区以及关闭/退出均已观察通过。一次早期再次开启失败未复现，具体原因未证；保留失败历史与网络限制。合并影响范围检查发现测试夹具未处理新增只读轮询，修订正在独立复验。尚未部署新版官网或更新安装客户端/既有用户服务。用户授权实施、整体测试并更新；方案见 [设计](../../account-device-cloud-review.md)，任务见 [当前交付](../tasks/account-client-entry.md)。下方早期基线记录保留为历史。
 
 ## 当前客户端修订验收（优先于下方历史记录）
 
-2026-11-09，当前合并源码 `e3ffdf7`。Web现有客户端入口、Development完整配置和原生纯内存账号版本已分别通过独立审查并合并，详见 [Web入口](account-client-web-01.md)、[Cloud配置](account-client-cloud-02.md)、[内存原生账号](account-client-desktop-memory-01.md)。历史Keychain、生产付费套餐或锁屏条件不能作为本阶段仍需完成的要求。
+2026-11-09，内存主修订合并源码 `e3ffdf7`；固定安全诊断合并 `1a7c41d`。Web现有客户端入口、Development完整配置和原生纯内存账号版本已分别通过独立审查并合并，详见 [Web入口](account-client-web-01.md)、[Cloud配置](account-client-cloud-02.md)、[内存原生账号](account-client-desktop-memory-01.md)。历史Keychain、生产付费套餐或锁屏条件不能作为本阶段仍需完成的要求。
 
-- 合并后桌面UI构建、Rust fmt、全workspace/all-target clippy、workspace tests、server/native build及全套Python系统/发布/cloud检查通过，日志 `/tmp/anywork-client-native-cloud-merged-check.log`。Web build、327 Vitest、8 Node检查通过；完整Chrome桌面/Android模拟浏览器套件 **611通过、1项既有桌面专用用例跳过**（21.0分钟）。最终诊断修订后仍需重跑受影响范围。
+- 合并后桌面UI构建、Rust fmt、全workspace/all-target clippy、workspace tests、server/native build及全套Python系统/发布/cloud检查通过，日志 `/tmp/anywork-client-native-cloud-merged-check.log`。Web build、327 Vitest、8 Node检查通过；完整Chrome桌面/Android模拟浏览器套件 **611通过、1项既有桌面专用用例跳过**（21.0分钟）。诊断合并后原生47通过/4既有忽略、remote6通过。随后重跑46项桌面UI影响范围，8项失败均为测试夹具将新增只读account_snapshot轮询计入engine命令日志；修复后作者46通过，独立复验进行中，原精确命令/无命令断言不放宽。
 - 用户提供测试账号的全新独立Web托管登录通过：Account200×2、Grid config/exchange/devices200、实际connect JWT、无management角色变更、1440/390px无溢出。见 [真实Web登录](account-client-web-live.md)。没有以已有测试账号登录证明新注册邮件已送达。
 - 真实隔离Native应用登录后手动开启远程访问，Web自动发现在线设备；对照本机公钥确认后，实际公网加密隧道进入空会话工作区。关闭远程访问使Web立即退出工作区。仅用空workspace/data/history、断开的宿主夹具和任务独占进程，没有访问用户业务会话。
-- 同support/config的进程重启后，Native显示尚未登录，没有恢复grant。重新登录同账号后开启远程访问失败，当前为**集成阻断**。只读Account API确认目标installation恰有1条，keyVersion整数1、公钥有效32bytes、GridID非空。未确认失败阶段，不能将首次成功与重启夹具测试拼成完整生命周期验收；下一步增加固定安全阶段码定位，不盲重试。
-- 新账号运行路径不使用Keychain；grant/访问令牌/私钥仅内存，唯一可持久化安装文件只含公开随机installationId。现有手动连接凭据处理不在此修订范围。首次成功与重启使用相同公开ID；真实换钥/旧pin确认仍待上述阻断关闭。
+- 同support/config的第二进程重启后，Native显示尚未登录，没有恢复grant。重新登录同账号后一次开启失败，旧目录仍version1。随后增加固定13阶段码（[独立审查](account-desktop-enable-diagnostics-01.md)），第三进程同home/config重新登录、手动开启成功；旧公开installationId不变，本机公钥改变。Web旧pin明确弹“公钥已改变”，新码与本机一致，确认后通过真实公网加密隧道进入空工作区。最后Native退出账号，Web立即离开工作区，Native最终显示尚未登录/远程关闭。独立只读Account200确认目录恰1条、keyVersion整数2、公钥有效32bytes、GridID非空。首次和重启成功均为实际GUI/服务链，不是拼接夹具。
+- 先前失败没有复现，不能断言其具体发生阶段或已修复某个已知restart逻辑bug；定向复测期间观察到Logto浏览器网络错误和CyberGrid公开HTTP连接重置，随后恢复响应。阶段码保留供后续诊断；无自动盲重试。此环境的网络稳定性不能由本次成功保证。
+- 新账号运行路径不使用Keychain；grant/访问令牌/私钥仅内存，唯一安装文件实际检查只含installationId。任务manager文件仅公开配置、公开安装ID、空隧道配置和manager配置/锁；没有账号secret文件。已有手动连接凭据处理不在此修订范围。Web换钥中英文提示已补充“客户端重启”，经独立审查接受。
+- 以上只用隔离空会话工作区；物理手机/蜂窝、新注册邮件投递及真实业务全路径仍分别受下方证据边界限制。实际业务HTTP/文件/PTY加密能力由既有22项真实Chrome/Rust互操作检查支持，不能误记为对用户现有会话做过远程写入。截图保存在本地忽略artifacts/anywork-client-restart-{remote,memory}.png，隔离app/server结束时只停止任务持有PID。
 - 前端Vercel项目与静态发布工具已准备，尚未部署；尚未更新安装客户端或既有用户服务。Logto保持Development，CyberGrid使用已就绪Development协调服务，不购买套餐。
 
 ## 证据规则
