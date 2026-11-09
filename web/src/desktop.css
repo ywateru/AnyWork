@@ -1574,3 +1574,61 @@ html:has(.codex-shell) {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.workspace-account-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.workspace-account-entry:hover {
+  background: var(--hover);
+}
+.workspace-account-entry:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.window-tabbar > .workspace-account-entry,
+.window-tabbar > .workspace-account-unavailable {
+  margin-left: auto;
+}
+.workspace-account-unavailable {
+  color: var(--muted);
+  font-size: 12px;
+}
+.login-account-intro {
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.login-account-intro p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.login-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.login-account-actions .workspace-account-entry:first-child {
+  color: var(--bg);
+  background: var(--text);
+  border-color: var(--text);
+}
+.login-form h2.manual-connect-title {
+  font-size: 18px;
+}

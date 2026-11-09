@@ -1,3 +1,4 @@
+import AccountEntry from "./components/AccountEntry";
 import { RunningStatus } from "./components/harness/RunningStatus";
 import { version as appVersion } from "../package.json";
 import NotificationCenter from "./components/NotificationCenter";
@@ -144,7 +145,12 @@ function chatLocation() {
 export default function App({
   initial,
   onDisconnect,
-}: { initial?: Connection; onDisconnect?: () => void } = {}) {
+  onDevices,
+}: {
+  initial?: Connection;
+  onDisconnect?: () => void;
+  onDevices?: () => void;
+} = {}) {
   const [connection, setConnection] = useState<Connection | null>(
       () => initial ?? initialConnection(),
     ),
@@ -1374,6 +1380,7 @@ export default function App({
               </button>
               {!session && sessionTabs}
               {!session && <NotificationCenter center={notifications} />}
+              <AccountEntry onDevices={onDevices} />
             </div>
             {!session && (
               <header className="topbar">
@@ -2195,7 +2202,16 @@ function Login({ onConnect }: { onConnect: (connection: Connection) => void }) {
         }}
       >
         <div className="eyebrow">AnyWork</div>
-        <h2>连接你的工作空间</h2>
+        <section className="login-account-intro" aria-label="账号与设备">
+          <h2>登录查看你的设备</h2>
+          <p>登录同一账号，找到已开启远程访问的电脑。</p>
+          <div className="login-account-actions">
+            <AccountEntry />
+            <AccountEntry signup />
+          </div>
+          <p className="hint">账号页面在新标签页打开，当前连接和工作保留。</p>
+        </section>
+        <h2 className="manual-connect-title">高级连接</h2>
         <p>输入服务器地址与访问令牌，开始远程工作。</p>
         <label>
           服务器地址

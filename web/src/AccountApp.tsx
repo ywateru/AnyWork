@@ -1,4 +1,5 @@
 import LogtoClient, { UserScope } from "@logto/browser";
+import { AccountLogtoClient } from "./accountAuth";
 import {
   createContext,
   useCallback,
@@ -24,7 +25,8 @@ import App from "./App";
 import type { Connection } from "./types";
 import {
   AccountError,
-  parseAccountConfig,
+  resolveAccountConfig,
+  accountStorageNamespace,
   type AccountConfig,
 } from "./accountConfig";
 import {
@@ -51,13 +53,16 @@ function AccountProvider({
 }) {
   const client = useMemo(
     () =>
-      new LogtoClient({
-        endpoint: config.endpoint,
-        appId: config.appId,
-        resources: [config.resource],
-        scopes: [UserScope.CustomData, "connect"],
-        requestTimeoutMs: 15000,
-      }),
+      new AccountLogtoClient(
+        {
+          endpoint: config.endpoint,
+          appId: config.appId,
+          resources: [config.resource],
+          scopes: [UserScope.CustomData, "connect"],
+          requestTimeoutMs: 15000,
+        },
+        config,
+      ),
     [config.endpoint, config.appId, config.resource],
   );
   const [isAuthenticated, setIsAuthenticated] = useState(false),
@@ -92,13 +97,6 @@ function AccountProvider({
     </LogtoContext.Provider>
   );
 }
-const publicDefaults = {
-  VITE_LOGTO_ENDPOINT: "https://afwf0u.logto.app",
-  VITE_LOGTO_APP_ID: "3ico1d90eb82nd10ekz2a",
-  VITE_LOGTO_RESOURCE: "https://anywork-cybergrid.vercel.app/api",
-  VITE_CYBERGRID_URL: "https://anywork-cybergrid.vercel.app",
-  VITE_CYBERGRID_NATIVE_APP_ID: "wqikraeyfzcsx5h6d4e9n",
-};
 const initialLocale = () => {
   try {
     const saved = localStorage.getItem("anywork.account.locale");
@@ -248,14 +246,7 @@ export default function AccountApp() {
   if (!location.pathname.startsWith("/app")) return <App />;
   let config: AccountConfig | null;
   try {
-    config = parseAccountConfig({
-      ...publicDefaults,
-      ...Object.fromEntries(
-        Object.entries(import.meta.env).filter(
-          ([key]) => key.startsWith("VITE_") && key in publicDefaults,
-        ),
-      ),
-    });
+    config = resolveAccountConfig(import.meta.env);
   } catch {
     return (
       <div className="account-config-error" role="alert">
@@ -560,13 +551,13 @@ function AccountHome({ config }: { config: AccountConfig }) {
     const listener = (event: StorageEvent) => {
       if (
         event.key === null ||
-        event.key.startsWith("logto:" + config.appId + ":")
+        event.key.startsWith("logto:" + accountStorageNamespace(config) + ":")
       )
         changed();
     };
     window.addEventListener("storage", listener);
     return () => window.removeEventListener("storage", listener);
-  }, [config.appId, getIdTokenClaims, closeConnection]);
+  }, [config.appId, config.issuer, getIdTokenClaims, closeConnection]);
   const signupStarted = useRef(false);
   useEffect(() => {
     if (
@@ -718,6 +709,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
         key={connection.scope}
         initial={connection}
         onDisconnect={closeConnection}
+        onDevices={closeConnection}
       />
     );
   const records = profile?.anywork.devices ?? {};
