@@ -10,6 +10,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import tempfile
@@ -138,6 +139,37 @@ def origin(value, development=False):
     return p.scheme + '://' + p.netloc
 
 
+PUBLIC_KEYS = ('VITE_LOGTO_ENDPOINT', 'VITE_LOGTO_APP_ID', 'VITE_LOGTO_RESOURCE',
+               'VITE_CYBERGRID_URL', 'VITE_CYBERGRID_NATIVE_APP_ID')
+
+
+def validate_public_config(values):
+    """Validate one complete frontend binding; never mix in another tenant."""
+    require(all(isinstance(values.get(key), str) and values[key] for key in PUBLIC_KEYS),
+            'All five public account configuration fields are required')
+    result = {key: values[key] for key in PUBLIC_KEYS}
+    require(not any(c.isspace() for value in result.values() for c in value),
+            'Public account configuration cannot contain whitespace')
+    try:
+        for key in ('VITE_LOGTO_ENDPOINT', 'VITE_CYBERGRID_URL'):
+            result[key] = origin(result[key])
+        for key in ('VITE_LOGTO_APP_ID', 'VITE_CYBERGRID_NATIVE_APP_ID'):
+            require(re.fullmatch(r'[A-Za-z0-9_-]{1,21}', result[key]), 'Invalid public application ID')
+        resource = urllib.parse.urlsplit(result['VITE_LOGTO_RESOURCE'])
+        require(resource.scheme == 'https' and resource.hostname and not resource.username
+                and not resource.password and not resource.query and not resource.fragment
+                and '*' not in resource.netloc and not any(c.isspace() for c in resource.netloc),
+                'Invalid public account resource')
+        resource.port  # Reject malformed/out-of-range ports without printing the submitted value.
+        for key in ('VITE_LOGTO_ENDPOINT', 'VITE_CYBERGRID_URL'):
+            parsed = urllib.parse.urlsplit(result[key])
+            parsed.port
+            require(re.fullmatch(r'[A-Za-z0-9.:[\]-]+', parsed.netloc), 'Invalid public account origin')
+    except ValueError:
+        raise ConfigurationError('Invalid public account configuration') from None
+    return result
+
+
 class Provisioner:
     def __init__(self, path, state):
         self.path, self.state = path, state
@@ -258,11 +290,13 @@ class Provisioner:
 
     def public(self):
         s = self.state
-        require(s.get('tenantEndpoint') and s.get('spaApplication') and s.get('nativeApplication'), 'Tenant/apps not configured')
-        return {'VITE_LOGTO_ENDPOINT': s['tenantEndpoint'], 'VITE_LOGTO_APP_ID': s['spaApplication']['id'],
-                'VITE_LOGTO_RESOURCE': s.get('gridResource', {}).get('indicator', s.get('gridOrigin', 'https://anywork-cybergrid.vercel.app') + '/api'),
-                'VITE_CYBERGRID_URL': s.get('gridOrigin', 'https://anywork-cybergrid.vercel.app'),
-                'VITE_CYBERGRID_NATIVE_APP_ID': s['nativeApplication']['id']}
+        require(s.get('tenantEndpoint') and s.get('spaApplication', {}).get('id')
+                and s.get('nativeApplication', {}).get('id') and s.get('gridOrigin')
+                and s.get('gridResource', {}).get('indicator'), 'Tenant/apps/resource/Grid not configured')
+        return validate_public_config({
+            'VITE_LOGTO_ENDPOINT': s['tenantEndpoint'], 'VITE_LOGTO_APP_ID': s['spaApplication']['id'],
+            'VITE_LOGTO_RESOURCE': s['gridResource']['indicator'], 'VITE_CYBERGRID_URL': s['gridOrigin'],
+            'VITE_CYBERGRID_NATIVE_APP_ID': s['nativeApplication']['id']})
 
 
 def main():

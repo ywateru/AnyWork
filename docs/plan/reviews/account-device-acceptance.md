@@ -75,3 +75,11 @@
 2. 用户明确授权生产 Logto **Pro24+RBAC32=56美元/月基础费用**后，才可执行立即扣首张账单的订阅 API；税费和超额用量以官方结算为准。官方SKU/额度读取证据和来源见[云配置](../../cloud-configuration.md)。当前生产仍为Free，Development不替代生产。
 3. 固定CyberGrid [LICENSE](https://github.com/ywateru/CyberGrid/blob/2bd6729c6bbee90ed2926410caca883a0a100890/LICENSE)仍为All rights reserved，未提供普通开源分发许可。公开分发SDK/客户端前需确定与AnyWork AGPL兼容的许可或权利人明确分发授权；不自行改写上游许可证。
 4. 新用户真实邮箱注册、邮件投递/默认connect权限，以及物理手机蜂窝→桌面Wi-Fi仍需各自实际验收。在上述门槛满足前，不启用 `ANYWORK_PRODUCTION_READY`、不打新版本/tag、不公开push产品或更新运行中的用户服务。门槛满足后按现有不可变发布器完成精确提交检查、生产Vercel构建、release/updater和最终下载/源码验证。
+
+## 当前继续实施状态（2026-11-09，用户修订后）
+
+用户随后明确要求修改当前客户端UI增加注册/登录，并先使用Development Logto、未来迁移自部署。[当前客户端任务](../tasks/account-client-entry.md)取代上节第2项的本阶段生产付费前置：本轮不购买Cloud套餐，不要求以生产租户替换开发租户。真实链路、独立审查和分发条件仍各自记录。
+
+本机随后已解锁；实际启动了唯一标识的 `AnyWork Acceptance.app`，空workspace/data/history、独立manager home与断开宿主描述，认证sessions库存为0。CUA确认实际账号页并点击“注册 / 登录”，进入等待浏览器状态；未完成OAuth或Keychain验收。等待结束后出现“尚未登录”但按钮为“退出账号”的错误状态，已作为当前Desktop修复范围。该隔离应用与其runner负责的server已停止，没有更改既有用户服务。之前锁屏证据为历史事实，不再是当前阻断。
+
+此轮新增工作分别实施Web现有工作区入口、Desktop直接入口与开发默认值、云构建配置/自部署迁移；尚未据此前完整检查宣称新改动通过。变更后需独立精确提交审查和相应合并验证。

@@ -24,8 +24,8 @@ class SourceExport(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def export(self, root=None, check=True):
-        return subprocess.run(['python3', str((root or self.root) / 'scripts/source-archive.py')],
+    def export(self, root=None, check=True, revision=None):
+        return subprocess.run(['python3', str((root or self.root) / 'scripts/source-archive.py')] + (['--revision', revision] if revision else []),
                               check=check, capture_output=True)
 
     def test_export_uses_tracked_public_files_and_neutral_metadata(self):
@@ -76,6 +76,31 @@ class SourceExport(unittest.TestCase):
                 self.assertIn('anywork/' + name, archive.getnames())
             for name in private:
                 self.assertNotIn('anywork/' + name, archive.getnames())
+
+    def commit(self):
+        subprocess.run(['git', '-C', str(self.root), '-c', 'user.name=Fixture', '-c',
+                        'user.email=fixture@example.invalid', 'commit', '-qm', 'source'], check=True)
+        return subprocess.check_output(['git', '-C', str(self.root), 'rev-parse', 'HEAD']).decode().strip()
+
+    def test_revision_export_uses_commit_not_dirty_working_tree_or_index(self):
+        revision = self.commit()
+        (self.root / 'README.md').write_text('dirty working bytes')
+        (self.root / 'new-staged.txt').write_text('not committed')
+        subprocess.run(['git', '-C', str(self.root), 'add', '.'], check=True)
+        self.export(revision=revision)
+        with tarfile.open(self.root / 'artifacts/anywork-source.tar.gz') as archive:
+            self.assertEqual(archive.extractfile('anywork/README.md').read(), b'Public source\n')
+            self.assertNotIn('anywork/new-staged.txt', archive.getnames())
+        self.assertNotEqual(self.export(check=False, revision='HEAD').returncode, 0)
+
+    def test_revision_export_rejects_committed_public_symlink_even_if_worktree_replaced_it(self):
+        (self.root / 'link.txt').symlink_to('README.md')
+        subprocess.run(['git', '-C', str(self.root), 'add', 'link.txt'], check=True)
+        revision = self.commit()
+        (self.root / 'link.txt').unlink()
+        (self.root / 'link.txt').write_text('apparently safe working file')
+        self.assertNotEqual(self.export(check=False, revision=revision).returncode, 0)
+        self.assertFalse((self.root / 'artifacts/anywork-source.tar.gz').exists())
 
     def test_symlink_to_private_content_is_rejected(self):
         outside = pathlib.Path(self.temp.name) / 'private.txt'

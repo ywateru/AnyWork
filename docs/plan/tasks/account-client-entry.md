@@ -22,7 +22,7 @@ depends-on: [account-web, account-desktop]
 
 1. Web：`web/`、`docs/account-web-layout.md`。在当前工作区增加常驻可发现的注册/登录或我的设备入口；支持桌面/移动；不能丢失手动连接状态或把旧业务请求送入账号模式。明确账号模式返回设备入口。完整公开构建配置覆盖用于迁移自部署。
 2. Desktop：`crates/desktop/`、`desktop/ui/`、`docs/account-desktop.md`。默认切换现有 Development tenant/clients/resource/Grid；当前主界面展示直接注册/登录入口，保留“账号与远程访问”页和显式远程授权。修复失败登录状态阻止重新登录问题，注册和登录应均可达。已有 account-cloud.json 是完整覆盖；配置切换隔离旧授权/安装身份并要求新授权。
-3. Cloud：`scripts/cloud/`、`.github/workflows/vercel.yml`、发布工具测试、`docs/cloud-configuration.md`。部署文案与开关允许明确的 Development-backed 本阶段交付，不能把它称作 Logto production；保留真实链路和精确源码验收条件。提供公开配置与自部署迁移步骤，不读写业务或付费升级。
+3. Cloud：`scripts/cloud/`、`.github/workflows/vercel.yml`、`vercel.json`、`scripts/assemble-vercel.py`、`scripts/source-archive.py`及其边界回归、`scripts/check.sh`、发布工具测试、`docs/cloud-configuration.md`、`docs/releasing.md`。部署文案与开关允许明确的 Development-backed 本阶段交付，不能把它称作 Logto production；保留真实链路和精确源码验收条件。提供公开配置与自部署迁移步骤，不读写业务或付费升级。
 
 ## verification
 
@@ -31,3 +31,11 @@ depends-on: [account-web, account-desktop]
 ## integration
 
 当前工作区 → 注册或登录 → 官方托管 Logto → 当前账号设备列表；本机客户端 → 登录/注册 → 显式允许远程访问 → Grid发现；自部署切换 → 配置新issuer/client/resource与Grid信任 → 新登录，旧授权不跨issuer复用。
+
+## 后续用户修订：不使用本地钥匙串
+
+用户随后明确“不需要使用本地钥匙串保存”。本轮新账号功能改为进程内存保存 grant、访问令牌和安装私钥，禁止 Account 路径调用 OS Keychain/Secret Service，也不改存普通文件。单一 refresh 所有者与失败关闭仍保留；未知刷新结果禁止回放旧令牌。进程退出后新登录并重新启用，不能自动恢复账号或监听器。已有手动连接凭据不在此修订范围。
+
+设备私钥每进程重新生成。允许仅保存非敏感的随机安装ID（按完整公开配置/owner隔离），用于同台电脑的Logto公开目录更新，避免重启无限堆积离线设备。该文件不含令牌/密钥/用户业务内容；keyVersion由已有公开记录递增，新公钥与旧pin不匹配必须由浏览器明确确认。完整cloud配置可继续保存在原公开account-cloud.json。若实现采用全临时安装身份而无法保持有界目录，须修复后验收。
+
+验收新增：运行路径无账号Keychain调用/普通secret文件；新进程无法恢复旧grant/key；同进程串行轮换与未知结果失败关闭；重启同owner保持公开安装ID但换私钥/公钥且触发旧pin确认；切owner/config隔离。旧持久化方案的检查只作历史证据，不能替代新方案验收。

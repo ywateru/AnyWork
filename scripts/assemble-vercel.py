@@ -13,6 +13,7 @@ DIST = ROOT / 'site/dist'
 def main():
     if not (DIST / 'en/index.html').is_file() or not (ROOT / 'web/dist/index.html').is_file():
         raise RuntimeError('Build the bilingual site and /app/ Web bundle first')
+    subprocess.run(['python3', 'scripts/cloud/prepare-frontend.py', '--check'], cwd=ROOT, check=True)
     source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     declared = os.environ.get('SOURCE_COMMIT') or os.environ.get('VERCEL_GIT_COMMIT_SHA')
     if declared and declared != source:
@@ -25,7 +26,7 @@ def main():
     shutil.copytree(ROOT / 'web/dist', app)
     version = json.loads((ROOT / 'package.json').read_text())['version']
     (DIST / 'build.json').write_text(json.dumps({'source': source, 'version': version}, separators=(',', ':')) + '\n')
-    subprocess.run(['python3', 'scripts/source-archive.py'], cwd=ROOT, check=True)
+    subprocess.run(['python3', 'scripts/source-archive.py', '--revision', source], cwd=ROOT, check=True)
     shutil.copy2(ROOT / 'artifacts/anywork-source.tar.gz', DIST / 'anywork-source.tar.gz')
     print('Assembled static website and account application with exact-source offer')
 
