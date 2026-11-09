@@ -157,7 +157,7 @@ const zh = {
   firstKey: "确认这台电脑的身份",
   changedKey: "这台电脑的公钥已改变",
   keyHint:
-    "请核对工作电脑上显示的安全公钥。首次连接依赖账号目录的完整性；公钥变化可能来自重新安装或设备更换。",
+    "请核对工作电脑上显示的安全公钥。首次连接依赖账号目录的完整性；公钥变化可能来自客户端重启、重新安装或设备更换。",
   keyConfirm: "确认并连接",
   error: "暂时无法完成操作。请刷新或稍后重试。",
   directoryError: "暂时无法确认设备状态，请刷新重试。",
@@ -225,7 +225,7 @@ const en: typeof zh = {
   firstKey: "Confirm this computer's identity",
   changedKey: "This computer's public key has changed",
   keyHint:
-    "Compare this public key with the one shown on your work computer. First connection trusts your account directory; a changed key may mean a reinstall or replacement.",
+    "Compare this public key with the one shown on your work computer. First connection trusts your account directory; a changed key may mean a client restart, reinstall, or device replacement.",
   keyConfirm: "Confirm and connect",
   error: "The operation could not be completed. Refresh or try again later.",
   directoryError:
