@@ -48,6 +48,6 @@ depends-on: [account-web, account-desktop]
 - Web与Desktop：同步完整公开配置，分别保持五项/七项完整覆盖和失败关闭；默认改为新自部署，SPA回跳绑定正式域名及隔离测试origin。旧issuer grant/草稿/安装身份不跨配置复用；新登录、新本机显式授权。
 - 复验：新issuer真实JWT/connect与Account opaque token、设备发布发现/换钥/公网加密访问/退出、1440/390px与精确source/CSP静态部署。若新租户没有邮件连接器，不能声称邮箱注册/邮件已通过；不为测试覆盖现有身份服务的全局策略。账号内存存储、不使用Keychain和无云业务存储的约束继续有效。
 
-此前Development真实链路作为历史已通过证据保留，不能替代新issuer验收；最终Vercel发布和本机更新等待自部署配置/链路及独立审查完成。
+此前Development真实链路作为历史已通过证据保留，不能替代新issuer验收；最终Vercel发布和本机更新的前置条件是自部署配置/链路及独立审查完成，实际进度以下方日期记录为准。
 
 2026-11-10当前进度：[自部署切换记录](../reviews/account-selfhost-cutover-01.md)。新Logto配置与默认值已独立接受，CyberGrid与[正式主页](../reviews/account-homepage-selfhost-live.md)已READY。实际新issuer Native显式启用、Web发现/核对/公网加密空工作区、关闭/退出、同安装重启换钥确认通过，独立目录记录恰1条且keyVersion2；正式默认配置/域名与实际390/1440视口另行通过。托管注册表单入口通过，未验证邮件投递；本机候选及安全切换脚本已独立接受，现有107会话/token/manager/四条隧道最终基线通过，已授权单次切换，结果见当前记录。

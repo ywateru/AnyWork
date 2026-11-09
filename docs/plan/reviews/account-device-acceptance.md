@@ -2,7 +2,7 @@
 
 > **2026-11-10 当前自部署状态**：[切换集成记录](account-selfhost-cutover-01.md)。新Logto应用/权限/默认值已配置并独立接受，专用CyberGrid和[正式主页](account-homepage-selfhost-live.md)均READY。真实Native显式启用、Web发现/公钥核对/公网加密空工作区、关闭/退出、同安装重启换钥确认与独立目录版本2核验通过；正式默认配置/域名及实际390/1440视口另行通过。本机更新结果见当前记录。下方Development、Keychain和“尚未部署协调服务”等描述是带原日期的历史，不代表当前状态。
 
-> 最新范围：用户已明确本轮立即迁到自部署Logto（`https://auth.x.aixgg.com`，default业务租户）。此前Development链路为历史已通过证据，不能替代最终自部署验收；新应用/公开配置、无管理秘密的CyberGrid应用目录及新issuer真实链路正在实施。账号仍只存内存、不使用Keychain。
+> 最新范围：用户已明确本轮立即迁到自部署Logto（`https://auth.x.aixgg.com`，default业务租户）。此前Development链路为历史已通过证据，不能替代最终自部署验收；新应用/公开配置、无管理秘密的CyberGrid应用目录及新issuer真实链路已按上方当前记录另行验收。账号仍只存内存、不使用Keychain。
 
 > 历史交付修订：此前阶段使用 Development Logto，不购买生产套餐；现有客户端注册/登录入口见[当前任务](../tasks/account-client-entry.md)。用户进一步要求不使用本地钥匙串，新账号授权/私钥改为进程内存，退出后重新登录；旧Keychain实现及测试为历史证据。修订源码已独立验收；真实重启链路历史结果见下节。
 

@@ -62,7 +62,7 @@ CyberGrid 优先配置现有服务、锁定官方 SDK；如浏览器加密能力
 
 ## 当前状态
 
-2026-11-09 的调研基线结束后，已按授权创建专用 Logto 租户、Upstash Free 数据库与 DEV CyberGrid Vercel 部署。浏览器业务加密由本机网关与前端 Noise 适配补齐，不新增云业务服务。三条实现分支的源码阻断均经独立复验关闭并合并到本机 main，整套合并后项目检查与本机静态产物检查通过；[最终验收](../reviews/account-device-acceptance.md)维护精确源码、真实 DEV、隔离夹具、原生 GUI 和生产门槛。当前按用户最新指示采用Development Logto并追加[现有客户端注册/登录任务](account-client-entry.md)，本阶段不要求升级生产套餐。正式前端、新 release 和现有用户服务尚未更新，不能把 DEV/源码通过描述为整套功能完成。
+2026-11-09 的调研基线结束后，三条实现分支的阻断均经独立复验关闭并合并，整套合并后项目检查与静态产物检查通过。浏览器业务加密由本机网关与前端Noise适配补齐，不新增云业务服务。用户随后要求现有客户端注册/登录、账号仅内存，并立即切换自部署Logto；[当前客户端任务](account-client-entry.md)及[自部署切换记录](../reviews/account-selfhost-cutover-01.md)维护最新状态。新自部署应用/权限、独立CyberGrid/Upstash namespace和正式Vercel主页均已配置发布；真实Native/Web发现、公钥核对、加密空工作区、重启换钥、退出及正式域名390/1440视口通过。本机更新结果见当前记录，不新增GitHub二进制release。此前DEV/付费生产门槛为历史；不购买Cloud套餐，也没有以浏览器小屏验证代替物理手机蜂窝测试。
 
 ## 当前开发分工
 

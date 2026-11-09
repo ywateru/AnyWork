@@ -37,6 +37,8 @@ AnyWork 产品来源为 `75726758a4c9ffd7e7da4fb45e115bba92803650`。后续部�
 
 1. 按独立接受的回滚方案更新安装 app / 原用户服务，复核全部107个既有会话ID、原访问令牌、manager配置及宿主/隧道进程。正式域名门槛已通过，独立最终基线确认原服务0.1.10、busy0、107会话与token/config一致、四条隧道不变、无运行中的desktop；已授权执行单次本机切换，结果另记。
 
+第一次本机切换在备份检查阶段安全停止，未停止原服务或替换安装文件。SQLite backup已生成107会话的一致快照，但目标仍为WAL模式、没有sidecars，随后普通只读打开报OperationalError；不把该异常臆断成特定SQLite extended code。独立确认原服务0.1.10/107会话/token/manager/app/Web/source/四条隧道全部不变。修复仅把私有快照转换为DELETE模式、以普通只读重新验证；失败journal和原快照保留，恢复必须通过精确backup-only状态及旧基线检查，不能重放apply。
+
 私有运行器为 `/tmp/anywork-selfhost-runtime.py`，唯一任务 base 为 `/private/var/folders/ll/s836stz50mg85d4h0g4xc8jm0000gn/T/anywork-selfhost-acceptance-6ql3v2a6`；`runtime.json`绑定自有 PID / 启动身份，停止只针对这些进程。测试账号凭据、管理凭据与状态均在仓库外，不写入本记录。
 
 未发布新 GitHub release / updater 或修改既有不可变资产。官网候选下载仍指向现有v0.1.13。物理手机/蜂窝、邮件投递、用户真实业务写入不在当前实测证据中；DEV旧真实链、22项加密业务互操作夹具与这次自部署实际链分别记账。
