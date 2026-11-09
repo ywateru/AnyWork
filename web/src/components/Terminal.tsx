@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { Api } from "../api";
-import type { TerminalChannel } from "../remoteTransport";
 import { QuickKeyRows, useQuickKeyInput } from "./QuickKeys";
 
 export default function Terminal({
@@ -23,7 +22,7 @@ export default function Terminal({
   cwd?: string;
 }) {
   const container = useRef<HTMLDivElement>(null),
-    socket = useRef<TerminalChannel | null>(null),
+    socket = useRef<WebSocket | null>(null),
     terminal = useRef<XTerminal | null>(null);
   const [attempt, setAttempt] = useState(0),
     [state, setState] = useState<"connecting" | "connected" | "closed">(
@@ -35,7 +34,9 @@ export default function Terminal({
   const connected = state === "connected";
   const keys = useQuickKeyInput({
     onSend(data) {
-      socket.current?.input(data);
+      const ws = socket.current;
+      if (ws?.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: "input", data }));
     },
   });
   useEffect(() => {
@@ -60,29 +61,47 @@ export default function Terminal({
     term.loadAddon(fit);
     term.open(container.current!);
     fit.fit();
-    const ws = api.terminal(id, {
-      ready() {
-        setState("connected");
-        socket.current?.resize(term.cols, term.rows);
-      },
-      data(bytes) {
-        term.write(bytes);
-      },
-      closed() {
-        setState("closed");
-        term.writeln("\r\n[终端连接已关闭]");
-      },
-    });
+    const ws = new WebSocket(
+      api.url(`/ws/terminal/${id}`).replace(/^http/, "ws"),
+    );
     socket.current = ws;
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ token: api.connection.token }));
+      setState("connected");
+      ws.send(
+        JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
+      );
+    };
+    ws.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer)
+        term.write(new Uint8Array(event.data));
+      else term.writeln(event.data);
+    };
+    ws.onclose = () => {
+      setState("closed");
+      term.writeln("\r\n[终端连接已关闭]");
+    };
+    ws.onerror = () => {
+      setState("closed");
+      term.writeln("\r\n[无法连接终端]");
+    };
     const input = term.onData(keys.dispatch);
     const observer = new ResizeObserver(() => {
       fit.fit();
-      ws.resize(term.cols, term.rows);
+      if (ws.readyState === WebSocket.OPEN)
+        ws.send(
+          JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
+        );
     });
     observer.observe(container.current!);
     return () => {
       observer.disconnect();
       input.dispose();
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
       ws.close();
       term.dispose();
       socket.current = null;
@@ -154,7 +173,9 @@ export default function Terminal({
           disabled={!connected}
           onClick={() => {
             keys.resetModifiers();
-            socket.current?.input("\x03");
+            socket.current?.send(
+              JSON.stringify({ type: "input", data: "\x03" }),
+            );
           }}
         >
           <Square size={11} />

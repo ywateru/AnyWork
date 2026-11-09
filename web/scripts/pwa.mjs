@@ -1,9 +1,6 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve, relative } from "node:path";
-const base = process.env.ANYWORK_WEB_BASE || "/";
-if (!/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(base))
-  throw new Error("Invalid public application base");
 const dist = resolve(process.argv[2] ?? "dist"),
   paths = [];
 async function walk(dir) {
@@ -52,13 +49,6 @@ if (manifest) {
     if (!required.has(key)) deferred.add("/" + manifest[key].file);
 }
 const precache = paths.filter((path) => !deferred.has(path));
-const manifestPath = resolve(dist, "manifest.webmanifest");
-const appManifest = JSON.parse(await readFile(manifestPath, "utf8"));
-appManifest.start_url = base;
-appManifest.scope = base;
-for (const icon of appManifest.icons)
-  icon.src = base + icon.src.split("/").at(-1);
-await writeFile(manifestPath, JSON.stringify(appManifest));
 const hash = createHash("sha256");
 hash.update(await readFile(new URL(import.meta.url)));
 for (const path of paths) {
@@ -73,8 +63,7 @@ for (const path of paths) {
   );
 }
 const version = "anywork-" + hash.digest("hex").slice(0, 16);
-const publicPath = (path) => base.slice(0, -1) + path;
-const script = `const CACHE=${JSON.stringify(version)},ASSETS=${JSON.stringify(paths.map(publicPath))},PRECACHE=${JSON.stringify(precache.map(publicPath))};
+const script = `const CACHE=${JSON.stringify(version)},ASSETS=${JSON.stringify(paths)},PRECACHE=${JSON.stringify(precache)};
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PRECACHE))));
 self.addEventListener('message',event=>{if(event.data==='ACTIVATE_UPDATE')self.skipWaiting();if(event.data==='GET_VERSION')event.ports[0]?.postMessage({version:CACHE})});
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>(key.startsWith('remote-agent-')||key.startsWith('anywork-'))&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
@@ -83,7 +72,7 @@ self.addEventListener('notificationclick',event=>{
  const data=event.notification.data;
  if(!data||typeof data.sessionId!=='string')return;
  event.waitUntil((async()=>{
-   const url=new URL(${JSON.stringify(base)}+'#'+encodeURIComponent(data.sessionId),self.location.origin);
+   const url=new URL('/#'+encodeURIComponent(data.sessionId),self.location.origin);
    const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
    const client=clients.find(client=>new URL(client.url).origin===url.origin);
    if(client){await client.focus();client.postMessage({type:'ANYWORK_NOTIFICATION_CLICK',...data});}
@@ -92,8 +81,8 @@ self.addEventListener('notificationclick',event=>{
 });
 self.addEventListener('fetch',event=>{
  const request=event.request,url=new URL(request.url);
- if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/api/')||url.pathname.startsWith('/ws/')||url.pathname==='/source'||url.pathname.endsWith('/callback')||url.searchParams.has('code')||url.searchParams.has('state'))return;
- if(request.mode==='navigate'){event.respondWith(fetch(request).catch(()=>caches.match(${JSON.stringify(base + "index.html")})));return;}
+ if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/api/')||url.pathname.startsWith('/ws/')||url.pathname==='/source')return;
+ if(request.mode==='navigate'){event.respondWith(fetch(request).catch(()=>caches.match('/index.html')));return;}
  if(ASSETS.includes(url.pathname))event.respondWith((async()=>{
    const cache=await caches.open(CACHE),cached=await cache.match(request);
    if(cached)return cached;

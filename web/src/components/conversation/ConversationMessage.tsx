@@ -62,7 +62,7 @@ export default memo(function ConversationMessage({
   const markdownContent = useRef<HTMLDivElement>(null);
   const article = useRef<HTMLElement>(null);
   const identity = JSON.stringify([
-    api.connection.scope ?? api.connection.url,
+    api.connection.url,
     api.connection.token,
     sessionId,
     message.id,

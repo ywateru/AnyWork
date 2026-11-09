@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic, dependency-free bilingual static output."""
+"""Build deterministic, dependency-free bilingual GitHub Pages output."""
 import argparse
 import html
 import json
@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SITE = ROOT / 'site'
 DIST = SITE / 'dist'
 REPO = 'https://github.com/ywateru/AnyWork'
-BASE = os.environ.get('ANYWORK_SITE_URL', 'https://anywork-tau.vercel.app').rstrip('/')
+BASE = 'https://ywateru.github.io/AnyWork'
 
 def main():
     parser = argparse.ArgumentParser()
@@ -49,7 +49,7 @@ def main():
             for key in ['headline', 'manifesto', 'connectTitle', 'downloadTitle', 'closing']:
                 values[key] = values[key].replace('&lt;br&gt;', '<br>')
             prefix = '.' if root else '..'
-            values.update(siteBase=BASE, assetPrefix=prefix, htmlLang='zh-CN' if lang == 'zh' else 'en', otherHtmlLang='zh-CN' if lang == 'en' else 'en', homeUrl='./', otherUrl=('./' if root else '../') + raw['otherLang'] + '/', canonical=BASE + ('/' if root else f'/{lang}/'), guideUrl=REPO + '/blob/main/docs/' + raw['guideFile'])
+            values.update(assetPrefix=prefix, htmlLang='zh-CN' if lang == 'zh' else 'en', otherHtmlLang='zh-CN' if lang == 'en' else 'en', homeUrl='./', otherUrl=('./' if root else '../') + raw['otherLang'] + '/', canonical=BASE + ('/' if root else f'/{lang}/'), guideUrl=REPO + '/blob/main/docs/' + raw['guideFile'])
             # Only the language-neutral entry point negotiates language. Deep
             # links and manual choices remain stable and shareable. Run before
             # rendering to avoid briefly showing English to Chinese browsers.
@@ -89,7 +89,7 @@ def main():
             folder = DIST if root else DIST / lang
             folder.mkdir(exist_ok=True)
             (folder / 'index.html').write_text(template.substitute(values), encoding='utf-8')
-    (DIST / '404.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Page not found · AnyWork</title><body style="font:18px system-ui;padding:10vh 8vw;color:#171717;background:#FFFFFF"><h1>Page not found / 页面不存在</h1><p><a href="/en/">AnyWork · English</a></p><p><a href="/zh/">AnyWork · 中文</a></p></body></html>')
+    (DIST / '404.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Page not found · AnyWork</title><body style="font:18px system-ui;padding:10vh 8vw;color:#183B56;background:#F5F8FB"><h1>Page not found / 页面不存在</h1><p><a href="/AnyWork/en/">AnyWork · English</a></p><p><a href="/AnyWork/zh/">AnyWork · 中文</a></p></body></html>')
     (DIST / 'robots.txt').write_text('User-agent: *\nAllow: /\nSitemap: '+BASE+'/sitemap.xml\n')
     (DIST / 'sitemap.xml').write_text('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+''.join('<url><loc>'+BASE+'/'+lang+'/</loc></url>' for lang in ['en','zh'])+'</urlset>')
     print('Built bilingual site: site/dist (en, zh, root, release metadata, SEO)')

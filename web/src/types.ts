@@ -58,6 +58,4 @@ export interface Message {
 export interface Connection {
   url: string;
   token: string;
-  scope?: string;
-  transport?: import("./remoteTransport").BusinessTransport;
 }

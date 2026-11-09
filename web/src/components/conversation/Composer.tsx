@@ -111,10 +111,7 @@ export default function Composer({
     key: string;
     source: string;
   } | null>(null);
-  const imageScope = JSON.stringify([
-    api.connection.scope ?? api.connection.url,
-    session.id,
-  ]);
+  const imageScope = JSON.stringify([api.connection.url, session.id]);
   const scope = useRef(imageScope);
   scope.current = imageScope;
   const imageUploads = useRef(new Set<AbortController>());
@@ -314,14 +311,8 @@ export default function Composer({
           key={session.id}
           ref={composerInput}
           richText
-          storageKey={JSON.stringify([
-            api.connection.scope ?? api.connection.url,
-            session.id,
-          ])}
-          promptHistory={{
-            server: api.connection.scope ?? api.connection.url,
-            scope: session.id,
-          }}
+          storageKey={JSON.stringify([api.connection.url, session.id])}
+          promptHistory={{ server: api.connection.url, scope: session.id }}
           initialDocument={initialDocument}
           label={inputLabel}
           placeholder={

@@ -90,7 +90,7 @@ export function useSessionNotifications(
       const options: NotificationOptions = {
         body: notice.body,
         tag: JSON.stringify([current.current.scope, notice.id]),
-        icon: import.meta.env.BASE_URL + "icon-192.png",
+        icon: "/icon-192.png",
         data,
       };
       void (async () => {

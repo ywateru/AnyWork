@@ -33,12 +33,21 @@ try {
     assert.equal(await page.locator('h1').count(),1);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${locale}/${width}: horizontal overflow`);
     assert((await page.locator(`[data-asset="${asset}"]`).getAttribute('href')).endsWith('/v99.0.0/'+asset));
-    assert.equal(await page.locator('.small-cta').getAttribute('href'), '/app/');
-    assert.equal(await page.locator('.hero-actions .primary').getAttribute('href'), '/app/?signup=1');
-    assert(await page.locator('.device-preview').isVisible());
-    assert.equal(await page.locator('.site-device').count(), 2);
-    const background = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
-    assert(!['rgb(45, 108, 223)'].includes(background));
+    // Both connection switches are independent, work from the keyboard, and
+    // only change the explicitly labelled product illustration.
+    const quick = page.locator('[data-demo-switch="quick"]');
+    const vpn = page.locator('[data-demo-switch="vpn"]');
+    await quick.click();
+    assert.equal(await quick.getAttribute('aria-checked'), 'false');
+    assert.equal(await vpn.getAttribute('aria-checked'), 'false');
+    await vpn.focus();
+    await vpn.press('Space');
+    assert.equal(await vpn.getAttribute('aria-checked'), 'true');
+    assert.equal(await quick.getAttribute('aria-checked'), 'false');
+    await quick.press('Enter');
+    assert.equal(await quick.getAttribute('aria-checked'), 'true');
+    assert.equal(await vpn.getAttribute('aria-checked'), 'true');
+    await vpn.click();
     await page.locator('#tab-changes').click();
     assert(await page.locator('#panel-changes').isVisible());
     assert(!(await page.locator('#panel-chat').isVisible()));
@@ -87,7 +96,7 @@ try {
   await page.route('https://api.github.com/**', route => route.abort());
   await page.goto(`${base}/`,{waitUntil:'networkidle'});
   assert.equal(await page.locator('html').getAttribute('lang'),'en');
-  assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'),(process.env.ANYWORK_SITE_URL || 'https://anywork-tau.vercel.app') + '/en/');
+  assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'),'https://ywateru.github.io/AnyWork/en/');
   assert(await page.locator('#release-status').textContent());
   if (process.env.ANYWORK_SITE_SOCIAL === '1') {
     await page.addStyleTag({content:'.header{height:60px}.hero{padding-block:20px;gap:45px}.manager-scene{padding-top:0}.manager-content{padding:17px 18px 12px}.service-summary{margin-top:16px;padding-block:11px}.manager-section-label{margin-top:15px}.manager-route{padding-block:9px}.manager-address{margin-top:12px}.intro{font-size:17px}.hero h1{font-size:56px}.release-line{margin-bottom:18px}.manager-scene .preview-disclaimer{margin-top:9px}'});
