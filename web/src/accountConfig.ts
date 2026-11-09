@@ -1,0 +1,71 @@
+export interface AccountConfig {
+  endpoint: string;
+  issuer: string;
+  appId: string;
+  resource: string;
+  gridUrl: string;
+  nativeAppId: string;
+}
+
+export class AccountError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+    this.name = "AccountError";
+  }
+}
+
+function httpsRoot(value: string) {
+  const url = new URL(value);
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.pathname !== "/"
+  )
+    throw new AccountError("INVALID_CONFIGURATION");
+  return url.origin;
+}
+
+export function parseAccountConfig(
+  values: Record<string, unknown>,
+): AccountConfig | null {
+  const keys = [
+    "VITE_LOGTO_ENDPOINT",
+    "VITE_LOGTO_APP_ID",
+    "VITE_LOGTO_RESOURCE",
+    "VITE_CYBERGRID_URL",
+    "VITE_CYBERGRID_NATIVE_APP_ID",
+  ];
+  if (keys.every((key) => !values[key])) return null;
+  if (keys.some((key) => typeof values[key] !== "string" || !values[key]))
+    throw new AccountError("INVALID_CONFIGURATION");
+  try {
+    const endpoint = httpsRoot(values.VITE_LOGTO_ENDPOINT as string);
+    const gridUrl = httpsRoot(values.VITE_CYBERGRID_URL as string);
+    const resource = new URL(values.VITE_LOGTO_RESOURCE as string);
+    if (
+      resource.protocol !== "https:" ||
+      resource.username ||
+      resource.password ||
+      resource.hash ||
+      resource.search
+    )
+      throw new Error();
+    const appId = values.VITE_LOGTO_APP_ID as string;
+    const nativeAppId = values.VITE_CYBERGRID_NATIVE_APP_ID as string;
+    if (![appId, nativeAppId].every((id) => /^[A-Za-z0-9_-]{1,21}$/.test(id)))
+      throw new Error();
+    return {
+      endpoint,
+      issuer: endpoint + "/oidc",
+      appId,
+      resource: resource.href,
+      gridUrl,
+      nativeAppId,
+    };
+  } catch {
+    throw new AccountError("INVALID_CONFIGURATION");
+  }
+}

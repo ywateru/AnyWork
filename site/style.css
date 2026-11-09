@@ -1,14 +1,14 @@
 :root {
   color-scheme: light;
-  --paper: #fafafa;
-  --ink: #171719;
-  --muted: #63636c;
+  --paper: #FFFFFF;
+  --ink: #171717;
+  --muted: #737373;
   --soft: #888890;
-  --line: #e3e3e8;
+  --line: #E7E7E7;
   --surface: #fff;
-  --wash: #f1f1f4;
-  --accent: #2d6cdf;
-  --green: #33764b;
+  --wash: #F4F4F4;
+  --accent: #171717;
+  --green: #208454;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color: var(--ink);
   background: var(--paper);
@@ -457,3 +457,8 @@ body[data-lang=zh] .manager-title h2 { font-size: 20px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; animation: none !important; } }
 @media (prefers-contrast: more) { :root { --muted: #474751; --soft: #686872; --line: #a6a6b2; } }
+
+/* Device access is the central homepage interaction; illustrated states are labelled. */
+.device-scene{min-width:0;padding-top:18px}.device-preview{border:1px solid #e7e7e7;border-radius:12px;background:#fff;box-shadow:0 14px 42px -24px #0003;overflow:hidden}.device-preview-bar{display:flex;align-items:center;gap:8px;padding:17px 21px;border-bottom:1px solid #e7e7e7;background:#fafafa;font-size:13px}.device-preview-bar>span{margin-left:auto;font-size:10px;color:#737373}.device-preview-content{padding:26px 22px}.device-preview-title{display:flex;align-items:center;justify-content:space-between}.device-preview-title h2{font-size:21px;letter-spacing:-.5px;font-weight:600}.device-preview-title>span{border:1px solid #e7e7e7;border-radius:5px;width:23px;height:23px;text-align:center;font-size:14px;line-height:20px}.device-preview-content>p{font-size:11px;color:#737373;margin:10px 0 20px}.site-device{display:flex;align-items:center;gap:11px;padding:22px 0;border-top:1px solid #e7e7e7}.site-device-icon{width:38px;height:38px;background:#f4f4f4;border-radius:8px;display:grid;place-items:center}.site-device-icon .icon{width:22px;height:22px}.site-device>div:not(.site-device-icon){flex:1;min-width:0}.site-device strong{font-size:12px;font-weight:550;display:block}.site-device>div>span{display:flex;align-items:center;gap:7px;font-size:10px;color:#737373;margin-top:4px}.site-device>div>span .status-dot{margin-left:6px}.status-dot.offline{background:#aaa}.site-device-open{font-size:10px;color:#171717;display:flex;align-items:center;gap:6px}.site-device-open .icon{width:13px;height:13px}.site-device-security{display:flex;align-items:center;gap:8px;color:#737373;border-top:1px solid #e7e7e7;padding-top:20px;font-size:10px}.site-device-security .icon{width:15px;height:15px}.device-scene-note{display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;margin-top:22px}.device-scene .preview-disclaimer{margin-top:7px}.traffic i,.traffic i:first-child,.traffic i:nth-child(2),.traffic i:nth-child(3){background:#d4d4d4;border-color:#c8c8c8}.hero h1{font-weight:600;letter-spacing:-.05em;line-height:1.14}.hero{padding-block:82px 58px}.release-line .status-dot{background:#a3a3a3}.capabilities>span{border:0;padding-left:0;padding-right:10px;border-radius:0;background:transparent}.capabilities{gap:4px;margin-top:20px}@media(max-width:650px){.device-scene{padding-top:12px}.device-preview-content{padding:24px 19px}.site-device-open{font-size:9px}.hero{padding-block:44px 36px}.device-preview-bar{padding:15px 19px}.device-scene-note{font-size:11px}.hero h1{font-size:48px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+.account-platform-note{max-width:760px;margin:22px auto 0;font-size:12px;color:#737373;text-align:center;line-height:1.8}.account-platform-note a{color:#171717;text-decoration:underline}.footer-bottom a{text-decoration:underline}

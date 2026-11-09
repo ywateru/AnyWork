@@ -73,7 +73,10 @@ export function GoalEditor({
   onError,
   disabled = false,
 }: GoalEditorProps) {
-  const saveScope = JSON.stringify([api.connection.url, sessionId]);
+  const saveScope = JSON.stringify([
+    api.connection.scope ?? api.connection.url,
+    sessionId,
+  ]);
   const goalSaving = useGoalSaving(saveScope);
   const [capabilities, setCapabilities] = useState<
     GoalCapabilities | undefined
@@ -358,7 +361,10 @@ export default function GoalBanner({
   onEdit,
   capabilities,
 }: GoalBannerProps) {
-  const saveScope = JSON.stringify([api.connection.url, sessionId]);
+  const saveScope = JSON.stringify([
+    api.connection.scope ?? api.connection.url,
+    sessionId,
+  ]);
   const goalSaving = useGoalSaving(saveScope);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
