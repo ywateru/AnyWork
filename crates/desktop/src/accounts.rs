@@ -1317,8 +1317,10 @@ mod tests {
         let b = first.installation("owner-b").await.unwrap();
         assert_ne!(a.id, b.id);
         assert_ne!(a.public_key, b.public_key);
-        let mut config = PublicConfig::default();
-        config.spa_client_id = "different-public-app".into();
+        let config = PublicConfig {
+            spa_client_id: "different-public-app".into(),
+            ..Default::default()
+        };
         std::fs::write(
             dir.path().join("account-cloud.json"),
             serde_json::to_vec(&config).unwrap(),
