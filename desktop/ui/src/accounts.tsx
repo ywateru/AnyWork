@@ -18,25 +18,22 @@ type AuthorizationStatus =
   | "authorizing"
   | "loginInterrupted"
   | "signedIn"
-  | "checkpointPending"
   | "reauthRequired"
-  | "cleanupRequired"
   | "unsupported";
 export type AccountSnapshot = {
   authorizationStatus: AuthorizationStatus;
   transactionId: string | null;
   signedIn: boolean;
   subject: string | null;
+  accountLabel: string | null;
   enabled: boolean;
   busy: boolean;
-  checkpointPending: boolean;
   error: string | null;
   gridDeviceId: string | null;
   installationId: string | null;
   publicKey: string | null;
 };
 type Begin = {
-  restored: boolean;
   transactionId: string;
   endpoint: string;
   issuer: string;
@@ -52,7 +49,7 @@ const invoke = <T,>(
   window.__TAURI__
     ? window.__TAURI__.core.invoke<T>(command, args)
     : Promise.reject(new Error("请从 AnyWork 桌面应用打开此页面。"));
-const message = "账号操作未完成，请检查登录状态、系统钥匙串和网络后重试。";
+const message = "账号操作未完成，请检查登录状态和网络后重试。";
 let loginOwner:
   | { transactionId: string; client: LogtoClient; memory: Map<string, string> }
   | undefined;
@@ -77,7 +74,6 @@ async function clearLogin(transactionId?: string): Promise<void> {
 async function login(mode: "register" | "signIn"): Promise<void> {
   if (loginOwner) throw new Error("上次登录仍在收尾，请先取消或退出账号。");
   const begin = await invoke<Begin>("account_begin");
-  if (begin.restored) return;
   const memory = new Map<string, string>();
   const transport: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -185,8 +181,8 @@ async function login(mode: "register" | "signIn"): Promise<void> {
       transactionId: begin.transactionId,
     });
     await client.handleSignInCallback(callback);
-    // One JS owner requests both token classes serially; Rust journals every
-    // rotation before either request returns across IPC.
+    // One JS owner requests both token classes serially; Rust retains every
+    // rotation in RAM before either request returns across IPC.
     const accountToken = await client.getAccessToken();
     const accessToken = await client.getAccessToken(begin.resource);
     const refreshToken = await client.getRefreshToken();
@@ -195,16 +191,11 @@ async function login(mode: "register" | "signIn"): Promise<void> {
       transactionId: begin.transactionId,
       tokens: { accessToken, accountToken, refreshToken },
     });
-    if (outcome !== "OwnedPersisted" && outcome !== "OwnedPending")
-      throw new Error(message);
+    if (outcome !== "OwnedInMemory") throw new Error(message);
     handedOff = true;
     await client.clearAllTokens();
     memory.clear();
     loginOwner = undefined;
-    if (outcome === "OwnedPending")
-      throw new Error(
-        "账号已由本机接管，系统钥匙串保存尚未完成。请重试恢复或退出账号后重新登录。",
-      );
   } catch {
     if (!handedOff) {
       try {
@@ -285,13 +276,16 @@ const statusLabels: Record<AuthorizationStatus, string> = {
   authorizing: "等待浏览器完成登录",
   loginInterrupted: "登录已结束，请取消本次登录后重试",
   signedIn: "已登录",
-  checkpointPending: "账号授权待保存",
   reauthRequired: "本机授权需要重新登录",
-  cleanupRequired: "本机保存的授权需要检查",
   unsupported: "当前平台暂不支持账号远程访问",
 };
+function accountStatusText(state: AccountSnapshot): string {
+  return state.authorizationStatus === "signedIn" && state.accountLabel
+    ? `已登录 · ${state.accountLabel}`
+    : statusLabels[state.authorizationStatus];
+}
 function AccountActions({ controller }: { controller: AccountController }) {
-  const { state, pending, signIn, cancel, logout, action } = controller;
+  const { state, pending, signIn, cancel, logout } = controller;
   if (!state) return <span role="status">正在读取账号状态</span>;
   switch (state.authorizationStatus) {
     case "signedOut":
@@ -318,35 +312,10 @@ function AccountActions({ controller }: { controller: AccountController }) {
           退出账号
         </button>
       );
-    case "checkpointPending":
-      return (
-        <>
-          <button
-            disabled={pending}
-            onClick={() => void action(() => invoke("account_recover"))}
-          >
-            重试保存账号
-          </button>
-          <button disabled={pending} onClick={() => void logout()}>
-            清理本机授权
-          </button>
-        </>
-      );
-    case "cleanupRequired":
-      return (
-        <>
-          <button disabled={pending} onClick={() => void signIn("signIn")}>
-            重试检查授权
-          </button>
-          <button disabled={pending} onClick={() => void logout()}>
-            清理本机授权
-          </button>
-        </>
-      );
     case "reauthRequired":
       return (
         <button disabled={pending} onClick={() => void logout()}>
-          清理本机授权后重新登录
+          结束本次授权后重新登录
         </button>
       );
     case "unsupported":
@@ -366,7 +335,7 @@ export function AccountEntry({
         <strong>AnyWork 账号</strong>
         <p role="status">
           {controller.state
-            ? statusLabels[controller.state.authorizationStatus]
+            ? accountStatusText(controller.state)
             : "正在读取账号状态"}
         </p>
       </div>
@@ -401,9 +370,11 @@ export function AccountPage({
       </header>
       <section className="settings-section">
         <h2>AnyWork 账号</h2>
-        <p className="hint">注册和密码输入在登录服务中完成。</p>
+        <p className="hint">
+          注册和密码输入在登录服务中完成。账号凭据和设备私钥只留在内存；退出客户端后需要重新登录并开启远程访问。
+        </p>
         <p role="status">
-          {state ? statusLabels[state.authorizationStatus] : "正在读取账号状态"}
+          {state ? accountStatusText(state) : "正在读取账号状态"}
         </p>
         <div className="account-entry-actions">
           <AccountActions controller={controller} />
@@ -461,12 +432,6 @@ export function AccountPage({
           </div>
         ) : (
           <p className="hint">开启远程访问后，可在此核对本机身份与公钥。</p>
-        )}
-
-        {state?.checkpointPending && (
-          <p role="alert">
-            系统钥匙串保存未完成。访问令牌尚未提供给远程连接，请恢复钥匙串或退出账号后重试。
-          </p>
         )}
       </section>
       {(error || state?.error) && (

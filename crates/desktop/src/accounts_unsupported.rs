@@ -15,7 +15,7 @@ fn unsupported() -> String {
 #[tauri::command]
 pub async fn account_snapshot() -> Result<Value, String> {
     Ok(
-        json!({"authorizationStatus":"unsupported","transactionId":null,"signedIn":false,"subject":null,"enabled":false,"busy":false,"checkpointPending":false,"error":"当前平台尚未提供账号远程访问。","gridDeviceId":null,"installationId":null,"publicKey":null}),
+        json!({"authorizationStatus":"unsupported","transactionId":null,"signedIn":false,"subject":null,"accountLabel":null,"enabled":false,"busy":false,"error":"当前平台尚未提供账号远程访问。","gridDeviceId":null,"installationId":null,"publicKey":null}),
     )
 }
 #[tauri::command]
@@ -58,9 +58,4 @@ pub async fn account_disable() -> Result<(), String> {
 #[tauri::command]
 pub async fn account_logout() -> Result<(), String> {
     Ok(())
-}
-
-#[tauri::command]
-pub async fn account_recover() -> Result<(), String> {
-    Err(unsupported())
 }

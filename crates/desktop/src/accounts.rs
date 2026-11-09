@@ -1,8 +1,7 @@
 //! Native account lifecycle. This module owns all refresh operations; the SDK
 //! only asks its AuthProvider for a resource access token.
 use crate::{
-    config::{self, OsSecrets, Secrets},
-    manager,
+    config, manager,
     process::{LaunchPlan, OwnedProcess},
 };
 use anyhow::{Result, bail};
@@ -18,9 +17,6 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-const GRANT_KEY: &str = "account-grant-v1";
-const PENDING_KEY: &str = "account-pending-v1";
-const INSTALL_KEY: &str = "account-installation-v1";
 const CALLBACK: &str = "http://127.0.0.1:17897/callback";
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -110,9 +106,7 @@ pub enum AuthorizationStatus {
     Authorizing,
     LoginInterrupted,
     SignedIn,
-    CheckpointPending,
     ReauthRequired,
-    CleanupRequired,
 }
 #[derive(Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,21 +115,21 @@ pub struct Snapshot {
     pub transaction_id: Option<String>,
     pub signed_in: bool,
     pub subject: Option<String>,
+    pub account_label: Option<String>,
     pub enabled: bool,
     pub busy: bool,
-    pub checkpoint_pending: bool,
     pub error: Option<String>,
     pub grid_device_id: Option<String>,
     pub installation_id: Option<String>,
     pub public_key: Option<String>,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 struct Grant {
     config: PublicConfig,
     refresh: String,
     subject: String,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone)]
 struct Installation {
     config: PublicConfig,
     subject: String,
@@ -145,26 +139,22 @@ struct Installation {
 }
 struct GrantState {
     grant: Grant,
-    pending: bool,
     invalid: bool,
     // A provider exchange may have rotated the grant, but its outcome is unknown.
     uncertain: bool,
 }
 struct GrantOwner {
     state: Mutex<GrantState>,
-    secrets: Arc<dyn Secrets>,
     http: reqwest::Client,
 }
 impl GrantOwner {
-    fn new(grant: Grant, secrets: Arc<dyn Secrets>) -> Result<Self> {
+    fn new(grant: Grant) -> Result<Self> {
         Ok(Self {
             state: Mutex::new(GrantState {
                 grant,
-                pending: false,
                 invalid: false,
                 uncertain: false,
             }),
-            secrets,
             http: client()?,
         })
     }
@@ -172,14 +162,6 @@ impl GrantOwner {
         let mut state = self.state.lock().await;
         if state.invalid || state.uncertain {
             bail!("ACCOUNT_REAUTH_REQUIRED")
-        }
-        // Checkpoint retry happens before another provider operation, retaining
-        // the latest rotation and never reading a stale persisted grant.
-        if state.pending {
-            self.secrets
-                .write(GRANT_KEY, &serde_json::to_string(&state.grant)?)?;
-            self.secrets.write(PENDING_KEY, "")?;
-            state.pending = false;
         }
         let config = state.grant.config.clone();
         let mut form = vec![
@@ -190,16 +172,8 @@ impl GrantOwner {
         if resource {
             form.push(("resource", config.resource.clone()));
         }
-        // Durable write-ahead uncertainty must precede the first network byte.
-        // It contains the last known grant for best-effort revocation, never
-        // evidence that this grant is still safe to refresh after process loss.
-        self.secrets.write(
-            PENDING_KEY,
-            &json!({
-                "config": config, "refresh": state.grant.refresh, "uncertain": true
-            })
-            .to_string(),
-        )?;
+        // Unknown exchange outcomes block this RAM owner from replaying a
+        // possibly rotated grant. Nothing is checkpointed to persistent storage.
         state.uncertain = true;
         let response = self
             .http
@@ -221,16 +195,10 @@ impl GrantOwner {
         // grant remains current. Otherwise only a returned rotation is known.
         if rotated.is_some() || (successful && value.get("error").is_none() && access.is_some()) {
             state.uncertain = false;
-            state.pending = true;
-            self.secrets
-                .write(GRANT_KEY, &serde_json::to_string(&state.grant)?)?;
-            self.secrets.write(PENDING_KEY, "")?;
-            state.pending = false;
         }
         if !successful || value.get("error").is_some() {
             if value["error"] == "invalid_grant" {
                 state.invalid = true;
-                self.secrets.write(GRANT_KEY, "")?;
             }
             bail!("ACCOUNT_REAUTH_REQUIRED")
         }
@@ -241,106 +209,54 @@ impl GrantOwner {
             .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))
     }
 }
-// Shared by the real startup path and process-loss recovery tests.
-fn restore_grant(secrets: &dyn Secrets, config: &PublicConfig) -> Result<Option<Grant>> {
-    let saved = secrets.read(GRANT_KEY)?;
-    let pending = secrets.read(PENDING_KEY)?;
-    let grant = if saved.is_empty() {
-        None
-    } else {
-        Some(
-            serde_json::from_str::<Grant>(&saved)
-                .map_err(|_| anyhow::anyhow!("SAVED_AUTHORIZATION_NEEDS_CLEANUP"))?,
-        )
-    };
-    if !pending.is_empty() {
-        let value: Value = serde_json::from_str(&pending)
-            .map_err(|_| anyhow::anyhow!("PENDING_AUTHORIZATION_NEEDS_CLEANUP"))?;
-        let expected_config = serde_json::to_value(config)?;
-        if value.get("uncertain").is_some_and(|flag| flag != false)
-            || !grant.as_ref().is_some_and(|grant| {
-                grant.config == *config
-                    && value["config"] == expected_config
-                    && value["refresh"].as_str() == Some(grant.refresh.as_str())
+fn account_label(account: &Value, subject: &str) -> String {
+    ["primaryEmail", "username", "name"]
+        .iter()
+        .find_map(|key| {
+            account[*key].as_str().filter(|v| {
+                !v.is_empty() && v.chars().count() <= 160 && !v.chars().any(char::is_control)
             })
-        {
-            bail!("PENDING_AUTHORIZATION_NEEDS_CLEANUP")
-        }
-        secrets.write(PENDING_KEY, "")?;
-    }
-    if grant.as_ref().is_some_and(|grant| grant.config != *config) {
-        bail!("ACCOUNT_CONFIG_CHANGED")
-    }
-    Ok(grant)
+        })
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("账号 {}", subject.chars().take(12).collect::<String>()))
 }
-// Configuration changes may prevent sign-in restoration while leaving a known
-// grant in this same Keychain namespace. Cleanup still revokes every known
-// token, using only the current pinned issuer/client for its network request.
-fn persisted_cleanup_tokens(secrets: &dyn Secrets, config: &PublicConfig) -> Result<Vec<String>> {
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Pending {
-        config: PublicConfig,
-        refresh: String,
-        #[serde(default)]
-        uncertain: bool,
+fn public_installation_id(
+    support: &std::path::Path,
+    config: &PublicConfig,
+    subject: &str,
+) -> Result<String> {
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct PublicIdentity {
+        installation_id: String,
     }
-    let saved = secrets.read(GRANT_KEY)?;
-    let pending = secrets.read(PENDING_KEY)?;
-    let saved = if saved.is_empty() {
-        None
-    } else {
-        Some(serde_json::from_str::<Grant>(&saved)?)
-    };
-    let pending = if pending.is_empty() {
-        None
-    } else {
-        Some(serde_json::from_str::<Pending>(&pending)?)
-    };
-    let validate = |stored: &PublicConfig, refresh: &str| -> Result<()> {
-        if stored.issuer != config.issuer
-            || stored.native_client_id != config.native_client_id
-            || stored.endpoint != config.endpoint
-            || refresh.is_empty()
-        {
-            bail!("ACCOUNT_CONFIG_CHANGED")
+    let binding = format!("{}\0{subject}", config.namespace(support)?);
+    let directory = support.join("account-installations");
+    if std::fs::symlink_metadata(&directory).is_ok_and(|m| m.file_type().is_symlink()) {
+        bail!("INSTALLATION_ID_REJECTED")
+    }
+    let path = directory.join(format!("{:x}.json", Sha256::digest(binding.as_bytes())));
+    let id = match std::fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 128 {
+                bail!("INSTALLATION_ID_REJECTED")
+            }
+            serde_json::from_slice::<PublicIdentity>(&std::fs::read(&path)?)?.installation_id
         }
-        Ok(())
-    };
-    if let Some(saved) = &saved {
-        validate(&saved.config, &saved.refresh)?;
-        if saved.subject.is_empty() {
-            bail!("ACCOUNT_IDENTITY_MISMATCH")
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let id = uuid::Uuid::new_v4().to_string();
+            config::atomic_private(
+                &path,
+                &serde_json::to_vec(&PublicIdentity {
+                    installation_id: id.clone(),
+                })?,
+            )?;
+            id
         }
-    }
-    if let Some(pending) = &pending {
-        validate(&pending.config, &pending.refresh)?;
-    }
-    let mut tokens = Vec::new();
-    // For an uncertainty marker the grant may already contain a newer durable
-    // checkpoint. A known broker escrow instead precedes any old saved grant.
-    if let Some(pending) = &pending
-        && !pending.uncertain
-    {
-        tokens.push(pending.refresh.clone());
-    }
-    if let Some(saved) = saved
-        && !tokens.contains(&saved.refresh)
-    {
-        tokens.push(saved.refresh);
-    }
-    if let Some(pending) = pending
-        && !tokens.contains(&pending.refresh)
-    {
-        tokens.push(pending.refresh);
-    }
-    Ok(tokens)
-}
-fn clear_saved_grant(secrets: &dyn Secrets) -> Result<()> {
-    // Clearing the uncertainty marker first could expose a stale saved grant.
-    secrets.write(GRANT_KEY, "")?;
-    secrets.write(PENDING_KEY, "")?;
-    Ok(())
+        Err(error) => return Err(error.into()),
+    };
+    uuid::Uuid::parse_str(&id).map_err(|_| anyhow::anyhow!("INSTALLATION_ID_REJECTED"))?;
+    Ok(id)
 }
 fn update_device_index(data: &mut Value, i: &Installation, grid_id: &str) -> Result<()> {
     if !data.is_object() {
@@ -357,14 +273,30 @@ fn update_device_index(data: &mut Value, i: &Installation, grid_id: &str) -> Res
     {
         bail!("ACCOUNT_DEVICE_LIMIT")
     };
-    let record = device_record(&data["anywork"]["devices"][&i.id], i, grid_id);
+    let record = device_record(&data["anywork"]["devices"][&i.id], i, grid_id)?;
     data["anywork"]["devices"][&i.id] = record;
     if serde_json::to_vec(&data)?.len() > 32768 {
         bail!("ACCOUNT_DATA_LIMIT")
     };
     Ok(())
 }
-fn device_record(existing: &Value, installation: &Installation, grid_id: &str) -> Value {
+fn device_record(existing: &Value, installation: &Installation, grid_id: &str) -> Result<Value> {
+    let version = if existing.is_null() {
+        1
+    } else {
+        let previous = existing["keyVersion"]
+            .as_u64()
+            .filter(|v| *v > 0 && *v <= 9_007_199_254_740_991)
+            .ok_or_else(|| anyhow::anyhow!("ACCOUNT_DEVICE_RECORD_REJECTED"))?;
+        if existing["publicKey"].as_str() == Some(installation.public_key.as_str()) {
+            previous
+        } else {
+            previous
+                .checked_add(1)
+                .filter(|v| *v <= 9_007_199_254_740_991)
+                .ok_or_else(|| anyhow::anyhow!("ACCOUNT_KEY_VERSION_EXHAUSTED"))?
+        }
+    };
     let label = existing["label"]
         .as_str()
         .filter(|label| {
@@ -373,7 +305,9 @@ fn device_record(existing: &Value, installation: &Installation, grid_id: &str) -
                 && !label.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}')
         })
         .unwrap_or("AnyWork desktop");
-    json!({"label":label,"platform":std::env::consts::OS,"publicKey":installation.public_key,"keyVersion":1,"gridDeviceId":grid_id})
+    Ok(
+        json!({"label":label,"platform":std::env::consts::OS,"publicKey":installation.public_key,"keyVersion":version,"gridDeviceId":grid_id}),
+    )
 }
 impl cybergrid_sdk::AuthProvider for GrantOwner {
     fn access_token<'a>(
@@ -414,6 +348,7 @@ struct Transaction {
     stop: CancellationToken,
     operation: Mutex<()>,
     latest: Mutex<Option<String>>,
+    uncertain: std::sync::atomic::AtomicBool,
 }
 struct Remote {
     gateway: Gateway,
@@ -430,6 +365,7 @@ impl Remote {
     }
 }
 struct State {
+    installation: Option<Installation>,
     transaction: Option<Arc<Transaction>>,
     owner: Option<Arc<GrantOwner>>,
     remote: Option<Remote>,
@@ -440,7 +376,6 @@ struct Inner {
     config: PublicConfig,
     support: PathBuf,
     manager: manager::Handle,
-    secrets: Arc<dyn Secrets>,
     state: Mutex<State>,
     operation: Mutex<()>,
     account_write: Mutex<()>,
@@ -450,7 +385,6 @@ pub struct Handle(Arc<Inner>);
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Begin {
-    restored: bool,
     transaction_id: String,
     endpoint: String,
     issuer: String,
@@ -480,28 +414,16 @@ pub struct Commit {
     account_token: String,
     refresh_token: String,
 }
-struct AccountSecrets {
-    prefix: String,
-}
-impl Secrets for AccountSecrets {
-    fn read(&self, key: &str) -> Result<String> {
-        OsSecrets.read(&format!("{}-{key}", self.prefix))
-    }
-    fn write(&self, key: &str, value: &str) -> Result<()> {
-        OsSecrets.write(&format!("{}-{key}", self.prefix), value)
-    }
-}
 impl Handle {
     pub fn new(support: PathBuf, manager: manager::Handle, read_only: bool) -> Result<Self> {
         let config = PublicConfig::load(&support)?;
-        let prefix = config.namespace(&support)?;
         Ok(Self(Arc::new(Inner {
             read_only,
             config,
             support,
             manager,
-            secrets: Arc::new(AccountSecrets { prefix }),
             state: Mutex::new(State {
+                installation: None,
                 transaction: None,
                 owner: None,
                 remote: None,
@@ -517,19 +439,19 @@ impl Handle {
         snapshot.transaction_id = state.transaction.as_ref().map(|tx| tx.id.clone());
         if let Some(owner) = &state.owner {
             let grant = owner.state.lock().await;
-            snapshot.checkpoint_pending = grant.pending;
-            snapshot.signed_in = !grant.pending && !grant.invalid && !grant.uncertain;
+            snapshot.signed_in = !grant.invalid && !grant.uncertain;
             snapshot.authorization_status = if grant.invalid || grant.uncertain {
-                snapshot.error = Some("本机授权需要重新登录，请先清理已知授权。".into());
+                snapshot.error = Some("本次授权已中断，不能重试旧令牌。结束本次授权后重新登录；未知的新授权可能还需在登录服务中撤销。".into());
                 AuthorizationStatus::ReauthRequired
-            } else if grant.pending {
-                AuthorizationStatus::CheckpointPending
             } else {
                 AuthorizationStatus::SignedIn
             };
         } else if let Some(tx) = &state.transaction {
-            snapshot.busy = !tx.stop.is_cancelled();
-            snapshot.authorization_status = if tx.stop.is_cancelled() {
+            let interrupted = tx.stop.is_cancelled()
+                || (tx.uncertain.load(std::sync::atomic::Ordering::SeqCst)
+                    && tx.operation.try_lock().is_ok());
+            snapshot.busy = !interrupted;
+            snapshot.authorization_status = if interrupted {
                 AuthorizationStatus::LoginInterrupted
             } else {
                 AuthorizationStatus::Authorizing
@@ -560,34 +482,8 @@ impl Handle {
         if state.transaction.is_some() || state.owner.is_some() {
             bail!("ACCOUNT_OPERATION_IN_PROGRESS")
         }
-        let restored = match restore_grant(self.0.secrets.as_ref(), &self.0.config) {
-            Ok(grant) => grant,
-            Err(error) => {
-                if [
-                    "PENDING_AUTHORIZATION_NEEDS_CLEANUP",
-                    "SAVED_AUTHORIZATION_NEEDS_CLEANUP",
-                    "ACCOUNT_CONFIG_CHANGED",
-                ]
-                .contains(&error.to_string().as_str())
-                {
-                    state.snapshot.authorization_status = AuthorizationStatus::CleanupRequired;
-                    state.snapshot.error =
-                        Some("本机保存的授权需要检查；可重试读取或清理已知授权。".into());
-                }
-                return Err(error);
-            }
-        };
         state.snapshot.authorization_status = AuthorizationStatus::SignedOut;
         state.snapshot.error = None;
-        if let Some(grant) = restored {
-            state.owner = Some(Arc::new(GrantOwner::new(
-                grant.clone(),
-                self.0.secrets.clone(),
-            )?));
-            state.snapshot.signed_in = true;
-            state.snapshot.subject = Some(grant.subject);
-            return Ok(self.begin_result(String::new(), true));
-        }
         let listener = tokio::net::TcpListener::bind("127.0.0.1:17897")
             .await
             .map_err(|_| anyhow::anyhow!("LOGIN_CALLBACK_PORT_IN_USE"))?;
@@ -599,6 +495,7 @@ impl Handle {
             stop: CancellationToken::new(),
             operation: Mutex::new(()),
             latest: Mutex::new(None),
+            uncertain: std::sync::atomic::AtomicBool::new(false),
         });
         state.transaction = Some(tx.clone());
         state.snapshot.busy = true;
@@ -607,12 +504,11 @@ impl Handle {
         tokio::spawn(async move {
             callback_listener(listener, task_tx).await;
         });
-        Ok(self.begin_result(tx.id.clone(), false))
+        Ok(self.begin_result(tx.id.clone()))
     }
-    fn begin_result(&self, id: String, restored: bool) -> Begin {
+    fn begin_result(&self, id: String) -> Begin {
         let c = &self.0.config;
         Begin {
-            restored,
             transaction_id: id,
             endpoint: c.endpoint.clone(),
             issuer: c.issuer.clone(),
@@ -698,6 +594,9 @@ impl Handle {
             bail!("LOGIN_HEADER_REJECTED")
         }
         if token {
+            if tx.uncertain.load(std::sync::atomic::Ordering::SeqCst) {
+                bail!("LOGIN_REAUTH_REQUIRED")
+            }
             let fields: BTreeMap<_, _> =
                 url::form_urlencoded::parse(request.body.as_deref().unwrap_or("").as_bytes())
                     .map(|(k, v)| (k.into_owned(), v.into_owned()))
@@ -725,19 +624,29 @@ impl Handle {
         if let Some(body) = request.body {
             builder = builder.body(body)
         };
+        if token {
+            tx.uncertain
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
         let response = builder.send().await?;
         let status = response.status().as_u16();
         let body = String::from_utf8(bounded(response).await?)?;
         if token {
             let value: Value = serde_json::from_str(&body)?;
             if let Some(refresh) = value["refresh_token"].as_str().filter(|v| !v.is_empty()) {
-                // Native escrow exists before a minted grant crosses IPC. A failed
-                // keychain checkpoint leaves the only live transaction owner intact.
+                // The sole broker owns this rotation in RAM before IPC returns.
                 *tx.latest.lock().await = Some(refresh.into());
-                self.0.secrets.write(
-                    PENDING_KEY,
-                    &json!({"config":self.0.config,"refresh":refresh}).to_string(),
-                )?;
+                tx.uncertain
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+            if (200..300).contains(&status)
+                && value.get("error").is_none()
+                && value["access_token"]
+                    .as_str()
+                    .is_some_and(|v| !v.is_empty())
+            {
+                tx.uncertain
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
             }
         }
         Ok(BrowserResponse {
@@ -750,6 +659,9 @@ impl Handle {
         let _op = self.0.operation.lock().await;
         let tx = self.transaction(id).await?;
         let _grant = tx.operation.lock().await;
+        if tx.stop.is_cancelled() || tx.uncertain.load(std::sync::atomic::Ordering::SeqCst) {
+            bail!("LOGIN_REAUTH_REQUIRED")
+        }
         if tx.latest.lock().await.as_deref() != Some(&tokens.refresh_token) {
             bail!("LOGIN_STALE_GRANT")
         }
@@ -772,30 +684,17 @@ impl Handle {
             refresh: tokens.refresh_token,
             subject: subject.clone(),
         };
-        let owner = Arc::new(GrantOwner::new(grant.clone(), self.0.secrets.clone())?);
-        let checkpoint = self
-            .0
-            .secrets
-            .write(GRANT_KEY, &serde_json::to_string(&grant)?)
-            .and_then(|_| self.0.secrets.write(PENDING_KEY, ""));
-        if checkpoint.is_err() {
-            owner.state.lock().await.pending = true;
-        }
-        // Ownership ACK even when the durable checkpoint failed. The pending
-        // native owner survives JS clearAllTokens and blocks all new logins.
+        let owner = Arc::new(GrantOwner::new(grant)?);
+        // Explicit ACK transfers the only refresh ownership to this RAM owner.
         let mut state = self.0.state.lock().await;
         state.owner = Some(owner);
         state.transaction = None;
         tx.stop.cancel();
         state.snapshot.busy = false;
+        state.snapshot.account_label = Some(account_label(&account, &subject));
         state.snapshot.subject = Some(subject);
-        state.snapshot.signed_in = checkpoint.is_ok();
-        if checkpoint.is_ok() {
-            Ok("OwnedPersisted".into())
-        } else {
-            state.snapshot.checkpoint_pending = true;
-            Ok("OwnedPending".into())
-        }
+        state.snapshot.signed_in = true;
+        Ok("OwnedInMemory".into())
     }
     async fn account_request(
         &self,
@@ -815,30 +714,24 @@ impl Handle {
         };
         Ok(serde_json::from_slice(&bounded(response).await?)?)
     }
-    fn installation(&self, subject: &str) -> Result<Installation> {
-        let raw = self.0.secrets.read(INSTALL_KEY)?;
-        if !raw.is_empty() {
-            let i: Installation = serde_json::from_str(&raw)?;
-            if URL_SAFE_NO_PAD.decode(&i.private_key)?.len() != 32
-                || URL_SAFE_NO_PAD.decode(&i.public_key)?.len() != 32
-            {
-                bail!("INSTALLATION_KEY_REJECTED")
-            };
-            if i.config == self.0.config && i.subject == subject {
-                return Ok(i);
-            }
-        };
+    async fn installation(&self, subject: &str) -> Result<Installation> {
+        let mut state = self.0.state.lock().await;
+        if let Some(i) = &state.installation
+            && i.config == self.0.config
+            && i.subject == subject
+        {
+            return Ok(i.clone());
+        }
+        let id = public_installation_id(&self.0.support, &self.0.config, subject)?;
         let keys = snow::Builder::new(anywork_remote::NOISE_SUITE.parse()?).generate_keypair()?;
         let i = Installation {
             config: self.0.config.clone(),
             subject: subject.into(),
-            id: uuid::Uuid::new_v4().to_string(),
+            id,
             private_key: URL_SAFE_NO_PAD.encode(keys.private),
             public_key: URL_SAFE_NO_PAD.encode(keys.public),
         };
-        self.0
-            .secrets
-            .write(INSTALL_KEY, &serde_json::to_string(&i)?)?;
+        state.installation = Some(i.clone());
         Ok(i)
     }
     async fn publish_index(
@@ -874,34 +767,6 @@ impl Handle {
         };
         Ok(())
     }
-    pub async fn recover_checkpoint(&self) -> Result<()> {
-        if self.0.read_only {
-            bail!("ACCOUNT_PREVIEW_READ_ONLY")
-        }
-        let _op = self.0.operation.lock().await;
-        let owner = self
-            .0
-            .state
-            .lock()
-            .await
-            .owner
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("PENDING_AUTHORIZATION_NEEDS_CLEANUP"))?;
-        let mut grant = owner.state.lock().await;
-        if grant.invalid || grant.uncertain {
-            bail!("ACCOUNT_REAUTH_REQUIRED")
-        }
-        self.0
-            .secrets
-            .write(GRANT_KEY, &serde_json::to_string(&grant.grant)?)?;
-        self.0.secrets.write(PENDING_KEY, "")?;
-        grant.pending = false;
-        drop(grant);
-        let mut state = self.0.state.lock().await;
-        state.snapshot.signed_in = true;
-        state.snapshot.checkpoint_pending = false;
-        Ok(())
-    }
     pub async fn enable(&self) -> Result<()> {
         if self.0.read_only {
             bail!("ACCOUNT_PREVIEW_READ_ONLY")
@@ -922,7 +787,7 @@ impl Handle {
                 .ok_or_else(|| anyhow::anyhow!("ACCOUNT_SIGN_IN_REQUIRED"))?
         };
         let subject = owner.state.lock().await.grant.subject.clone();
-        let i = self.installation(&subject)?;
+        let i = self.installation(&subject).await?;
         let verifier = JwtVerifier::new(
             self.0.config.issuer.clone(),
             self.0.config.resource.clone(),
@@ -981,6 +846,9 @@ impl Handle {
             cloudflared: None,
             ..Default::default()
         })?;
+        // Client::new leaves grant_store=None in the pinned official SDK. Only
+        // this RAM AuthProvider is installed: never call use_credential_store,
+        // SDK browser login/import, or credential loading on the account path.
         grid.set_auth_provider(owner.clone()).await;
         let result = async {
             let auth = grid.auth_config().await?;
@@ -1095,7 +963,6 @@ impl Handle {
         let _grant = tx.operation.lock().await;
         if let Some(refresh) = tx.latest.lock().await.clone() {
             self.revoke(&refresh).await?;
-            self.0.secrets.write(PENDING_KEY, "")?;
         }
         let mut state = self.0.state.lock().await;
         state.transaction = None;
@@ -1145,17 +1012,13 @@ impl Handle {
             None => None,
         } {
             self.revoke(&refresh).await?;
-        } else {
-            for refresh in persisted_cleanup_tokens(self.0.secrets.as_ref(), &self.0.config)? {
-                self.revoke(&refresh).await?;
-            }
         }
-        clear_saved_grant(self.0.secrets.as_ref())?;
         let mut state = self.0.state.lock().await;
         if let Some(tx) = state.transaction.take() {
             tx.stop.cancel()
         };
         state.owner = None;
+        state.installation = None;
         state.snapshot = Snapshot::default();
         Ok(())
     }
@@ -1226,11 +1089,10 @@ async fn callback_listener(listener: tokio::net::TcpListener, tx: Arc<Transactio
 
 fn safe_error(error: anyhow::Error) -> String {
     match error.to_string().as_str() {
-        "PENDING_AUTHORIZATION_NEEDS_CLEANUP" => "上次授权尚未收尾，请先退出账号并重试。".into(),
         "LOGIN_CALLBACK_PORT_IN_USE" => "登录回调端口已被占用，请关闭其他登录窗口后重试。".into(),
         "LOCAL_SERVICE_NOT_READY" => "请先启动并连接本地服务。".into(),
         "ACCOUNT_REAUTH_REQUIRED" => "账号授权已失效，请退出账号后重新登录。".into(),
-        _ => "账号操作未完成，请检查登录状态、系统钥匙串和网络后重试。".into(),
+        _ => "账号操作未完成，请检查登录状态和网络后重试。".into(),
     }
 }
 #[tauri::command]
@@ -1289,10 +1151,6 @@ pub async fn account_cancel(
     state.cancel(&transaction_id).await.map_err(safe_error)
 }
 #[tauri::command]
-pub async fn account_recover(state: tauri::State<'_, Handle>) -> Result<(), String> {
-    state.recover_checkpoint().await.map_err(safe_error)
-}
-#[tauri::command]
 pub async fn account_enable(state: tauri::State<'_, Handle>) -> Result<(), String> {
     state.enable().await.map_err(safe_error)
 }
@@ -1305,302 +1163,218 @@ pub async fn account_disable(state: tauri::State<'_, Handle>) -> Result<(), Stri
 pub async fn account_logout(state: tauri::State<'_, Handle>) -> Result<(), String> {
     state.logout().await.map_err(safe_error)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        collections::HashMap,
-        sync::{
-            Mutex as SyncMutex,
-            atomic::{AtomicBool, AtomicUsize, Ordering},
-        },
-    };
-    #[derive(Default)]
-    struct MemorySecrets {
-        values: SyncMutex<HashMap<String, String>>,
-        fail: AtomicBool,
-        fail_grant: AtomicBool,
-        fail_pending_clear: AtomicBool,
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    fn handle(support: &std::path::Path) -> Handle {
+        Handle::new(
+            support.to_path_buf(),
+            manager::Handle::preview(manager::Snapshot::new(
+                config::Config::default(),
+                String::new(),
+            )),
+            false,
+        )
+        .unwrap()
     }
-    impl Secrets for MemorySecrets {
-        fn read(&self, key: &str) -> Result<String> {
-            Ok(self
-                .values
-                .lock()
-                .unwrap()
-                .get(key)
-                .cloned()
-                .unwrap_or_default())
-        }
-        fn write(&self, key: &str, value: &str) -> Result<()> {
-            if self.fail.load(Ordering::SeqCst)
-                || (key == GRANT_KEY && self.fail_grant.load(Ordering::SeqCst))
-                || (key == PENDING_KEY
-                    && value.is_empty()
-                    && self.fail_pending_clear.load(Ordering::SeqCst))
-            {
-                bail!("CHECKPOINT_FAILED")
-            };
-            self.values.lock().unwrap().insert(key.into(), value.into());
-            Ok(())
-        }
+    fn transaction() -> Arc<Transaction> {
+        Arc::new(Transaction {
+            id: "test-login".into(),
+            expected_state: Mutex::new(None),
+            callback: Mutex::new(None),
+            notify: Notify::new(),
+            stop: CancellationToken::new(),
+            operation: Mutex::new(()),
+            latest: Mutex::new(None),
+            uncertain: std::sync::atomic::AtomicBool::new(false),
+        })
     }
-    async fn owner() -> (Arc<GrantOwner>, Arc<MemorySecrets>, Arc<AtomicUsize>) {
+    async fn provider(unknown: bool) -> (Arc<GrantOwner>, Arc<AtomicUsize>) {
         let calls = Arc::new(AtomicUsize::new(0));
         let server_calls = calls.clone();
-        let latest = Arc::new(Mutex::new("initial-test-refresh".to_string()));
-        let app=axum::Router::new().route("/token",axum::routing::post(move|axum::Form(form):axum::Form<HashMap<String,String>>|{let latest=latest.clone();let calls=server_calls.clone();async move{let mut last=latest.lock().await;assert_eq!(form.get("refresh_token"),Some(&*last));let n=calls.fetch_add(1,Ordering::SeqCst)+1;*last=format!("rotated-test-{n}");axum::Json(json!({"access_token":"opaque-test-access","refresh_token":last.clone()}))}}));
+        let latest = Arc::new(Mutex::new("initial-ram-grant".to_string()));
+        let app=axum::Router::new().route("/token",axum::routing::post(move |axum::Form(form):axum::Form<BTreeMap<String,String>>| {
+            let latest=latest.clone();let calls=server_calls.clone();async move {
+                let mut latest=latest.lock().await;
+                assert_eq!(form.get("refresh_token"),Some(&*latest));
+                let n=calls.fetch_add(1,Ordering::SeqCst)+1;*latest=format!("rotated-ram-{n}");
+                if unknown { (axum::http::StatusCode::BAD_GATEWAY, "response lost".into()) }
+                else { (axum::http::StatusCode::OK,json!({"access_token":"test-access","refresh_token":latest.clone()}).to_string()) }
+            }
+        }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
-        let secrets = Arc::new(MemorySecrets::default());
-        let grant = Grant {
-            config: PublicConfig {
-                issuer: format!("http://127.0.0.1:{port}"),
-                ..Default::default()
-            },
-            refresh: "initial-test-refresh".into(),
-            subject: "test-owner".into(),
-        };
-        secrets
-            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
-            .unwrap();
         (
-            Arc::new(GrantOwner::new(grant, secrets.clone()).unwrap()),
-            secrets,
+            Arc::new(
+                GrantOwner::new(Grant {
+                    config: PublicConfig {
+                        issuer: format!("http://127.0.0.1:{port}"),
+                        ..Default::default()
+                    },
+                    refresh: "initial-ram-grant".into(),
+                    subject: "test-owner".into(),
+                })
+                .unwrap(),
+            ),
             calls,
         )
     }
     #[tokio::test]
-    async fn one_refresh_owner_serializes_real_provider_rotations() {
-        let (owner, secrets, calls) = owner().await;
+    async fn one_ram_owner_serializes_account_and_resource_rotation() {
+        let (owner, calls) = provider(false).await;
         let mut tasks = Vec::new();
-        for _ in 0..8 {
+        for n in 0..8 {
             let owner = owner.clone();
-            tasks.push(tokio::spawn(
-                async move { owner.token(false).await.unwrap() },
-            ));
+            tasks.push(tokio::spawn(async move {
+                owner.token(n % 2 == 0).await.unwrap()
+            }));
         }
         for task in tasks {
-            assert_eq!(task.await.unwrap(), "opaque-test-access");
+            assert_eq!(task.await.unwrap(), "test-access");
         }
         assert_eq!(calls.load(Ordering::SeqCst), 8);
-        let saved: Grant = serde_json::from_str(&secrets.read(GRANT_KEY).unwrap()).unwrap();
-        assert_eq!(saved.refresh, "rotated-test-8");
+        assert_eq!(owner.state.lock().await.grant.refresh, "rotated-ram-8");
     }
     #[tokio::test]
-    async fn failed_checkpoint_holds_latest_rotation_and_blocks_next_network_request() {
-        let (owner, secrets, calls) = owner().await;
-        secrets.fail_grant.store(true, Ordering::SeqCst);
-        assert!(owner.token(false).await.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(owner.state.lock().await.grant.refresh, "rotated-test-1");
-        assert!(owner.state.lock().await.pending);
-        assert!(owner.token(false).await.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        secrets.fail_grant.store(false, Ordering::SeqCst);
-        assert_eq!(owner.token(false).await.unwrap(), "opaque-test-access");
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
-        assert!(!owner.state.lock().await.pending);
-    }
-    #[tokio::test]
-    async fn preflight_write_failure_sends_no_refresh_and_old_grant_can_restore() {
-        let (owner, secrets, calls) = owner().await;
-        let config = owner.state.lock().await.grant.config.clone();
-        secrets.fail.store(true, Ordering::SeqCst);
-        assert!(owner.token(false).await.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
-        assert!(!owner.state.lock().await.uncertain);
-        drop(owner);
-        secrets.fail.store(false, Ordering::SeqCst);
-        assert_eq!(
-            restore_grant(secrets.as_ref(), &config)
-                .unwrap()
-                .unwrap()
-                .refresh,
-            "initial-test-refresh"
-        );
-    }
-    #[tokio::test]
-    async fn lost_ram_after_rotation_checkpoint_failure_cannot_restore_old_grant() {
-        let (owner, secrets, calls) = owner().await;
-        let config = owner.state.lock().await.grant.config.clone();
-        secrets.fail_grant.store(true, Ordering::SeqCst);
-        assert!(owner.token(false).await.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        let saved: Grant = serde_json::from_str(&secrets.read(GRANT_KEY).unwrap()).unwrap();
-        assert_eq!(saved.refresh, "initial-test-refresh");
-        assert_eq!(
-            serde_json::from_str::<Value>(&secrets.read(PENDING_KEY).unwrap()).unwrap()["uncertain"],
-            true
-        );
-        drop(owner); // Only persistent state remains.
-        secrets.fail_grant.store(false, Ordering::SeqCst);
-        assert!(restore_grant(secrets.as_ref(), &config).is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-    }
-    #[tokio::test]
-    async fn pending_clear_failure_blocks_restart_even_after_new_grant_saved() {
-        let (owner, secrets, calls) = owner().await;
-        let config = owner.state.lock().await.grant.config.clone();
-        secrets.fail_pending_clear.store(true, Ordering::SeqCst);
-        assert!(owner.token(false).await.is_err());
-        assert!(owner.state.lock().await.pending);
-        assert!(owner.token(false).await.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        let saved: Grant = serde_json::from_str(&secrets.read(GRANT_KEY).unwrap()).unwrap();
-        assert_eq!(saved.refresh, "rotated-test-1");
-        drop(owner);
-        secrets.fail_pending_clear.store(false, Ordering::SeqCst);
-        assert!(restore_grant(secrets.as_ref(), &config).is_err());
-    }
-    #[tokio::test]
-    async fn successful_checkpoint_clears_uncertainty_and_restores_latest_grant() {
-        let (owner, secrets, _) = owner().await;
-        let config = owner.state.lock().await.grant.config.clone();
-        owner.token(true).await.unwrap();
-        assert!(secrets.read(PENDING_KEY).unwrap().is_empty());
-        drop(owner);
-        assert_eq!(
-            restore_grant(secrets.as_ref(), &config)
-                .unwrap()
-                .unwrap()
-                .refresh,
-            "rotated-test-1"
-        );
-    }
-    #[tokio::test]
-    async fn process_loss_during_provider_exchange_leaves_restore_blocked() {
-        let reached = Arc::new(Notify::new());
-        let reached_handler = reached.clone();
-        let app = axum::Router::new().route(
-            "/token",
-            axum::routing::post(move || {
-                let reached = reached_handler.clone();
-                async move {
-                    reached.notify_one();
-                    std::future::pending::<String>().await
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-        let secrets = Arc::new(MemorySecrets::default());
-        let grant = Grant {
-            config: PublicConfig {
-                issuer: format!("http://127.0.0.1:{port}"),
-                ..Default::default()
-            },
-            refresh: "old".into(),
-            subject: "owner".into(),
-        };
-        let config = grant.config.clone();
-        secrets
-            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
-            .unwrap();
-        let owner = Arc::new(GrantOwner::new(grant, secrets.clone()).unwrap());
-        let task_owner = owner.clone();
-        let operation = tokio::spawn(async move { task_owner.token(false).await });
-        tokio::time::timeout(Duration::from_secs(2), reached.notified())
-            .await
-            .unwrap();
-        assert_eq!(
-            serde_json::from_str::<Value>(&secrets.read(PENDING_KEY).unwrap()).unwrap()["uncertain"],
-            true
-        );
-        operation.abort();
-        let _ = operation.await;
-        drop(owner);
-        assert!(restore_grant(secrets.as_ref(), &config).is_err());
-        server.abort();
-    }
-    #[tokio::test]
-    async fn unknown_provider_outcome_blocks_live_and_restored_refresh() {
-        let app = axum::Router::new().route(
-            "/token",
-            axum::routing::post(|| async {
-                (axum::http::StatusCode::BAD_GATEWAY, "lost provider outcome")
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-        let secrets = Arc::new(MemorySecrets::default());
-        let grant = Grant {
-            config: PublicConfig {
-                issuer: format!("http://127.0.0.1:{port}"),
-                ..Default::default()
-            },
-            refresh: "old".into(),
-            subject: "owner".into(),
-        };
-        secrets
-            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
-            .unwrap();
-        let config = grant.config.clone();
-        let owner = GrantOwner::new(grant, secrets.clone()).unwrap();
-        assert!(owner.token(false).await.is_err());
+    async fn unknown_rotation_never_replays_last_known_ram_grant() {
+        let (owner, calls) = provider(true).await;
+        assert!(owner.token(true).await.is_err());
         assert!(owner.state.lock().await.uncertain);
         assert!(owner.token(false).await.is_err());
-        drop(owner);
-        assert!(restore_grant(secrets.as_ref(), &config).is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+    #[tokio::test]
+    async fn process_restart_has_no_account_but_same_public_id_and_fresh_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = handle(dir.path());
+        let (owner, _) = provider(false).await;
+        first.0.state.lock().await.owner = Some(owner);
+        let i1 = first.installation("test-owner").await.unwrap();
+        assert_eq!(
+            first.installation("test-owner").await.unwrap().public_key,
+            i1.public_key
+        );
+        assert!(first.snapshot().await.signed_in);
+        drop(first);
+        let second = handle(dir.path());
+        let snapshot = second.snapshot().await;
+        assert_eq!(
+            snapshot.authorization_status,
+            AuthorizationStatus::SignedOut
+        );
+        assert!(snapshot.subject.is_none() && !snapshot.enabled);
+        assert!(second.0.state.lock().await.owner.is_none());
+        let i2 = second.installation("test-owner").await.unwrap();
+        assert_eq!(i1.id, i2.id);
+        assert_ne!(i1.private_key, i2.private_key);
+        assert_ne!(i1.public_key, i2.public_key);
+        let paths = std::fs::read_dir(dir.path().join("account-installations"))
+            .unwrap()
+            .map(|p| p.unwrap().path())
+            .collect::<Vec<_>>();
+        assert_eq!(paths.len(), 1);
+        let contents = std::fs::read_to_string(&paths[0]).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&contents).unwrap(),
+            json!({"installationId":i1.id})
+        );
+        for secret in [
+            &i1.private_key,
+            &i1.public_key,
+            &i2.private_key,
+            &i2.public_key,
+            "initial-ram-grant",
+            "test-owner",
+        ] {
+            assert!(!contents.contains(secret));
+        }
+        for _ in 0..4 {
+            assert_eq!(
+                handle(dir.path())
+                    .installation("test-owner")
+                    .await
+                    .unwrap()
+                    .id,
+                i1.id
+            );
+        }
+        assert_eq!(
+            std::fs::read_dir(dir.path().join("account-installations"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
+    #[tokio::test]
+    async fn owner_and_full_config_isolate_public_installations() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = handle(dir.path());
+        let a = first.installation("owner-a").await.unwrap();
+        let b = first.installation("owner-b").await.unwrap();
+        assert_ne!(a.id, b.id);
+        assert_ne!(a.public_key, b.public_key);
+        let mut config = PublicConfig::default();
+        config.spa_client_id = "different-public-app".into();
+        std::fs::write(
+            dir.path().join("account-cloud.json"),
+            serde_json::to_vec(&config).unwrap(),
+        )
+        .unwrap();
+        let changed = handle(dir.path()).installation("owner-a").await.unwrap();
+        assert_ne!(a.id, changed.id);
     }
     #[test]
-    fn logout_cleanup_never_exposes_stale_grant_if_marker_clear_fails() {
-        let secrets = MemorySecrets::default();
+    fn public_identity_rejects_corruption_and_symlinks_without_replacing_them() {
+        let dir = tempfile::tempdir().unwrap();
         let config = PublicConfig::default();
-        let grant = Grant {
-            config: config.clone(),
-            refresh: "old".into(),
-            subject: "owner".into(),
-        };
-        secrets
-            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
-            .unwrap();
-        secrets
-            .write(
-                PENDING_KEY,
-                &json!({"config":config,"refresh":"old","uncertain":true}).to_string(),
-            )
-            .unwrap();
-        secrets.fail_grant.store(true, Ordering::SeqCst);
-        assert!(clear_saved_grant(&secrets).is_err());
-        assert!(!secrets.read(PENDING_KEY).unwrap().is_empty());
-        assert!(restore_grant(&secrets, &config).is_err());
-        secrets.fail_grant.store(false, Ordering::SeqCst);
-        secrets.fail_pending_clear.store(true, Ordering::SeqCst);
-        assert!(clear_saved_grant(&secrets).is_err());
-        assert!(secrets.read(GRANT_KEY).unwrap().is_empty());
-        assert!(restore_grant(&secrets, &config).is_err());
-        secrets.fail_pending_clear.store(false, Ordering::SeqCst);
-        clear_saved_grant(&secrets).unwrap();
-        assert!(restore_grant(&secrets, &config).unwrap().is_none());
+        public_installation_id(dir.path(), &config, "owner").unwrap();
+        let directory = dir.path().join("account-installations");
+        let path = std::fs::read_dir(&directory)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        for corrupt in [
+            "not json",
+            r#"{"installationId":"not-a-uuid"}"#,
+            r#"{"installationId":"00000000-0000-4000-8000-000000000001","refresh":"forbidden"}"#,
+        ] {
+            std::fs::write(&path, corrupt).unwrap();
+            assert!(public_installation_id(dir.path(), &config, "owner").is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), corrupt);
+        }
+        std::fs::remove_file(&path).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::write(&outside, "untouched").unwrap();
+        std::os::unix::fs::symlink(&outside, &path).unwrap();
+        assert!(public_installation_id(dir.path(), &config, "owner").is_err());
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "untouched");
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_dir(&directory).unwrap();
+        std::os::unix::fs::symlink(dir.path(), &directory).unwrap();
+        assert!(public_installation_id(dir.path(), &config, "owner").is_err());
     }
-    async fn cleanup_handle(
-        status: axum::http::StatusCode,
-    ) -> (Handle, Arc<MemorySecrets>, Arc<SyncMutex<Vec<String>>>) {
-        let calls = Arc::new(SyncMutex::new(Vec::new()));
+    #[tokio::test]
+    async fn logout_keeps_ram_owner_on_revocation_failure_and_never_restores_it() {
+        let calls = Arc::new(AtomicUsize::new(0));
         let server_calls = calls.clone();
         let app = axum::Router::new().route(
-            "/oidc/token/revocation",
+            "/token/revocation",
             axum::routing::post(
-                move |axum::Form(form): axum::Form<HashMap<String, String>>| {
+                move |axum::Form(form): axum::Form<BTreeMap<String, String>>| {
                     let calls = server_calls.clone();
                     async move {
-                        assert_eq!(
-                            form.get("client_id").map(String::as_str),
-                            Some("cleanup-client")
-                        );
-                        calls.lock().unwrap().push(form["token"].clone());
-                        status
+                        assert_eq!(form["token"], "known-ram-grant");
+                        if calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE
+                        } else {
+                            axum::http::StatusCode::OK
+                        }
                     }
                 },
             ),
@@ -1610,172 +1384,99 @@ mod tests {
         tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
-        // Tests construct the private state directly; production Handle::new
-        // still validates HTTPS public config and uses the OS secret store.
-        let config = PublicConfig {
-            endpoint: format!("http://127.0.0.1:{port}"),
-            issuer: format!("http://127.0.0.1:{port}/oidc"),
-            native_client_id: "cleanup-client".into(),
-            ..Default::default()
-        };
-        let secrets = Arc::new(MemorySecrets::default());
-        let manager = manager::Handle::preview(manager::Snapshot::new(
-            config::Config::default(),
-            String::new(),
-        ));
-        let handle = Handle(Arc::new(Inner {
-            read_only: false,
-            config,
-            support: PathBuf::from("/isolated-unused-test-home"),
-            manager,
-            secrets: secrets.clone(),
-            state: Mutex::new(State {
-                transaction: None,
-                owner: None,
-                remote: None,
-                snapshot: Snapshot::default(),
-            }),
-            operation: Mutex::new(()),
-            account_write: Mutex::new(()),
-        }));
-        (handle, secrets, calls)
-    }
-    fn persist_cleanup_grant(handle: &Handle, secrets: &MemorySecrets, changed: bool) -> Grant {
-        let mut config = handle.0.config.clone();
-        if changed {
-            config.frontend_origin = "https://old-frontend.invalid".into();
-            config.resource = "https://old-resource.invalid/api".into();
-        }
-        let grant = Grant {
-            config,
-            refresh: "persisted-only-grant".into(),
-            subject: "test-owner".into(),
-        };
-        secrets
-            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
-            .unwrap();
-        grant
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = handle(dir.path());
+        Arc::get_mut(&mut h.0).unwrap().config.issuer = format!("http://127.0.0.1:{port}");
+        let owner = Arc::new(
+            GrantOwner::new(Grant {
+                config: h.0.config.clone(),
+                refresh: "known-ram-grant".into(),
+                subject: "owner".into(),
+            })
+            .unwrap(),
+        );
+        owner.state.lock().await.uncertain = true;
+        h.0.state.lock().await.owner = Some(owner);
+        assert!(h.logout().await.is_err());
+        assert!(h.0.state.lock().await.owner.is_some());
+        assert_eq!(
+            h.snapshot().await.authorization_status,
+            AuthorizationStatus::ReauthRequired
+        );
+        h.logout().await.unwrap();
+        assert!(h.0.state.lock().await.owner.is_none());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            handle(dir.path()).snapshot().await.authorization_status,
+            AuthorizationStatus::SignedOut
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
     #[tokio::test]
-    async fn fresh_owner_logout_revokes_saved_grant_after_public_config_change() {
-        let (handle, secrets, calls) = cleanup_handle(axum::http::StatusCode::OK).await;
-        persist_cleanup_grant(&handle, &secrets, true);
-        assert!(handle.begin().await.is_err()); // No RAM owner after config mismatch.
+    async fn restarting_updates_one_directory_record_and_increments_key_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let i1 = handle(dir.path()).installation("owner").await.unwrap();
+        let mut data = json!({"otherApp":{"keep":true},"anywork":{"schemaVersion":1,"preferences":{"appearance":"dark"},"devices":{}}});
+        update_device_index(&mut data, &i1, "grid-1").unwrap();
+        assert_eq!(data["anywork"]["devices"][&i1.id]["keyVersion"], 1);
+        data["anywork"]["devices"][&i1.id]["label"] = json!("办公电脑");
+        let i2 = handle(dir.path()).installation("owner").await.unwrap();
+        update_device_index(&mut data, &i2, "grid-2").unwrap();
+        assert_eq!(data["anywork"]["devices"].as_object().unwrap().len(), 1);
+        let record = &data["anywork"]["devices"][&i1.id];
+        assert_eq!(record["keyVersion"], 2);
+        assert_eq!(record["publicKey"], i2.public_key);
+        assert_eq!(record["label"], "办公电脑");
+        update_device_index(&mut data, &i2, "grid-3").unwrap();
+        assert_eq!(data["anywork"]["devices"][&i1.id]["keyVersion"], 2);
+        assert_eq!(data["otherApp"], json!({"keep":true}));
+        assert_eq!(data["anywork"]["preferences"], json!({"appearance":"dark"}));
+        let mut exhausted = data["anywork"]["devices"][&i1.id].clone();
+        exhausted["keyVersion"] = json!(9_007_199_254_740_991u64);
+        assert!(device_record(&exhausted, &i1, "grid").is_err());
+        exhausted["keyVersion"] = json!(0);
+        assert!(device_record(&exhausted, &i2, "grid").is_err());
+    }
+    #[tokio::test]
+    async fn interrupted_login_without_grant_can_cancel_and_no_secret_files_are_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("account-grant-v1");
+        std::fs::write(&old, "ignored-old-sentinel").unwrap();
+        let handle = handle(dir.path());
+        let tx = transaction();
+        handle.0.state.lock().await.transaction = Some(tx.clone());
         assert_eq!(
             handle.snapshot().await.authorization_status,
-            AuthorizationStatus::CleanupRequired
+            AuthorizationStatus::Authorizing
         );
-        assert!(handle.0.state.lock().await.owner.is_none());
-        handle.logout().await.unwrap();
-        assert_eq!(*calls.lock().unwrap(), vec!["persisted-only-grant"]);
-        assert!(secrets.read(GRANT_KEY).unwrap().is_empty());
-        assert!(secrets.read(PENDING_KEY).unwrap().is_empty());
-    }
-    #[tokio::test]
-    async fn fresh_owner_logout_preserves_saved_grant_when_revocation_fails() {
-        let (handle, secrets, calls) =
-            cleanup_handle(axum::http::StatusCode::SERVICE_UNAVAILABLE).await;
-        persist_cleanup_grant(&handle, &secrets, false);
-        let before = secrets.read(GRANT_KEY).unwrap();
-        assert!(handle.logout().await.is_err());
-        assert_eq!(*calls.lock().unwrap(), vec!["persisted-only-grant"]);
-        assert_eq!(secrets.read(GRANT_KEY).unwrap(), before);
-        assert!(secrets.read(PENDING_KEY).unwrap().is_empty());
-        secrets
-            .write(
-                PENDING_KEY,
-                &json!({"config":handle.0.config,"refresh":"older-last-known","uncertain":true})
-                    .to_string(),
-            )
-            .unwrap();
-        let pending_before = secrets.read(PENDING_KEY).unwrap();
-        assert!(handle.logout().await.is_err());
-        assert_eq!(secrets.read(GRANT_KEY).unwrap(), before);
-        assert_eq!(secrets.read(PENDING_KEY).unwrap(), pending_before);
-        assert!(restore_grant(secrets.as_ref(), &handle.0.config).is_err());
-    }
-    #[tokio::test]
-    async fn fresh_owner_logout_rejects_foreign_namespace_without_deleting_it() {
-        let (handle, secrets, calls) = cleanup_handle(axum::http::StatusCode::OK).await;
-        let grant = persist_cleanup_grant(&handle, &secrets, false);
-        for field in ["client", "issuer", "endpoint"] {
-            let mut foreign = grant.clone();
-            match field {
-                "client" => foreign.config.native_client_id = "foreign-client".into(),
-                "issuer" => foreign.config.issuer = "https://foreign.invalid/oidc".into(),
-                _ => foreign.config.endpoint = "https://foreign.invalid".into(),
-            }
-            secrets
-                .write(GRANT_KEY, &serde_json::to_string(&foreign).unwrap())
-                .unwrap();
-            let before = secrets.read(GRANT_KEY).unwrap();
-            assert!(handle.logout().await.is_err());
-            assert!(calls.lock().unwrap().is_empty());
-            assert_eq!(secrets.read(GRANT_KEY).unwrap(), before);
-        }
-    }
-    #[tokio::test]
-    async fn fresh_owner_logout_revokes_saved_checkpoint_and_uncertain_last_known_token() {
-        let (handle, secrets, calls) = cleanup_handle(axum::http::StatusCode::OK).await;
-        let grant = persist_cleanup_grant(&handle, &secrets, false);
-        secrets
-            .write(
-                PENDING_KEY,
-                &json!({"config":grant.config,"refresh":"older-last-known","uncertain":true})
-                    .to_string(),
-            )
-            .unwrap();
-        assert!(handle.begin().await.is_err());
-        handle.logout().await.unwrap();
+        tx.stop.cancel();
         assert_eq!(
-            *calls.lock().unwrap(),
-            vec!["persisted-only-grant", "older-last-known"]
+            handle.snapshot().await.authorization_status,
+            AuthorizationStatus::LoginInterrupted
         );
-        assert!(secrets.read(GRANT_KEY).unwrap().is_empty());
-        assert!(secrets.read(PENDING_KEY).unwrap().is_empty());
-    }
-    #[test]
-    fn republish_preserves_alias_and_refreshes_public_metadata() {
-        let installation = Installation {
-            config: PublicConfig::default(),
-            subject: "owner".into(),
-            id: "installation".into(),
-            private_key: "private-fixture".into(),
-            public_key: "new-public".into(),
-        };
-        let existing =
-            json!({"label":"我的工作电脑","publicKey":"old-public","gridDeviceId":"old-grid"});
-        let updated = device_record(&existing, &installation, "new-grid");
-        assert_eq!(updated["label"], existing["label"]);
-        assert_eq!(updated["publicKey"], "new-public");
-        assert_eq!(updated["gridDeviceId"], "new-grid");
-        let mut data = json!({"anotherApp":{"keep":"untouched"},"anywork":{"schemaVersion":1,"preferences":{"appearance":"dark"},"devices":{"installation":existing,"other":{"label":"other-device"}}}});
-        update_device_index(&mut data, &installation, "new-grid").unwrap();
-        assert_eq!(data["anywork"]["devices"]["installation"], updated);
-        assert_eq!(data["anotherApp"], json!({"keep":"untouched"}));
-        assert_eq!(data["anywork"]["preferences"], json!({"appearance":"dark"}));
+        handle.cancel(&tx.id).await.unwrap();
         assert_eq!(
-            data["anywork"]["devices"]["other"],
-            json!({"label":"other-device"})
+            handle.snapshot().await.authorization_status,
+            AuthorizationStatus::SignedOut
         );
-        for label in [
-            json!(null),
-            json!(""),
-            json!("bad\nlabel"),
-            json!("x".repeat(81)),
-        ] {
-            assert_eq!(
-                device_record(&json!({"label":label}), &installation, "grid")["label"],
-                "AnyWork desktop"
-            );
-        }
+        assert_eq!(
+            std::fs::read_to_string(old).unwrap(),
+            "ignored-old-sentinel"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
     #[tokio::test]
-    async fn malformed_provider_success_retains_rotation_before_rejecting_token() {
+    async fn broker_unknown_exchange_cannot_retry_the_code_or_grant() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let server_calls = calls.clone();
         let app = axum::Router::new().route(
-            "/token",
-            axum::routing::post(|| async {
-                axum::Json(json!({"refresh_token":"newest-without-access"}))
+            "/oidc/token",
+            axum::routing::post(move || {
+                let calls = server_calls.clone();
+                async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    (axum::http::StatusCode::BAD_GATEWAY, "unknown result")
+                }
             }),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1783,109 +1484,53 @@ mod tests {
         tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
-        let secrets = Arc::new(MemorySecrets::default());
-        let owner = GrantOwner::new(
-            Grant {
-                config: PublicConfig {
-                    issuer: format!("http://127.0.0.1:{port}"),
-                    ..Default::default()
-                },
-                refresh: "previous".into(),
-                subject: "owner".into(),
-            },
-            secrets.clone(),
-        )
-        .unwrap();
-        assert!(owner.token(false).await.is_err());
-        let saved: Grant = serde_json::from_str(&secrets.read(GRANT_KEY).unwrap()).unwrap();
-        assert_eq!(saved.refresh, "newest-without-access");
-        assert_eq!(owner.state.lock().await.grant.refresh, saved.refresh);
-    }
-    #[tokio::test]
-    async fn interrupted_login_without_grant_can_cancel_back_to_signed_out() {
-        let (handle, _, _) = cleanup_handle(axum::http::StatusCode::OK).await;
-        let tx = Arc::new(Transaction {
-            id: "test-login".into(),
-            expected_state: Mutex::new(None),
-            callback: Mutex::new(None),
-            notify: Notify::new(),
-            stop: CancellationToken::new(),
-            operation: Mutex::new(()),
-            latest: Mutex::new(None),
-        });
-        handle.0.state.lock().await.transaction = Some(tx.clone());
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = handle(dir.path());
+        Arc::get_mut(&mut h.0).unwrap().config.issuer = format!("http://127.0.0.1:{port}/oidc");
+        let tx = transaction();
+        h.0.state.lock().await.transaction = Some(tx.clone());
+        let request = || BrowserRequest {
+            url: format!("{}/token", h.0.config.issuer),
+            method: "POST".into(),
+            headers: BTreeMap::new(),
+            body: Some(format!(
+                "grant_type=authorization_code&client_id={}",
+                h.0.config.native_client_id
+            )),
+        };
+        assert!(h.fetch(&tx.id, request()).await.is_err());
+        assert!(h.fetch(&tx.id, request()).await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(
-            handle.snapshot().await.authorization_status,
-            AuthorizationStatus::Authorizing
-        );
-        // A failed network request is not evidence of a grant or cleanup state.
-        let response = handle
-            .fetch(
-                &tx.id,
-                BrowserRequest {
-                    url: format!("{}/jwks", handle.0.config.issuer),
-                    method: "GET".into(),
-                    headers: BTreeMap::new(),
-                    body: None,
-                },
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status, 404);
-        assert_eq!(
-            handle.snapshot().await.authorization_status,
-            AuthorizationStatus::Authorizing
-        );
-        tx.stop.cancel(); // Models the bounded callback timeout.
-        let interrupted = handle.snapshot().await;
-        assert_eq!(
-            interrupted.authorization_status,
+            h.snapshot().await.authorization_status,
             AuthorizationStatus::LoginInterrupted
         );
-        assert_eq!(interrupted.transaction_id.as_deref(), Some("test-login"));
-        handle.cancel(&tx.id).await.unwrap();
-        let after = handle.snapshot().await;
-        assert_eq!(after.authorization_status, AuthorizationStatus::SignedOut);
-        assert!(!after.busy && !after.signed_in && !after.checkpoint_pending);
-        assert!(after.transaction_id.is_none());
-    }
-    #[tokio::test]
-    async fn checkpoint_and_uncertain_grants_remain_explicit_recovery_states() {
-        let (handle, secrets, _) = cleanup_handle(axum::http::StatusCode::OK).await;
-        let grant = persist_cleanup_grant(&handle, &secrets, false);
-        let owner = Arc::new(GrantOwner::new(grant, secrets).unwrap());
-        handle.0.state.lock().await.owner = Some(owner.clone());
+        h.cancel(&tx.id).await.unwrap();
         assert_eq!(
-            handle.snapshot().await.authorization_status,
-            AuthorizationStatus::SignedIn
+            h.snapshot().await.authorization_status,
+            AuthorizationStatus::SignedOut
         );
-        owner.state.lock().await.pending = true;
-        let pending = handle.snapshot().await;
-        assert_eq!(
-            pending.authorization_status,
-            AuthorizationStatus::CheckpointPending
-        );
-        assert!(!pending.signed_in && pending.checkpoint_pending);
-        {
-            let mut state = owner.state.lock().await;
-            state.pending = false;
-            state.uncertain = true;
-        }
-        assert_eq!(
-            handle.snapshot().await.authorization_status,
-            AuthorizationStatus::ReauthRequired
-        );
-        assert!(handle.recover_checkpoint().await.is_err());
     }
     #[test]
-    fn development_defaults_and_complete_self_hosted_override_are_validated() {
+    fn public_configuration_is_complete_validated_and_fully_isolated() {
         let dir = tempfile::tempdir().unwrap();
         let defaults = PublicConfig::load(dir.path()).unwrap();
         assert_eq!(defaults.endpoint, "https://ueg42e.logto.app");
-        assert_eq!(
-            defaults.cybergrid_url,
-            "https://anywork-cybergrid-dev.vercel.app"
-        );
+        let expected = defaults.namespace(dir.path()).unwrap();
+        for field in [
+            "endpoint",
+            "issuer",
+            "nativeClientId",
+            "spaClientId",
+            "resource",
+            "cybergridUrl",
+            "frontendOrigin",
+        ] {
+            let mut modified = serde_json::to_value(&defaults).unwrap();
+            modified[field] = json!(format!("{}-different", modified[field].as_str().unwrap()));
+            let changed: PublicConfig = serde_json::from_value(modified).unwrap();
+            assert_ne!(changed.namespace(dir.path()).unwrap(), expected);
+        }
         let custom = PublicConfig {
             endpoint: "https://identity.example.org".into(),
             issuer: "https://identity.example.org/oidc".into(),
@@ -1898,52 +1543,30 @@ mod tests {
         let path = dir.path().join("account-cloud.json");
         std::fs::write(&path, serde_json::to_vec(&custom).unwrap()).unwrap();
         assert!(PublicConfig::load(dir.path()).unwrap() == custom);
-        let mut incomplete = serde_json::to_value(&custom).unwrap();
+        let mut incomplete = serde_json::to_value(custom).unwrap();
         incomplete.as_object_mut().unwrap().remove("spaClientId");
         std::fs::write(&path, serde_json::to_vec(&incomplete).unwrap()).unwrap();
         assert!(PublicConfig::load(dir.path()).is_err());
-        let mut insecure = custom;
-        insecure.endpoint = "http://identity.example.org".into();
-        std::fs::write(&path, serde_json::to_vec(&insecure).unwrap()).unwrap();
-        assert!(PublicConfig::load(dir.path()).is_err());
+        let mut bad = defaults;
+        bad.endpoint = "http://remote.invalid".into();
+        assert!(bad.validate().is_err());
     }
     #[test]
-    fn all_public_config_changes_isolate_grant_and_installation_namespace() {
-        let support = std::path::Path::new("/isolated-manager");
-        let defaults = PublicConfig::default();
-        let expected = defaults.namespace(support).unwrap();
-        assert_eq!(expected, defaults.clone().namespace(support).unwrap());
-        for key in [
-            "endpoint",
-            "issuer",
-            "nativeClientId",
-            "spaClientId",
-            "resource",
-            "cybergridUrl",
-            "frontendOrigin",
-        ] {
-            let mut changed = serde_json::to_value(&defaults).unwrap();
-            changed[key] = json!(format!("{}-changed", changed[key].as_str().unwrap()));
-            let config: PublicConfig = serde_json::from_value(changed).unwrap();
-            assert_ne!(config.namespace(support).unwrap(), expected, "{key}");
-        }
-        assert_ne!(
-            defaults
-                .namespace(std::path::Path::new("/another-manager"))
-                .unwrap(),
-            expected
+    fn account_label_uses_existing_profile_or_short_subject_without_extra_request() {
+        assert_eq!(
+            account_label(
+                &json!({"primaryEmail":"person@example.org","username":"name"}),
+                "subject"
+            ),
+            "person@example.org"
         );
-    }
-    #[test]
-    fn public_configuration_rejects_insecure_or_crossissuer_endpoints() {
-        let mut config = PublicConfig::default();
-        assert!(config.validate().is_ok());
-        config.endpoint = "http://remote.invalid".into();
-        assert!(config.validate().is_err());
-        let config = PublicConfig {
-            issuer: "https://other.invalid/oidc".into(),
-            ..Default::default()
-        };
-        assert!(config.validate().is_err());
+        assert_eq!(
+            account_label(&json!({"username":"name"}), "subject"),
+            "name"
+        );
+        assert_eq!(
+            account_label(&json!({}), "abcdefghijklmnopqrst"),
+            "账号 abcdefghijkl"
+        );
     }
 }

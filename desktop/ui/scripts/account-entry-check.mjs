@@ -25,7 +25,7 @@ try {
       subject: null,
       enabled: false,
       busy: false,
-      checkpointPending: false,
+      accountLabel: null,
       error: null,
       gridDeviceId: null,
       installationId: null,
@@ -103,7 +103,6 @@ try {
               transactionId: "fixture-login",
             };
             return {
-              restored: false,
               transactionId: "fixture-login",
               endpoint: "https://identity.fixture.invalid",
               issuer: "https://identity.fixture.invalid/oidc",
@@ -149,15 +148,6 @@ try {
           }
           if (command === "account_logout") {
             window.fixtureAccount = signedOut();
-            return;
-          }
-          if (command === "account_recover") {
-            window.fixtureAccount = {
-              ...signedOut(),
-              authorizationStatus: "signedIn",
-              signedIn: true,
-              subject: "fixture-owner",
-            };
             return;
           }
           throw new Error("Unexpected fixture command " + command);
@@ -251,47 +241,37 @@ try {
   await expect(
     page.getByRole("heading", { name: "账号与远程访问", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByText("账号凭据和设备私钥只留在内存", { exact: false }),
+  ).toBeVisible();
   await page.evaluate(() => {
     window.fixtureAccount = {
       ...window.fixtureAccount,
-      authorizationStatus: "checkpointPending",
-      checkpointPending: true,
+      authorizationStatus: "signedIn",
+      signedIn: true,
       subject: "fixture-owner",
+      accountLabel: "person@example.org",
     };
   });
   await expect(
+    page.getByRole("status").filter({ hasText: "已登录 · person@example.org" }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("button", { name: "重试保存账号", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "清理本机授权", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("status").filter({ hasText: "账号授权待保存" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page.evaluate(() => {
     window.fixtureAccount = {
       ...window.fixtureAccount,
       authorizationStatus: "reauthRequired",
-      checkpointPending: false,
+      signedIn: false,
     };
   });
   await expect(
-    page.getByRole("button", { name: "清理本机授权后重新登录", exact: true }),
+    page.getByRole("button", { name: "结束本次授权后重新登录", exact: true }),
   ).toBeVisible();
-  await page.evaluate(() => {
-    window.fixtureAccount = {
-      ...window.fixtureAccount,
-      authorizationStatus: "cleanupRequired",
-      subject: null,
-    };
-  });
-  await expect(
-    page.getByRole("button", { name: "重试检查授权", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "清理本机授权", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "清理本机授权", exact: true }).click();
+  await page
+    .getByRole("button", { name: "结束本次授权后重新登录", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "登录", exact: true }),
   ).toBeEnabled();
@@ -314,7 +294,7 @@ try {
   });
   assert.deepEqual(errors, []);
   console.log(
-    "Desktop account entry: failure retry, separate official screens, pending cancellation race, checkpoint/reauth/persisted recovery controls passed.",
+    "Desktop account entry: failure retry, separate official screens, pending cancellation race, memory-only notice, account identity and reauth controls passed.",
   );
 } finally {
   await browser.close();
