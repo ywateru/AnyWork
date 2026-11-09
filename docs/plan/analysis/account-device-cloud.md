@@ -121,3 +121,5 @@ Developer API key 不等于 CyberGrid 所需的数据库 REST token。后续查�
 用户指定继续使用 Upstash，不因新的 KV 配置自动更换存储或增加第二套协调状态。最终部署 pin 与实际资源验证另记到云配置和集成验收。
 
 用户已授权从方案转入实施、完整测试和更新。此前“未创建/未部署”的描述是调研截止时的事实，后续状态以任务及验收记录为准。
+
+独立审查期间再次只读查询 upstream main 为 `50a12e0d7b58e3f8dd84b9d9a97fe650faaac691`。[与实施 pin 的官方比较](https://github.com/ywateru/CyberGrid/compare/2bd6729c6bbee90ed2926410caca883a0a100890...50a12e0d7b58e3f8dd84b9d9a97fe650faaac691)只新增 `276eb41`（自有 Upstash 测试库配置说明）与 `50a12e0`（上游 KV 验收记录）；变更仅在文档、计划和静态说明页，没有改动运行时 `server/src`、SDK 或 LICENSE。继续固定已部署/测试的 `2bd6729`，不因上游文档验收通过而扩大 AnyWork 验收范围。新说明明确区分“同库切换连接方式保持 epoch”和“主动换新库产生新 epoch”；本任务保留既有专用数据库与 namespace，不进行此类重置。
