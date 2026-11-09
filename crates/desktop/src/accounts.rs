@@ -281,20 +281,20 @@ fn persisted_cleanup_tokens(secrets: &dyn Secrets, config: &PublicConfig) -> Res
     let mut tokens = Vec::new();
     // For an uncertainty marker the grant may already contain a newer durable
     // checkpoint. A known broker escrow instead precedes any old saved grant.
-    if let Some(pending) = &pending {
-        if !pending.uncertain {
-            tokens.push(pending.refresh.clone());
-        }
+    if let Some(pending) = &pending
+        && !pending.uncertain
+    {
+        tokens.push(pending.refresh.clone());
     }
-    if let Some(saved) = saved {
-        if !tokens.contains(&saved.refresh) {
-            tokens.push(saved.refresh);
-        }
+    if let Some(saved) = saved
+        && !tokens.contains(&saved.refresh)
+    {
+        tokens.push(saved.refresh);
     }
-    if let Some(pending) = pending {
-        if !tokens.contains(&pending.refresh) {
-            tokens.push(pending.refresh);
-        }
+    if let Some(pending) = pending
+        && !tokens.contains(&pending.refresh)
+    {
+        tokens.push(pending.refresh);
     }
     Ok(tokens)
 }
