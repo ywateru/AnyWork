@@ -35,9 +35,11 @@
 ## 实施中证据（2026-11-09；尚非最终验收）
 
 - 云候选 `983a016`：独立验证以官方固定版本 `redis.ts` 访问真实专用 Upstash，11 项断言通过，覆盖独立 store 共享 epoch、并发注册幂等、跨实例发现/信号、owner 隔离、冷启动会话、撤销失败关闭、永久注册 fence、分布式限流、全新 namespace 隔离及无效 REST token 失败关闭。仅写入 `anywork:acceptance:<随机 UUID>` 测试数据，结束后删除本次新建键；未读取业务或重置既有 namespace。
-- 同一云候选的 28 项发布器测试及 7 项离线配置安全测试通过。独立评审已发现 release workflow 仍显式触发旧 Pages 部署，修复及复验前不合并。
+- 同一云候选的 28 项发布器测试及 7 项离线配置安全测试通过。[独立云评审](account-cloud-01.md)（云分支评审提交 `a38895f`）发现三个阻断：release 仍触发旧 Pages、协调服务部署不能安全恢复/复用、CLI namespace 长度限制超过上游运行时；修复及复验前不合并。
 - Web 候选 `13ead5c` 的独立评审为 blocked：浏览器默认 `fetch` 调用绑定失败；取消上传后的迟到加密 ACK 会关闭其他请求/PTY。作者已在修复，必须复验新提交。
-- 桌面候选 `d23f5a8` 正在独立评审：已发现重新发布设备索引覆盖用户名称；refresh checkpoint 崩溃恢复与实际 Logto JWT 验证继续检查。
+- Web 修复候选 `18b4b8a` 已提交，作者报告 323 项单元测试、typecheck/build/format 及 22 项真实浏览器/Rust 互操作断言通过；须经独立复验才关闭原阻断。DEV 首次真实登录的 Account/Grid 请求成功与稍后复用保存状态的 Account401 已分别记录，后者原因尚未确定，不能合并描述为登录全部通过。
+- [独立桌面评审](account-desktop-01.md)（评审提交 `972e3bb`，目标 `d23f5a8`）为 blocked：重新发布设备索引覆盖用户名称；原生 refresh 未先持久化不确定标记，checkpoint 写失败再丢失进程时可能恢复旧令牌。后者已用实际代码片段与隔离 token endpoint 确定性重现。桌面库 38 项、远程协议/网关 6 项通过；4 项外部依赖测试忽略。
+- 桌面独立评审以实际产品 `JwtVerifier` 接受真实 DEV Logto ES384/JWKS JWT，并拒绝原签名 token 的 owner/aud/client 不匹配、实际过期 JWT、真实签名但缺少 connect 的 JWT、错误算法及 opaque 输入。该程序化证据不代表 Native OAuth/Keychain GUI 链通过。
 - DEV 托管登录和浏览器设备页、浏览器/Rust 加密夹具的作者证据仍须按对应独立评审确认。实际桌面 GUI 登录、Keychain grant、启用注册到 Web 的完整链路未通过；原生验收时电脑处于锁屏状态，不能用夹具替代。
 
 生产 Logto 套餐授权、CyberGrid 可分发许可、注册邮件/default-role 与实际手机蜂窝网络等门槛仍开放。未进行生产套餐升级、产品源码公开发布、最终前端生产部署或 release 更新。
