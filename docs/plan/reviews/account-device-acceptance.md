@@ -4,6 +4,17 @@
 
 状态：三条实现分支的源码阻断均经独立复验关闭，已合并到本机 main；合并后完整项目检查与本机静态产物检查通过。真实原生界面、生产和物理手机验收仍未完成，尚未公开发布或更新正式服务。此文件不代表整套功能已通过。用户授权按方案实施、整体测试并更新；方案见 [设计](../../account-device-cloud-review.md)，任务见 [交付](../tasks/account-device-cloud.md)。
 
+## 当前客户端修订验收（优先于下方历史记录）
+
+2026-11-09，当前合并源码 `e3ffdf7`。Web现有客户端入口、Development完整配置和原生纯内存账号版本已分别通过独立审查并合并，详见 [Web入口](account-client-web-01.md)、[Cloud配置](account-client-cloud-02.md)、[内存原生账号](account-client-desktop-memory-01.md)。历史Keychain、生产付费套餐或锁屏条件不能作为本阶段仍需完成的要求。
+
+- 合并后桌面UI构建、Rust fmt、全workspace/all-target clippy、workspace tests、server/native build及全套Python系统/发布/cloud检查通过，日志 `/tmp/anywork-client-native-cloud-merged-check.log`。Web build、327 Vitest、8 Node检查通过；完整Chrome桌面/Android模拟浏览器套件 **611通过、1项既有桌面专用用例跳过**（21.0分钟）。最终诊断修订后仍需重跑受影响范围。
+- 用户提供测试账号的全新独立Web托管登录通过：Account200×2、Grid config/exchange/devices200、实际connect JWT、无management角色变更、1440/390px无溢出。见 [真实Web登录](account-client-web-live.md)。没有以已有测试账号登录证明新注册邮件已送达。
+- 真实隔离Native应用登录后手动开启远程访问，Web自动发现在线设备；对照本机公钥确认后，实际公网加密隧道进入空会话工作区。关闭远程访问使Web立即退出工作区。仅用空workspace/data/history、断开的宿主夹具和任务独占进程，没有访问用户业务会话。
+- 同support/config的进程重启后，Native显示尚未登录，没有恢复grant。重新登录同账号后开启远程访问失败，当前为**集成阻断**。只读Account API确认目标installation恰有1条，keyVersion整数1、公钥有效32bytes、GridID非空。未确认失败阶段，不能将首次成功与重启夹具测试拼成完整生命周期验收；下一步增加固定安全阶段码定位，不盲重试。
+- 新账号运行路径不使用Keychain；grant/访问令牌/私钥仅内存，唯一可持久化安装文件只含公开随机installationId。现有手动连接凭据处理不在此修订范围。首次成功与重启使用相同公开ID；真实换钥/旧pin确认仍待上述阻断关闭。
+- 前端Vercel项目与静态发布工具已准备，尚未部署；尚未更新安装客户端或既有用户服务。Logto保持Development，CyberGrid使用已就绪Development协调服务，不购买套餐。
+
 ## 证据规则
 
 - 每项结果绑定实际源码提交、执行环境和日期。上游报告、单元夹具、浏览器模拟、真实云服务和物理设备分开记录。
