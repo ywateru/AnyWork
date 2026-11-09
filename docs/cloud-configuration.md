@@ -66,6 +66,10 @@ python3 scripts/cloud/configure.py --state /absolute/private/production.json ent
 python3 scripts/cloud/deploy-cybergrid.py --state /absolute/private/production.json --redis-state /absolute/private/production.json --project anywork-cybergrid --prefix anywork:production:v1 --grid-origin https://anywork-cybergrid.vercel.app
 ```
 
+部署命令首先持久保存 `gridDeploymentIntent`（操作 UUID、项目、固定源码、namespace、整个配置的 SHA-256 摘要与阶段），intent 和 Vercel deployment metadata 均不包含管理秘密明文。相同参数重复执行会查询并复用已保存的 READY/进行中部署，不再写 env 或创建 deployment。提交前先把阶段保存为 submitting；如果 POST 成功但响应或状态落盘丢失，下次按操作 UUID 和配置摘要查询项目库存，只有唯一匹配且项目/源码/metadata核验一致才恢复。没有匹配、多个匹配、不同配置、未知状态均明确停止，不盲目补发 POST。配置更改或凭据轮换同样需要显式新操作；旧操作未确认或仍进行中时不能跳过。
+
+确实需要重新部署时使用 `--redeploy UUID`，为本次新操作生成一次 UUID 并私下保存；恢复时重用同一 UUID，不能每次重生。只有先前部署已确认结束后才允许新操作；重复执行同一新操作仍复用其结果。旧版状态只有在保存了匹配的 gridSource/gridEnvironment 及部署 ID，并通过服务端项目/源码核对后才自动采用；缺少旧版身份资料时必须人工对账，不能凭当前参数推定旧部署配置。prefix 按固定上游限制为1–80字符，超过上限在访问提供商前拒绝。
+
 CyberGrid 从其 GitHub **仓库根**固定源码部署，Node22，官方 `api/index.ts` / `vercel.json`。预览环境默认无生产 secret，必须另行配置独立 namespace；不复制生产凭据到预览。
 
 官网 workflow 已改为 `vercel.yml`，使用精确事件提交、Vercel prebuilt 产物与 `/build.json` 源码身份。`pages.yml` 只保留手动恢复旧网站。发布器以 Vercel 为正式站点，保留不可变 Release、签名/校验和与 `--pages-only` 兼容别名；推荐 `--site-only` 修复现有版本网站。CI 的 `ANYWORK_PRODUCTION_READY=true` 是运营启用开关：仅在套餐、生产配置、E2EE、独立审查及真实链路全部验收后设置；未设置时明确失败，不能出现“跳过即成功”。Vercel token 只作为 GitHub secret，org/project ID 作为 repository vars。
@@ -79,3 +83,5 @@ CyberGrid 从其 GitHub **仓库根**固定源码部署，Node22，官方 `api/i
 云认证隔离验证：实际用生成的测试账号完成 Logto 托管页面 SPA 登录、授权码+PKCE、ES384签名验证（固定issuer/audience/client/connect，TTL300秒），使用另一份 opaque token 成功读写 Account API。实际验证保留其他命名空间、customData整体替换行为、resource JWT调用Account API被拒绝。需要先以无resource参数兑换账号token，再通过同一refresh所有者取得Grid JWT；从resource-only兑换开始会把refresh范围收窄，不能据此假设可取得Account API权限。测试账号通过Management API预置并显式赋角色，不作为新用户注册/默认角色或邮箱投递验收；原生grant双token链路继续验证，完整产品生产验收仍未完成。
 
 真实OAuth验证可由 `node scripts/cloud/verify-oauth.cjs --spa --credentials /absolute/private/test-user.json` 复跑；`--native` 单独测试原生client。脚本只对带 verificationFixture 的隔离账号执行配置写入，凭据与token产物必须放仓库外、0600；不输出token、密码或带敏感query的浏览器错误。系统Chrome用于独立临时profile，不使用用户浏览器登录态。原生测试首次没有consent时未取得refresh，最后一次显式consent测试遇到登录页网络超时，不能记为通过；后续桌面官方SDK实际UI验收负责闭合此门槛。
+
+独立审查后修复：普通 Release 的显式分发已改为 vercel.yml；新增18项离线真实CLI恢复/发布调用链验收，覆盖完成/进行中重跑、POST响应丢失、提交前/响应后落盘中断、配置与凭据变更、库存歧义、显式稳定UUID重部署、旧状态采用及80/81字符边界。该轮未触发真实部署、套餐购买、生产启用或共享OAuth grant刷新。真实Upstash的11项独立验证证据与限定范围见 [cloud review](plan/reviews/account-cloud-01.md)。

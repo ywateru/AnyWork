@@ -25,7 +25,7 @@ npm run release
 
 脚本默认递增 patch，统一更新所有应用版本及 Android versionCode，提交版本变更并推送 `main`。它等待**精确源码提交**的 Checks 成功后才推送不可变 tag，继续等待全部平台的 Release 与官网部署，最后核对发布文件、校验清单、更新签名元数据和中英文网页。无需在本机先跑一遍完整构建；相同提交已通过的远端检查会在续跑时复用。
 
-Start from a clean, committed `main` checkout. The script advances every embedded version and Android versionCode, commits the version change, pushes main, waits for Checks for that exact SHA, then publishes an immutable tag and waits for installers and Pages. It verifies release assets and bilingual download metadata without repeating local builds or downloading every installer.
+Start from a clean, committed `main` checkout. The script advances every embedded version and Android versionCode, commits the version change, pushes main, waits for Checks for that exact SHA, then publishes an immutable tag and waits for installers and the Vercel website. It verifies release assets and bilingual download metadata without repeating local builds or downloading every installer.
 
 凭据优先读取 `GH_TOKEN`、`GITHUB_TOKEN`，否则读取已有的 `~/.ssh/ghp`；也可以使用 `--token-file PATH`。只需 Python 3 和 Git，不依赖临时脚本或 `gh`。发行签名继续使用 GitHub Actions secrets，脚本不读取本机签名私钥。GitHub Token 需要此仓库的 contents 与 actions 写权限。Fork 的仓库、签名和网站配置需要单独适配。
 
@@ -45,9 +45,9 @@ python3 scripts/publish.py --new                    # 修复源码并提交后�
 
 Progress is stored atomically under Git's private common directory, protected by a process lock. Run the same command after interruption to resume. Completed work is reused; an unchanged completed source is a no-op. Failed workflows return a nonzero exit and a public Actions URL. `--retry-failed` explicitly requests a retry instead of silently looping failing tests.
 
-如果失败来自源码，修复并提交后使用 `--new`；脚本会先确认旧发行构建已经结束，再归档旧进度并选择新的版本，不移动旧 tag。如果安装包已发布但 Pages 失败，使用 `--site-only v版本号`，只核验已有发行并修复网站，避免重新构建或重复创建 Release。原工作流的失败记录仍保留。
+如果失败来自源码，修复并提交后使用 `--new`；脚本会先确认旧发行构建已经结束，再归档旧进度并选择新的版本，不移动旧 tag。如果安装包已发布但 Vercel 网站发布失败，使用 `--site-only v版本号`，只核验已有发行并修复网站，避免重新构建或重复创建 Release。原工作流的失败记录仍保留。
 
-After committing a source fix, use `--new` to start a fresh version once the previous release build is no longer active. Existing tags are never moved. If installers are already published but Pages failed, use `--site-only vX.Y.Z` to verify the immutable release and repair the website without rebuilding or creating another Release. The original failed workflow remains visible.
+After committing a source fix, use `--new` to start a fresh version once the previous release build is no longer active. Existing tags are never moved. If installers are already published but the Vercel website failed, use `--site-only vX.Y.Z` to verify the immutable release and repair the website without rebuilding or creating another Release. The original failed workflow remains visible.
 
 轻量核验包括 20 个发行文件、19 个 SHA-256 条目与 GitHub 文件摘要、5 个更新目标的 `.sig`／清单一致性和版本绑定，以及官网静态内嵌版本和下载链接。它不把签名元数据检查描述为完整安装验收，也不默认运行需要下载大型更新包的可选真实升级测试。真实设备、网络和升级安装验收仍可按需单独执行。
 
@@ -108,7 +108,7 @@ Android release signing uses the three secrets above and the `anywork` alias. Ba
 
 官网源文件在 `site/`。`python3 scripts/build-site.py` 输出英文 `/en/`、中文 `/zh/`、默认英文首页、SEO 元信息、sitemap 与下载元数据。使用 `--fetch-release` 将真实的最新 Release 附件写入静态页面；尚无 Release 时链接到发行列表，不生成假下载地址。浏览器可进一步刷新最新元数据，API 不可用时保留静态下载。
 
-The website builds without npm dependencies. `Publish website` deploys `site/dist` with the official Pages artifact/OIDC workflow. Configure the repository's Pages source as **GitHub Actions**. After publishing a release, the release job explicitly dispatches `vercel.yml` to refresh static download links. This uses the workflow-dispatch exception because a release event emitted with `GITHUB_TOKEN` does not trigger another workflow by itself. Site pushes and manual deployments also refresh metadata.
+The static download pages are built by `scripts/build-site.py`; the combined Vercel build also installs and builds the Web application under `/app/`. `Publish Vercel website` (`vercel.yml`) checks the production acceptance flag, checks out the exact event commit, pulls the dedicated Vercel project configuration, then builds and deploys prebuilt output. The release job explicitly dispatches `vercel.yml` to refresh immutable download links because a release created by `GITHUB_TOKEN` does not trigger another workflow by itself. The publisher checks release metadata and `/build.json` against the required source commit. Production credentials/configuration and activation requirements are recorded in [cloud configuration](cloud-configuration.md).
 
 ```bash
 python3 scripts/build-site.py
@@ -134,7 +134,7 @@ Use `python3 scripts/publish.py` for normal releases; it waits for exact-SHA Che
 
 所有 tag 发布和手动 publish 均使用同一预检，创建 Release 前再核对一次。仅构建 artifacts 的手动运行不要求发布授权。Checks 对所有 main 提交运行，包括仅修改文档的提交，避免发布源码 SHA 没有对应检查。容器实际构建验收也是 Checks 的组成部分。
 
-GitHub 的 `GITHUB_TOKEN` 推送不会触发普通 on-push Checks，所以旧 prepare shortcut 已停用。高级自动化若用该令牌推送，必须显式对 main 分发 Checks，并确认其 `head_sha` 等于发布源码；若 main 已前进，应停止并重新选择源码。不得使用 PR 成功记录或另一提交的成功记录替代。普通发布仍使用 `python3 scripts/publish.py`，不可变发行与单独 Pages 恢复流程不变。
+GitHub 的 `GITHUB_TOKEN` 推送不会触发普通 on-push Checks，所以旧 prepare shortcut 已停用。高级自动化若用该令牌推送，必须显式对 main 分发 Checks，并确认其 `head_sha` 等于发布源码；若 main 已前进，应停止并重新选择源码。不得使用 PR 成功记录或另一提交的成功记录替代。普通发布仍使用 `python3 scripts/publish.py`，不可变发行与单独网站恢复流程不变。
 
 The Release workflow independently verifies trusted, successful Checks for the exact source SHA both before builds and immediately before publication. Tag/manual publishing cannot bypass it; build-only dispatch remains available. The retired preparation Action has no write permissions or mutations. Token-generated pushes require explicit source Checks dispatch because GitHub does not trigger normal push workflows from `GITHUB_TOKEN` pushes. No real Actions, tags or releases are created by the offline gate regression tests.
 
@@ -145,3 +145,7 @@ Publishing preflight and final authorization both peel the existing remote tag a
 
 
 2026-11-09：官网发布目标迁移为 Vercel `https://anywork-tau.vercel.app`。`--site-only` 修复网站，原 `--pages-only` 保留命令兼容；不可变 GitHub Release 不变。CI 需要 Vercel secret/公开项目变量，以及完成生产账号套餐和安全验收后才设置的 `ANYWORK_PRODUCTION_READY=true`。发布器验证 `/build.json` 的精确源码提交，不能仅用静态页面可达作为发布成功。实际云资源、费用与未完成门槛见 [cloud-configuration.md](cloud-configuration.md)。
+
+## 旧 Pages 网站手动恢复
+
+旧的 GitHub Pages 产物/OIDC 工作流仅作明确手动恢复，普通 Release、push 与发布器均不调用。需要修复旧站时，先确认 repository Pages source 为 GitHub Actions，再显式运行 `gh workflow run pages.yml --ref main`。此动作只修复历史入口，不代表 Vercel 正式网站验收，也不创建或改写 Release。正式网站恢复使用 `--site-only`；`--pages-only` 是同一 Vercel 修复命令的兼容别名。
