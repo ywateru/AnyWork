@@ -42,3 +42,7 @@ Independent source reviews are complete: Cloud `01b927f`, Web `c9a7074` and Desk
 Independent actual Upstash testing passed 11 checks through the pinned official Redis store in a unique synthetic namespace, then removed only its own new keys. A fresh hosted DEV SPA sign-in and live Account/Grid boundaries also passed independently. The product Rust verifier accepted actual Logto ES384 JWTs and rejected invalid identity/scope/expiry/algorithm cases. Final merged-system checks passed against `c5f25d9`: complete check.sh, 611 browser cases/one pre-existing skip, 323 Web plus eight Node cases, 22 merged browser/Rust interoperability checks, cloud safety/recovery and bilingual website checks. Local `/app/` artifact and known-credential exclusion checks passed. These results are recorded with their actual scope in final acceptance.
 
 Actual cloud and fixture evidence does not replace full native login/Keychain/device registration/browser acceptance, new-account email/default-role acceptance, physical mobile-network testing, or production publication gates. A fresh CUA inventory attempt still reports that the Mac is locked; no UI bypass was attempted.
+
+## 最新范围覆盖
+
+按用户最新修订，本阶段使用Development Logto，无生产付费前置；新账号敏感信息仅进程内存、不用Keychain。Native验收应验证关闭后重登录、同机公开安装ID稳定/公钥更新和旧pin确认，而非旧grant持久恢复。Mac已解锁，旧锁屏/Keychain检查保留历史范围，当前任务见account-client-entry.md。
