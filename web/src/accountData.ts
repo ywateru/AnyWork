@@ -117,7 +117,7 @@ export class AccountStore {
   constructor(
     private endpoint: string,
     private token: () => Promise<string | undefined>,
-    private fetcher: typeof fetch = fetch,
+    private fetcher: typeof fetch = (input, options) => fetch(input, options),
   ) {}
   async read(signal?: AbortSignal): Promise<AccountProfile> {
     const response = await this.call("GET", undefined, signal);

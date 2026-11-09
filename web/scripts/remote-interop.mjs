@@ -46,6 +46,21 @@ try {
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("https://account-fixture.invalid/api/my-account", (route) =>
+    route.fulfill({
+      status: route.request().method() === "OPTIONS" ? 204 : 200,
+      headers: {
+        "Access-Control-Allow-Origin": "http://127.0.0.1:5173",
+        "Access-Control-Allow-Headers": "authorization",
+        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Content-Type": "application/json",
+      },
+      body:
+        route.request().method() === "OPTIONS"
+          ? undefined
+          : JSON.stringify({ customData: { other: { preserved: true } } }),
+    }),
+  );
   await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
   const result = await page.evaluate(async (config) => {
     const { RemoteTransport } = await import("/src/remoteTransport.ts");
@@ -81,6 +96,70 @@ try {
     };
     let assertions = 0;
     const transport = await connect();
+    assertions++;
+    const { AccountStore } = await import("/src/accountData.ts");
+    const settings = await new AccountStore(
+      "https://account-fixture.invalid",
+      async () => "fixture-account-token",
+    ).read();
+    check(
+      settings.customData.other.preserved === true,
+      "real browser native fetch receiver",
+    );
+    assertions++;
+    for (const received of [undefined, 123]) {
+      let rejected = false;
+      try {
+        transport.receive({ type: "ack", id: "never-issued", received });
+      } catch {
+        rejected = true;
+      }
+      check(rejected, "unknown or malformed ACK remains rejected");
+    }
+    assertions++;
+    const delayedHandler = transport.ws.onmessage;
+    transport.ws.onmessage = (event) =>
+      setTimeout(() => delayedHandler(event), 100);
+    const cancelAck = new AbortController();
+    const cancelledAck = transport.request("/api/sessions/fixture/uploads", {
+      method: "POST",
+      body: new Uint8Array(65536),
+      signal: cancelAck.signal,
+    });
+    while (transport.acks.size === 0)
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    cancelAck.abort();
+    await cancelledAck.catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    transport.ws.onmessage = delayedHandler;
+    check(
+      (await transport.request("/api/info")).status === 200,
+      "late authentic ACK after cancellation keeps sibling requests live",
+    );
+    assertions++;
+    const beforeTimeoutHandler = transport.ws.onmessage;
+    transport.ws.onmessage = (event) =>
+      setTimeout(() => beforeTimeoutHandler(event), 100);
+    const actualTimeout = window.setTimeout;
+    window.setTimeout = (callback, ms, ...args) =>
+      actualTimeout(callback, ms === 15000 ? 30 : ms, ...args);
+    const timeoutCode = await transport
+      .request("/api/sessions/fixture/uploads", {
+        method: "POST",
+        body: new Uint8Array(65536),
+      })
+      .then(
+        () => "accepted",
+        (error) => error.code,
+      );
+    window.setTimeout = actualTimeout;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    transport.ws.onmessage = beforeTimeoutHandler;
+    check(
+      timeoutCode === "REQUEST_TIMEOUT" &&
+        (await transport.request("/api/info")).status === 200,
+      "late ACK after chunk timeout keeps connection live",
+    );
     assertions++;
     const info = await (await transport.request("/api/info")).json();
     check(info.hostname === "fixture", "real local API response");
@@ -289,6 +368,17 @@ try {
         assertions++;
       },
     );
+    const realTimeout = window.setTimeout;
+    window.setTimeout = (callback, ms, ...args) =>
+      realTimeout(callback, ms > 250000 ? 30 : ms, ...args);
+    const expiring = await connect();
+    window.setTimeout = realTimeout;
+    const expiryReason = await expiring.ended;
+    check(
+      expiryReason === "AUTHORIZATION_EXPIRED",
+      "authorization expiry notifies owner and closes session",
+    );
+    assertions++;
     transport.close();
     return { assertions };
   }, config);

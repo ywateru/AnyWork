@@ -508,8 +508,9 @@ function AccountHome({ config }: { config: AccountConfig }) {
   }, [dialog]);
   const closeConnection = useCallback(() => {
     connectController.current?.abort();
-    transport.current?.close();
+    const previous = transport.current;
     transport.current = undefined;
+    previous?.close();
     setConnection(null);
     setConnecting(undefined);
   }, []);
@@ -598,6 +599,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
     }
     connectController.current?.abort();
     const controller = new AbortController();
+    const ownerSignal = life.current.signal;
     connectController.current = controller;
     setConnecting(id);
     setError("");
@@ -622,7 +624,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
         accessToken,
         signal: controller.signal,
       });
-      if (controller.signal.aborted || life.current.signal.aborted) {
+      if (controller.signal.aborted || ownerSignal.aborted) {
         remote.close();
         return;
       }
@@ -633,6 +635,21 @@ function AccountHome({ config }: { config: AccountConfig }) {
         transport: remote,
       };
       transport.current = remote;
+      void remote.ended.then((reason) => {
+        if (
+          transport.current !== remote ||
+          ownerSignal.aborted ||
+          life.current.signal !== ownerSignal
+        )
+          return;
+        transport.current = undefined;
+        setConnection(null);
+        setError(
+          reason === "AUTHORIZATION_EXPIRED"
+            ? t.sessionExpired
+            : t.connectError,
+        );
+      });
       try {
         localStorage.setItem(pinKey(id), device.publicKey);
       } catch {
@@ -808,7 +825,14 @@ function AccountHome({ config }: { config: AccountConfig }) {
                 {t.directoryError}
               </p>
             )}
-            {!profile || directoryState === "loading" ? (
+            {!profile && (error || directoryState === "error") ? (
+              <div className="account-empty">
+                <p>{t.accountError}</p>
+                <button onClick={() => setRevision((value) => value + 1)}>
+                  {t.retry}
+                </button>
+              </div>
+            ) : !profile || directoryState === "loading" ? (
               <p role="status" className="account-loading">
                 {t.loading}
               </p>

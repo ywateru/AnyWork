@@ -99,6 +99,11 @@ interface Ack {
 export class RemoteTransport implements BusinessTransport {
   private pending = new Map<string, Pending>();
   private acks = new Map<string, Ack>();
+  private retiredAcks = new Map<string, number>();
+  private reportEnded!: (reason: string) => void;
+  readonly ended = new Promise<string>((resolve) => {
+    this.reportEnded = resolve;
+  });
   private terminals = new Map<string, TerminalEvents>();
   private sequence = 0;
   private preparing = 0;
@@ -385,8 +390,7 @@ export class RemoteTransport implements BusinessTransport {
   private waitAck(id: string, received: number) {
     const promise = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.acks.delete(id);
-        reject(new RemoteError("REQUEST_TIMEOUT"));
+        this.cancelRequest(id, "REQUEST_TIMEOUT");
       }, 15000);
       this.acks.set(id, { received, resolve, reject, timer });
     });
@@ -394,6 +398,8 @@ export class RemoteTransport implements BusinessTransport {
     return promise;
   }
   private cancelRequest(id: string, code: string) {
+    const ack = this.acks.get(id);
+    if (ack) this.retiredAcks.set(id, ack.received);
     try {
       if (!this.closed) this.send({ type: "cancel", id });
     } catch {
@@ -426,7 +432,15 @@ export class RemoteTransport implements BusinessTransport {
     const id = frame.id;
     if (frame.type === "ack") {
       const ack = this.acks.get(id);
-      if (!ack || frame.received !== ack.received)
+      if (!ack) {
+        const retired = this.retiredAcks.get(id);
+        if (retired !== undefined && retired === frame.received) {
+          this.retiredAcks.delete(id);
+          return;
+        }
+        throw new RemoteError("INVALID_FRAME");
+      }
+      if (frame.received !== ack.received)
         throw new RemoteError("INVALID_FRAME");
       this.acks.delete(id);
       clearTimeout(ack.timer);
@@ -514,5 +528,7 @@ export class RemoteTransport implements BusinessTransport {
     for (const id of this.pending.keys()) this.reject(id, error);
     for (const events of this.terminals.values()) events.closed();
     this.terminals.clear();
+    this.retiredAcks.clear();
+    this.reportEnded(error.code);
   }
 }
