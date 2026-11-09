@@ -69,3 +69,9 @@ D3 author validation: desktop library 50 passed, four existing external tests ig
 用户明确要求当前客户端增加注册或登录。本阶段默认使用 `ueg42e` Development 租户及其专用 SPA/Native/resource/Grid，不等待 Cloud 生产套餐；后续部署自有 Logto。当前主界面必须有清晰的注册/登录入口，进入现有账号与远程访问页；注册和登录由官方托管页面完成，本机显式授权远程访问保持独立。失败或取消登录后必须可以重试，不应仅因已记录错误而显示“退出账号”。如果确有待恢复的本机授权，仍提供恢复/退出，不把它误标为普通未登录状态。
 
 `account-cloud.json` 是现有完整公开配置覆盖机制。自部署切换须一起更改 endpoint/issuer、SPA/Native IDs、resource、CyberGrid信任配置和精确回跳；使用新认证命名空间和新登录，不能复用旧issuer授权。本机不得加入管理令牌或后端业务存储。
+
+## 最新契约：账号敏感信息仅存内存
+
+用户已明确本轮不使用本地钥匙串。此节取代前述账号grant/私钥持久化、checkpoint和启动恢复的产品契约（相关旧测试/评审保留为历史记录）：账号refresh/access token和安装私钥仅在进程内存保存；Account路径不调用Keychain或Secret Service，也不写普通secret文件。关闭客户端后必须重新登录并明确开启远程访问。同一进程仍只有一个串行刷新所有者，未知轮换结果必须重新授权，不能重放旧refresh token。新账号路径不更改既有手动连接的凭据设置。
+
+只允许持久化非敏感的安装ID与完整公开服务配置，按完整config及owner隔离；重启更新同一Logto目录项，公钥换新、版本递增，浏览器旧pin需明确确认。业务内容和私钥不会上传Logto或协调服务。迁移自部署仍整组切换并新授权。
