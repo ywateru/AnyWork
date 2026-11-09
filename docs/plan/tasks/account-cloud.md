@@ -29,3 +29,11 @@ Provision a dedicated Logto tenant with SPA, Native, connect resource/default ro
 Current official schema first; no secrets stdout/Git/client; verify actual OAuth, Account API, issuer/audience/client, CORS; Redis failures closed and namespace isolation. Report SMTP/account restrictions accurately; do not use someone else’s mailbox. Separate upstream CI evidence from checks actually executed.
 
 Commit implementation and test evidence before independent review. No claim of completion based only on mocks, build success or upstream reports.
+
+## Candidate implementation and evidence
+
+- Dedicated productionFree tenant afwf0u and separate developer tenant ueg42e created; previous resources untouched. Production paid entitlement blocks customresource/roles (verified quotas0/0). Exact read-only SKU API confirms Pro24USD+RBAC32USD=56USD/month base, before tax/overages; no purchase made.
+- Dedicated Upstash free us-east-1 TLS/noeviction created, official CyberGrid2bd6729 deployed to dedicated DEV Vercel project. Health/config/admin-disabled/unknown/CORS probes recorded in cloud-configuration.md.
+- Publisher migrated to Vercel exact-source workflow/provenance with backward repair alias, immutable release semantics preserved. 28publisher tests+7private-cloud safety tests passed. Current upstream suite80pass7skip0fail; local Redis tests skipped, not Upstash proof.
+- Real hosted SPA PKCE/ES384 resource JWT+opaque AccountAPI token and namespace/replacement/wrongtoken checks passed. Isolated account seeded and role explicitly assigned; not signup/email/default-role proof. Native refresh/actual desktop and production mailbox gates remain for integrated verification.
+- Candidate requires independent review before merge. Production release flag/CI secrets not activated; no frontend production publication.

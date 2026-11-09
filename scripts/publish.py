@@ -31,7 +31,7 @@ guard = importlib.import_module('check-release-version')
 updater = importlib.import_module('updater-artifacts')
 REPO = 'ywateru/AnyWork'
 WEB = 'https://github.com/' + REPO
-SITE = 'https://ywateru.github.io/AnyWork'
+SITE = 'https://anywork-tau.vercel.app'
 API = 'https://api.github.com/repos/' + REPO + '/'
 FILES = ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json',
          'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json',
@@ -402,7 +402,7 @@ class Publisher:
                         endpoint = 'rerun-failed-jobs' if run.get('conclusion') == 'failure' else 'rerun'
                         self.mutation(key, f'actions/runs/{run["id"]}/{endpoint}', workflow=workflow)
                     elif key not in self.state['intents']:
-                        raise Failure(f'{workflow} ended with {run.get("conclusion")}: {run["html_url"]}. Use --retry-failed; if already published, use --pages-only {self.state["tag"]}')
+                        raise Failure(f'{workflow} ended with {run.get("conclusion")}: {run["html_url"]}. Use --retry-failed; if already published, use --site-only {self.state["tag"]}')
                     # A saved retry intent must observe a newer attempt before
                     # interpreting another failure; never resubmit the same POST.
                     elif self.state['intents'][key].get('observed_new_attempt'):
@@ -494,11 +494,15 @@ class Publisher:
             require(int(headers.get('Content-Length', headers.get('content-length', -1))) == assets[name]['size'], 'Installer HEAD size mismatch: ' + name)
         return release, commit
 
-    def verify_site(self, release):
+    def verify_site(self, release, source=None):
         nonce = '?anywork-publish=' + str(release['id'])
         raw, _ = self.api.public(SITE + '/release.json' + nonce)
         data = json.loads(raw)
         require(data and data['tag_name'] == release['tag_name'], 'Download website still advertises another release')
+        if source is not None:
+            raw, _ = self.api.public(SITE + '/build.json' + nonce)
+            identity = json.loads(raw)
+            require(identity.get('source') == source, 'Vercel website source differs from the pinned commit')
         assets = {item['name']: item for item in release['assets']}
         names = [item['name'] for item in data['assets']]
         require(len(names) == len(assets) and set(names) == set(assets), 'Website release metadata is incomplete or duplicated')
@@ -514,10 +518,10 @@ class Publisher:
             for name, url in parser.links.items():
                 require(name in assets and url == assets[name]['browser_download_url'], 'Embedded download link is stale: ' + language)
 
-    def wait_site(self, release):
+    def wait_site(self, release, source=None):
         while True:
             try:
-                self.verify_site(release)
+                self.verify_site(release, source)
                 return
             except (Failure, ValueError, KeyError):
                 self.tick()
@@ -588,8 +592,8 @@ class Publisher:
         return self.state
 
     def pages(self, release, sha, retry):
-        self.wait_workflow('pages.yml', sha, 'main', retry, dispatch=True, after=release['published_at'])
-        self.wait_site(release)
+        self.wait_workflow('vercel.yml', sha, 'main', retry, dispatch=True, after=release['published_at'])
+        self.wait_site(release, sha)
 
     def pages_only(self, tag, retry=False):
         self.checkout()
@@ -601,11 +605,11 @@ class Publisher:
             self.state = {'schema': 1, 'root': str(self.root), 'tag': tag, 'source': source,
                           'pages_sha': self.remote_main(), 'phase': 'pages', 'intents': {}}
             self.save()
-        require(self.remote_main() == self.state['pages_sha'], 'Remote main changed during Pages repair; preserve state and inspect the deployment')
+        require(self.remote_main() == self.state['pages_sha'], 'Remote main changed during website repair; preserve state and inspect the deployment')
         self.pages(release, self.state['pages_sha'], retry)
         self.state['phase'] = 'complete'
         self.save()
-        print('Verified existing release and repaired Pages:', release['html_url'], SITE)
+        print('Verified existing release and repaired Vercel website:', release['html_url'], SITE)
 
 
 class Downloads(html.parser.HTMLParser):
@@ -628,7 +632,7 @@ def main(argv=None):
     modes.add_argument('--dry-run', action='store_true', help='Read-only plan / 只读预览')
     modes.add_argument('--status', action='store_true', help='Read private progress / 查看进度')
     modes.add_argument('--verify-existing', metavar='TAG', help='Read-only release and website verification')
-    modes.add_argument('--pages-only', metavar='TAG', help='Repair website for an immutable existing release')
+    modes.add_argument('--site-only', '--pages-only', dest='site_only', metavar='TAG', help='Repair Vercel website for an immutable existing release (--pages-only remains a compatibility alias)')
     parser.add_argument('--new', action='store_true', help='Archive a stopped operation after committed source fixes')
     parser.add_argument('--retry-failed', action='store_true', help='Explicitly rerun failed workflow jobs once')
     parser.add_argument('--token-file', type=pathlib.Path)
@@ -662,8 +666,8 @@ def main(argv=None):
         print(json.dumps({'release': release['html_url'], 'source': source, 'site': SITE, 'verified': True}))
         return
     with process_lock(publisher.private):
-        if args.pages_only:
-            publisher.pages_only(valid_tag(args.pages_only), args.retry_failed)
+        if args.site_only:
+            publisher.pages_only(valid_tag(args.site_only), args.retry_failed)
         else:
             publisher.publish(args.bump, args.retry_failed, args.new)
 

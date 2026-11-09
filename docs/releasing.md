@@ -37,7 +37,7 @@ python3 scripts/publish.py --status                  # 查看本机进度
 python3 scripts/publish.py --bump minor              # 新任务使用 minor；默认 patch
 python3 scripts/publish.py --verify-existing v0.1.12 # 轻量核验现有发布和官网
 python3 scripts/publish.py --retry-failed            # 显式重试失败的工作流并继续
-python3 scripts/publish.py --pages-only v0.1.12     # 已发布安装包，只修复或核验官网
+python3 scripts/publish.py --site-only v0.1.12     # 已发布安装包，只修复或核验官网
 python3 scripts/publish.py --new                    # 修复源码并提交后，安全开始下一版
 ```
 
@@ -45,9 +45,9 @@ python3 scripts/publish.py --new                    # 修复源码并提交后�
 
 Progress is stored atomically under Git's private common directory, protected by a process lock. Run the same command after interruption to resume. Completed work is reused; an unchanged completed source is a no-op. Failed workflows return a nonzero exit and a public Actions URL. `--retry-failed` explicitly requests a retry instead of silently looping failing tests.
 
-如果失败来自源码，修复并提交后使用 `--new`；脚本会先确认旧发行构建已经结束，再归档旧进度并选择新的版本，不移动旧 tag。如果安装包已发布但 Pages 失败，使用 `--pages-only v版本号`，只核验已有发行并修复网站，避免重新构建或重复创建 Release。原工作流的失败记录仍保留。
+如果失败来自源码，修复并提交后使用 `--new`；脚本会先确认旧发行构建已经结束，再归档旧进度并选择新的版本，不移动旧 tag。如果安装包已发布但 Pages 失败，使用 `--site-only v版本号`，只核验已有发行并修复网站，避免重新构建或重复创建 Release。原工作流的失败记录仍保留。
 
-After committing a source fix, use `--new` to start a fresh version once the previous release build is no longer active. Existing tags are never moved. If installers are already published but Pages failed, use `--pages-only vX.Y.Z` to verify the immutable release and repair the website without rebuilding or creating another Release. The original failed workflow remains visible.
+After committing a source fix, use `--new` to start a fresh version once the previous release build is no longer active. Existing tags are never moved. If installers are already published but Pages failed, use `--site-only vX.Y.Z` to verify the immutable release and repair the website without rebuilding or creating another Release. The original failed workflow remains visible.
 
 轻量核验包括 20 个发行文件、19 个 SHA-256 条目与 GitHub 文件摘要、5 个更新目标的 `.sig`／清单一致性和版本绑定，以及官网静态内嵌版本和下载链接。它不把签名元数据检查描述为完整安装验收，也不默认运行需要下载大型更新包的可选真实升级测试。真实设备、网络和升级安装验收仍可按需单独执行。
 
@@ -108,7 +108,7 @@ Android release signing uses the three secrets above and the `anywork` alias. Ba
 
 官网源文件在 `site/`。`python3 scripts/build-site.py` 输出英文 `/en/`、中文 `/zh/`、默认英文首页、SEO 元信息、sitemap 与下载元数据。使用 `--fetch-release` 将真实的最新 Release 附件写入静态页面；尚无 Release 时链接到发行列表，不生成假下载地址。浏览器可进一步刷新最新元数据，API 不可用时保留静态下载。
 
-The website builds without npm dependencies. `Publish website` deploys `site/dist` with the official Pages artifact/OIDC workflow. Configure the repository's Pages source as **GitHub Actions**. After publishing a release, the release job explicitly dispatches `pages.yml` to refresh static download links. This uses the workflow-dispatch exception because a release event emitted with `GITHUB_TOKEN` does not trigger another workflow by itself. Site pushes and manual deployments also refresh metadata.
+The website builds without npm dependencies. `Publish website` deploys `site/dist` with the official Pages artifact/OIDC workflow. Configure the repository's Pages source as **GitHub Actions**. After publishing a release, the release job explicitly dispatches `vercel.yml` to refresh static download links. This uses the workflow-dispatch exception because a release event emitted with `GITHUB_TOKEN` does not trigger another workflow by itself. Site pushes and manual deployments also refresh metadata.
 
 ```bash
 python3 scripts/build-site.py
@@ -142,3 +142,6 @@ The Release workflow independently verifies trusted, successful Checks for the e
 正式预检和创建 Release 前均通过 GitHub 只读 API 解析远端轻量或附注 tag（有界处理附注链），要求最终 commit 等于本次 `github.sha`。缺失、格式异常、循环、不同源码或构建期间被移动的 tag 均拒绝；手动 publish 与 tag 触发共用该策略。普通发布脚本已负责建立对应不可变 tag；高级手动运行也需先准备正确 tag。工作流只接受已有 tag 并使用 `--verify-tag`，不再借 `--target` 隐式创建。检查与创建发行版之间无法用分开的 GitHub API 实现原子锁；仓库应配置 tag 保护来禁止其他写入者在最后读检查后移动 tag，这属于额外仓库权限控制，离线测试不声称已检查实际仓库配置。
 
 Publishing preflight and final authorization both peel the existing remote tag and require the exact workflow source commit. Manual publishing no longer creates a missing tag implicitly. Missing, moved, malformed or wrong-source tags fail closed without mutations. Repository tag protections are still needed against an external writer racing the final read/create boundary.
+
+
+2026-11-09：官网发布目标迁移为 Vercel `https://anywork-tau.vercel.app`。`--site-only` 修复网站，原 `--pages-only` 保留命令兼容；不可变 GitHub Release 不变。CI 需要 Vercel secret/公开项目变量，以及完成生产账号套餐和安全验收后才设置的 `ANYWORK_PRODUCTION_READY=true`。发布器验证 `/build.json` 的精确源码提交，不能仅用静态页面可达作为发布成功。实际云资源、费用与未完成门槛见 [cloud-configuration.md](cloud-configuration.md)。

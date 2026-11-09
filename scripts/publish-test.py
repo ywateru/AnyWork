@@ -49,7 +49,7 @@ class FakeGitHub:
         if path.startswith('git/ref/tags/'): return self.tags.get(path.split('/')[-1])
         if path.startswith('git/tags/'): return {'object': {'sha': self.main, 'type': 'commit'}}
         if path.startswith('actions/workflows/'):
-            return {'id': {'ci.yml': 1, 'release.yml': 2, 'pages.yml': 3}[path.split('/')[2]]}
+            return {'id': {'ci.yml': 1, 'release.yml': 2, 'pages.yml': 3, 'vercel.yml': 4}[path.split('/')[2]]}
         if path.startswith('releases/tags/'): return self.release
         raise AssertionError('Unexpected mocked API path: ' + path)
 
@@ -69,8 +69,8 @@ class FakeGitHub:
 
     @staticmethod
     def run(workflow, sha, branch, status='completed', conclusion='success', attempt=1):
-        return {'id': 100 + {'ci.yml': 1, 'release.yml': 2, 'pages.yml': 3}[workflow],
-                'workflow_id': {'ci.yml': 1, 'release.yml': 2, 'pages.yml': 3}[workflow],
+        return {'id': 100 + {'ci.yml': 1, 'release.yml': 2, 'pages.yml': 3, 'vercel.yml': 4}[workflow],
+                'workflow_id': {'ci.yml': 1, 'release.yml': 2, 'pages.yml': 3, 'vercel.yml': 4}[workflow],
                 'head_sha': sha, 'head_branch': branch, 'status': status,
                 'conclusion': conclusion, 'run_attempt': attempt,
                 'html_url': publish.WEB + '/actions/runs/100', 'created_at': '2026-11-07T10:01:00Z'}
@@ -97,6 +97,8 @@ class FakeGitHub:
         self.public_calls.append((url, method))
         path = url.split('?')[0]
         if path.startswith(publish.SITE):
+            if path.endswith('/build.json'):
+                return json.dumps({'source': self.main}).encode(), {}
             if path.endswith('/release.json'):
                 data = {key: self.release[key] for key in ['tag_name', 'assets']}
                 if self.bad_site: data['tag_name'] = 'v0.0.1'
@@ -149,6 +151,20 @@ class PublisherTest(unittest.TestCase):
         self.clock = Clock()
         self.pub = self.publisher()
         self.pub.private.mkdir()
+
+    def test_website_verification_requires_exact_source_after_deployment(self):
+        self.api.published('v0.1.13', self.api.main)
+        self.pub.verify_site(self.api.release, self.api.main)
+        with self.assertRaisesRegex(publish.Failure, 'pinned commit'):
+            self.pub.verify_site(self.api.release, 'f' * 40)
+
+    def test_website_gate_targets_vercel_workflow(self):
+        self.api.published('v0.1.13', self.api.main)
+        self.pub.state = {'intents': {}, 'tag': 'v0.1.13'}
+        with mock.patch.object(self.pub, 'save'):
+            self.pub.pages(self.api.release, self.api.main, False)
+        self.assertIn('vercel.yml', self.pub.state['gates'])
+        self.assertNotIn('pages.yml', self.pub.state['gates'])
 
     def run_git(self, *args):
         return subprocess.run(['git', *args], cwd=self.root, check=True, capture_output=True).stdout.decode().strip()
