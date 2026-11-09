@@ -1,0 +1,305 @@
+From c923cc232e74e4aff78fa3c82916ce9fb9a283b5 Mon Sep 17 00:00:00 2001
+From: ywateru <206523951+ywateru@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 23:30:54 +0800
+Subject: [PATCH] Support an explicit public Logto application directory
+ without runtime management secrets
+
+---
+ docs/INDEX.md                              |   1 +
+ docs/deployment.md                         |   6 +-
+ docs/pinned-application-directory.md       |  25 +++++
+ server/.env.example                        |   5 +
+ server/src/application-directory-config.ts |  48 +++++++++
+ server/src/config.ts                       |  10 +-
+ server/test/pinned-directory.test.ts       | 111 +++++++++++++++++++++
+ 7 files changed, 200 insertions(+), 6 deletions(-)
+ create mode 100644 docs/pinned-application-directory.md
+ create mode 100644 server/src/application-directory-config.ts
+ create mode 100644 server/test/pinned-directory.test.ts
+
+diff --git a/docs/INDEX.md b/docs/INDEX.md
+index fa26578f0512011665fb2a7e28295ee9e7392d32..8c67b308778ef7b2401b00dfcec4f06ed797f2d5 100644
+--- a/docs/INDEX.md
++++ b/docs/INDEX.md
+@@ -4,6 +4,7 @@
+ - [系统架构](architecture.md)：身份、协调与端到端数据边界。
+ - [Redis 协调契约](redis-coordination.md)：共享状态、原子性、到期与多实例要求。
+ - [部署](deployment.md)：Logto、Docker / Node.js、Vercel Functions 与 Vercel KV 兼容配置。
++- [显式应用目录](pinned-application-directory.md)：固定公开SPA/Native清单，无运行期Management凭据。
+ - [SDK](sdk.md)：SDK 接口与恢复行为。
+ - [Lab 网页登录](lab-browser-login.md)：Mac / Android 官方 Logto SDK 接入。
+ - [发布](releasing.md)：构建、下载与发布产物。
+diff --git a/docs/deployment.md b/docs/deployment.md
+index 2351005f8e5363ad990ae89aa9cd4cf83261a909..66a3549788d2cbf611190bdf93cc2574cac8f772 100644
+--- a/docs/deployment.md
++++ b/docs/deployment.md
+@@ -9,7 +9,7 @@ CyberGrid 支持 Node.js 22 / Docker 和 Vercel Functions。两种入口使用
+ - 一个独立 SPA Application，用于网站 `/console/`。登记完整回跳 URI，默认 `https://你的域名/console/callback/`，以及该 HTTPS origin。
+ - 关闭 Device Flow 的普通 Native Application。Mac 和 Android 使用同一个真实 `client_id`，各自独立授权。登记 Mac 回调 `http://127.0.0.1:17896/callback` 与 Android 回调 `tech.tinadev.cybergrid.lab://tech.tinadev.cybergrid.lab/callback`。已有 Device Flow 应用需要替换，不能迁用另一个 client 的 refresh token。
+ - 一个固定 API resource，提供 `connect` 用户 scope，并向测试用户分配相应角色。显式设置 `LOGTO_RESOURCE` 最清楚，例如 `https://cybergrid.local/api`；它是 OAuth audience，不需要解析或实际 HTTP 服务。Logto 须签发面向该 resource 的 ES384 用户 access token。
+-- 读取应用目录的 M2M Management API 凭据。当前使用内置 Management API 的 `all` 权限，须只保存在服务端；运行代码只读取目录。
++- 应用目录选择一种模式：固定少量应用时，推荐[显式公开应用清单](pinned-application-directory.md)，运行期不放管理凭据；需要动态同步目录时，使用既有M2M Management API的 `all` 权限，凭据只保存在服务端。不要将 `all` 误称为只读权限。
+ 
+ SMTP、用户注册、邮件验证与发件域在 Logto 配置。不要把 M2M、SMTP、Redis 凭据或管理后台密钥放进 SDK、前端或 Git。
+ 
+@@ -89,7 +89,9 @@ Vercel 的环境变量修改需要重新部署后生效。免费 Redis 有存储
+ | `CYBERGRID_LIMITS` | 可选 JSON 共享容量限制，只能下调以下硬上限；同 namespace 所有实例必须一致 |
+ | `LOGTO_ISSUER` | 必填，可信租户 HTTPS issuer，以 `/oidc` 结尾；JWT 和 CSP 均固定使用它 |
+ | `LOGTO_BROWSER_CLIENT_ID` | 必填，独立控制台 SPA 的 client ID |
+-| `LOGTO_MANAGEMENT_CLIENT_ID` / `LOGTO_MANAGEMENT_CLIENT_SECRET` | 必填，目录读取 M2M 凭据，仅服务端保存 |
++| `LOGTO_APPLICATION_DIRECTORY_MODE` | 可选，精确 `pinned` / `management`；未配置时保留既有Management模式，空值或未知值拒绝 |
++| `LOGTO_APPLICATIONS_JSON` | `pinned` 必填的严格公开应用清单，包含匹配的SPA和至少一个Native；其他模式禁止，见[契约](pinned-application-directory.md) |
++| `LOGTO_MANAGEMENT_CLIENT_ID` / `LOGTO_MANAGEMENT_CLIENT_SECRET` | 仅Management模式必填；`pinned` 模式必须完全移除这两个变量 |
+ | `LOGTO_RESOURCE` | 固定 OAuth audience；建议显式设置。默认有公开 origin 则为该 origin 加 `/api`，否则 `https://cybergrid.local/api` |
+ | `CYBERGRID_PUBLIC_ORIGIN` | 可选，对外 HTTPS origin，不含路径、凭据、query 或 fragment；留空按每次请求地址识别 |
+ | `CYBERGRID_ADMIN_KEY` | 可选，独立随机 32–256 UTF-8 字节；未设置时管理 API 返回 503 |
+diff --git a/docs/pinned-application-directory.md b/docs/pinned-application-directory.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ec699a3f1379c18cc40b735107a008c20f47c61
+--- /dev/null
++++ b/docs/pinned-application-directory.md
+@@ -0,0 +1,25 @@
++# 显式应用目录
++
++固定少量应用的部署可使用公开应用清单，协调运行期无需 Logto Management API 或 M2M secret。此模式不改变用户 JWT 的签名、issuer、audience、`client_id`、`connect` 校验，不改变 Native / SPA 会话用途、CORS、Redis 或端到端协议。
++
++## 配置契约
++
++```dotenv
++LOGTO_APPLICATION_DIRECTORY_MODE=pinned
++LOGTO_BROWSER_CLIENT_ID=YourSPA
++LOGTO_APPLICATIONS_JSON=[{"id":"YourSPA","name":"Web console","type":"SPA","isDeviceFlow":false},{"id":"YourNative","name":"Desktop","type":"Native","isDeviceFlow":false}]
++```
++
++`LOGTO_APPLICATIONS_JSON` 是部署管理员核对 Logto 后提供的公开配置，不是客户端请求参数。最多32个应用、UTF-8 JSON最多32768字节。每个对象只能有上述四个字段：非空1–21字符应用ID、非空最多256字符名称、精确 `SPA` / `Native` 类型，以及布尔 `false` 的 `isDeviceFlow`。ID不得有空白、控制字符或重复。清单必须恰有一个SPA，ID与 `LOGTO_BROWSER_CLIENT_ID` 完全一致，并至少有一个关闭Device Flow的Native应用；不接受M2M、其他应用类型、未知字段、隐式默认或不完整清单。
++
++显式 `pinned` 模式缺少/损坏JSON、混入任意 `LOGTO_MANAGEMENT_CLIENT_ID` 或 `LOGTO_MANAGEMENT_CLIENT_SECRET` 变量（即使是空值）、未知模式都在创建Redis连接之前启动失败，错误不回显配置正文。不访问 Management API，也不退回动态目录、内存身份或默认应用。
++
++未配置模式或显式 `management` 保留既有动态Management目录行为，需要完整M2M配置；此模式不接受 `LOGTO_APPLICATIONS_JSON`。旧部署保持兼容，新自部署场景应显式选择 `pinned` 并从环境中移除两个Management变量。
++
++## 停用与变更
++
++清单只从不可变启动配置读取，`list()` 返回副本。它不会自动发现Logto应用新增、删除、改名或Device Flow开关变化。应用停用时，先从清单移除Native ID并部署，再删除/停用Logto应用；若是最后一个Native，停止该协调部署。现有服务的每次设备会话检查仍会校验当前目录，已移除的Native返回401。SPA替换需同步新清单、`LOGTO_BROWSER_CLIENT_ID`及Logto回跳，并按原规则重新授权。
++
++仅在Logto删除应用而不更新清单，不会立即撤销已有协调会话。应用类型与Device Flow策略由部署管理员同时维护；用户可写的Account API `customData`不能选择或修改此清单。API的既有 `source: "logto"` 表示身份提供方，保持SDK协议兼容，不表示每次请求都读取Management API。
++
++本补丁基于 `2bd6729c6bbee90ed2926410caca883a0a100890`；2026-11-09只读核对上游 `50a12e0d7b58e3f8dd84b9d9a97fe650faaac691`，相关目录/配置代码未改变。
+diff --git a/server/.env.example b/server/.env.example
+index c7fd4044ec4e23a95caf37c07e24551967c08e45..1748a01347e254097aaa5a14a44ff1c0bd92ccad 100644
+--- a/server/.env.example
++++ b/server/.env.example
+@@ -8,6 +8,11 @@ LOGTO_BROWSER_CLIENT_ID=your-independent-spa-client-id
+ CYBERGRID_BROWSER_ORIGINS=
+ LOGTO_MANAGEMENT_CLIENT_ID=your-directory-m2m-id
+ LOGTO_MANAGEMENT_CLIENT_SECRET=
++# Alternative: public pinned app directory, with no runtime Management API.
++# Remove BOTH LOGTO_MANAGEMENT_* variables completely before selecting pinned.
++# LOGTO_APPLICATION_DIRECTORY_MODE=pinned
++# LOGTO_APPLICATIONS_JSON=[{"id":"YourSPA","name":"Web console","type":"SPA","isDeviceFlow":false},{"id":"YourNative","name":"Desktop","type":"Native","isDeviceFlow":false}]
++# See docs/pinned-application-directory.md for strict schema and removal lifecycle.
+ # Optional independent 32..256 UTF8-byte read-only administrator key.
+ CYBERGRID_ADMIN_KEY=
+ # Fixed OAuth audience, independent of request Host; register the identical Logto API resource.
+diff --git a/server/src/application-directory-config.ts b/server/src/application-directory-config.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9deaf75cecbbdab5cce5f72bd6d930037533fc2f
+--- /dev/null
++++ b/server/src/application-directory-config.ts
+@@ -0,0 +1,48 @@
++import {LogtoDirectory} from './directory.js';
++import type {Application,ApplicationDirectory} from './types.js';
++
++export class DirectoryConfigurationError extends Error {
++ readonly code='INVALID_APPLICATION_DIRECTORY';
++ constructor(){super('Invalid pinned Logto application directory configuration');this.name='DirectoryConfigurationError';}
++}
++function invalid():never {throw new DirectoryConfigurationError();}
++
++/** Immutable deployment declarations, never selected or changed by a request. */
++export class PinnedApplicationDirectory implements ApplicationDirectory {
++ private readonly apps:Application[];
++ constructor(raw:unknown,browserClientId:string){
++  if(!Array.isArray(raw)||raw.length<2||raw.length>32)invalid();
++  const ids=new Set<string>();let spas=0,natives=0;
++  this.apps=raw.map((value:unknown)=>{
++   if(!value||typeof value!=='object'||Array.isArray(value))return invalid();
++   const app=value as Record<string,unknown>;
++   if(Object.keys(app).sort().join(',')!=='id,isDeviceFlow,name,type')return invalid();
++   const {id,name,type,isDeviceFlow}=app;
++   if(typeof id!=='string'||id.length<1||id.length>21||/[\s\u0000-\u001f\u007f]/u.test(id)||ids.has(id)||typeof name!=='string'||!name.trim()||name.length>256||/[\u0000-\u001f\u007f]/u.test(name)||isDeviceFlow!==false)return invalid();
++   if(type==='SPA'){spas++;if(id!==browserClientId)return invalid();}
++   else if(type==='Native')natives++;
++   else return invalid();
++   ids.add(id);return {id,name,type,isDeviceFlow};
++  });
++  if(spas!==1||natives<1)invalid();
++ }
++ async list():Promise<Application[]>{return this.apps.map(app=>({...app}));}
++}
++
++/** Explicit pinned mode cannot adopt management credentials or fall back. */
++export function configuredApplicationDirectory(env:NodeJS.ProcessEnv):ApplicationDirectory {
++ try{
++  const mode=env.LOGTO_APPLICATION_DIRECTORY_MODE;
++  if(mode==='pinned'){
++   if(env.LOGTO_MANAGEMENT_CLIENT_ID!==undefined||env.LOGTO_MANAGEMENT_CLIENT_SECRET!==undefined)invalid();
++   const raw=env.LOGTO_APPLICATIONS_JSON,browser=env.LOGTO_BROWSER_CLIENT_ID;
++   if(raw===undefined||Buffer.byteLength(raw)>32_768||!browser)invalid();
++   return new PinnedApplicationDirectory(JSON.parse(raw),browser);
++  }
++  if(mode!==undefined&&mode!=='management')invalid();
++  if(env.LOGTO_APPLICATIONS_JSON!==undefined)invalid();
++  const issuer=env.LOGTO_ISSUER,id=env.LOGTO_MANAGEMENT_CLIENT_ID,secret=env.LOGTO_MANAGEMENT_CLIENT_SECRET;
++  if(!issuer||!id||!secret)invalid();
++  return new LogtoDirectory({issuer,clientId:id,clientSecret:secret});
++ }catch{throw new DirectoryConfigurationError();}
++}
+diff --git a/server/src/config.ts b/server/src/config.ts
+index 6f716fd4145d6a6b934b0e6bf0f97580570001fb..9fa415aedd31e5204efe5a361f77675149c32c02 100644
+--- a/server/src/config.ts
++++ b/server/src/config.ts
+@@ -1,21 +1,23 @@
+ import {type MemoryLimits} from './memory.js';
+ import {RedisStore,redisTransport} from './redis.js';
+ import {LogtoIdentity} from './identity.js';
+-import {LogtoDirectory} from './directory.js';
++import {configuredApplicationDirectory} from './application-directory-config.js';
+ import {coordinatorAuthConfiguration,publicOrigin} from './deployment-config.js';
+ import {createService} from './service.js';
+ import {browserOrigins} from './console-cors.js';
+ export function createConfiguredCoordinator(env:NodeJS.ProcessEnv=process.env){
+  const dev=env.CYBERGRID_DEV_MODE==='1';if(dev&&env.NODE_ENV==='production')throw Error('CYBERGRID_DEV_MODE is forbidden in production');
+- const issuer=env.LOGTO_ISSUER,browser=env.LOGTO_BROWSER_CLIENT_ID,id=env.LOGTO_MANAGEMENT_CLIENT_ID,secret=env.LOGTO_MANAGEMENT_CLIENT_SECRET;
+- if(!issuer||!browser||!id||!secret)throw Error('Configure pinned Logto issuer, console client and dedicated management credentials; no identity/directory fallback');
++ const issuer=env.LOGTO_ISSUER,browser=env.LOGTO_BROWSER_CLIENT_ID;
++ const directory=configuredApplicationDirectory(env);
++ if(!issuer||!browser)throw Error('Configure pinned Logto issuer and console client; no identity fallback');
+  let limits:Partial<MemoryLimits>={};if(env.CYBERGRID_LIMITS){const v:unknown=JSON.parse(env.CYBERGRID_LIMITS);if(!v||typeof v!=='object'||Array.isArray(v))throw Error('Invalid coordination limits');limits=v as Partial<MemoryLimits>;}
+  const config=coordinatorAuthConfiguration(env);
+  const origin=publicOrigin(env.CYBERGRID_PUBLIC_ORIGIN);
+  if(dev&&origin&&!['localhost','127.0.0.1','[::1]'].includes(new URL(origin).hostname))throw Error('CYBERGRID_DEV_MODE requires loopback request origins');
+  const origins=browserOrigins(env.CYBERGRID_BROWSER_ORIGINS);
++ const identity=new LogtoIdentity(config);
+  const store=new RedisStore(redisTransport(env),env.CYBERGRID_REDIS_PREFIX,limits);
+- const handle=createService({store,identity:new LogtoIdentity(config),directory:new LogtoDirectory({issuer,clientId:id,clientSecret:secret}),browserClientId:browser,devMode:dev,adminKey:env.CYBERGRID_ADMIN_KEY,browserOrigins:origins});
++ const handle=createService({store,identity,directory,browserClientId:browser,devMode:dev,adminKey:env.CYBERGRID_ADMIN_KEY,browserOrigins:origins});
+  return {handle,store,close:()=>store.close()};
+ }
+ export function createConfiguredService(env:NodeJS.ProcessEnv=process.env){return createConfiguredCoordinator(env).handle;}
+diff --git a/server/test/pinned-directory.test.ts b/server/test/pinned-directory.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..755385fb34b5825b83abb029ec229d29d832dd42
+--- /dev/null
++++ b/server/test/pinned-directory.test.ts
+@@ -0,0 +1,111 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {inspect} from 'node:util';
++import {createLocalJWKSet,exportJWK,generateKeyPair,SignJWT} from 'jose';
++import {configuredApplicationDirectory,DirectoryConfigurationError,PinnedApplicationDirectory} from '../src/application-directory-config.js';
++import {createConfiguredCoordinator} from '../src/config.js';
++import {coordinatorAuthConfiguration} from '../src/deployment-config.js';
++import {LogtoDirectory} from '../src/directory.js';
++import {LogtoIdentity} from '../src/identity.js';
++import {MemoryStore} from '../src/memory.js';
++import {createService} from '../src/service.js';
++
++const SPA='PinnedSPA',NATIVE='PinnedNative',OTHER='OtherNative';
++const declarations=()=>[
++ {id:SPA,name:'Web console',type:'SPA',isDeviceFlow:false},
++ {id:NATIVE,name:'Desktop',type:'Native',isDeviceFlow:false},
++];
++const environment=():NodeJS.ProcessEnv=>({
++ LOGTO_ISSUER:'https://identity.example/oidc',LOGTO_BROWSER_CLIENT_ID:SPA,
++ LOGTO_RESOURCE:'https://grid.example/api',CYBERGRID_PUBLIC_ORIGIN:'https://grid.example',
++ LOGTO_APPLICATION_DIRECTORY_MODE:'pinned',LOGTO_APPLICATIONS_JSON:JSON.stringify(declarations()),
++});
++const rejects=(fn:()=>unknown)=>assert.throws(fn,(error:unknown)=>error instanceof DirectoryConfigurationError&&error.code==='INVALID_APPLICATION_DIRECTORY');
++
++test('pinned declarations return defensive copies without any management request or secret',async t=>{
++ let requests=0;t.mock.method(globalThis,'fetch',async()=>{requests++;throw Error('Network must not be used for pinned applications');});
++ const input=declarations(),directory=new PinnedApplicationDirectory(input,SPA);
++ input[1]!.id='changed';const first=await directory.list();assert.equal(first[1]!.id,NATIVE);
++ first[1]!.type='MachineToMachine';first.splice(0);assert.deepEqual(await directory.list(),declarations());
++ const configured=configuredApplicationDirectory(environment());assert.deepEqual(await configured.list(),declarations());
++ const coordinator=createConfiguredCoordinator({...environment(),CYBERGRID_REDIS_TRANSPORT:'upstash-rest',UPSTASH_REDIS_REST_URL:'https://redis.example',UPSTASH_REDIS_REST_TOKEN:'fixture-write-token'});
++ coordinator.close();assert.equal(requests,0);
++});
++
++test('pinned startup rejects missing, mixed or unknown mode configuration without adopting legacy credentials',()=>{
++ const good=environment();
++ for(const env of [
++  {...good,LOGTO_APPLICATIONS_JSON:undefined},{...good,LOGTO_APPLICATIONS_JSON:''},
++  {...good,LOGTO_APPLICATIONS_JSON:'[]'},{...good,LOGTO_APPLICATIONS_JSON:' '.repeat(32_769)},
++  {...good,LOGTO_BROWSER_CLIENT_ID:undefined},{...good,LOGTO_BROWSER_CLIENT_ID:'DifferentSPA'},
++  {...good,LOGTO_MANAGEMENT_CLIENT_ID:''},{...good,LOGTO_MANAGEMENT_CLIENT_SECRET:''},
++  {...good,LOGTO_MANAGEMENT_CLIENT_ID:'machine',LOGTO_MANAGEMENT_CLIENT_SECRET:'fixture-secret'},
++  ...['','Pinned','pinned ','__proto__','unknown'].map(mode=>({...good,LOGTO_APPLICATION_DIRECTORY_MODE:mode})),
++  {...good,LOGTO_APPLICATION_DIRECTORY_MODE:undefined},
++  {...good,LOGTO_APPLICATION_DIRECTORY_MODE:'management',LOGTO_MANAGEMENT_CLIENT_ID:'machine',LOGTO_MANAGEMENT_CLIENT_SECRET:'fixture-secret'},
++ ]){rejects(()=>configuredApplicationDirectory(env));rejects(()=>createConfiguredCoordinator(env));}
++ const marker='do-not-echo-private-marker';
++ for(const raw of ['{"'+marker+'"',JSON.stringify([{...declarations()[0],secret:marker},declarations()[1]])]){
++  assert.throws(()=>configuredApplicationDirectory({...good,LOGTO_APPLICATIONS_JSON:raw}),(error:unknown)=>error instanceof DirectoryConfigurationError&&!inspect(error).includes(marker)&&!JSON.stringify(error).includes(marker));
++ }
++});
++
++test('pinned schema rejects incomplete, duplicate, excessive, flow-enabled and unsupported application declarations',()=>{
++ const [spa,native]=declarations();
++ for(const raw of [
++  null,{},'apps',[],[spa],[native],
++  [spa,spa,native],[spa,native,{...native}],[spa,{...native,id:SPA}],
++  [spa,{...native,type:'MachineToMachine'}],[{...spa,type:'Traditional'},native],
++  [spa,{...native,isDeviceFlow:true}],[spa,{...native,isDeviceFlow:'false'}],
++  [spa,{id:NATIVE,name:'Desktop',type:'Native'}],[spa,{...native,secret:'private'}],
++  [spa,{...native,id:''}],[spa,{...native,id:'with space'}],[spa,{...native,id:'x'.repeat(22)}],
++  [spa,{...native,id:'\0bad'}],[spa,{...native,name:''}],[spa,{...native,name:'  '}],
++  [spa,{...native,name:'x'.repeat(257)}],[spa,{...native,name:'line\nbreak'}],
++  [spa,...Array.from({length:32},(_,i)=>({...native,id:'native'+i}))],
++ ])rejects(()=>new PinnedApplicationDirectory(raw,SPA));
++});
++
++test('legacy management selection remains explicit and compatible but never accepts pinned JSON',()=>{
++ const env={LOGTO_ISSUER:'https://identity.example/oidc',LOGTO_MANAGEMENT_CLIENT_ID:'machine',LOGTO_MANAGEMENT_CLIENT_SECRET:'fixture-secret'};
++ assert(configuredApplicationDirectory(env) instanceof LogtoDirectory);
++ assert(configuredApplicationDirectory({...env,LOGTO_APPLICATION_DIRECTORY_MODE:'management'}) instanceof LogtoDirectory);
++ rejects(()=>configuredApplicationDirectory({...env,LOGTO_APPLICATIONS_JSON:''}));
++ rejects(()=>configuredApplicationDirectory({...env,LOGTO_MANAGEMENT_CLIENT_SECRET:undefined}));
++});
++
++test('signed user exchanges keep fixed identity, Native/SPA purpose, CORS and application-removal checks',async t=>{
++ const env=environment(),config=coordinatorAuthConfiguration(env),keys=await generateKeyPair('ES384');
++ const publicKey={...await exportJWK(keys.publicKey),kid:'pinned-test',alg:'ES384'};
++ const identity=new LogtoIdentity(config,['ES384'],createLocalJWKSet({keys:[publicKey]}));
++ const store=new MemoryStore();t.after(()=>store.close());
++ const service=(directory=configuredApplicationDirectory(env))=>createService({store,identity,directory,browserClientId:SPA,browserOrigins:new Set(['https://web.example']),authRateLimit:100});
++ const handle=service();const now=Math.floor(Date.now()/1000);
++ const token=(changes:Record<string,unknown>={})=>new SignJWT({sub:'fixture-user',iss:config.issuer,aud:config.resource,client_id:NATIVE,scope:'openid connect',iat:now,exp:now+60,...changes}).setProtectedHeader({alg:'ES384',kid:'pinned-test',typ:'JWT'}).sign(keys.privateKey);
++ const request=async(path:string,body?:unknown,key?:string,origin?:string,handler=handle,method=body===undefined?'GET':'POST')=>{
++  const response=await handler(new Request('https://grid.example/api/v1'+path,{method,headers:{...(body!==undefined?{'content-type':'application/json'}:{}),...(key?{authorization:'Bearer '+key}:{}),...(origin?{origin}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})}),'pinned-fixture');
++  return {status:response.status,headers:response.headers,data:await response.json() as any};
++ };
++ const nativeConfig=await request('/auth/config?appId='+NATIVE);
++ assert.equal(nativeConfig.status,200);assert.equal(nativeConfig.data.clientId,NATIVE);assert.equal(nativeConfig.data.issuer,config.issuer);assert.equal(nativeConfig.data.resource,config.resource);
++ assert.equal((await request('/auth/config?appId='+OTHER)).status,404);
++ assert.equal((await request('/auth/config?appId='+SPA)).status,400);
++ assert.equal((await request('/console/auth/config')).data.clientId,SPA);
++ const device=await request('/auth/exchange',{accessToken:await token(),appId:NATIVE,deviceName:'Fixture desktop'});
++ assert.equal(device.status,200);assert.equal(device.data.purpose,'device');
++ const browser=await request('/console/auth/exchange',{accessToken:await token({client_id:SPA})},undefined,'https://web.example');
++ assert.equal(browser.status,200);assert.equal(browser.headers.get('access-control-allow-origin'),'https://web.example');
++ assert.equal((await request('/console/apps',undefined,browser.data.sessionKey)).data.apps.length,1);
++ assert.equal((await request('/devices',undefined,browser.data.sessionKey)).status,403);
++ assert.equal((await request('/devices',undefined,device.data.sessionKey,'https://web.example')).status,403);
++ assert.equal((await request('/console/auth/config',undefined,undefined,'https://untrusted.example')).status,403);
++ for(const changes of [{iss:'https://other.example/oidc'},{aud:'https://other.example/api'},{scope:'disconnect'},{gty:'client_credentials'}]){
++  assert.equal((await request('/auth/exchange',{accessToken:await token(changes),appId:NATIVE,deviceName:'Fixture'})).status,401);
++ }
++ assert.equal((await request('/auth/exchange',{accessToken:await token({client_id:SPA}),appId:NATIVE,deviceName:'Fixture'})).status,401);
++ assert.equal((await request('/console/auth/exchange',{accessToken:await token()})).status,401);
++ assert.equal((await request('/auth/exchange',{accessToken:await token({client_id:OTHER}),appId:OTHER,deviceName:'Fixture'})).status,404);
++ const replacement=service(new PinnedApplicationDirectory([declarations()[0],{...declarations()[1],id:OTHER}],SPA));
++ const removed=await request('/devices',undefined,device.data.sessionKey,undefined,replacement);
++ assert.equal(removed.status,401);assert.equal(removed.data.error.code,'APPLICATION_UNAVAILABLE');
++ assert.equal((await request('/session',undefined,device.data.sessionKey,undefined,replacement,'DELETE')).status,200);
++});

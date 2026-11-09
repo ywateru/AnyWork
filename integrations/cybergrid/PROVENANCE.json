@@ -1,0 +1,7 @@
+{
+  "upstreamRepository": "https://github.com/ywateru/CyberGrid",
+  "upstreamCommit": "2bd6729c6bbee90ed2926410caca883a0a100890",
+  "adaptedCommit": "c923cc232e74e4aff78fa3c82916ce9fb9a283b5",
+  "patch": "cybergrid-public-directory.patch",
+  "patchSha256": "1b569fa296150cbcc0e6a3e02dcc2b5ce2e2d991215d8655282a381ec6ef5137"
+}
