@@ -1,3 +1,8 @@
+#[cfg(unix)]
+pub mod accounts;
+#[cfg(not(unix))]
+#[path = "accounts_unsupported.rs"]
+pub mod accounts;
 pub mod bridge;
 pub mod cloudflared;
 pub mod config;

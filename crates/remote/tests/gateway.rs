@@ -1,0 +1,237 @@
+use anywork_remote::{
+    AccountVerifier, Gateway, GatewayConfig, NOISE_SUITE, VerifiedAccount,
+    auth::{VerifyFuture, now},
+    prologue,
+};
+use axum::{Router, http::HeaderMap, routing::get};
+use futures_util::{SinkExt, StreamExt};
+use serde_json::{Value, json};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+use tokio_tungstenite::{
+    MaybeTlsStream, WebSocketStream, connect_async,
+    tungstenite::{Message, client::IntoClientRequest},
+};
+struct Fixture {
+    ttl: u64,
+}
+impl AccountVerifier for Fixture {
+    fn verify<'a>(&'a self, token: &'a str) -> VerifyFuture<'a> {
+        Box::pin(async move {
+            if token != "allowed-test-access" {
+                anyhow::bail!("AUTH_REJECTED")
+            };
+            Ok(VerifiedAccount {
+                subject: "test-owner".into(),
+                expires_at: now() + self.ttl,
+            })
+        })
+    }
+}
+type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+async fn start(ttl: u64) -> (Gateway, Vec<u8>, Arc<AtomicUsize>) {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let called = calls.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route(
+        "/api/info",
+        get(move |headers: HeaderMap| {
+            let called = called.clone();
+            async move {
+                assert_eq!(
+                    headers.get("authorization").unwrap(),
+                    "Bearer local-test-secret"
+                );
+                assert!(
+                    headers
+                        .get("x-anywork-client-id")
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .starts_with("remote-")
+                );
+                called.fetch_add(1, Ordering::SeqCst);
+                axum::Json(json!({"safe":true}))
+            }
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let key = snow::Builder::new(NOISE_SUITE.parse().unwrap())
+        .generate_keypair()
+        .unwrap();
+    let gateway = Gateway::start(GatewayConfig {
+        installation_id: "test-installation".into(),
+        private_key: key.private.try_into().unwrap(),
+        allowed_origins: vec!["https://test.example".into()],
+        local_port: port,
+        local_token: "local-test-secret".into(),
+        verifier: Arc::new(Fixture { ttl }),
+    })
+    .await
+    .unwrap();
+    (gateway, key.public, calls)
+}
+async fn socket(port: u16, origin: &str) -> Result<Socket, tokio_tungstenite::tungstenite::Error> {
+    let mut request = format!("ws://127.0.0.1:{port}/remote/v1/ws")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("origin", origin.parse().unwrap());
+    Ok(connect_async(request).await?.0)
+}
+async fn connect(port: u16, key: &[u8], token: &str) -> (Socket, snow::TransportState) {
+    let mut socket = socket(port, "https://test.example").await.unwrap();
+    let mut hs = initiator(key);
+    let mut b = vec![0; 65535];
+    let n = hs
+        .write_message(
+            &serde_json::to_vec(
+                &json!({"type":"auth","installationId":"test-installation","accessToken":token}),
+            )
+            .unwrap(),
+            &mut b,
+        )
+        .unwrap();
+    socket
+        .send(Message::Binary(b[..n].to_vec().into()))
+        .await
+        .unwrap();
+    let message = socket.next().await.unwrap().unwrap();
+    let n = hs.read_message(&message.into_data(), &mut b).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&b[..n]).unwrap()["type"],
+        "ready"
+    );
+    (socket, hs.into_transport_mode().unwrap())
+}
+fn initiator(key: &[u8]) -> snow::HandshakeState {
+    let local = snow::Builder::new(NOISE_SUITE.parse().unwrap())
+        .generate_keypair()
+        .unwrap();
+    snow::Builder::new(NOISE_SUITE.parse().unwrap())
+        .local_private_key(&local.private)
+        .unwrap()
+        .remote_public_key(key)
+        .unwrap()
+        .prologue(&prologue("test-installation"))
+        .unwrap()
+        .build_initiator()
+        .unwrap()
+}
+fn encrypt(noise: &mut snow::TransportState, value: Value) -> Vec<u8> {
+    let mut b = vec![0; 65535];
+    let n = noise
+        .write_message(&serde_json::to_vec(&value).unwrap(), &mut b)
+        .unwrap();
+    b[..n].to_vec()
+}
+async fn receive(socket: &mut Socket, noise: &mut snow::TransportState) -> Value {
+    let bytes = socket.next().await.unwrap().unwrap().into_data();
+    let mut b = vec![0; 65535];
+    let n = noise.read_message(&bytes, &mut b).unwrap();
+    serde_json::from_slice(&b[..n]).unwrap()
+}
+#[tokio::test]
+async fn encrypted_request_preserves_local_auth_and_disable_closes_it() {
+    let (mut gateway, key, calls) = start(60).await;
+    let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
+    for value in [
+        json!({"type":"request","id":"r1","method":"GET","path":"/api/info","size":0}),
+        json!({"type":"end","id":"r1"}),
+    ] {
+        ws.send(Message::Binary(encrypt(&mut noise, value).into()))
+            .await
+            .unwrap()
+    }
+    assert_eq!(receive(&mut ws, &mut noise).await["status"], 200);
+    let body = receive(&mut ws, &mut noise).await;
+    assert_eq!(body["type"], "chunk");
+    assert_eq!(receive(&mut ws, &mut noise).await["type"], "end");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    gateway.close().await;
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), ws.next())
+            .await
+            .is_ok()
+    );
+}
+#[tokio::test]
+async fn rejects_unknown_origins_plaintext_and_bad_account() {
+    let (mut gateway, key, calls) = start(60).await;
+    assert!(socket(gateway.port, "https://evil.example").await.is_err());
+    let mut ws = socket(gateway.port, "https://test.example").await.unwrap();
+    ws.send(Message::Text("{\"token\":\"local-test-secret\"}".into()))
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), ws.next())
+            .await
+            .is_ok()
+    );
+    let mut ws = socket(gateway.port, "https://test.example").await.unwrap();
+    let mut hs = initiator(&key);
+    let mut b = vec![0; 65535];
+    let n=hs.write_message(&serde_json::to_vec(&json!({"type":"auth","installationId":"test-installation","accessToken":"other-account"})).unwrap(),&mut b).unwrap();
+    ws.send(Message::Binary(b[..n].to_vec().into()))
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), ws.next())
+            .await
+            .is_ok()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    gateway.close().await;
+}
+#[tokio::test]
+async fn replay_and_tampering_fail_before_second_local_request() {
+    let (mut gateway, key, calls) = start(60).await;
+    let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
+    let frame = encrypt(
+        &mut noise,
+        json!({"type":"request","id":"r1","method":"GET","path":"/api/info","size":0}),
+    );
+    ws.send(Message::Binary(frame.clone().into()))
+        .await
+        .unwrap();
+    ws.send(Message::Binary(frame.into())).await.unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), ws.next())
+            .await
+            .is_ok()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
+    let mut frame = encrypt(
+        &mut noise,
+        json!({"type":"request","id":"r1","method":"GET","path":"/api/info","size":0}),
+    );
+    frame[0] ^= 1;
+    ws.send(Message::Binary(frame.into())).await.unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), ws.next())
+            .await
+            .is_ok()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    gateway.close().await;
+}
+#[tokio::test]
+async fn authorization_expiry_closes_without_fallback() {
+    let (mut gateway, key, calls) = start(1).await;
+    let (mut ws, _noise) = connect(gateway.port, &key, "allowed-test-access").await;
+    assert!(
+        tokio::time::timeout(Duration::from_secs(2), ws.next())
+            .await
+            .is_ok()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    gateway.close().await;
+}
