@@ -39,3 +39,13 @@ depends-on: [account-web, account-desktop]
 设备私钥每进程重新生成。允许仅保存非敏感的随机安装ID（按完整公开配置/owner隔离），用于同台电脑的Logto公开目录更新，避免重启无限堆积离线设备。该文件不含令牌/密钥/用户业务内容；keyVersion由已有公开记录递增，新公钥与旧pin不匹配必须由浏览器明确确认。完整cloud配置可继续保存在原公开account-cloud.json。若实现采用全临时安装身份而无法保持有界目录，须修复后验收。
 
 验收新增：运行路径无账号Keychain调用/普通secret文件；新进程无法恢复旧grant/key；同进程串行轮换与未知结果失败关闭；重启同owner保持公开安装ID但换私钥/公钥且触发旧pin确认；切owner/config隔离。旧持久化方案的检查只作历史证据，不能替代新方案验收。
+
+## 最新用户修订：立即切换自部署 Logto
+
+用户已提供 default 业务租户M2M并授权创建应用/相关配置，本阶段改为自部署身份服务：公开endpoint `https://auth.x.aixgg.com`，issuer以实际discovery为准；console `https://logto.x.aixgg.com/`。管理resource属于Logto Management API，仅用于仓库外M2M配置，绝不作为AnyWork远控audience或给普通用户授权。秘密仅留仓库外0600状态，不进入源码、日志、静态产物或客户端。
+
+- Cloud：先读库存/现有连接器与signinexperience，再幂等创建独立SPA、Native、远控resource/connect、默认用户角色及Account API策略；不覆已有应用/测试用户密码，不删除Cloud Development资源。协调服务需使用相应issuer/client/resource信任与独立namespace，禁止旧账号身份/seed混用或重置已有namespace。所有未知创建/部署结果先对账。
+- Web与Desktop：同步完整公开配置，分别保持五项/七项完整覆盖和失败关闭；默认改为新自部署，SPA回跳绑定正式域名及隔离测试origin。旧issuer grant/草稿/安装身份不跨配置复用；新登录、新本机显式授权。
+- 复验：新issuer真实JWT/connect与Account opaque token、设备发布发现/换钥/公网加密访问/退出、1440/390px与精确source/CSP静态部署。若新租户没有邮件连接器，不能声称邮箱注册/邮件已通过；不为测试覆盖现有身份服务的全局策略。账号内存存储、不使用Keychain和无云业务存储的约束继续有效。
+
+此前Development真实链路作为历史已通过证据保留，不能替代新issuer验收；最终Vercel发布和本机更新等待自部署配置/链路及独立审查完成。

@@ -1,3 +1,5 @@
+> 最新用户修订：本轮现在切换到自部署Logto default业务租户（公开endpoint https://auth.x.aixgg.com，Console https://logto.x.aixgg.com/），新应用与信任配置正在核验。下方Cloud Development配置保留为此前证据，不能作为最终部署默认值；完整迁移状态见[当前任务](plan/tasks/account-client-entry.md)。不迁移秘密或用户业务数据。
+
 # AnyWork 云服务配置与验收
 
 日期：2026-11-09（Asia/Shanghai）。本阶段按用户要求使用 Logto Development，后续迁移自部署；不需要购买 Cloud 生产套餐。本页记录实际资源、公开客户端配置与交付限制。云端只有 Logto 账号/配置、CyberGrid 协调服务及其 Upstash Redis；没有 AnyWork 业务数据库或业务代理。业务内容与端到端私钥留用户设备。账号与本机安全流程以[方案](account-device-cloud-review.md)为准。
