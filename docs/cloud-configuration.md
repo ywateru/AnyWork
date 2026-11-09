@@ -149,3 +149,5 @@ vercel deploy --prebuilt --prod
 Vercel Node builder 会在函数 `.vc-config.json` 的 `filePathMap` 中保留相对项目根目录的外部文件引用。CLI50.28.0 在上传前从项目根读取这些引用；仅复制 `.vercel/output` 会遗漏它们。本轮实际诊断在本地 hash 阶段因 `server/notices/manifest.json` 缺失退出，尚未进入 deployment upload；旧 intent 仍保留，库存与独立复核另作恢复证据。
 
 `materialize-prebuilt.py` 在上传前把映射逐项物化到函数内：来源必须是精确 adapted SHA 的已跟踪普通 Git blob，工作区字节须与 blob 相等；相对来源和目标路径均禁止绝对路径、穿越、符号链接、私有文件名或冲突。先验证全部计划及已知秘密字节，再复制精确字节与模式并移除 `filePathMap`，不上传整个 checkout。仓库外收据记录源码、Git blob ID、目标路径和 SHA256，以及配置变换前后摘要。notice/license/public 资源继续以相同函数内路径提供。`prebuilt_identity` 拒绝残留 `filePathMap`，产物变化必须形成新 outputHash；原两次 intent 不被覆盖或自动重试。
+
+2026-11-10 00:44（Asia/Shanghai）协调部署已完成：专用 alias `https://anywork-cybergrid-selfhost.vercel.app` 指向同一 READY production deployment；实际 `/api/v1/auth/config?appId=<Native ID>` 与 `/api/v1/console/auth/config` 返回新 issuer 的完整绑定，官方与两项 loopback CORS、未授权 origin 拒绝、真实 Upstash 独立 namespace epoch/initialized 核对通过。运行期10项环境变量全部 encrypted，Management 变量0；旧 Cloud Development 服务与数据保留。精确源码、产物、恢复操作和限定范围见 [上线证据](plan/reviews/account-selfhost-grid-live.md)。该基础设施验收不代替 Native/Web 的用户 JWT、设备登记及加密业务链，也未发布 AnyWork 主页或更新运行中的用户服务。
