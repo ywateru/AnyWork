@@ -235,6 +235,69 @@ fn restore_grant(secrets: &dyn Secrets, config: &PublicConfig) -> Result<Option<
     }
     Ok(grant)
 }
+// Configuration changes may prevent sign-in restoration while leaving a known
+// grant in this same Keychain namespace. Cleanup still revokes every known
+// token, using only the current pinned issuer/client for its network request.
+fn persisted_cleanup_tokens(secrets: &dyn Secrets, config: &PublicConfig) -> Result<Vec<String>> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Pending {
+        config: PublicConfig,
+        refresh: String,
+        #[serde(default)]
+        uncertain: bool,
+    }
+    let saved = secrets.read(GRANT_KEY)?;
+    let pending = secrets.read(PENDING_KEY)?;
+    let saved = if saved.is_empty() {
+        None
+    } else {
+        Some(serde_json::from_str::<Grant>(&saved)?)
+    };
+    let pending = if pending.is_empty() {
+        None
+    } else {
+        Some(serde_json::from_str::<Pending>(&pending)?)
+    };
+    let validate = |stored: &PublicConfig, refresh: &str| -> Result<()> {
+        if stored.issuer != config.issuer
+            || stored.native_client_id != config.native_client_id
+            || stored.endpoint != config.endpoint
+            || refresh.is_empty()
+        {
+            bail!("ACCOUNT_CONFIG_CHANGED")
+        }
+        Ok(())
+    };
+    if let Some(saved) = &saved {
+        validate(&saved.config, &saved.refresh)?;
+        if saved.subject.is_empty() {
+            bail!("ACCOUNT_IDENTITY_MISMATCH")
+        }
+    }
+    if let Some(pending) = &pending {
+        validate(&pending.config, &pending.refresh)?;
+    }
+    let mut tokens = Vec::new();
+    // For an uncertainty marker the grant may already contain a newer durable
+    // checkpoint. A known broker escrow instead precedes any old saved grant.
+    if let Some(pending) = &pending {
+        if !pending.uncertain {
+            tokens.push(pending.refresh.clone());
+        }
+    }
+    if let Some(saved) = saved {
+        if !tokens.contains(&saved.refresh) {
+            tokens.push(saved.refresh);
+        }
+    }
+    if let Some(pending) = pending {
+        if !tokens.contains(&pending.refresh) {
+            tokens.push(pending.refresh);
+        }
+    }
+    Ok(tokens)
+}
 fn clear_saved_grant(secrets: &dyn Secrets) -> Result<()> {
     // Clearing the uncertainty marker first could expose a stale saved grant.
     secrets.write(GRANT_KEY, "")?;
@@ -1027,18 +1090,8 @@ impl Handle {
         } {
             self.revoke(&refresh).await?;
         } else {
-            let raw = self.0.secrets.read(PENDING_KEY)?;
-            if !raw.is_empty() {
-                let value: Value = serde_json::from_str(&raw)?;
-                if value["config"] != serde_json::to_value(&self.0.config)? {
-                    bail!("ACCOUNT_CONFIG_CHANGED")
-                };
-                self.revoke(
-                    value["refresh"]
-                        .as_str()
-                        .ok_or_else(|| anyhow::anyhow!("PENDING_GRANT_REJECTED"))?,
-                )
-                .await?;
+            for refresh in persisted_cleanup_tokens(self.0.secrets.as_ref(), &self.0.config)? {
+                self.revoke(&refresh).await?;
             }
         }
         clear_saved_grant(self.0.secrets.as_ref())?;
@@ -1474,6 +1527,152 @@ mod tests {
         secrets.fail_pending_clear.store(false, Ordering::SeqCst);
         clear_saved_grant(&secrets).unwrap();
         assert!(restore_grant(&secrets, &config).unwrap().is_none());
+    }
+    async fn cleanup_handle(
+        status: axum::http::StatusCode,
+    ) -> (Handle, Arc<MemorySecrets>, Arc<SyncMutex<Vec<String>>>) {
+        let calls = Arc::new(SyncMutex::new(Vec::new()));
+        let server_calls = calls.clone();
+        let app = axum::Router::new().route(
+            "/oidc/token/revocation",
+            axum::routing::post(
+                move |axum::Form(form): axum::Form<HashMap<String, String>>| {
+                    let calls = server_calls.clone();
+                    async move {
+                        assert_eq!(
+                            form.get("client_id").map(String::as_str),
+                            Some("cleanup-client")
+                        );
+                        calls.lock().unwrap().push(form["token"].clone());
+                        status
+                    }
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        // Tests construct the private state directly; production Handle::new
+        // still validates HTTPS public config and uses the OS secret store.
+        let config = PublicConfig {
+            endpoint: format!("http://127.0.0.1:{port}"),
+            issuer: format!("http://127.0.0.1:{port}/oidc"),
+            native_client_id: "cleanup-client".into(),
+            ..Default::default()
+        };
+        let secrets = Arc::new(MemorySecrets::default());
+        let manager = manager::Handle::preview(manager::Snapshot::new(
+            config::Config::default(),
+            String::new(),
+        ));
+        let handle = Handle(Arc::new(Inner {
+            read_only: false,
+            config,
+            support: PathBuf::from("/isolated-unused-test-home"),
+            manager,
+            secrets: secrets.clone(),
+            state: Mutex::new(State {
+                transaction: None,
+                owner: None,
+                remote: None,
+                snapshot: Snapshot::default(),
+            }),
+            operation: Mutex::new(()),
+            account_write: Mutex::new(()),
+        }));
+        (handle, secrets, calls)
+    }
+    fn persist_cleanup_grant(handle: &Handle, secrets: &MemorySecrets, changed: bool) -> Grant {
+        let mut config = handle.0.config.clone();
+        if changed {
+            config.frontend_origin = "https://old-frontend.invalid".into();
+            config.resource = "https://old-resource.invalid/api".into();
+        }
+        let grant = Grant {
+            config,
+            refresh: "persisted-only-grant".into(),
+            subject: "test-owner".into(),
+        };
+        secrets
+            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
+            .unwrap();
+        grant
+    }
+    #[tokio::test]
+    async fn fresh_owner_logout_revokes_saved_grant_after_public_config_change() {
+        let (handle, secrets, calls) = cleanup_handle(axum::http::StatusCode::OK).await;
+        persist_cleanup_grant(&handle, &secrets, true);
+        assert!(handle.begin().await.is_err()); // No RAM owner after config mismatch.
+        assert!(handle.0.state.lock().await.owner.is_none());
+        handle.logout().await.unwrap();
+        assert_eq!(*calls.lock().unwrap(), vec!["persisted-only-grant"]);
+        assert!(secrets.read(GRANT_KEY).unwrap().is_empty());
+        assert!(secrets.read(PENDING_KEY).unwrap().is_empty());
+    }
+    #[tokio::test]
+    async fn fresh_owner_logout_preserves_saved_grant_when_revocation_fails() {
+        let (handle, secrets, calls) =
+            cleanup_handle(axum::http::StatusCode::SERVICE_UNAVAILABLE).await;
+        persist_cleanup_grant(&handle, &secrets, false);
+        let before = secrets.read(GRANT_KEY).unwrap();
+        assert!(handle.logout().await.is_err());
+        assert_eq!(*calls.lock().unwrap(), vec!["persisted-only-grant"]);
+        assert_eq!(secrets.read(GRANT_KEY).unwrap(), before);
+        assert!(secrets.read(PENDING_KEY).unwrap().is_empty());
+        secrets
+            .write(
+                PENDING_KEY,
+                &json!({"config":handle.0.config,"refresh":"older-last-known","uncertain":true})
+                    .to_string(),
+            )
+            .unwrap();
+        let pending_before = secrets.read(PENDING_KEY).unwrap();
+        assert!(handle.logout().await.is_err());
+        assert_eq!(secrets.read(GRANT_KEY).unwrap(), before);
+        assert_eq!(secrets.read(PENDING_KEY).unwrap(), pending_before);
+        assert!(restore_grant(secrets.as_ref(), &handle.0.config).is_err());
+    }
+    #[tokio::test]
+    async fn fresh_owner_logout_rejects_foreign_namespace_without_deleting_it() {
+        let (handle, secrets, calls) = cleanup_handle(axum::http::StatusCode::OK).await;
+        let grant = persist_cleanup_grant(&handle, &secrets, false);
+        for field in ["client", "issuer", "endpoint"] {
+            let mut foreign = grant.clone();
+            match field {
+                "client" => foreign.config.native_client_id = "foreign-client".into(),
+                "issuer" => foreign.config.issuer = "https://foreign.invalid/oidc".into(),
+                _ => foreign.config.endpoint = "https://foreign.invalid".into(),
+            }
+            secrets
+                .write(GRANT_KEY, &serde_json::to_string(&foreign).unwrap())
+                .unwrap();
+            let before = secrets.read(GRANT_KEY).unwrap();
+            assert!(handle.logout().await.is_err());
+            assert!(calls.lock().unwrap().is_empty());
+            assert_eq!(secrets.read(GRANT_KEY).unwrap(), before);
+        }
+    }
+    #[tokio::test]
+    async fn fresh_owner_logout_revokes_saved_checkpoint_and_uncertain_last_known_token() {
+        let (handle, secrets, calls) = cleanup_handle(axum::http::StatusCode::OK).await;
+        let grant = persist_cleanup_grant(&handle, &secrets, false);
+        secrets
+            .write(
+                PENDING_KEY,
+                &json!({"config":grant.config,"refresh":"older-last-known","uncertain":true})
+                    .to_string(),
+            )
+            .unwrap();
+        assert!(handle.begin().await.is_err());
+        handle.logout().await.unwrap();
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec!["persisted-only-grant", "older-last-known"]
+        );
+        assert!(secrets.read(GRANT_KEY).unwrap().is_empty());
+        assert!(secrets.read(PENDING_KEY).unwrap().is_empty());
     }
     #[test]
     fn republish_preserves_alias_and_refreshes_public_metadata() {
