@@ -50,6 +50,29 @@ const invoke = <T,>(
     ? window.__TAURI__.core.invoke<T>(command, args)
     : Promise.reject(new Error("请从 AnyWork 桌面应用打开此页面。"));
 const message = "账号操作未完成，请检查登录状态和网络后重试。";
+const enableMessages: Record<string, string> = {
+  REMOTE_ENABLE_IDENTITY: "本机设备身份准备失败。",
+  REMOTE_ENABLE_GATEWAY: "本机加密入口启动失败。",
+  REMOTE_ENABLE_PROVIDER: "公网连接入口未就绪，请检查网络。",
+  REMOTE_ENABLE_GRID_CLIENT: "设备协调客户端启动失败。",
+  REMOTE_ENABLE_GRID_CONFIG: "设备协调服务配置校验未完成。",
+  REMOTE_ENABLE_RESOURCE_TOKEN: "远程访问授权更新未完成，请查看账号状态。",
+  REMOTE_ENABLE_GRID_REGISTER: "设备协调注册未完成。",
+  REMOTE_ENABLE_GRID_EXPOSE: "加密入口发布未完成。",
+  REMOTE_ENABLE_INDEX_TOKEN: "设备目录授权更新未完成，请查看账号状态。",
+  REMOTE_ENABLE_INDEX_READ: "设备目录读取或账号校验未完成。",
+  REMOTE_ENABLE_INDEX_SCHEMA: "设备目录格式或容量校验未通过。",
+  REMOTE_ENABLE_INDEX_WRITE: "设备目录更新未完成。",
+  REMOTE_ENABLE_INDEX_READBACK: "设备目录更新后的核对未通过。",
+};
+function actionError(error: unknown): string {
+  // Accept only exact native stage codes, never display an arbitrary IPC error,
+  // SDK body, URL or token. Retrying remains an explicit user action.
+  return typeof error === "string" && Object.hasOwn(enableMessages, error)
+    ? `${enableMessages[error]}请处理后手动重试。（${error}）`
+    : message;
+}
+
 let loginOwner:
   | { transactionId: string; client: LogtoClient; memory: Map<string, string> }
   | undefined;
@@ -234,8 +257,8 @@ export function useAccountController() {
     setError("");
     try {
       await fn();
-    } catch {
-      setError(message);
+    } catch (error) {
+      setError(actionError(error));
     } finally {
       try {
         setState(await invoke<AccountSnapshot>("account_snapshot"));

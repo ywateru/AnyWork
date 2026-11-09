@@ -18,6 +18,53 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 const CALLBACK: &str = "http://127.0.0.1:17897/callback";
+// Fixed diagnostics only. Provider errors can contain credentials/URLs and are
+// deliberately discarded at the boundary rather than formatted or logged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EnableStage {
+    Identity,
+    Gateway,
+    Provider,
+    GridClient,
+    GridConfig,
+    ResourceToken,
+    GridRegister,
+    GridExpose,
+    IndexToken,
+    IndexRead,
+    IndexSchema,
+    IndexWrite,
+    IndexReadback,
+}
+impl EnableStage {
+    fn code(self) -> &'static str {
+        match self {
+            Self::Identity => "REMOTE_ENABLE_IDENTITY",
+            Self::Gateway => "REMOTE_ENABLE_GATEWAY",
+            Self::Provider => "REMOTE_ENABLE_PROVIDER",
+            Self::GridClient => "REMOTE_ENABLE_GRID_CLIENT",
+            Self::GridConfig => "REMOTE_ENABLE_GRID_CONFIG",
+            Self::ResourceToken => "REMOTE_ENABLE_RESOURCE_TOKEN",
+            Self::GridRegister => "REMOTE_ENABLE_GRID_REGISTER",
+            Self::GridExpose => "REMOTE_ENABLE_GRID_EXPOSE",
+            Self::IndexToken => "REMOTE_ENABLE_INDEX_TOKEN",
+            Self::IndexRead => "REMOTE_ENABLE_INDEX_READ",
+            Self::IndexSchema => "REMOTE_ENABLE_INDEX_SCHEMA",
+            Self::IndexWrite => "REMOTE_ENABLE_INDEX_WRITE",
+            Self::IndexReadback => "REMOTE_ENABLE_INDEX_READBACK",
+        }
+    }
+    fn at<T, E>(self, result: std::result::Result<T, E>) -> Result<T> {
+        result.map_err(|_| anyhow::Error::new(self))
+    }
+}
+impl std::fmt::Display for EnableStage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.code())
+    }
+}
+impl std::error::Error for EnableStage {}
+
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PublicConfig {
@@ -741,29 +788,30 @@ impl Handle {
         grid_id: &str,
     ) -> Result<()> {
         let _write = self.0.account_write.lock().await;
-        let token = owner.token(false).await?;
-        let mut account = self
+        let token = EnableStage::IndexToken.at(owner.token(false).await)?;
+        let mut account = EnableStage::IndexRead.at(self
             .account_request(&token, reqwest::Method::GET, None)
-            .await?;
+            .await)?;
         if account["id"].as_str() != Some(owner.state.lock().await.grant.subject.as_str()) {
-            bail!("ACCOUNT_IDENTITY_MISMATCH")
+            return Err(EnableStage::IndexRead.into());
         }
         let mut data = account["customData"].take();
         if data.is_null() {
             data = json!({})
         };
-        update_device_index(&mut data, i, grid_id)?;
-        self.account_request(
-            &token,
-            reqwest::Method::PATCH,
-            Some(json!({"customData":data.clone()})),
-        )
-        .await?;
-        let after = self
+        EnableStage::IndexSchema.at(update_device_index(&mut data, i, grid_id))?;
+        EnableStage::IndexWrite.at(self
+            .account_request(
+                &token,
+                reqwest::Method::PATCH,
+                Some(json!({"customData":data.clone()})),
+            )
+            .await)?;
+        let after = EnableStage::IndexReadback.at(self
             .account_request(&token, reqwest::Method::GET, None)
-            .await?;
+            .await)?;
         if after["customData"] != data {
-            bail!("ACCOUNT_WRITE_CONFLICT")
+            return Err(EnableStage::IndexReadback.into());
         };
         Ok(())
     }
@@ -787,19 +835,20 @@ impl Handle {
                 .ok_or_else(|| anyhow::anyhow!("ACCOUNT_SIGN_IN_REQUIRED"))?
         };
         let subject = owner.state.lock().await.grant.subject.clone();
-        let i = self.installation(&subject).await?;
-        let verifier = JwtVerifier::new(
+        let i = EnableStage::Identity.at(self.installation(&subject).await)?;
+        let verifier = EnableStage::Gateway.at(JwtVerifier::new(
             self.0.config.issuer.clone(),
             self.0.config.resource.clone(),
             self.0.config.spa_client_id.clone(),
             subject,
-        )?;
+        ))?;
         let private: [u8; 32] = URL_SAFE_NO_PAD
-            .decode(&i.private_key)?
+            .decode(&i.private_key)
+            .map_err(|_| EnableStage::Identity)?
             .try_into()
-            .map_err(|_| anyhow::anyhow!("INSTALLATION_KEY_REJECTED"))?;
+            .map_err(|_| EnableStage::Identity)?;
         let watched_token = snapshot.token.clone();
-        let mut gateway = Gateway::start(GatewayConfig {
+        let mut gateway = EnableStage::Gateway.at(Gateway::start(GatewayConfig {
             installation_id: i.id.clone(),
             private_key: private,
             allowed_origins: vec![self.0.config.frontend_origin.clone()],
@@ -807,14 +856,14 @@ impl Handle {
             local_token: snapshot.token,
             verifier: Arc::new(verifier),
         })
-        .await?;
-        let binary = crate::cloudflared::resolve(
+        .await)?;
+        let binary = EnableStage::Provider.at(crate::cloudflared::resolve(
             &snapshot.config.cloudflared_binary,
             &self.0.support,
             &config::resources_dir(),
-        )?;
+        ))?;
         let path = self.0.support.join("account-tunnel.yml");
-        config::atomic_private(&path, b"{}\n")?;
+        EnableStage::Provider.at(config::atomic_private(&path, b"{}\n"))?;
         let plan = LaunchPlan {
             program: binary,
             args: vec![
@@ -831,41 +880,45 @@ impl Handle {
             cwd: self.0.support.clone(),
         };
         let (tx, mut rx) = mpsc::channel(8);
-        let mut provider = OwnedProcess::spawn(&plan, Some((config::RouteKind::Quick, 1, tx)))?;
+        let mut provider = EnableStage::Provider.at(OwnedProcess::spawn(
+            &plan,
+            Some((config::RouteKind::Quick, 1, tx)),
+        ))?;
         let url = match tokio::time::timeout(Duration::from_secs(45), rx.recv()).await {
             Ok(Some(output)) => output.url,
             _ => {
                 gateway.close().await;
                 provider.stop().await;
-                bail!("REMOTE_PROVIDER_NOT_READY")
+                return Err(EnableStage::Provider.into());
             }
         };
-        let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
-            base_url: self.0.config.cybergrid_url.clone(),
-            app_id: self.0.config.native_client_id.clone(),
-            cloudflared: None,
-            ..Default::default()
-        })?;
+        let grid =
+            EnableStage::GridClient.at(cybergrid_sdk::Client::new(cybergrid_sdk::Config {
+                base_url: self.0.config.cybergrid_url.clone(),
+                app_id: self.0.config.native_client_id.clone(),
+                cloudflared: None,
+                ..Default::default()
+            }))?;
         // Client::new leaves grant_store=None in the pinned official SDK. Only
         // this RAM AuthProvider is installed: never call use_credential_store,
         // SDK browser login/import, or credential loading on the account path.
         grid.set_auth_provider(owner.clone()).await;
         let result = async {
-            let auth = grid.auth_config().await?;
+            let auth = EnableStage::GridConfig.at(grid.auth_config().await)?;
             if auth.issuer != self.0.config.issuer
                 || auth.resource != self.0.config.resource
                 || auth.client_id != self.0.config.native_client_id
             {
-                bail!("GRID_AUTH_CONFIG_MISMATCH")
+                return Err(EnableStage::GridConfig.into());
             }
-            let token = owner.token(true).await?;
-            let session = grid
+            let token = EnableStage::ResourceToken.at(owner.token(true).await)?;
+            let session = EnableStage::GridRegister.at(grid
                 .login_with_access_token(&token, "AnyWork desktop")
-                .await?;
+                .await)?;
             let mut port =
                 cybergrid_sdk::Port::tcp("anywork-remote", gateway.port, "anywork-noise-v1");
             port.tunnel_url = Some(url);
-            grid.expose(port).await?;
+            EnableStage::GridExpose.at(grid.expose(port).await)?;
             self.publish_index(&owner, &i, &session.device_id).await?;
             Ok::<_, anyhow::Error>(session.device_id)
         }
@@ -1088,6 +1141,9 @@ async fn callback_listener(listener: tokio::net::TcpListener, tx: Arc<Transactio
 }
 
 fn safe_error(error: anyhow::Error) -> String {
+    if let Some(stage) = error.downcast_ref::<EnableStage>() {
+        return stage.code().into();
+    }
     match error.to_string().as_str() {
         "LOGIN_CALLBACK_PORT_IN_USE" => "登录回调端口已被占用，请关闭其他登录窗口后重试。".into(),
         "LOCAL_SERVICE_NOT_READY" => "请先启动并连接本地服务。".into(),
@@ -1167,6 +1223,130 @@ pub async fn account_logout(state: tauri::State<'_, Handle>) -> Result<(), Strin
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    #[test]
+    fn enable_stage_codes_discard_underlying_errors_before_ipc() {
+        for (stage, code) in [
+            (EnableStage::Identity, "REMOTE_ENABLE_IDENTITY"),
+            (EnableStage::Gateway, "REMOTE_ENABLE_GATEWAY"),
+            (EnableStage::Provider, "REMOTE_ENABLE_PROVIDER"),
+            (EnableStage::GridClient, "REMOTE_ENABLE_GRID_CLIENT"),
+            (EnableStage::GridConfig, "REMOTE_ENABLE_GRID_CONFIG"),
+            (EnableStage::ResourceToken, "REMOTE_ENABLE_RESOURCE_TOKEN"),
+            (EnableStage::GridRegister, "REMOTE_ENABLE_GRID_REGISTER"),
+            (EnableStage::GridExpose, "REMOTE_ENABLE_GRID_EXPOSE"),
+            (EnableStage::IndexToken, "REMOTE_ENABLE_INDEX_TOKEN"),
+            (EnableStage::IndexRead, "REMOTE_ENABLE_INDEX_READ"),
+            (EnableStage::IndexSchema, "REMOTE_ENABLE_INDEX_SCHEMA"),
+            (EnableStage::IndexWrite, "REMOTE_ENABLE_INDEX_WRITE"),
+            (EnableStage::IndexReadback, "REMOTE_ENABLE_INDEX_READBACK"),
+        ] {
+            let error = stage
+                .at::<(), _>(Err("https://private.invalid/?token=never-display"))
+                .unwrap_err();
+            assert_eq!(error.chain().count(), 1);
+            assert_eq!(safe_error(error), code);
+            assert_eq!(stage.at::<_, String>(Ok(3)).unwrap(), 3);
+        }
+        let generic = safe_error(anyhow::anyhow!(
+            "https://private.invalid/?token=never-display"
+        ));
+        assert!(!generic.contains("private.invalid") && !generic.contains("never-display"));
+    }
+    #[tokio::test]
+    async fn actual_index_failures_have_specific_safe_stages_without_retries() {
+        for stage in [
+            EnableStage::IndexToken,
+            EnableStage::IndexRead,
+            EnableStage::IndexSchema,
+            EnableStage::IndexWrite,
+            EnableStage::IndexReadback,
+        ] {
+            let reads = Arc::new(AtomicUsize::new(0));
+            let writes = Arc::new(AtomicUsize::new(0));
+            let tokens = Arc::new(AtomicUsize::new(0));
+            let (get_reads, patch_writes, token_calls) =
+                (reads.clone(), writes.clone(), tokens.clone());
+            let app = axum::Router::new()
+                .route("/oidc/token", axum::routing::post(move || {
+                    let calls = token_calls.clone();
+                    async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        if stage == EnableStage::IndexToken {
+                            (axum::http::StatusCode::BAD_GATEWAY, "private provider body".to_owned())
+                        } else {
+                            (axum::http::StatusCode::OK, json!({"access_token":"sample-access","refresh_token":"sample-rotated"}).to_string())
+                        }
+                    }
+                }))
+                .route("/api/my-account", axum::routing::get(move || {
+                    let calls = get_reads.clone();
+                    async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        if stage == EnableStage::IndexRead {
+                            (axum::http::StatusCode::BAD_GATEWAY, "private read body".to_owned())
+                        } else {
+                            let data = if stage == EnableStage::IndexSchema {
+                                json!({"anywork":{"schemaVersion":2,"devices":{}}})
+                            } else { json!({}) };
+                            // Readback intentionally returns old data after a successful PATCH.
+                            (axum::http::StatusCode::OK, json!({"id":"sample-owner","customData":data}).to_string())
+                        }
+                    }
+                }).patch(move || {
+                    let calls = patch_writes.clone();
+                    async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        let status = if stage == EnableStage::IndexWrite { axum::http::StatusCode::BAD_GATEWAY }
+                        else { axum::http::StatusCode::OK };
+                        (status, "{}")
+                    }
+                }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = tokio::spawn(async move {
+                let _ = axum::serve(listener, app).await;
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let mut h = handle(dir.path());
+            let config = &mut Arc::get_mut(&mut h.0).unwrap().config;
+            config.endpoint = format!("http://127.0.0.1:{port}");
+            config.issuer = format!("{}/oidc", config.endpoint);
+            let owner = Arc::new(
+                GrantOwner::new(Grant {
+                    config: h.0.config.clone(),
+                    refresh: "sample-initial".into(),
+                    subject: "sample-owner".into(),
+                })
+                .unwrap(),
+            );
+            let installation = h.installation("sample-owner").await.unwrap();
+            assert_eq!(
+                safe_error(
+                    h.publish_index(&owner, &installation, "sample-grid")
+                        .await
+                        .unwrap_err()
+                ),
+                stage.code()
+            );
+            assert_eq!(tokens.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                reads.load(Ordering::SeqCst),
+                match stage {
+                    EnableStage::IndexToken => 0,
+                    EnableStage::IndexReadback => 2,
+                    _ => 1,
+                }
+            );
+            assert_eq!(
+                writes.load(Ordering::SeqCst),
+                usize::from(matches!(
+                    stage,
+                    EnableStage::IndexWrite | EnableStage::IndexReadback
+                ))
+            );
+            server.abort();
+        }
+    }
     fn handle(support: &std::path::Path) -> Handle {
         Handle::new(
             support.to_path_buf(),
