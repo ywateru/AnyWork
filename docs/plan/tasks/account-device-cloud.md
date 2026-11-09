@@ -75,3 +75,10 @@ CyberGrid 优先配置现有服务、锁定官方 SDK；如浏览器加密能力
 | [account-desktop](account-desktop.md) | `crates/`、`desktop/`、Cargo 锁文件、本机安全协议文档 | 本机独立登录/owner/设备注册/加密端点；先明确跨端协议并共享 |
 
 所有子任务先提交，再由不同代理独立审查。只允许在已有用户授权与方案安全边界内细化实现，不新增云业务服务；遇到需要降低安全门槛的情况不得自行降级。AC-08 原生手机独立阶段，本次手机范围为浏览器/PWA。
+
+## 生产发布前置事项（实施中发现）
+
+1. 新建 Logto 生产 Free 租户的 custom API resource 创建返回 `403 subscription.limit_exceeded`。生产账号+connect角色需要付费权益；云配置任务正在核实套餐与 RBAC 具体报价。未升级套餐；单独的 Development 租户用于真实集成，不能描述为生产验收。付费变更需要在实现、测试与费用可审阅后由用户授权。
+2. CyberGrid 固定提交 `2bd6729` 的 LICENSE 原文保留 “All rights reserved” 以及 “Use beyond the rights otherwise granted by its owner requires the owner's permission.” 用户已要求集成使用；正式向第三方分发 SDK 与 AGPL 客户端前，需落定可分发且兼容的许可文本。不得凭模型判断改写上游 LICENSE 或自行虚构授权。
+
+这些事项不停止本机开发和隔离测试；也不允许省略最终验收或将开发租户伪称生产环境。
