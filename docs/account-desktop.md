@@ -1,77 +1,77 @@
 # Local account and remote access
 
-The desktop manager is the sole owner of native account refresh grants. Initial authorization uses the official Logto JavaScript client in an in-memory adapter, with network requests and a fixed loopback callback brokered by Rust. The callback is `http://127.0.0.1:17897/callback`; conflicting listeners fail explicitly. Rust checkpoints every minted/rotated refresh grant in the OS credential store before returning the token response to JavaScript. After handoff, JavaScript clears memory and stops all token operations.
+## Current contract: account secrets stay in memory
 
-Rust refreshes both the Grid resource JWT and the opaque Account API token through one serialized owner. Before each provider exchange it durably writes an uncertainty marker containing the last known grant; failure to write it sends no network request. An unknown transport/parse outcome disables refresh and checkpoint recovery, requiring explicit cleanup and reauthentication. A returned known rotation is retained in RAM, saved to the grant record, and only then has its marker cleared. Failure to save the grant or clear the marker returns no access token. Live known-rotation checkpoint retry is permitted; after process loss an uncertainty marker always blocks restoration, including when its last-known token matches the saved grant. The marker cannot recover a rotation whose response/checkpoint was lost. Cleanup attempts revocation of the last known token and clears the saved grant before the marker; it cannot claim that an unknown newer grant was revoked. Provider account/session revocation may also be needed for that unknown authorization.
+The native account path keeps refresh/access tokens, Noise private keys and CyberGrid registration material only in process memory. It does not call OS Keychain/Secret Service, read old account credential records, or write secrets to ordinary files. Closing the client loses this authorization: the next process starts signed out and remote access disabled. Existing manual connection credential settings remain separate and unchanged.
 
-Rust refreshes both the Grid resource JWT and the opaque Account API token through one serialized owner. A rotation is saved before access tokens are released. A failed checkpoint keeps the newest grant in RAM, blocks new refresh and requires checkpoint retry or revocation. Keychain/Secret Service failure never falls back to ordinary JSON. On restart a pending grant requires cleanup before a new login. Logout first closes local remote access, revokes the latest refresh grant, then removes its stored material; failures preserve recovery ownership.
+The desktop manager owns one serialized refresh lifecycle. Initial authorization uses the official Logto JavaScript client with an in-memory adapter; Rust brokers pinned issuer requests and the fixed loopback callback `http://127.0.0.1:17897/callback`. Rust retains each returned rotation in RAM before returning it across IPC. JavaScript requests the opaque Account API token and the Grid resource JWT serially. The `OwnedInMemory` handoff ACK transfers exclusive refresh ownership to Rust; JavaScript clears its tokens and stops refreshing. Rust then serves both token classes under one mutex. No refresh owner is restored after restart.
 
-Account login alone does not enable remote access. The local user clicks “允许我的其他设备访问” with the local service authenticated. This binds `(issuer,sub,nativeClientId)` to the installation and creates the local gateway described in [remote protocol](account-remote-protocol.md). Disable first closes active gateway sessions/PTYs and then closes CyberGrid/provider lifecycles. Existing manual transports remain explicit advanced controls and are not used as account-flow fallback.
+Before dispatching a token exchange the RAM owner marks its outcome uncertain. A lost, malformed or unconfirmed exchange blocks reuse of the old grant, including retries through the initial broker. A known returned rotation is retained before the rest of its response is validated. An invalid grant or unknown outcome requires ending this authorization and logging in again. Cancellation/logout waits for the sole in-flight exchange, closes gateway/PTY/SDK/provider access first, then attempts revocation of the latest **known** grant. Revocation failure retains RAM ownership and exposes retry. An unknown newer grant cannot be proven revoked; provider account/session revocation may be needed. Closing the process discards RAM but is not a claim that cloud authorization was revoked.
 
-The public device index at `customData.anywork.devices[installationId]` includes `label`, `platform`, `publicKey`, `keyVersion:1`, `gridDeviceId`. The last field only joins the current authenticated CyberGrid directory; it is not an authorization claim. Private installation keys and refresh grants remain in the OS store. Account API writes preserve valid existing user aliases (the browser's 80 UTF-16 unit/no-control-character label contract), other devices, preferences and other namespaces. They are locally serialized, bounded and checked by comparing the complete customData read after writing; cross-device read/replace races remain possible. Device removal from this display index does not revoke a local owner.
+The official pinned CyberGrid SDK's `Client::new` initializes `grant_store: None` and generates its registration key in RAM. AnyWork installs only its RAM `AuthProvider`, calls `login_with_access_token`, and never calls `use_credential_store`, SDK browser login/import, or credential loading. SDK coordination recovery asks this same provider. Upstream SDK source and license are unchanged.
 
-Public service configuration has safe release defaults and may be overridden by the local public `account-cloud.json` in the manager support directory for isolated integration environments. It contains endpoint/issuer/native and SPA client IDs/resource/Grid URL/frontend origin only; it cannot configure an arbitrary bearer or bypass encryption/JWT verification. Environment configuration and cloud-account billing status must be recorded independently from source acceptance.
+## Public device identity and key rotation
+
+The only generated account identity file is `<manager support>/account-installations/<binding hash>.json`, containing exactly one non-sensitive random `installationId`. Its filename hashes the complete public configuration, manager support path and owner subject; neither subject nor tokens/keys are stored in its contents. File writes use the existing atomic private-file helper. Existing malformed, oversized, non-file or symlink identities are rejected without replacement; the account-installations directory cannot be a symlink. No old account secret namespace is scanned or migrated.
+
+For the same owner/config/support directory, each new process reuses this public ID but generates fresh Noise keys when remote access is enabled. The public Logto record at `customData.anywork.devices[installationId]` contains `label`, `platform`, `publicKey`, `keyVersion` and `gridDeviceId`. A changed public key increments the existing positive safe-integer `keyVersion`; retries with the same key retain its version. Invalid/exhausted versions fail closed. Repeated restarts update one directory item, rather than adding offline installations. Different owners/configurations receive separate IDs and fresh keys. Removing the local ID file deliberately creates a new installation and can leave its old public directory item behind.
+
+The browser's old pin is never silently accepted after a key change: the user must explicitly confirm the new key against the host's displayed installation/public key. Login alone does not enable access. The host must explicitly enable it with the local service authenticated. Disable closes active remote work before retiring coordination/provider lifecycles. Manual transports are independent advanced controls and are not an account-flow fallback. See [remote protocol](account-remote-protocol.md) for encrypted HTTP/files/event/PTY boundaries.
+
+`gridDeviceId` joins the current authenticated CyberGrid directory; it is not an authorization claim. The SDK has no registration-key import/export API, so a fresh SDK Client can have a different Grid ID. The stable installation ID maps to the current Grid registration. Old Grid leases/registration fences may briefly coexist according to upstream retention; unmapped devices cannot be opened as a trusted installation. This client does not change cloud metadata retention. The Logto index permits at most 32 devices and 32 KiB customData. Writes preserve valid aliases (80 UTF-16 units, no control characters), other devices, preferences and other namespaces; they are locally serialized and compared against a full readback. Cross-device read/replace races remain possible. Removing an index item does not revoke a host authorization.
+
+## Client entry and state
 
 ```text
-┌ Account ───────────────────────────────────────────────┐
-│ Sign in to AnyWork                                      │
-│ Registration and password entry open Logto in a browser.│
-│ Account status                         [Sign in/Log out]│
-│ Allow my other devices to access       [Enable/Disable] │
-│ Remote status / errors / checkpoint recovery            │
-└────────────────────────────────────────────────────────┘
+┌ AnyWork 账号 ──────────────────────────────────────────────┐
+│ 尚未登录                  [注册] [登录] [账号与远程访问] │
+└────────────────────────────────────────────────────────────┘
+  Existing overview / local service / advanced connections
+
+┌ 账号与远程访问 ────────────────────────────────────────────┐
+│ 已登录 · account email/username                 [退出账号]│
+│ 凭据和设备私钥仅存内存，退出客户端后需重新登录             │
+│ 允许我的其他设备访问                         [开启/关闭] │
+│ 已开启：设备身份、公钥、复制控件                           │
+└────────────────────────────────────────────────────────────┘
 ```
 
-Account controls use the existing black/white manager design, explicit status text, keyboard buttons and errors. They never display access/refresh grants, public tunnel addresses or sensitive local paths. The gateway publishes only its encrypted port; the account flow never exposes the old local bearer-protected API through Cloudflare.
+The overview and welcome screen expose independent registration and login actions. One controller and official adapter use `firstScreen:register` or `firstScreen:signIn`. The account label comes from the existing Account API response (email, username or name; otherwise a short subject); no additional management request or scope is added. The black/white UI never displays tokens, private keys, sensitive paths or public tunnel URLs.
 
-## Initial platform and lifecycle scope
+Native `authorizationStatus` controls actions: signedOut offers registration/login; authorizing/loginInterrupted retain cancellation; signedIn offers logout; reauthRequired offers ending this authorization before relogin; unsupported explains platform limits. Generic network errors never imply a signed-in account. After failures the UI re-reads native state. Native transaction IDs survive renderer remounts, and a stale JS adapter keeps an explicit cancellation control until cleaned. There are no checkpoint, saved-grant recovery or Keychain actions in the current account UI.
 
-The current pinned CyberGrid SDK imports `std::os::unix` unconditionally. Its dependency and native integration are therefore gated to Unix targets, with an explicit unavailable state on Windows; existing manual routes continue to compile. macOS arm64 is the initial real integration target. Linux source support does not imply a validated runtime/provider deployment.
+## Development defaults and self-hosting
 
-The SDK exposes no registration-key import/export API: one live SDK Client retains its Grid ID across coordination recovery, but a fresh enable/process creates a new Grid ID. The stable AnyWork installation/key is reused only for the same issuer/account/native app, and the public `gridDeviceId` mapping is updated. Old Grid leases may briefly coexist; unmapped devices cannot be opened as a trusted installation. A changed local owner/config creates fresh installation and static key material.
+Defaults use the existing `ueg42e` **Development** tenant: endpoint `https://ueg42e.logto.app`, issuer `https://ueg42e.logto.app/oidc`, resource `https://anywork-cybergrid-dev.vercel.app/api`, Grid `https://anywork-cybergrid-dev.vercel.app`, frontend origin `https://anywork-tau.vercel.app`. Public Native/SPA IDs match [cloud configuration](cloud-configuration.md). This is not a paid production tenant, and no cloud-only environment variable is required to start the desktop client.
 
-On app restart the explicit sign-in action restores the locally stored account without another browser grant; the user explicitly re-enables access. This version does not silently auto-enable a fresh remote listener on launch.
+For self-hosting, replace all **seven** public fields in `<manager support>/account-cloud.json` before launch:
 
-The enabled account screen displays the public installation ID and Noise public key with a copy control. The browser's first-device verification can therefore compare against an actual value shown on the host. Disabled/unavailable states explain when these values become available; private keys never cross the native command boundary.
+```json
+{
+  "endpoint": "https://identity.example.org",
+  "issuer": "https://identity.example.org/oidc",
+  "nativeClientId": "self-hosted-native-app",
+  "spaClientId": "self-hosted-browser-app",
+  "resource": "https://grid.example.org/api",
+  "cybergridUrl": "https://grid.example.org",
+  "frontendOrigin": "https://work.example.org"
+}
+```
 
-## Verification evidence
+Missing/unknown fields, insecure service URLs and issuer/endpoint mismatch are rejected; this is a complete replacement rather than a merge. Register the exact native callback `http://127.0.0.1:17897/callback` and align Grid/browser issuer, client, resource, scopes and Account API contracts. The frontend origin must be exact; HTTP is allowed only for explicit localhost/127.0.0.1 development origins. Every public field participates in identity isolation, so any configuration change requires a new login/registration. Disable and log out under the old configuration before migration; the new configuration never reads previous grants. For historical persisted grants, use the earlier application/configuration or the identity provider's session controls for cleanup; the current account runtime deliberately cannot read them.
 
-Desktop library regression: 37 passing tests before the additional malformed-response case, four external/network/update tests intentionally ignored. Native account tests exercise concurrent serialized refresh, checkpoint failure/recovery, malformed token responses retaining a rotation, and public config boundaries. Remote Rust tests cover actual WebSocket encryption, local bearer confinement, Origin rejection, wrong owner, replay/tamper, expiry and disable. Browser `clatterjs` against the Rust `snow` responder passed 17 integration cases, including a 20 MiB encrypted upload/reply and rejection above 22 MiB. UI production build and all-target native check pass on macOS arm64. Actual isolated Logto/native/Keychain/Grid registration verification remains in progress; production Logto API resource subscription and upstream SDK distribution permission are separate release gates.
+## Platform and verification scope
 
-The live native acceptance setup uses a dedicated manager home, empty workspace/data/history directories, disconnected fixture host descriptors and a separately started real server with Codex discovery disabled. The attempted UI inspection was blocked by the locked macOS session before any login interaction; no native grant or Keychain registration has been claimed as tested. Unlocking the Mac and completing the normal account UI flow remain necessary to finish that acceptance case.
+The pinned SDK imports `std::os::unix` unconditionally. Account integration is gated to Unix; Windows displays unavailable while existing manual routes remain supported. macOS arm64 is the initial actual integration target. Linux source compilation does not establish validated runtime/provider deployment. Upstream licensing/distribution permission remains independently recorded in [native dependency notices](../desktop/CYBERGRID_NOTICES.md).
 
-### Isolated native acceptance handoff
+Memory-only regressions use isolated HTTP fixtures and temporary directories: serialized Account/Grid rotation; unknown exchange refusing replay; process restart signed out with stable public ID/fresh keys; owner/full-config isolation; malformed/symlink identity rejection; one updated directory record/version increment; alias/preferences/namespace preservation; failed revocation retaining RAM and successful retry; existing legacy sentinel left untouched. Rendered UI tests use a synthetic Tauri bridge, not a real OAuth or Keychain operation, and cover separate hosted screens, failed-login retry, cancellation races, RAM-only notice, account label and reauthentication controls.
 
-The prepared local-only runner is `/tmp/anywork-native-runtime.py` (outside Git). Start it in a maintained exec session after unlocking macOS; it stays alive until the isolated app exits and then stops its own server. It reads public dev client/service fields from the private cloud test config, writes a fresh private manager home, starts the existing server executable with all discovery/history/IPC locations redirected to empty fixture locations, and launches this worktree's debug manager with `ANYWORK_MANAGER_HOME` and `ANYWORK_RESOURCES`. The resulting `/tmp/anywork-native-runtime.json` contains only runtime paths, PIDs and a local port. Test account credentials remain in `~/.config/anywork-cloud/test-user.json`; never print them or copy them into source.
+The earlier Rust `snow`/browser `clatterjs` interop evidence includes actual encrypted HTTP/binary/PTY, 20 MiB upload/reply and over-limit rejection; it is separate from native account acceptance. Real native login → Grid registration → Logto public index → browser discovery → isolated real API acceptance must be recorded against this new exact candidate by the orchestrator. No old Keychain test is evidence for this implementation.
 
-Before proceeding, check the authenticated `/api/sessions` response contains no user sessions. In the account page use the normal official login, then locally enable access. Verify the actual OS credential checkpoint, Grid registration, Logto public device mapping and browser discovery/Noise access to the isolated server. Disable must close browser HTTP/PTY work; logout must revoke and clear only the test manager's namespaced grant. Do not click the normal manager's start action in this test: its production launch plan intentionally discovers installed local agents, while the prepared server uses empty fixture descriptors.
+## Historical implementation and reviews
 
-UI observation stopped with this exact tool result: “The Mac is locked and automatic unlock could not unlock it. Ask the user to unlock the Mac manually before continuing.” No consent screen was reached. If a persistent OAuth consent screen appears, the computer-use instruction is: “[2.1, 2.2, 2.5, 2.6] Internet permissions/accounts: edit permissions/access to cloud data, final step of creating an account, create API/OAuth keys or other persistent access, save passwords or credit card info in browser” under “Always Confirm at Action-Time (Even If Pre-Approved)”. Record the concrete UI and hand off the final consent action as required; do not bypass it with a different login mechanism.
+The previous design persisted grants/private keys and used checkpoint/write-ahead recovery. It is superseded by the memory-only contract above. Its implementation and isolated evidence remain in Git and reviews [01](plan/reviews/account-desktop-01.md), [02](plan/reviews/account-desktop-02.md), [03](plan/reviews/account-desktop-03.md); these describe historical behavior only.
 
-At this handoff both runner-owned processes were confirmed already stopped, and the task-owned incremental build cache was removed. No test account grant was minted, no live Keychain grant validation is claimed, and existing user services were left untouched.
+An earlier native acceptance attempt stopped at the exact computer-use error “The Mac is locked and automatic unlock could not unlock it. Ask the user to unlock the Mac manually before continuing.” No consent screen or full Keychain/Grid chain was validated then. The outside-repository `/tmp/anywork-native-runtime.py` runner was an isolated test helper with empty workspace/history and disconnected fixture descriptors; it must be reviewed against the current candidate before reuse. Never read/migrate old test or user Keychain grants for memory-only acceptance. Keep existing user processes/history untouched.
 
-### Desktop review D1/D2 correction
-
-The native refresh write-ahead marker and startup restoration boundary are shared with deterministic persistent-state tests. Cases include preflight write failure/no request, process loss during an actual held HTTP exchange, a returned rotation followed by grant-write failure and RAM loss, failure clearing the marker after the new grant was saved, live checkpoint retry before another serialized refresh, successful checkpoint/restoration, malformed/unknown provider response, and logout cleanup write ordering. The alias regression test performs the actual public-index merge and checks the renamed label, changed public metadata, other devices/preferences and an unrelated customData namespace. These use isolated HTTP and memory credential-store fixtures; they do not establish real OS Keychain/native GUI acceptance.
-
-D1/D2 author validation: `CARGO_INCREMENTAL=0 cargo test -p anywork-desktop --lib` passed 46 tests with four existing external tests ignored; all 12 native account tests passed. Desktop UI TypeScript/production build passed. No real Keychain, user history, existing service or reviewer-owned OAuth grant was accessed during these corrections.
-
-### Desktop review D3 correction
-
-Logout also handles a fresh manager with no RAM owner or login transaction. It reads saved grants and pending records before deletion, validates every record's endpoint/issuer/native-client binding against the current pinned credential-store namespace, and revokes all distinct known tokens before clearing either record. A changed frontend origin/resource can prevent normal restoration but does not prevent cleanup within the same issuer/client namespace. Revocation requests always use the current pinned issuer/client; stored public URLs are not request targets. A foreign binding, malformed record or revocation failure preserves the material for explicit recovery. An uncertainty marker still cannot prove that an unknown newer rotation was revoked.
-
-Four new tests call the actual `Handle.logout` with a private isolated state, memory credential store and real loopback HTTP revocation endpoint. They cover saved-only logout after public-config mismatch, endpoint failure preserving saved/pending records, foreign issuer/client/endpoint rejection before any request, and cleanup of both a known saved checkpoint and an uncertain last-known token. The test-only private state constructor does not relax production HTTPS config validation or introduce a product test endpoint.
-
-D3 author validation: desktop library 50 passed, four existing external tests ignored; 16 native account tests are included in that total. Desktop all-target check and diff whitespace checks passed. These corrections performed no real OAuth exchange, Keychain access, user-history access or service manipulation.
-
-## 当前客户端入口与 Development 默认值（2026-11-09修订）
-
-用户明确要求当前客户端增加注册或登录。本阶段默认使用 `ueg42e` Development 租户及其专用 SPA/Native/resource/Grid，不等待 Cloud 生产套餐；后续部署自有 Logto。当前主界面必须有清晰的注册/登录入口，进入现有账号与远程访问页；注册和登录由官方托管页面完成，本机显式授权远程访问保持独立。失败或取消登录后必须可以重试，不应仅因已记录错误而显示“退出账号”。如果确有待恢复的本机授权，仍提供恢复/退出，不把它误标为普通未登录状态。
-
-`account-cloud.json` 是现有完整公开配置覆盖机制。自部署切换须一起更改 endpoint/issuer、SPA/Native IDs、resource、CyberGrid信任配置和精确回跳；使用新认证命名空间和新登录，不能复用旧issuer授权。本机不得加入管理令牌或后端业务存储。
-
-## 最新契约：账号敏感信息仅存内存
-
-用户已明确本轮不使用本地钥匙串。此节取代前述账号grant/私钥持久化、checkpoint和启动恢复的产品契约（相关旧测试/评审保留为历史记录）：账号refresh/access token和安装私钥仅在进程内存保存；Account路径不调用Keychain或Secret Service，也不写普通secret文件。关闭客户端后必须重新登录并明确开启远程访问。同一进程仍只有一个串行刷新所有者，未知轮换结果必须重新授权，不能重放旧refresh token。新账号路径不更改既有手动连接的凭据设置。
-
-只允许持久化非敏感的安装ID与完整公开服务配置，按完整config及owner隔离；重启更新同一Logto目录项，公钥换新、版本递增，浏览器旧pin需明确确认。业务内容和私钥不会上传Logto或协调服务。迁移自部署仍整组切换并新授权。
+Memory-only author checks for this candidate: `CARGO_INCREMENTAL=0 cargo test -p anywork-desktop --lib` passed 45 tests with four existing external tests ignored (11 current account tests); desktop TypeScript/production build and rendered `test:account-entry` regression passed. These tests accessed no real Keychain, OAuth grants, user history or existing services. Full clippy/debug-binary checks are reported separately with the delivered candidate.

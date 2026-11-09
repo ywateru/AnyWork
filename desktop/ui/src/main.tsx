@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import "./style.css";
-import { AccountPage } from "./accounts";
+import { AccountEntry, AccountPage, useAccountController } from "./accounts";
 import { version as appVersion } from "../package.json";
 import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
 import { anyworkLogo } from "./brand";
@@ -89,6 +89,7 @@ const invoke = <T,>(command: string, args?: Record<string, unknown>) =>
     ? window.__TAURI__.core.invoke<T>(command, args)
     : Promise.reject(new Error("请从 AnyWork 桌面应用打开此页面。"));
 function App() {
+  const account = useAccountController();
   const updates = useDesktopUpdates();
   const [state, setState] = useState<Snapshot | null>(null),
     [config, setConfig] = useState<Config | null>(null),
@@ -618,6 +619,13 @@ function App() {
               ))}
             </div>
           </div>
+          <AccountEntry
+            controller={account}
+            open={() => {
+              setWelcome(false);
+              navigate("account");
+            }}
+          />
           <footer>
             <span>外网连接按需开启，执行环境保留在这台电脑。</span>
             <button
@@ -684,6 +692,12 @@ function App() {
             </div>
           </aside>
           <main className="workspace">
+            {page !== "account" && (
+              <AccountEntry
+                controller={account}
+                open={() => navigate("account")}
+              />
+            )}
             {page !== "updates" && (
               <UpdateNotice
                 controller={updates}
@@ -705,6 +719,7 @@ function App() {
               )}
             {page === "account" ? (
               <AccountPage
+                controller={account}
                 localReady={state.authorized && state.service === "running"}
               />
             ) : page === "updates" ? (

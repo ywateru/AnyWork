@@ -1467,3 +1467,30 @@ input[type="checkbox"] {
     justify-content: flex-end;
   }
 }
+
+.account-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border, #e7e7e7);
+  border-radius: 12px;
+  background: #fff;
+}
+.account-entry p {
+  margin: 4px 0 0;
+  color: #737373;
+  font-size: 13px;
+}
+.account-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.account-entry .error {
+  width: 100%;
+  color: #a12d29;
+}
