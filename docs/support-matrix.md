@@ -1,6 +1,6 @@
 # 支持与验收矩阵 / Support and acceptance matrix
 
-更新日期：2026-11-08。维护位置：本文是当前 Agent/拓扑、平台和验收边界的统一入口；原生协议细节与历史测试计数保留在链接的专门契约/验收记录中。公开版本以 [GitHub Release](https://github.com/ywateru/AnyWork/releases/latest) 为准，源码改进及对应验收见[交付进度](plan/improvement-progress.md)。不把源码已合并自动视为已发布或已实机验收。
+更新日期：2026-11-09。维护位置：本文是当前 Agent/拓扑、平台和验收边界的统一入口；原生协议细节与历史测试计数保留在链接的专门契约/验收记录中。公开版本以 [GitHub Release](https://github.com/ywateru/AnyWork/releases/latest) 为准，源码改进及对应验收见[交付进度](plan/improvement-progress.md)。不把源码已合并自动视为已发布或已实机验收。
 
 ## 状态的含义 / State definitions
 
@@ -45,6 +45,21 @@
 - 匿名 URL 在现有连接器进程存活时尽量保留；进程重建不能保证原址。SSE/poll 和路由健康有各自恢复边界。
 - Web 前台事件与浏览器通知已有实现；浏览器关闭/Android 进程被杀后的原生后台推送未实现。语音听写/朗读继续延后。
 - 管理器退出会清理其拥有的服务/路由，独立原生 Agent 不因其断开而被结束；“关窗口继续后台”的完整平台规范尚未建立。
+
+## 账号与自动设备访问（开发中）
+
+本节描述正在开发的独立账号链路，不改变 v0.1.13 手动连接的既有支持声明。[交付](plan/tasks/account-device-cloud.md)及[最终验收](plan/reviews/account-device-acceptance.md)通过前，不宣传为已发布功能。
+
+| 范围 | 当前目标与限制 | 证据状态 |
+| --- | --- | --- |
+| Web/手机浏览器 → 用户电脑 | Logto 登录、CyberGrid 发现；浏览器到本机 Noise 加密网关；业务仍由本机服务执行 | 实现与跨端测试进行中；物理手机蜂窝网络尚未验证 |
+| macOS 桌面账号宿主 | 官方 Native 登录、系统 keyring、本机显式开启、独立加密入口 | 首个真实宿主验证目标；不以单元测试替代真实链路 |
+| Linux 桌面账号宿主 | 需系统 Secret Service 与可用的上游 provider | 编译/运行矩阵待验证，不据此声称所有发行版支持 |
+| Windows 桌面账号宿主 | 上游 Rust SDK 凭据模块当前依赖 Unix；新账号远程访问明确不可用 | 现有手动远程连接继续保留；不假装跨平台 SDK 支持已完成 |
+| 原生 Android 账号客户端 | 本期手机范围是浏览器/PWA；原生 SDK 接入另立阶段 | 现有 Android 手动连接不变 |
+| 生产账号云服务 | 新 Free 租户缺少 custom API resource/RBAC 权益；开发租户只作隔离集成测试 | 生产付费变更、完整验收和最终发布待处理 |
+
+账号数据与最少配置在 Logto，Upstash 仅作 CyberGrid 协调；业务正文和端到端私钥留在用户两端。HTTPS 本身不等于端到端加密。首次公钥目录、浏览器托管代码及终端仍是信任边界，详情见[方案](account-device-cloud-review.md)。
 
 ## 发布与证据维护 / Publishing and evidence
 
