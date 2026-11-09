@@ -30,6 +30,10 @@ Current official schema first; no secrets stdout/Git/client; verify actual OAuth
 
 Commit implementation and test evidence before independent review. No claim of completion based only on mocks, build success or upstream reports.
 
+## Source delivery (2026-11-09)
+
+Independent final acceptance: product `01b927f`, [review02](../reviews/account-cloud-02.md). C1–C4 closed; merged to local main. Actual Upstash 11-check evidence, 18 isolated deployment recovery tests, seven configuration safety tests and 28 publisher tests pass. Existing dedicated DEV deployment identity was independently checked through read-only Vercel metadata. No paid operation or production-ready activation was performed. Production Logto entitlement, new-signup/email/default-role evidence, CyberGrid distribution permission and final exact-source publication remain open; see [final acceptance](../reviews/account-device-acceptance.md).
+
 ## Candidate implementation and evidence
 
 - Dedicated productionFree tenant afwf0u and separate developer tenant ueg42e created; previous resources untouched. Production paid entitlement blocks customresource/roles (verified quotas0/0). Exact read-only SKU API confirms Pro24USD+RBAC32USD=56USD/month base, before tax/overages; no purchase made.

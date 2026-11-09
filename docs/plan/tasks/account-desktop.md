@@ -29,3 +29,7 @@ Implement local desktop native Logto login, owner binding via explicit local act
 Test interop vectors and real complete browser/Rust handshake with auth, replay/tamper/wrong-account/expiration/key changes/disable; bounded frames and uploads, backpressure/cancel/PTY teardown. Preserve existing runtime/data and manual flows. Do not run prompts in users native Agent sessions. Vendor only appropriately licensed content; report provider/platform restrictions. Independent review before merge.
 
 Commit implementation and test evidence before independent review. No claim of completion based only on mocks, build success or upstream reports.
+
+## Source delivery (2026-11-09)
+
+Independent final acceptance: product `ead3874`, [review04](../reviews/account-desktop-04.md). D1–D3 closed; merged to local main. Desktop tests pass 50 with four external prerequisites ignored; remote protocol/gateway tests pass six. Actual product ES384 verification and isolated refresh uncertainty, process-loss, alias preservation and persisted-only logout paths were independently exercised. Full workspace lint passed after the final correction. Real Native GUI/Keychain/enable/discovery/business/logout acceptance still requires an unlocked Mac and is not replaced by these tests. See [final acceptance](../reviews/account-device-acceptance.md).
