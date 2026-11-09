@@ -241,7 +241,10 @@ export function AccountPage({ localReady }: { localReady: boolean }) {
               ? "等待浏览器完成登录"
               : "尚未登录"}
         </p>
-        {state?.signedIn || state?.checkpointPending || error ? (
+        {state?.signedIn ||
+        state?.subject ||
+        state?.checkpointPending ||
+        error ? (
           <button
             disabled={pending}
             onClick={() =>

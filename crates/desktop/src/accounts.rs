@@ -113,6 +113,8 @@ struct GrantState {
     grant: Grant,
     pending: bool,
     invalid: bool,
+    // A provider exchange may have rotated the grant, but its outcome is unknown.
+    uncertain: bool,
 }
 struct GrantOwner {
     state: Mutex<GrantState>,
@@ -126,6 +128,7 @@ impl GrantOwner {
                 grant,
                 pending: false,
                 invalid: false,
+                uncertain: false,
             }),
             secrets,
             http: client()?,
@@ -133,7 +136,7 @@ impl GrantOwner {
     }
     async fn token(&self, resource: bool) -> Result<String> {
         let mut state = self.state.lock().await;
-        if state.invalid {
+        if state.invalid || state.uncertain {
             bail!("ACCOUNT_REAUTH_REQUIRED")
         }
         // Checkpoint retry happens before another provider operation, retaining
@@ -153,6 +156,17 @@ impl GrantOwner {
         if resource {
             form.push(("resource", config.resource.clone()));
         }
+        // Durable write-ahead uncertainty must precede the first network byte.
+        // It contains the last known grant for best-effort revocation, never
+        // evidence that this grant is still safe to refresh after process loss.
+        self.secrets.write(
+            PENDING_KEY,
+            &json!({
+                "config": config, "refresh": state.grant.refresh, "uncertain": true
+            })
+            .to_string(),
+        )?;
+        state.uncertain = true;
         let response = self
             .http
             .post(format!("{}/token", config.issuer))
@@ -164,8 +178,15 @@ impl GrantOwner {
         let value: Value = serde_json::from_slice(&bytes)?;
         // Capture a rotated grant before validating the rest of the response.
         // Even an invalid provider response must never strand its newest grant.
-        if let Some(refresh) = value["refresh_token"].as_str().filter(|s| !s.is_empty()) {
+        let rotated = value["refresh_token"].as_str().filter(|s| !s.is_empty());
+        let access = value["access_token"].as_str().filter(|s| !s.is_empty());
+        if let Some(refresh) = rotated {
             state.grant.refresh = refresh.into();
+        }
+        // A parsed successful token response without rotation confirms the old
+        // grant remains current. Otherwise only a returned rotation is known.
+        if rotated.is_some() || (successful && value.get("error").is_none() && access.is_some()) {
+            state.uncertain = false;
             state.pending = true;
             self.secrets
                 .write(GRANT_KEY, &serde_json::to_string(&state.grant)?)?;
@@ -185,6 +206,73 @@ impl GrantOwner {
             .map(str::to_owned)
             .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))
     }
+}
+// Shared by the real startup path and process-loss recovery tests.
+fn restore_grant(secrets: &dyn Secrets, config: &PublicConfig) -> Result<Option<Grant>> {
+    let saved = secrets.read(GRANT_KEY)?;
+    let pending = secrets.read(PENDING_KEY)?;
+    let grant = if saved.is_empty() {
+        None
+    } else {
+        Some(serde_json::from_str::<Grant>(&saved)?)
+    };
+    if !pending.is_empty() {
+        let value: Value = serde_json::from_str(&pending)?;
+        let expected_config = serde_json::to_value(config)?;
+        if value.get("uncertain").is_some_and(|flag| flag != false)
+            || !grant.as_ref().is_some_and(|grant| {
+                grant.config == *config
+                    && value["config"] == expected_config
+                    && value["refresh"].as_str() == Some(grant.refresh.as_str())
+            })
+        {
+            bail!("PENDING_AUTHORIZATION_NEEDS_CLEANUP")
+        }
+        secrets.write(PENDING_KEY, "")?;
+    }
+    if grant.as_ref().is_some_and(|grant| grant.config != *config) {
+        bail!("ACCOUNT_CONFIG_CHANGED")
+    }
+    Ok(grant)
+}
+fn clear_saved_grant(secrets: &dyn Secrets) -> Result<()> {
+    // Clearing the uncertainty marker first could expose a stale saved grant.
+    secrets.write(GRANT_KEY, "")?;
+    secrets.write(PENDING_KEY, "")?;
+    Ok(())
+}
+fn update_device_index(data: &mut Value, i: &Installation, grid_id: &str) -> Result<()> {
+    if !data.is_object() {
+        bail!("ACCOUNT_DATA_REJECTED")
+    };
+    if data.get("anywork").is_none() {
+        data["anywork"] = json!({"schemaVersion":1,"preferences":{},"devices":{}})
+    };
+    if data["anywork"]["schemaVersion"] != 1 || !data["anywork"]["devices"].is_object() {
+        bail!("ACCOUNT_SCHEMA_REJECTED")
+    };
+    if data["anywork"]["devices"].as_object().unwrap().len() >= 32
+        && data["anywork"]["devices"].get(&i.id).is_none()
+    {
+        bail!("ACCOUNT_DEVICE_LIMIT")
+    };
+    let record = device_record(&data["anywork"]["devices"][&i.id], i, grid_id);
+    data["anywork"]["devices"][&i.id] = record;
+    if serde_json::to_vec(&data)?.len() > 32768 {
+        bail!("ACCOUNT_DATA_LIMIT")
+    };
+    Ok(())
+}
+fn device_record(existing: &Value, installation: &Installation, grid_id: &str) -> Value {
+    let label = existing["label"]
+        .as_str()
+        .filter(|label| {
+            !label.is_empty()
+                && label.encode_utf16().count() <= 80
+                && !label.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}')
+        })
+        .unwrap_or("AnyWork desktop");
+    json!({"label":label,"platform":std::env::consts::OS,"publicKey":installation.public_key,"keyVersion":1,"gridDeviceId":grid_id})
 }
 impl cybergrid_sdk::AuthProvider for GrantOwner {
     fn access_token<'a>(
@@ -344,7 +432,7 @@ impl Handle {
         if let Some(owner) = &state.owner {
             let grant = owner.state.lock().await;
             snapshot.checkpoint_pending = grant.pending;
-            if grant.invalid {
+            if grant.invalid || grant.uncertain {
                 snapshot.signed_in = false;
                 snapshot.error = Some("账号授权已失效，请退出账号后重新登录。".into());
             }
@@ -374,29 +462,7 @@ impl Handle {
         if state.transaction.is_some() || state.owner.is_some() {
             bail!("ACCOUNT_OPERATION_IN_PROGRESS")
         }
-        let saved = self.0.secrets.read(GRANT_KEY)?;
-        let pending = self.0.secrets.read(PENDING_KEY)?;
-        if !pending.is_empty() {
-            let value: Value = serde_json::from_str(&pending)?;
-            let matching = if !saved.is_empty() {
-                let grant: Grant = serde_json::from_str(&saved)?;
-                grant.config == self.0.config
-                    && value["config"] == serde_json::to_value(&grant.config)?
-                    && value["refresh"].as_str() == Some(grant.refresh.as_str())
-            } else {
-                false
-            };
-            if matching {
-                self.0.secrets.write(PENDING_KEY, "")?
-            } else {
-                bail!("PENDING_AUTHORIZATION_NEEDS_CLEANUP")
-            }
-        }
-        if !saved.is_empty() {
-            let grant: Grant = serde_json::from_str(&saved)?;
-            if grant.config != self.0.config {
-                bail!("ACCOUNT_CONFIG_CHANGED")
-            };
+        if let Some(grant) = restore_grant(self.0.secrets.as_ref(), &self.0.config)? {
             state.owner = Some(Arc::new(GrantOwner::new(
                 grant.clone(),
                 self.0.secrets.clone(),
@@ -676,35 +742,17 @@ impl Handle {
         if data.is_null() {
             data = json!({})
         };
-        if !data.is_object() {
-            bail!("ACCOUNT_DATA_REJECTED")
-        };
-        if data.get("anywork").is_none() {
-            data["anywork"] = json!({"schemaVersion":1,"preferences":{},"devices":{}})
-        };
-        if data["anywork"]["schemaVersion"] != 1 || !data["anywork"]["devices"].is_object() {
-            bail!("ACCOUNT_SCHEMA_REJECTED")
-        };
-        if data["anywork"]["devices"].as_object().unwrap().len() >= 32
-            && data["anywork"]["devices"].get(&i.id).is_none()
-        {
-            bail!("ACCOUNT_DEVICE_LIMIT")
-        };
-        let record = json!({"label":"AnyWork desktop","platform":std::env::consts::OS,"publicKey":i.public_key,"keyVersion":1,"gridDeviceId":grid_id});
-        data["anywork"]["devices"][&i.id] = record.clone();
-        if serde_json::to_vec(&data)?.len() > 32768 {
-            bail!("ACCOUNT_DATA_LIMIT")
-        };
+        update_device_index(&mut data, i, grid_id)?;
         self.account_request(
             &token,
             reqwest::Method::PATCH,
-            Some(json!({"customData":data})),
+            Some(json!({"customData":data.clone()})),
         )
         .await?;
         let after = self
             .account_request(&token, reqwest::Method::GET, None)
             .await?;
-        if after["customData"]["anywork"]["devices"][&i.id] != record {
+        if after["customData"] != data {
             bail!("ACCOUNT_WRITE_CONFLICT")
         };
         Ok(())
@@ -723,7 +771,7 @@ impl Handle {
             .clone()
             .ok_or_else(|| anyhow::anyhow!("PENDING_AUTHORIZATION_NEEDS_CLEANUP"))?;
         let mut grant = owner.state.lock().await;
-        if grant.invalid {
+        if grant.invalid || grant.uncertain {
             bail!("ACCOUNT_REAUTH_REQUIRED")
         }
         self.0
@@ -858,7 +906,8 @@ impl Handle {
                 let invalid_owner = {
                     let state = inner.state.lock().await;
                     if let Some(owner) = &state.owner {
-                        owner.state.lock().await.invalid
+                        let grant = owner.state.lock().await;
+                        grant.invalid || grant.uncertain
                     } else {
                         true
                     }
@@ -972,14 +1021,11 @@ impl Handle {
         if let Some(owner) = owner {
             let state = owner.state.lock().await;
             self.revoke(&state.grant.refresh).await?;
-            self.0.secrets.write(GRANT_KEY, "")?;
-            self.0.secrets.write(PENDING_KEY, "")?;
         } else if let Some(refresh) = match &transaction {
             Some(tx) => tx.latest.lock().await.clone(),
             None => None,
         } {
             self.revoke(&refresh).await?;
-            self.0.secrets.write(PENDING_KEY, "")?;
         } else {
             let raw = self.0.secrets.read(PENDING_KEY)?;
             if !raw.is_empty() {
@@ -993,9 +1039,9 @@ impl Handle {
                         .ok_or_else(|| anyhow::anyhow!("PENDING_GRANT_REJECTED"))?,
                 )
                 .await?;
-                self.0.secrets.write(PENDING_KEY, "")?;
             }
         }
+        clear_saved_grant(self.0.secrets.as_ref())?;
         let mut state = self.0.state.lock().await;
         if let Some(tx) = state.transaction.take() {
             tx.stop.cancel()
@@ -1165,6 +1211,8 @@ mod tests {
     struct MemorySecrets {
         values: SyncMutex<HashMap<String, String>>,
         fail: AtomicBool,
+        fail_grant: AtomicBool,
+        fail_pending_clear: AtomicBool,
     }
     impl Secrets for MemorySecrets {
         fn read(&self, key: &str) -> Result<String> {
@@ -1177,7 +1225,12 @@ mod tests {
                 .unwrap_or_default())
         }
         fn write(&self, key: &str, value: &str) -> Result<()> {
-            if self.fail.load(Ordering::SeqCst) {
+            if self.fail.load(Ordering::SeqCst)
+                || (key == GRANT_KEY && self.fail_grant.load(Ordering::SeqCst))
+                || (key == PENDING_KEY
+                    && value.is_empty()
+                    && self.fail_pending_clear.load(Ordering::SeqCst))
+            {
                 bail!("CHECKPOINT_FAILED")
             };
             self.values.lock().unwrap().insert(key.into(), value.into());
@@ -1203,6 +1256,9 @@ mod tests {
             refresh: "initial-test-refresh".into(),
             subject: "test-owner".into(),
         };
+        secrets
+            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
+            .unwrap();
         (
             Arc::new(GrantOwner::new(grant, secrets.clone()).unwrap()),
             secrets,
@@ -1229,17 +1285,231 @@ mod tests {
     #[tokio::test]
     async fn failed_checkpoint_holds_latest_rotation_and_blocks_next_network_request() {
         let (owner, secrets, calls) = owner().await;
-        secrets.fail.store(true, Ordering::SeqCst);
+        secrets.fail_grant.store(true, Ordering::SeqCst);
         assert!(owner.token(false).await.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(owner.state.lock().await.grant.refresh, "rotated-test-1");
         assert!(owner.state.lock().await.pending);
         assert!(owner.token(false).await.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        secrets.fail.store(false, Ordering::SeqCst);
+        secrets.fail_grant.store(false, Ordering::SeqCst);
         assert_eq!(owner.token(false).await.unwrap(), "opaque-test-access");
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert!(!owner.state.lock().await.pending);
+    }
+    #[tokio::test]
+    async fn preflight_write_failure_sends_no_refresh_and_old_grant_can_restore() {
+        let (owner, secrets, calls) = owner().await;
+        let config = owner.state.lock().await.grant.config.clone();
+        secrets.fail.store(true, Ordering::SeqCst);
+        assert!(owner.token(false).await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(!owner.state.lock().await.uncertain);
+        drop(owner);
+        secrets.fail.store(false, Ordering::SeqCst);
+        assert_eq!(
+            restore_grant(secrets.as_ref(), &config)
+                .unwrap()
+                .unwrap()
+                .refresh,
+            "initial-test-refresh"
+        );
+    }
+    #[tokio::test]
+    async fn lost_ram_after_rotation_checkpoint_failure_cannot_restore_old_grant() {
+        let (owner, secrets, calls) = owner().await;
+        let config = owner.state.lock().await.grant.config.clone();
+        secrets.fail_grant.store(true, Ordering::SeqCst);
+        assert!(owner.token(false).await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let saved: Grant = serde_json::from_str(&secrets.read(GRANT_KEY).unwrap()).unwrap();
+        assert_eq!(saved.refresh, "initial-test-refresh");
+        assert_eq!(
+            serde_json::from_str::<Value>(&secrets.read(PENDING_KEY).unwrap()).unwrap()["uncertain"],
+            true
+        );
+        drop(owner); // Only persistent state remains.
+        secrets.fail_grant.store(false, Ordering::SeqCst);
+        assert!(restore_grant(secrets.as_ref(), &config).is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+    #[tokio::test]
+    async fn pending_clear_failure_blocks_restart_even_after_new_grant_saved() {
+        let (owner, secrets, calls) = owner().await;
+        let config = owner.state.lock().await.grant.config.clone();
+        secrets.fail_pending_clear.store(true, Ordering::SeqCst);
+        assert!(owner.token(false).await.is_err());
+        assert!(owner.state.lock().await.pending);
+        assert!(owner.token(false).await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let saved: Grant = serde_json::from_str(&secrets.read(GRANT_KEY).unwrap()).unwrap();
+        assert_eq!(saved.refresh, "rotated-test-1");
+        drop(owner);
+        secrets.fail_pending_clear.store(false, Ordering::SeqCst);
+        assert!(restore_grant(secrets.as_ref(), &config).is_err());
+    }
+    #[tokio::test]
+    async fn successful_checkpoint_clears_uncertainty_and_restores_latest_grant() {
+        let (owner, secrets, _) = owner().await;
+        let config = owner.state.lock().await.grant.config.clone();
+        owner.token(true).await.unwrap();
+        assert!(secrets.read(PENDING_KEY).unwrap().is_empty());
+        drop(owner);
+        assert_eq!(
+            restore_grant(secrets.as_ref(), &config)
+                .unwrap()
+                .unwrap()
+                .refresh,
+            "rotated-test-1"
+        );
+    }
+    #[tokio::test]
+    async fn process_loss_during_provider_exchange_leaves_restore_blocked() {
+        let reached = Arc::new(Notify::new());
+        let reached_handler = reached.clone();
+        let app = axum::Router::new().route(
+            "/token",
+            axum::routing::post(move || {
+                let reached = reached_handler.clone();
+                async move {
+                    reached.notify_one();
+                    std::future::pending::<String>().await
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let secrets = Arc::new(MemorySecrets::default());
+        let grant = Grant {
+            config: PublicConfig {
+                issuer: format!("http://127.0.0.1:{port}"),
+                ..Default::default()
+            },
+            refresh: "old".into(),
+            subject: "owner".into(),
+        };
+        let config = grant.config.clone();
+        secrets
+            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
+            .unwrap();
+        let owner = Arc::new(GrantOwner::new(grant, secrets.clone()).unwrap());
+        let task_owner = owner.clone();
+        let operation = tokio::spawn(async move { task_owner.token(false).await });
+        tokio::time::timeout(Duration::from_secs(2), reached.notified())
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&secrets.read(PENDING_KEY).unwrap()).unwrap()["uncertain"],
+            true
+        );
+        operation.abort();
+        let _ = operation.await;
+        drop(owner);
+        assert!(restore_grant(secrets.as_ref(), &config).is_err());
+        server.abort();
+    }
+    #[tokio::test]
+    async fn unknown_provider_outcome_blocks_live_and_restored_refresh() {
+        let app = axum::Router::new().route(
+            "/token",
+            axum::routing::post(|| async {
+                (axum::http::StatusCode::BAD_GATEWAY, "lost provider outcome")
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let secrets = Arc::new(MemorySecrets::default());
+        let grant = Grant {
+            config: PublicConfig {
+                issuer: format!("http://127.0.0.1:{port}"),
+                ..Default::default()
+            },
+            refresh: "old".into(),
+            subject: "owner".into(),
+        };
+        secrets
+            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
+            .unwrap();
+        let config = grant.config.clone();
+        let owner = GrantOwner::new(grant, secrets.clone()).unwrap();
+        assert!(owner.token(false).await.is_err());
+        assert!(owner.state.lock().await.uncertain);
+        assert!(owner.token(false).await.is_err());
+        drop(owner);
+        assert!(restore_grant(secrets.as_ref(), &config).is_err());
+    }
+    #[test]
+    fn logout_cleanup_never_exposes_stale_grant_if_marker_clear_fails() {
+        let secrets = MemorySecrets::default();
+        let config = PublicConfig::default();
+        let grant = Grant {
+            config: config.clone(),
+            refresh: "old".into(),
+            subject: "owner".into(),
+        };
+        secrets
+            .write(GRANT_KEY, &serde_json::to_string(&grant).unwrap())
+            .unwrap();
+        secrets
+            .write(
+                PENDING_KEY,
+                &json!({"config":config,"refresh":"old","uncertain":true}).to_string(),
+            )
+            .unwrap();
+        secrets.fail_grant.store(true, Ordering::SeqCst);
+        assert!(clear_saved_grant(&secrets).is_err());
+        assert!(!secrets.read(PENDING_KEY).unwrap().is_empty());
+        assert!(restore_grant(&secrets, &config).is_err());
+        secrets.fail_grant.store(false, Ordering::SeqCst);
+        secrets.fail_pending_clear.store(true, Ordering::SeqCst);
+        assert!(clear_saved_grant(&secrets).is_err());
+        assert!(secrets.read(GRANT_KEY).unwrap().is_empty());
+        assert!(restore_grant(&secrets, &config).is_err());
+        secrets.fail_pending_clear.store(false, Ordering::SeqCst);
+        clear_saved_grant(&secrets).unwrap();
+        assert!(restore_grant(&secrets, &config).unwrap().is_none());
+    }
+    #[test]
+    fn republish_preserves_alias_and_refreshes_public_metadata() {
+        let installation = Installation {
+            config: PublicConfig::default(),
+            subject: "owner".into(),
+            id: "installation".into(),
+            private_key: "private-fixture".into(),
+            public_key: "new-public".into(),
+        };
+        let existing =
+            json!({"label":"我的工作电脑","publicKey":"old-public","gridDeviceId":"old-grid"});
+        let updated = device_record(&existing, &installation, "new-grid");
+        assert_eq!(updated["label"], existing["label"]);
+        assert_eq!(updated["publicKey"], "new-public");
+        assert_eq!(updated["gridDeviceId"], "new-grid");
+        let mut data = json!({"anotherApp":{"keep":"untouched"},"anywork":{"schemaVersion":1,"preferences":{"appearance":"dark"},"devices":{"installation":existing,"other":{"label":"other-device"}}}});
+        update_device_index(&mut data, &installation, "new-grid").unwrap();
+        assert_eq!(data["anywork"]["devices"]["installation"], updated);
+        assert_eq!(data["anotherApp"], json!({"keep":"untouched"}));
+        assert_eq!(data["anywork"]["preferences"], json!({"appearance":"dark"}));
+        assert_eq!(
+            data["anywork"]["devices"]["other"],
+            json!({"label":"other-device"})
+        );
+        for label in [
+            json!(null),
+            json!(""),
+            json!("bad\nlabel"),
+            json!("x".repeat(81)),
+        ] {
+            assert_eq!(
+                device_record(&json!({"label":label}), &installation, "grid")["label"],
+                "AnyWork desktop"
+            );
+        }
     }
     #[tokio::test]
     async fn malformed_provider_success_retains_rotation_before_rejecting_token() {
