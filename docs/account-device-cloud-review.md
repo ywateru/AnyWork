@@ -204,9 +204,9 @@ Quick Tunnel 是开发测试用途、无 SLA、不支持 SSE；当前 CyberGrid 
 
 ### 6.3 凭据所有权
 
-Web Logto grant 由官方宿主 SDK 管理，CyberGrid JS SDK 只回调取 token。桌面 grant 移交 Rust 后，原 JS 授权方停止刷新；正确处理 `OwnedPersisted/OwnedPending`、取消、轮换落盘与撤销。
+Web Logto grant 由官方宿主 SDK 管理，CyberGrid JS SDK 只回调取 token。桌面 grant 移交 Rust 后，原 JS 授权方停止刷新；当前按用户最新修订只在进程内存移交所有权，处理取消、未知轮换结果与撤销，不使用账号Keychain。
 
-原生侧要同时调用 Account API 和 Grid resource，需由唯一刷新所有者取得各自 token。当前 SDK 的单资源绑定/导入约束要验证，不能让两套 SDK 并发轮换同一个 refresh token。密钥写 Keychain/Keystore 等本机安全存储。
+原生侧要同时调用 Account API 和 Grid resource，需由唯一刷新所有者取得各自 token。当前 SDK 的单资源绑定/导入约束要验证，不能让两套 SDK 并发轮换同一个 refresh token。本轮账号grant和私钥仅进程内存，不改存普通文件；仅非敏感安装ID可持久化用于有界目录更新。退出后新授权/新私钥，公钥变化须确认。
 
 ## 7. Vercel 与 CyberGrid 部署结论
 
