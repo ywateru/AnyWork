@@ -69,3 +69,52 @@ export function parseAccountConfig(
     throw new AccountError("INVALID_CONFIGURATION");
   }
 }
+
+/** Public Development deployment used until a complete deployment override is supplied. */
+export const developmentAccountValues = {
+  VITE_LOGTO_ENDPOINT: "https://ueg42e.logto.app",
+  VITE_LOGTO_APP_ID: "4wu64isauau1xh9gkrh85",
+  VITE_LOGTO_RESOURCE: "https://anywork-cybergrid-dev.vercel.app/api",
+  VITE_CYBERGRID_URL: "https://anywork-cybergrid-dev.vercel.app",
+  VITE_CYBERGRID_NATIVE_APP_ID: "xfo4o0pmacag9qui4mrmf",
+};
+
+export function resolveAccountConfig(
+  values: Record<string, unknown>,
+): AccountConfig {
+  const hasOverride = Object.keys(developmentAccountValues).some(
+    (key) => values[key] !== undefined,
+  );
+  const config = parseAccountConfig(
+    hasOverride ? values : developmentAccountValues,
+  );
+  if (!config) throw new AccountError("INVALID_CONFIGURATION");
+  return config;
+}
+
+export function accountPortalUrl(
+  value: unknown = "https://anywork-tau.vercel.app/app/",
+): string {
+  try {
+    if (typeof value !== "string") throw new Error();
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      url.pathname !== "/app/"
+    )
+      throw new Error();
+    return url.href;
+  } catch {
+    throw new AccountError("INVALID_CONFIGURATION");
+  }
+}
+
+export function accountStorageNamespace(
+  config: Pick<AccountConfig, "issuer" | "appId">,
+): string {
+  return "anywork:" + encodeURIComponent(config.issuer) + ":" + config.appId;
+}

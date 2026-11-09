@@ -101,3 +101,14 @@ The 2026-11-09 follow-up uses the existing Development Logto tenant for this pha
 ```
 
 Local/manual workspace navigation does not log out, replace credentials, or enable remote access. Account navigation must not auto-restore a manual connection into account mode. Complete public build configuration selects the Logto deployment; a changed issuer/client is a separate auth namespace and requires a fresh authorization. No Cloud-only admin endpoint belongs in the client runtime.
+
+
+### Existing workspace entry implementation
+
+The workspace tab bar includes “注册 / 登录” on desktop and mobile, including when the sidebar is closed. The disconnected screen offers account entry and signup before advanced manual connection. Local/manual clients open `VITE_ACCOUNT_PORTAL_URL` in a new tab with `noopener noreferrer`, preserving the original connection and workspace; its default is `https://anywork-tau.vercel.app/app/`. The portal override must be an HTTPS URL with exact `/app/` path and no query, fragment or credentials. This avoids using an arbitrary local server port as an unregistered OAuth callback. Signing into the portal does not enable access to the local computer; that remains an explicit action in the native client.
+
+In an authenticated encrypted workspace the same tab-bar position reads “我的设备”; it closes the current transport/terminals through the existing connection cleanup and returns to the current account directory. The account entry never loads `ra.connection` into account mode.
+
+With no explicit account environment fields, Web uses the complete `ueg42e` Development deployment. Supplying any of the five account fields requires all five valid fields; values are never filled from Development defaults into a partial custom deployment. `VITE_ACCOUNT_PORTAL_URL` is independently optional. Self-hosting changes complete public configuration, Grid's trust/CORS, portal URL and exact Logto callbacks. The browser retains the official Logto adapter and replaces only its supported `BrowserStorage` namespace with issuer plus SPA ID, before any lazy persisted-token read. A different issuer or SPA ID requires fresh sign-in; old unnamespaced grants are not copied or silently refreshed. Same-deployment reloads retain their namespace. Storage-event account-change detection uses the same namespace.
+
+Local verification command: `node web/scripts/client-account-check.mjs` after a root-base Web build. It uses only local static files and intercepted isolated UI responses, never real cloud credentials. At1440/390px it verifies signup/login new-tab navigation, keyboard activation, visible persistent entry, preserved manual connection, account-mode isolation from that connection, no workspace horizontal overflow and failed-callback recovery. Screenshots in `/tmp/anywork-client-account-{1440,390}.png` were visually inspected. This is entry/layout evidence, not an actual OAuth or enrolled-device acceptance.
