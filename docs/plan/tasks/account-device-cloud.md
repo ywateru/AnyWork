@@ -78,7 +78,7 @@ CyberGrid 优先配置现有服务、锁定官方 SDK；如浏览器加密能力
 
 ## 生产发布前置事项（实施中发现）
 
-1. 新建 Logto 生产 Free 租户的 custom API resource 创建返回 `403 subscription.limit_exceeded`。生产账号+connect角色需要付费权益；云配置任务正在核实套餐与 RBAC 具体报价。未升级套餐；单独的 Development 租户用于真实集成，不能描述为生产验收。付费变更需要在实现、测试与费用可审阅后由用户授权。
+1. 新建 Logto 生产 Free 租户的 custom API resource 创建返回 `403 subscription.limit_exceeded`。实际只读 Cloud API 确认 Free 的 resource/用户角色额度均为 0；Pro `pro-202509` 为 24 美元/月且仍无用户角色额度，RBAC 附加项为 32 美元/月。因此当前设计的生产基础费用为 **56 美元/月**，另有税费、token 超额及其他附加项，最终以官方结算为准。官方订阅 API 会立即扣首张账单；未调用收费接口或升级套餐。单独的 Development 租户用于真实集成，不能描述为生产验收。付费变更需要在实现、测试与费用可审阅后由用户授权。
 2. CyberGrid 固定提交 `2bd6729` 的 LICENSE 原文保留 “All rights reserved” 以及 “Use beyond the rights otherwise granted by its owner requires the owner's permission.” 用户已要求集成使用；正式向第三方分发 SDK 与 AGPL 客户端前，需落定可分发且兼容的许可文本。不得凭模型判断改写上游 LICENSE 或自行虚构授权。
 
 这些事项不停止本机开发和隔离测试；也不允许省略最终验收或将开发租户伪称生产环境。
