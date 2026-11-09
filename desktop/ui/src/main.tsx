@@ -24,7 +24,6 @@ import {
   X,
 } from "lucide-react";
 import "./style.css";
-import { AccountPage } from "./accounts";
 import { version as appVersion } from "../package.json";
 import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
 import { anyworkLogo } from "./brand";
@@ -638,13 +637,6 @@ function App() {
             <Brand />
             <nav>
               <button
-                className={page === "account" ? "selected" : ""}
-                onClick={() => navigate("account")}
-              >
-                <ShieldCheck size={18} />
-                账号与远程访问
-              </button>
-              <button
                 className={page === "service" ? "selected" : ""}
                 onClick={() => navigate("service")}
               >
@@ -703,11 +695,7 @@ function App() {
                   {state.notice}
                 </div>
               )}
-            {page === "account" ? (
-              <AccountPage
-                localReady={state.authorized && state.service === "running"}
-              />
-            ) : page === "updates" ? (
+            {page === "updates" ? (
               <UpdatePage controller={updates} />
             ) : page === "service" ? (
               <>
