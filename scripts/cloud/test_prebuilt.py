@@ -136,6 +136,45 @@ class PrebuiltContracts(unittest.TestCase):
                 deploy.deploy(provider, state, save, desired, {}, submit=lambda _: self.fail('Unexpected upload'))
             rows[0] = original
 
+    def test_cli_stderr_stays_private_outside_upload_and_public_error_is_fixed(self):
+        cli = self.root / 'vc.js'
+        cli.write_text('fixture')
+        intent = {'operationId': 'operation', 'identity': {'source': 'a' * 40, 'configHash': 'hash', **self.identity()}}
+        private_value = 'fixture-' + 'private-value-never-in-error'
+        stderr = ('Runtime version does not match configured nodejs version; ' + private_value).encode()
+        with patch.object(deploy.subprocess, 'run', side_effect=[
+            type('Result', (), {'returncode': 0, 'stdout': '50.28.0\n'})(),
+            type('Result', (), {'returncode': 1, 'stderr': stderr})(),
+        ]):
+            with self.assertRaises(deploy.cloud.ConfigurationError) as raised:
+                deploy.submit_prebuilt(self.upload, cli, intent)
+        self.assertIn('RUNTIME_MISMATCH', str(raised.exception))
+        self.assertNotIn(private_value, str(raised.exception))
+        diagnostics = list(self.root.glob('deployment-cli-*.json'))
+        self.assertEqual(len(diagnostics), 1)
+        self.assertEqual(diagnostics[0].stat().st_mode & 0o777, 0o600)
+        saved = json.loads(diagnostics[0].read_text())
+        self.assertEqual(saved['stderr'], stderr.decode())
+        self.assertEqual(saved['operationId'], intent['operationId'])
+        self.assertFalse(any(self.upload.rglob('deployment-cli-*')))
+        self.identity()  # Sibling diagnostics do not contaminate staging.
+
+    def test_cli_timeout_has_private_checkpoint_and_does_not_retry(self):
+        cli = self.root / 'vc.js'
+        cli.write_text('fixture')
+        intent = {'operationId': 'operation', 'identity': {'source': 'a' * 40, 'configHash': 'hash', **self.identity()}}
+        timeout = deploy.subprocess.TimeoutExpired(['never-log-argv'], 300, stderr=b'private timeout detail')
+        with patch.object(deploy.subprocess, 'run', side_effect=[
+            type('Result', (), {'returncode': 0, 'stdout': '50.28.0\n'})(), timeout,
+        ]) as run:
+            with self.assertRaises(deploy.cloud.ConfigurationError) as raised:
+                deploy.submit_prebuilt(self.upload, cli, intent)
+            self.assertEqual(run.call_count, 2)
+        self.assertNotIn('private timeout detail', str(raised.exception))
+        saved = json.loads(next(self.root.glob('deployment-cli-*.json')).read_text())
+        self.assertEqual(saved['category'], 'CLI_TIMEOUT')
+        self.assertEqual(saved['stderr'], 'private timeout detail')
+
 
 if __name__ == '__main__':
     unittest.main()

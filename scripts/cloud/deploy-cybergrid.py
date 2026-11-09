@@ -202,6 +202,33 @@ def prebuilt_identity(directory, provenance_path, source, project, forbidden):
     return {'sourceKind': 'prebuilt', 'upstreamSource': PIN, 'patchHash': patch_hash, 'outputHash': digest.hexdigest()}
 
 
+def cli_failure_category(stderr):
+    """Only fixed classifications may leave the private diagnostic boundary."""
+    text = stderr.decode('utf-8', errors='replace').lower()
+    if ('runtime' in text or 'node.js' in text or 'nodejs' in text) and ('mismatch' in text or 'does not match' in text):
+        return 'RUNTIME_MISMATCH'
+    if 'prebuilt-environment-mismatch' in text:
+        return 'PREBUILT_TARGET_MISMATCH'
+    if 'no existing credentials' in text or 'token is not valid' in text or 'authentication required' in text:
+        return 'AUTHENTICATION_REQUIRED'
+    if 'rate limit' in text or 'too many requests' in text:
+        return 'PROVIDER_RATE_LIMIT'
+    return 'UNCLASSIFIED_CLI_FAILURE'
+
+
+def save_cli_diagnostic(directory, intent, code, stderr, category):
+    operation = intent['operationId']
+    # The upload root must stay artifact-only. Diagnostics are private siblings,
+    # independently named per operation, and never passed to the CLI uploader.
+    filename = 'deployment-cli-' + hashlib.sha256(operation.encode()).hexdigest()[:16] + '.json'
+    path = directory.parent / filename
+    try:
+        cloud.save_private(path, {'schema': 1, 'operationId': operation, 'exitCode': code,
+                                  'category': category, 'stderr': stderr[-262144:].decode('utf-8', errors='replace')})
+    except OSError:
+        raise cloud.ConfigurationError('CLI diagnostic checkpoint failed; outcome may be unknown, reconcile saved operation') from None
+
+
 def submit_prebuilt(directory, cli, intent):
     cloud.require(cli.is_absolute() and cli.is_file(), 'Pinned local Vercel CLI required')
     try:
@@ -215,9 +242,16 @@ def submit_prebuilt(directory, cli, intent):
     # Credentials remain in the existing local CLI auth store, never argv/output.
     try:
         result = subprocess.run(argv, cwd=directory, capture_output=True, timeout=300)
-    except (OSError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired as error:
+        save_cli_diagnostic(directory, intent, None, error.stderr or b'', 'CLI_TIMEOUT')
         raise cloud.ConfigurationError('Prebuilt CLI outcome may be unknown; reconcile saved operation, do not resubmit') from None
-    cloud.require(result.returncode == 0, 'Prebuilt CLI outcome may be unknown; reconcile saved operation, do not resubmit')
+    except OSError:
+        save_cli_diagnostic(directory, intent, None, b'', 'CLI_PROCESS_UNAVAILABLE')
+        raise cloud.ConfigurationError('Prebuilt CLI outcome may be unknown; reconcile saved operation, do not resubmit') from None
+    stderr = getattr(result, 'stderr', b'')
+    category = cli_failure_category(stderr) if result.returncode else 'CLI_RETURNED_SUCCESS'
+    save_cli_diagnostic(directory, intent, result.returncode, stderr, category)
+    cloud.require(result.returncode == 0, 'Prebuilt CLI outcome may be unknown (' + category + '); reconcile saved operation, do not resubmit')
 
 
 def main():
