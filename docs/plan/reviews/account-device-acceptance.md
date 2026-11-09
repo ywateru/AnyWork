@@ -1,6 +1,6 @@
 # 账号与设备云入口：最终集成验收记录
 
-> **2026-11-10 当前自部署状态**：[切换集成记录](account-selfhost-cutover-01.md)。新Logto应用/权限/默认值已配置并独立接受，专用CyberGrid已READY；实际新issuer的Web登录/退出/健康空目录和Native登录通过。Mac当前锁屏，Native启用/发现/加密链与最终官网发布/本机更新待解锁继续。下方Development、Keychain和“尚未部署协调服务”等描述是带原日期的历史，不代表当前状态。
+> **2026-11-10 当前自部署状态**：[切换集成记录](account-selfhost-cutover-01.md)。新Logto应用/权限/默认值已配置并独立接受，专用CyberGrid和[正式主页](account-homepage-selfhost-live.md)均READY。真实Native显式启用、Web发现/公钥核对/公网加密空工作区、关闭/退出、同安装重启换钥确认与独立目录版本2核验通过；正式默认配置/域名及实际390/1440视口另行通过。本机更新结果见当前记录。下方Development、Keychain和“尚未部署协调服务”等描述是带原日期的历史，不代表当前状态。
 
 > 最新范围：用户已明确本轮立即迁到自部署Logto（`https://auth.x.aixgg.com`，default业务租户）。此前Development链路为历史已通过证据，不能替代最终自部署验收；新应用/公开配置、无管理秘密的CyberGrid应用目录及新issuer真实链路正在实施。账号仍只存内存、不使用Keychain。
 

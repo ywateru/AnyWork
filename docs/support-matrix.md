@@ -52,12 +52,12 @@
 
 | 范围 | 当前目标与限制 | 证据状态 |
 | --- | --- | --- |
-| Web/手机浏览器 → 用户电脑 | Logto 登录、CyberGrid 发现；浏览器到本机 Noise 加密网关；业务仍由本机服务执行 | 源码已独立通过并合并；DEV真实原生启用/发现/换钥/公网加密空工作区/关闭与退出通过，22项浏览器/Rust业务互操作夹具另记；自部署完整链路与物理手机蜂窝仍分别验收 |
-| macOS 桌面账号宿主 | 官方 Native 注册/登录、账号令牌及私钥仅进程内存、本机显式开启、独立加密入口 | 内存实现与重启换钥已独立通过；真实DEV链路通过，自部署Native登录已观察成功。进程退出后重新登录及开启，不自动恢复授权 |
+| Web/手机浏览器 → 用户电脑 | Logto 登录、CyberGrid 发现；浏览器到本机 Noise 加密网关；业务仍由本机服务执行 | 自部署真实原生启用/发现/换钥/公网加密空工作区/关闭与退出、正式域名390/1440视口通过；22项浏览器/Rust业务互操作夹具另记；物理手机蜂窝未实测 |
+| macOS 桌面账号宿主 | 官方 Native 注册/登录、账号令牌及私钥仅进程内存、本机显式开启、独立加密入口 | 内存实现与真实自部署重启换钥已通过；进程退出后重新登录及开启，不自动恢复授权；注册入口到达托管用户名表单，未验证邮件投递 |
 | Linux 桌面账号宿主 | 新账号路径不使用系统 Secret Service，授权和密钥只在进程内存 | 编译/运行及上游provider矩阵待验证，不据macOS验收声称所有发行版支持 |
 | Windows 桌面账号宿主 | 上游 Rust SDK 凭据模块当前依赖 Unix；新账号远程访问明确不可用 | 现有手动远程连接继续保留；不假装跨平台 SDK 支持已完成 |
 | 原生 Android 账号客户端 | 本期手机范围是浏览器/PWA；原生 SDK 接入另立阶段 | 现有 Android 手动连接不变 |
-| 当前账号云服务 | 最新配置已改自部署Logto default业务租户，独立CyberGrid项目/Upstash namespace；旧Cloud Development资源保留 | 新应用/权限/Account API已配置并独立读回；协调服务已READY且真实CORS/Redis检查通过；新Web登录/退出/健康空目录与Native登录通过。完整Native链/官网发布/本机更新待解锁继续，见[当前记录](plan/reviews/account-selfhost-cutover-01.md)；无Cloud付费升级 |
+| 当前账号云服务 | 最新配置已改自部署Logto default业务租户，独立CyberGrid项目/Upstash namespace；旧Cloud Development资源保留 | 新应用/权限/Account API已配置并独立读回；协调服务与正式主页READY；真实CORS/Redis/Native-Web加密链通过，本机更新见[当前记录](plan/reviews/account-selfhost-cutover-01.md)；无Cloud付费升级 |
 
 账号数据与最少配置在 Logto，Upstash 仅作 CyberGrid 协调；业务正文和端到端私钥留在用户两端。HTTPS 本身不等于端到端加密。首次公钥目录、浏览器托管代码及终端仍是信任边界，详情见[方案](account-device-cloud-review.md)。
 

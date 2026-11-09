@@ -1,4 +1,4 @@
-> 最新用户修订：本轮切换到自部署Logto default业务租户（公开endpoint https://auth.x.aixgg.com，Console https://logto.x.aixgg.com/）。新应用/权限已独立核验，专用CyberGrid已READY；完整Native链及官网/本机切换仍待完成，见[当前集成状态](plan/reviews/account-selfhost-cutover-01.md)。下方Cloud Development配置保留为此前证据，不作为最终部署默认值。不迁移秘密或用户业务数据。
+> 最新用户修订：本轮切换到自部署Logto default业务租户（公开endpoint https://auth.x.aixgg.com，Console https://logto.x.aixgg.com/）。新应用/权限已独立核验，专用CyberGrid和[正式主页](https://anywork-tau.vercel.app/)均READY；真实Native/Web公网加密链、重启换钥、正式域名与390/1440视口通过，本机更新结果见[当前集成状态](plan/reviews/account-selfhost-cutover-01.md)。下方Cloud Development配置保留为此前证据，不作为最终部署默认值。不迁移秘密或用户业务数据。
 
 # AnyWork 云服务配置与验收
 
@@ -109,7 +109,7 @@ vercel deploy --prebuilt --prod
 3. 一次性替换前端五项公开变量，按上节重新生成 CSP 并 prebuild/deploy；若前端域名变更，同时替换账号入口 `VITE_ACCOUNT_PORTAL_URL` 和 Logto/CyberGrid 精确 origins。桌面 `account-cloud.json` 完整覆盖 endpoint/issuer、SPA/Native IDs、resource、Grid URL、frontend origin。任何一侧只换 issuer 或只换 app ID 均不算完整迁移。
 4. 用户在新 issuer 重新注册/登录、在桌面重新显式允许远程访问，形成新的设备登记和本机认证命名空间。不迁移 refresh/access tokens、端到端私钥或本机工作内容；旧设备索引不是新租户的授权。先独立验证注册/默认权限、Account API、发现、加密业务及退出关闭，再启用 `ANYWORK_ACCOUNT_READY`。不新增 AnyWork 云业务数据库。
 
-本轮已实际配置自部署 AnyWork 对象；完整 Native/Web/协调真实链路须另行验收。
+本轮已实际配置自部署 AnyWork 对象；完整 Native/Web/协调真实链路已按[切换记录](plan/reviews/account-selfhost-cutover-01.md)另行验收。
 
 本轮 Development/自部署配置改动的离线作者检查：9项配置安全、7项前端CSP/真实临时目录CLI及Git prepare→assemble源码字节核对、18项协调部署恢复、28项发布器以及6项source-export检查通过；`scripts/check.sh` 已包含三组cloud检查。这里未运行真实云变更、未设置启用flag、未刷新任何OAuth grant；独立审查与合并后验证另行记录。
 
@@ -119,7 +119,7 @@ vercel deploy --prebuilt --prod
 
 配置仅创建/更新 AnyWork 拥有的 SPA、Native、独立远控 resource/connect 和默认用户 role，并启用 Account API 所需 customData Edit、name/avatar/email ReadOnly；不修改用户提供的管理 M2M、不整体覆盖共享 sign-in experience。当前租户只有用户名与密码注册/登录且没有邮件连接器，因此保持现状，不能宣称邮箱验证或邮件投递可用。
 
-协调服务使用独立项目 `anywork-cybergrid-selfhost` 与专用 Upstash 内独立 namespace `anywork:selfhost:v1`，不得重置 Development 数据。固定上游目录硬编码 `origin/api` 与 `all`，而此自部署系统 Management resource 仅提供 `all`；本轮采用显式公开应用目录适配，运行期仅接收已核验的 SPA/Native ID/type，完全不配置 Management M2M ID/secret，也不伪造只读管理 scope。固定 issuer/audience/client/connect 校验保持不变。前端部署仍等待最终精确源码与真实链路审查。
+协调服务使用独立项目 `anywork-cybergrid-selfhost` 与专用 Upstash 内独立 namespace `anywork:selfhost:v1`，不得重置 Development 数据。固定上游目录硬编码 `origin/api` 与 `all`，而此自部署系统 Management resource 仅提供 `all`；本轮采用显式公开应用目录适配，运行期仅接收已核验的 SPA/Native ID/type，完全不配置 Management M2M ID/secret，也不伪造只读管理 scope。固定 issuer/audience/client/connect 校验保持不变。最终精确源码与真实链路审查通过后，前端已发布，见[正式主页证据](plan/reviews/account-homepage-selfhost-live.md)。
 
 ### 自部署配置与协调发布恢复
 

@@ -50,4 +50,4 @@ depends-on: [account-web, account-desktop]
 
 此前Development真实链路作为历史已通过证据保留，不能替代新issuer验收；最终Vercel发布和本机更新等待自部署配置/链路及独立审查完成。
 
-2026-11-10当前进度：[自部署切换记录](../reviews/account-selfhost-cutover-01.md)。新Logto配置与默认值已独立接受，CyberGrid已READY；Web实际新issuer登录/退出/健康空态、Native实际新issuer登录通过。官网静态产物与本机包均已准备并独立复验。系统锁屏阻止后续Native显式启用/发现/加密/换钥链，待本机解锁后继续，官网尚未部署、安装客户端和既有用户服务尚未切换。
+2026-11-10当前进度：[自部署切换记录](../reviews/account-selfhost-cutover-01.md)。新Logto配置与默认值已独立接受，CyberGrid与[正式主页](../reviews/account-homepage-selfhost-live.md)已READY。实际新issuer Native显式启用、Web发现/核对/公网加密空工作区、关闭/退出、同安装重启换钥确认通过，独立目录记录恰1条且keyVersion2；正式默认配置/域名与实际390/1440视口另行通过。托管注册表单入口通过，未验证邮件投递；本机候选及安全切换脚本已独立接受，现有107会话/token/manager/四条隧道最终基线通过，已授权单次切换，结果见当前记录。
