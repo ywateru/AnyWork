@@ -1,5 +1,7 @@
 # 账号与设备云入口：最终集成验收记录
 
+> 最新范围：用户已明确本轮立即迁到自部署Logto（`https://auth.x.aixgg.com`，default业务租户）。此前Development链路为历史已通过证据，不能替代最终自部署验收；新应用/公开配置、无管理秘密的CyberGrid应用目录及新issuer真实链路正在实施。账号仍只存内存、不使用Keychain。
+
 > 当前交付修订：本阶段使用 Development Logto，不购买生产套餐；现有客户端注册/登录入口见[当前任务](../tasks/account-client-entry.md)。用户进一步要求不使用本地钥匙串，新账号授权/私钥改为进程内存，退出后重新登录；旧Keychain实现及测试为历史证据。修订源码已独立验收；真实重启链路阻断及当前结果见下节。
 
 状态：现有客户端入口、Development配置、纯内存原生账号及安全诊断修订已独立审查并合并。真实隔离原生首次开启、同安装进程重启后重新登录/换钥、Web公网加密工作区以及关闭/退出均已观察通过。一次早期再次开启失败未复现，具体原因未证；保留失败历史与网络限制。合并影响范围检查发现测试夹具未处理新增只读轮询，修订正在独立复验。尚未部署新版官网或更新安装客户端/既有用户服务。用户授权实施、整体测试并更新；方案见 [设计](../../account-device-cloud-review.md)，任务见 [当前交付](../tasks/account-client-entry.md)。下方早期基线记录保留为历史。
@@ -8,7 +10,7 @@
 
 2026-11-09，内存主修订合并源码 `e3ffdf7`；固定安全诊断合并 `1a7c41d`。Web现有客户端入口、Development完整配置和原生纯内存账号版本已分别通过独立审查并合并，详见 [Web入口](account-client-web-01.md)、[Cloud配置](account-client-cloud-02.md)、[内存原生账号](account-client-desktop-memory-01.md)。历史Keychain、生产付费套餐或锁屏条件不能作为本阶段仍需完成的要求。
 
-- 合并后桌面UI构建、Rust fmt、全workspace/all-target clippy、workspace tests、server/native build及全套Python系统/发布/cloud检查通过，日志 `/tmp/anywork-client-native-cloud-merged-check.log`。Web build、327 Vitest、8 Node检查通过；完整Chrome桌面/Android模拟浏览器套件 **611通过、1项既有桌面专用用例跳过**（21.0分钟）。诊断合并后原生47通过/4既有忽略、remote6通过。随后重跑46项桌面UI影响范围，8项失败均为测试夹具将新增只读account_snapshot轮询计入engine命令日志；修复后作者46通过，独立复验进行中，原精确命令/无命令断言不放宽。
+- 合并后桌面UI构建、Rust fmt、全workspace/all-target clippy、workspace tests、server/native build及全套Python系统/发布/cloud检查通过，日志 `/tmp/anywork-client-native-cloud-merged-check.log`。Web build、327 Vitest、8 Node检查通过；完整Chrome桌面/Android模拟浏览器套件 **611通过、1项既有桌面专用用例跳过**（21.0分钟）。诊断合并后原生47通过/4既有忽略、remote6通过。随后重跑46项桌面UI影响范围，8项失败均为测试夹具将新增只读account_snapshot轮询计入engine命令日志；修复后作者及独立复验各46通过，独立另2项边界通过（[报告](account-desktop-browser-01.md)），原精确命令/无命令断言不放宽。
 - 用户提供测试账号的全新独立Web托管登录通过：Account200×2、Grid config/exchange/devices200、实际connect JWT、无management角色变更、1440/390px无溢出。见 [真实Web登录](account-client-web-live.md)。没有以已有测试账号登录证明新注册邮件已送达。
 - 真实隔离Native应用登录后手动开启远程访问，Web自动发现在线设备；对照本机公钥确认后，实际公网加密隧道进入空会话工作区。关闭远程访问使Web立即退出工作区。仅用空workspace/data/history、断开的宿主夹具和任务独占进程，没有访问用户业务会话。
 - 同support/config的第二进程重启后，Native显示尚未登录，没有恢复grant。重新登录同账号后一次开启失败，旧目录仍version1。随后增加固定13阶段码（[独立审查](account-desktop-enable-diagnostics-01.md)），第三进程同home/config重新登录、手动开启成功；旧公开installationId不变，本机公钥改变。Web旧pin明确弹“公钥已改变”，新码与本机一致，确认后通过真实公网加密隧道进入空工作区。最后Native退出账号，Web立即离开工作区，Native最终显示尚未登录/远程关闭。独立只读Account200确认目录恰1条、keyVersion整数2、公钥有效32bytes、GridID非空。首次和重启成功均为实际GUI/服务链，不是拼接夹具。
