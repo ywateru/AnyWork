@@ -113,6 +113,22 @@ export async function manager(
           if (command === "desktop_snapshot") return structuredClone(snapshot);
           if (command === "desktop_preview") return null;
           if (command === "desktop_lan") return "http://192.0.2.10:3210";
+          // Only this exact read-only account poll is excluded. Account
+          // mutations and unknown commands still enter the strict log below.
+          if (command === "account_snapshot")
+            return {
+              authorizationStatus: "signedOut",
+              transactionId: null,
+              signedIn: false,
+              subject: null,
+              accountLabel: null,
+              enabled: false,
+              busy: false,
+              error: null,
+              gridDeviceId: null,
+              installationId: null,
+              publicKey: null,
+            };
           // Status polling is read-only, like desktop_snapshot above. Keep the
           // operation log strict so an unintended install/start still fails.
           if (command === "desktop_update_snapshot")
