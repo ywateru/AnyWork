@@ -1,5 +1,9 @@
 # DeepSeek Harness delivery
 
+## Account and device cloud proposal
+
+The [account/device proposal](../account-device-cloud-review.md) is now authorized for implementation, full testing and update. [Tasks](tasks/account-device-cloud.md) track three isolated lanes: cloud provisioning, Web/site and local desktop security. The research pin is CyberGrid `1e65328`; Logto owns account/config data, Upstash is only CyberGrid coordination storage, and business content/private keys remain on user devices. Research probes do not count as feature acceptance. Final publication requires independent review, real integration evidence and merged-system checks.
+
 Current continuing work: [prioritized project improvements](improvement-progress.md), starting with the [G0 correctness and delivery contract](tasks/improvement-g0.md). Current G1 connections: [complete delivery contract](tasks/improvement-connected-delivery-contract.md), [Desktop native-input source gaps](tasks/improvement-desktop-input-proof.md), then [connected delivery implementation](tasks/improvement-message-delivery.md). Earlier delivery records below remain historical evidence.
 
 Base: `main` at `f2e2ebd`. References are local-only. Implementation tasks use separate worktrees and do not modify the real Codex or AnyWork runtime.

@@ -1,5 +1,6 @@
 # Documentation index
 
+- [账号、设备发现与 Vercel 云入口专家评审方案（2026-11-09）](account-device-cloud-review.md) · [调研证据](plan/analysis/account-device-cloud.md) · [实施拆分](plan/tasks/account-device-cloud.md)
 - [全项目改进与专家评审稿（2026-11-07）](project-improvement-review.md)
 - [当前支持与验收矩阵 / Support matrix](support-matrix.md)
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)
