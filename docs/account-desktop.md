@@ -40,11 +40,13 @@ The overview and welcome screen expose independent registration and login action
 
 Native `authorizationStatus` controls actions: signedOut offers registration/login; authorizing/loginInterrupted retain cancellation; signedIn offers logout; reauthRequired offers ending this authorization before relogin; unsupported explains platform limits. Generic network errors never imply a signed-in account. After failures the UI re-reads native state. Native transaction IDs survive renderer remounts, and a stale JS adapter keeps an explicit cancellation control until cleaned. There are no checkpoint, saved-grant recovery or Keychain actions in the current account UI.
 
-## Development defaults and self-hosting
+## Self-hosted defaults and complete override
 
-Defaults use the existing `ueg42e` **Development** tenant: endpoint `https://ueg42e.logto.app`, issuer `https://ueg42e.logto.app/oidc`, resource `https://anywork-cybergrid-dev.vercel.app/api`, Grid `https://anywork-cybergrid-dev.vercel.app`, frontend origin `https://anywork-tau.vercel.app`. Public Native/SPA IDs match [cloud configuration](cloud-configuration.md). This is not a paid production tenant, and no cloud-only environment variable is required to start the desktop client.
+Defaults now use the user's self-hosted Logto service: endpoint `https://auth.x.aixgg.com`, issuer `https://auth.x.aixgg.com/oidc`, Native client `x7lzj58abb1sdp16lkd34`, SPA client `5ere2kbu9mugfu3xd8e90`, resource `https://anywork-cybergrid-selfhost.vercel.app/api`, Grid `https://anywork-cybergrid-selfhost.vercel.app`, frontend origin `https://anywork-tau.vercel.app`. These seven public Native fields correspond to the Web's five public identity/Grid defaults; issuer is derived from the endpoint in Web. No management secret belongs in either client. The account portal stays `https://anywork-tau.vercel.app/app/`.
 
-For self-hosting, replace all **seven** public fields in `<manager support>/account-cloud.json` before launch:
+The self-hosted tenant uses username/password registration and has no email connector. This client configuration does not establish email delivery or verification. The fixed Native callback remains `http://127.0.0.1:17897/callback`; the SPA's registered callbacks include the public app and explicit localhost development origins. The complete override and all memory-only constraints above remain unchanged. Old Logto Cloud grants, drafts and installation namespaces are not imported into this issuer. New login and explicit local enable are required; previous Development acceptance remains historical evidence and cannot validate the self-hosted chain.
+
+For another deployment, replace all **seven** public fields in `<manager support>/account-cloud.json` before launch:
 
 ```json
 {
@@ -99,3 +101,5 @@ An enable failure returns one fixed typed stage code through the native boundary
 The actual first memory-only native acceptance connected through a public Noise gateway and disable disconnected the browser. The subsequent same-manager restart correctly started signed out, but re-enabling after another login failed before updating the existing version-1 public record. This remains an integration blocker pending a targeted run with these diagnostics; it is not recorded as successful restart acceptance.
 
 Diagnostics author validation: desktop library 47 passed/four existing external tests ignored; the additional tests exercise all 13 fixed codes, discard a synthetic secret/URL cause, and call the real index-publication path against isolated token/read/schema/write/readback failures while counting requests. UI build and rendered regression verify stage visibility, one request per click, and generic fallback for arbitrary URL-bearing errors. These checks do not establish the real restart failure's cause.
+
+Self-hosted default author validation uses exact assertions for all seven Native fields and all five Web fields, complete alternate overrides, browser grant isolation from the old Cloud issuer, and a temporary-directory native regression proving the old issuer's public ID is not reused and startup remains signed out. The unchanged current account/remote tests continue to cover RAM-only ownership, rotation, fresh restart keys and explicit authorization. Real self-hosted login and cross-device acceptance are separate orchestrator checks; no management credential or cloud grant is used by these regressions.

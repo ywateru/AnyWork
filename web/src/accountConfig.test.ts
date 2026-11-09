@@ -2,15 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { AccountLogtoClient } from "./accountAuth";
 import {
   accountPortalUrl,
-  developmentAccountValues,
+  defaultAccountValues,
   resolveAccountConfig,
 } from "./accountConfig";
 
 describe("account deployment selection", () => {
-  it("uses the complete Development deployment only without any override", () => {
+  it("uses the complete self-hosted defaults only without any override", () => {
     const config = resolveAccountConfig({ MODE: "production" });
-    expect(config.endpoint).toBe("https://ueg42e.logto.app");
-    expect(config.gridUrl).toBe("https://anywork-cybergrid-dev.vercel.app");
+    expect(config).toEqual({
+      endpoint: "https://auth.x.aixgg.com",
+      issuer: "https://auth.x.aixgg.com/oidc",
+      appId: "5ere2kbu9mugfu3xd8e90",
+      nativeAppId: "x7lzj58abb1sdp16lkd34",
+      resource: "https://anywork-cybergrid-selfhost.vercel.app/api",
+      gridUrl: "https://anywork-cybergrid-selfhost.vercel.app",
+    });
     expect(() =>
       resolveAccountConfig({ VITE_LOGTO_ENDPOINT: "https://identity.example" }),
     ).toThrow("INVALID_CONFIGURATION");
@@ -18,7 +24,7 @@ describe("account deployment selection", () => {
       "INVALID_CONFIGURATION",
     );
   });
-  it("accepts a complete self-hosted deployment without mixing development values", () => {
+  it("accepts another complete deployment without mixing default values", () => {
     const config = resolveAccountConfig({
       VITE_LOGTO_ENDPOINT: "https://identity.example",
       VITE_LOGTO_APP_ID: "selfhosted-spa",
@@ -61,11 +67,11 @@ describe("account deployment selection", () => {
     vi.stubGlobal("localStorage", storage);
     vi.stubGlobal("sessionStorage", storage);
     try {
-      const one = resolveAccountConfig(developmentAccountValues);
+      const one = resolveAccountConfig(defaultAccountValues);
       const two = {
         ...one,
-        endpoint: "https://identity.example",
-        issuer: "https://identity.example/oidc",
+        endpoint: "https://ueg42e.logto.app",
+        issuer: "https://ueg42e.logto.app/oidc",
       };
       const make = (account: typeof one) =>
         new AccountLogtoClient(

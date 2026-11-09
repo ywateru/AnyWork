@@ -70,23 +70,23 @@ export function parseAccountConfig(
   }
 }
 
-/** Public Development deployment used until a complete deployment override is supplied. */
-export const developmentAccountValues = {
-  VITE_LOGTO_ENDPOINT: "https://ueg42e.logto.app",
-  VITE_LOGTO_APP_ID: "4wu64isauau1xh9gkrh85",
-  VITE_LOGTO_RESOURCE: "https://anywork-cybergrid-dev.vercel.app/api",
-  VITE_CYBERGRID_URL: "https://anywork-cybergrid-dev.vercel.app",
-  VITE_CYBERGRID_NATIVE_APP_ID: "xfo4o0pmacag9qui4mrmf",
+/** Public self-hosted deployment used unless a complete override is supplied. */
+export const defaultAccountValues = {
+  VITE_LOGTO_ENDPOINT: "https://auth.x.aixgg.com",
+  VITE_LOGTO_APP_ID: "5ere2kbu9mugfu3xd8e90",
+  VITE_LOGTO_RESOURCE: "https://anywork-cybergrid-selfhost.vercel.app/api",
+  VITE_CYBERGRID_URL: "https://anywork-cybergrid-selfhost.vercel.app",
+  VITE_CYBERGRID_NATIVE_APP_ID: "x7lzj58abb1sdp16lkd34",
 };
 
 export function resolveAccountConfig(
   values: Record<string, unknown>,
 ): AccountConfig {
-  const hasOverride = Object.keys(developmentAccountValues).some(
+  const hasOverride = Object.keys(defaultAccountValues).some(
     (key) => values[key] !== undefined,
   );
   const config = parseAccountConfig(
-    hasOverride ? values : developmentAccountValues,
+    hasOverride ? values : defaultAccountValues,
   );
   if (!config) throw new AccountError("INVALID_CONFIGURATION");
   return config;

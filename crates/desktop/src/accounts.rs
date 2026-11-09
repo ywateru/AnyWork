@@ -79,12 +79,12 @@ pub struct PublicConfig {
 impl Default for PublicConfig {
     fn default() -> Self {
         Self {
-            endpoint: "https://ueg42e.logto.app".into(),
-            issuer: "https://ueg42e.logto.app/oidc".into(),
-            native_client_id: "xfo4o0pmacag9qui4mrmf".into(),
-            spa_client_id: "4wu64isauau1xh9gkrh85".into(),
-            resource: "https://anywork-cybergrid-dev.vercel.app/api".into(),
-            cybergrid_url: "https://anywork-cybergrid-dev.vercel.app".into(),
+            endpoint: "https://auth.x.aixgg.com".into(),
+            issuer: "https://auth.x.aixgg.com/oidc".into(),
+            native_client_id: "x7lzj58abb1sdp16lkd34".into(),
+            spa_client_id: "5ere2kbu9mugfu3xd8e90".into(),
+            resource: "https://anywork-cybergrid-selfhost.vercel.app/api".into(),
+            cybergrid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
             frontend_origin: "https://anywork-tau.vercel.app".into(),
         }
     }
@@ -1697,7 +1697,18 @@ mod tests {
     fn public_configuration_is_complete_validated_and_fully_isolated() {
         let dir = tempfile::tempdir().unwrap();
         let defaults = PublicConfig::load(dir.path()).unwrap();
-        assert_eq!(defaults.endpoint, "https://ueg42e.logto.app");
+        assert_eq!(
+            serde_json::to_value(&defaults).unwrap(),
+            json!({
+                "endpoint":"https://auth.x.aixgg.com",
+                "issuer":"https://auth.x.aixgg.com/oidc",
+                "nativeClientId":"x7lzj58abb1sdp16lkd34",
+                "spaClientId":"5ere2kbu9mugfu3xd8e90",
+                "resource":"https://anywork-cybergrid-selfhost.vercel.app/api",
+                "cybergridUrl":"https://anywork-cybergrid-selfhost.vercel.app",
+                "frontendOrigin":"https://anywork-tau.vercel.app"
+            })
+        );
         let expected = defaults.namespace(dir.path()).unwrap();
         for field in [
             "endpoint",
@@ -1732,6 +1743,36 @@ mod tests {
         let mut bad = defaults;
         bad.endpoint = "http://remote.invalid".into();
         assert!(bad.validate().is_err());
+    }
+    #[tokio::test]
+    async fn self_hosted_default_does_not_reuse_cloud_installation_or_restore_an_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let current = PublicConfig::default();
+        let cloud = PublicConfig {
+            endpoint: "https://ueg42e.logto.app".into(),
+            issuer: "https://ueg42e.logto.app/oidc".into(),
+            // Keep every other field identical to isolate the issuer boundary.
+            ..current.clone()
+        };
+        cloud.validate().unwrap();
+        let old_id = public_installation_id(dir.path(), &cloud, "same-owner").unwrap();
+        let h = handle(dir.path());
+        assert_eq!(
+            h.snapshot().await.authorization_status,
+            AuthorizationStatus::SignedOut
+        );
+        assert!(h.0.state.lock().await.owner.is_none());
+        assert!(h.0.config == current);
+        let new_id = h.installation("same-owner").await.unwrap().id;
+        assert_ne!(new_id, old_id);
+        assert_eq!(
+            public_installation_id(dir.path(), &cloud, "same-owner").unwrap(),
+            old_id
+        );
+        assert_eq!(
+            public_installation_id(dir.path(), &current, "same-owner").unwrap(),
+            new_id
+        );
     }
     #[test]
     fn account_label_uses_existing_profile_or_short_subject_without_extra_request() {
