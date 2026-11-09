@@ -199,4 +199,4 @@ jobs:
           python3 scripts/check-release-version.py "$RELEASE_TAG" --remote
           python3 scripts/check-release-ci.py --sha "$RELEASE_COMMIT" --tag "$RELEASE_TAG" --timeout 60 --poll 5
           gh release create "$RELEASE_TAG" release/* --verify-tag --title "AnyWork $RELEASE_TAG" --notes-file docs/release-notes.md
-          gh workflow run pages.yml --ref main
+          gh workflow run vercel.yml --ref main
