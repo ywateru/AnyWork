@@ -63,3 +63,9 @@ Logout also handles a fresh manager with no RAM owner or login transaction. It r
 Four new tests call the actual `Handle.logout` with a private isolated state, memory credential store and real loopback HTTP revocation endpoint. They cover saved-only logout after public-config mismatch, endpoint failure preserving saved/pending records, foreign issuer/client/endpoint rejection before any request, and cleanup of both a known saved checkpoint and an uncertain last-known token. The test-only private state constructor does not relax production HTTPS config validation or introduce a product test endpoint.
 
 D3 author validation: desktop library 50 passed, four existing external tests ignored; 16 native account tests are included in that total. Desktop all-target check and diff whitespace checks passed. These corrections performed no real OAuth exchange, Keychain access, user-history access or service manipulation.
+
+## 当前客户端入口与 Development 默认值（2026-11-09修订）
+
+用户明确要求当前客户端增加注册或登录。本阶段默认使用 `ueg42e` Development 租户及其专用 SPA/Native/resource/Grid，不等待 Cloud 生产套餐；后续部署自有 Logto。当前主界面必须有清晰的注册/登录入口，进入现有账号与远程访问页；注册和登录由官方托管页面完成，本机显式授权远程访问保持独立。失败或取消登录后必须可以重试，不应仅因已记录错误而显示“退出账号”。如果确有待恢复的本机授权，仍提供恢复/退出，不把它误标为普通未登录状态。
+
+`account-cloud.json` 是现有完整公开配置覆盖机制。自部署切换须一起更改 endpoint/issuer、SPA/Native IDs、resource、CyberGrid信任配置和精确回跳；使用新认证命名空间和新登录，不能复用旧issuer授权。本机不得加入管理令牌或后端业务存储。

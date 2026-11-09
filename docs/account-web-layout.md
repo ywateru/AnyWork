@@ -82,3 +82,22 @@ The initial W4 Node test filename was also collected by Vitest, causing root `np
 Independent full-suite re-verification then found W5: the temporary-file permission assertion could miss a short-lived file because it relied on `fs.watch` followed by asynchronous path lookup. Its replacement instruments the actual `fs.promises.open` call in an isolated child process, calls `fstat` on the real temporary file handle before returning it to the helper, and asserts creation permissions0600, empty contents and exclusive-create flags. The test retains final contents, inode replacement, final0600permissions, owner exclusion and cleanup assertions. It uses no sleeps, larger payload or retry-until-pass logic. The application and credential helper are unchanged.
 
 At20:16+08:00 the corrected candidate passed complete root `npm test` (323Vitest plus8Node), typecheck, format check, production build, standalone root Node8checks and diff whitespace checks. These are author results; independent exact-source re-verification remains required before merging.
+
+## Current client entry — authorized follow-up
+
+The 2026-11-09 follow-up uses the existing Development Logto tenant for this phase; a paid production Cloud tenant is no longer a prerequisite. Existing workspace UI must expose a persistent account entry on desktop and mobile. Signed-out users can reach registration and sign-in; account users can return to their devices. Password entry remains on Logto. The entry follows the existing narrow navigation and black/white tokens.
+
+```text
+┌─ 当前工作区 ────────────────────────────────┐
+│ AnyWork                   [注册 / 登录]    │
+│ 会话/Agent导航     当前会话                  │
+│                  保留当前工作与高级连接     │
+└────────────────────────────────────────────┘
+                  ↓ 官方账号流程
+┌─ 我的设备 ─────────────────────────────────┐
+│ AnyWork                      [账号 / 退出] │
+│ 我的设备          当前账号设备与连接状态    │
+└────────────────────────────────────────────┘
+```
+
+Local/manual workspace navigation does not log out, replace credentials, or enable remote access. Account navigation must not auto-restore a manual connection into account mode. Complete public build configuration selects the Logto deployment; a changed issuer/client is a separate auth namespace and requires a fresh authorization. No Cloud-only admin endpoint belongs in the client runtime.

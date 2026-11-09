@@ -85,3 +85,9 @@ CyberGrid 从其 GitHub **仓库根**固定源码部署，Node22，官方 `api/i
 真实OAuth验证可由 `node scripts/cloud/verify-oauth.cjs --spa --credentials /absolute/private/test-user.json` 复跑；`--native` 单独测试原生client。脚本只对带 verificationFixture 的隔离账号执行配置写入，凭据与token产物必须放仓库外、0600；不输出token、密码或带敏感query的浏览器错误。系统Chrome用于独立临时profile，不使用用户浏览器登录态。原生测试首次没有consent时未取得refresh，最后一次显式consent测试遇到登录页网络超时，不能记为通过；后续桌面官方SDK实际UI验收负责闭合此门槛。
 
 独立审查后修复：普通 Release 的显式分发已改为 vercel.yml；新增18项离线真实CLI恢复/发布调用链验收，覆盖完成/进行中重跑、POST响应丢失、提交前/响应后落盘中断、配置与凭据变更、库存歧义、显式稳定UUID重部署、旧状态采用及80/81字符边界。该轮未触发真实部署、套餐购买、生产启用或共享OAuth grant刷新。真实Upstash的11项独立验证证据与限定范围见 [cloud review](plan/reviews/account-cloud-01.md)。
+
+## 当前交付修订：Development优先，后续自部署
+
+2026-11-09用户明确指定本阶段 Logto 使用开发模式，后续切换自部署。因此上文“开发配置仅用于隔离测试”与生产付费前置仅为先前计划，本阶段由本节取代：当前客户端及Vercel前端使用现有 `ueg42e` Development配置和 `anywork-cybergrid-dev`。不购买Pro/RBAC，不把Vercel的production部署目标称为Logto生产租户。真实安全链路和独立审查仍是启用条件。
+
+后续迁移以完整公开配置切换，保持官方OIDC/AccountAPI接口，不新增AnyWork云业务数据库；新issuer/client要求重新登录并重新登记设备，不复制令牌、私钥或本机工作数据。
