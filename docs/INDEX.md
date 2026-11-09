@@ -2,6 +2,7 @@
 
 - [账号、设备发现与 Vercel 云入口专家评审方案（2026-11-09）](account-device-cloud-review.md) · [调研证据](plan/analysis/account-device-cloud.md) · [实施拆分](plan/tasks/account-device-cloud.md)
 - [账号入口验收状态](plan/reviews/account-device-acceptance.md) · [云配置与费用](cloud-configuration.md) · [桌面账号与隔离验收](account-desktop.md) · [加密协议](account-remote-protocol.md) · [官网/设备页布局](account-web-layout.md)
+- [当前自部署切换与待续验收](plan/reviews/account-selfhost-cutover-01.md) · [自部署CyberGrid上线证据](plan/reviews/account-selfhost-grid-live.md)
 - [全项目改进与专家评审稿（2026-11-07）](project-improvement-review.md)
 - [当前支持与验收矩阵 / Support matrix](support-matrix.md)
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)

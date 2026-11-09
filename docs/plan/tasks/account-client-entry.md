@@ -49,3 +49,5 @@ depends-on: [account-web, account-desktop]
 - 复验：新issuer真实JWT/connect与Account opaque token、设备发布发现/换钥/公网加密访问/退出、1440/390px与精确source/CSP静态部署。若新租户没有邮件连接器，不能声称邮箱注册/邮件已通过；不为测试覆盖现有身份服务的全局策略。账号内存存储、不使用Keychain和无云业务存储的约束继续有效。
 
 此前Development真实链路作为历史已通过证据保留，不能替代新issuer验收；最终Vercel发布和本机更新等待自部署配置/链路及独立审查完成。
+
+2026-11-10当前进度：[自部署切换记录](../reviews/account-selfhost-cutover-01.md)。新Logto配置与默认值已独立接受，CyberGrid已READY；Web实际新issuer登录/退出/健康空态、Native实际新issuer登录通过。官网静态产物与本机包均已准备并独立复验。系统锁屏阻止后续Native显式启用/发现/加密/换钥链，待本机解锁后继续，官网尚未部署、安装客户端和既有用户服务尚未切换。

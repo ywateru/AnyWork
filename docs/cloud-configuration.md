@@ -1,4 +1,4 @@
-> 最新用户修订：本轮现在切换到自部署Logto default业务租户（公开endpoint https://auth.x.aixgg.com，Console https://logto.x.aixgg.com/），新应用与信任配置正在核验。下方Cloud Development配置保留为此前证据，不能作为最终部署默认值；完整迁移状态见[当前任务](plan/tasks/account-client-entry.md)。不迁移秘密或用户业务数据。
+> 最新用户修订：本轮切换到自部署Logto default业务租户（公开endpoint https://auth.x.aixgg.com，Console https://logto.x.aixgg.com/）。新应用/权限已独立核验，专用CyberGrid已READY；完整Native链及官网/本机切换仍待完成，见[当前集成状态](plan/reviews/account-selfhost-cutover-01.md)。下方Cloud Development配置保留为此前证据，不作为最终部署默认值。不迁移秘密或用户业务数据。
 
 # AnyWork 云服务配置与验收
 
