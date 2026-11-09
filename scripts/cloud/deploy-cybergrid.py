@@ -198,6 +198,8 @@ def prebuilt_identity(directory, provenance_path, source, project, forbidden):
         cloud.require(count <= 50000 and size <= 300 * 1024 * 1024, 'Prebuilt upload exceeds review bounds')
         raw = file.read_bytes()
         cloud.require(not any(needle in raw for needle in needles), 'Known private credential appears in prebuilt output')
+        if file.name == '.vc-config.json':
+            cloud.require('filePathMap' not in json.loads(raw), 'Unmaterialized function filePathMap is forbidden')
         digest.update(relative.encode() + b'\0' + hashlib.sha256(raw).digest())
     return {'sourceKind': 'prebuilt', 'upstreamSource': PIN, 'patchHash': patch_hash, 'outputHash': digest.hexdigest()}
 

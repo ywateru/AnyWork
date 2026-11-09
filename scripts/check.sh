@@ -32,6 +32,7 @@ python3 scripts/cloud/test_selfhost.py
 python3 scripts/cloud/test_frontend.py
 python3 scripts/cloud/test_deploy.py
 python3 scripts/cloud/test_prebuilt.py
+python3 scripts/cloud/test_materialize.py
 python3 scripts/source-archive-test.py
 python3 scripts/release-version-test.py
 python3 scripts/publish-test.py

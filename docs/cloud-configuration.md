@@ -143,3 +143,9 @@ vercel deploy --prebuilt --prod
 | `accountPortalUrl` | `https://anywork-tau.vercel.app/app/` |
 
 作者离线检查：6项自部署配置契约、6项prebuilt隐私/身份/CLI/未知结果契约、20项原发布恢复与新增pinned环境检查、9项配置安全、7项前端配置/CSP、6项源码导出、28项发布器检查，共82项通过；候选变更文件对已知真实bootstrap/管理令牌/synthetic登录秘密字节扫描命中0。真实自部署配置已创建并重放读回，不代表协调服务已部署，也未发布前端或修改运行中的用户服务。
+
+### 自包含 Vercel 函数产物
+
+Vercel Node builder 会在函数 `.vc-config.json` 的 `filePathMap` 中保留相对项目根目录的外部文件引用。CLI50.28.0 在上传前从项目根读取这些引用；仅复制 `.vercel/output` 会遗漏它们。本轮实际诊断在本地 hash 阶段因 `server/notices/manifest.json` 缺失退出，尚未进入 deployment upload；旧 intent 仍保留，库存与独立复核另作恢复证据。
+
+`materialize-prebuilt.py` 在上传前把映射逐项物化到函数内：来源必须是精确 adapted SHA 的已跟踪普通 Git blob，工作区字节须与 blob 相等；相对来源和目标路径均禁止绝对路径、穿越、符号链接、私有文件名或冲突。先验证全部计划及已知秘密字节，再复制精确字节与模式并移除 `filePathMap`，不上传整个 checkout。仓库外收据记录源码、Git blob ID、目标路径和 SHA256，以及配置变换前后摘要。notice/license/public 资源继续以相同函数内路径提供。`prebuilt_identity` 拒绝残留 `filePathMap`，产物变化必须形成新 outputHash；原两次 intent 不被覆盖或自动重试。

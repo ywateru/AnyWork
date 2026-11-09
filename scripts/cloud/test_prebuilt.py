@@ -82,6 +82,11 @@ class PrebuiltContracts(unittest.TestCase):
         with self.assertRaisesRegex(deploy.cloud.ConfigurationError, 'sanitized'):
             self.identity()
 
+    def test_external_function_map_requires_materialization(self):
+        (self.output / 'functions/index.func/.vc-config.json').write_text(json.dumps({'filePathMap': {'license': 'outside/LICENSE'}}))
+        with self.assertRaisesRegex(deploy.cloud.ConfigurationError, 'Unmaterialized'):
+            self.identity()
+
     def test_cli_pin_and_metadata_are_explicit_without_credentials_in_argv(self):
         cli = self.root / 'vc.js'
         cli.write_text('fixture')
