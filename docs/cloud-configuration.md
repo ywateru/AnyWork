@@ -2,7 +2,7 @@
 
 # AnyWork 云服务配置与验收
 
-日期：2026-11-09（Asia/Shanghai）。本阶段按用户要求使用 Logto Development，后续迁移自部署；不需要购买 Cloud 生产套餐。本页记录实际资源、公开客户端配置与交付限制。云端只有 Logto 账号/配置、CyberGrid 协调服务及其 Upstash Redis；没有 AnyWork 业务数据库或业务代理。业务内容与端到端私钥留用户设备。账号与本机安全流程以[方案](account-device-cloud-review.md)为准。
+日期：2026-11-09（Asia/Shanghai）。本阶段按最新用户要求使用自部署 Logto default 业务租户；此前 Cloud Development 资源保留，不需要购买 Cloud 生产套餐。本页记录实际资源、公开客户端配置与交付限制。云端只有 Logto 账号/配置、CyberGrid 协调服务及其 Upstash Redis；没有 AnyWork 业务数据库或业务代理。业务内容与端到端私钥留用户设备。账号与本机安全流程以[方案](account-device-cloud-review.md)为准。
 
 ## 已创建的资源
 
@@ -21,7 +21,7 @@ Vercel Function 使用上游 `iad1`；Upstash 与其接近。Logto 账号地区�
 
 ## 公开配置
 
-这些字段是客户端必需的公开标识，不是管理秘密。本阶段客户端与 Vercel 前端使用下表开发列；生产列仅为先前预留资源，不是当前启用前置。Development 服务的验收范围须如实记录，不称为 Logto 生产租户。
+这些字段是客户端必需的公开标识，不是管理秘密。本阶段客户端与 Vercel 前端使用本页末尾的自部署配置；下表为历史 Cloud 配置，不能混入当前自部署绑定。
 
 | 字段 | 生产（资源权限待启用） | 开发 |
 | --- | --- | --- |
@@ -105,10 +105,41 @@ vercel deploy --prebuilt --prod
 ## 切换自部署 Logto
 
 1. 在自己的 HTTPS Logto endpoint 创建 SPA 与 Native public applications；SPA 回跳为前端 `/app/callback`、退出 `/app/`，Native 固定 `http://127.0.0.1:17897/callback`，授权码+PKCE、refresh rotation。配置 Account API `customData: Edit`、注册/邮件和默认用户 `connect` resource 权限；不在客户端放 Management API 凭据。
-2. 用独立私有状态/namespace 配置 CyberGrid 对新 issuer/JWKS、SPA client、resource 及 Native 目录 client 的信任；其服务侧 Management API secret 只在 Vercel。当前 Cloud provisioner 的 `create-tenant` 是 Cloud 专用，不能拿 Cloud PAT 去初始化自部署；自部署通过其官方管理接口配置后，保存同样的公开 binding。
+2. 用独立私有状态/namespace 配置 CyberGrid 对新 issuer/JWKS、SPA client、resource 的信任；本轮使用显式公开应用目录固定 SPA/Native，不在协调运行期配置任何 Management API secret。当前 Cloud provisioner 的 `create-tenant` 是 Cloud 专用，不能拿 Cloud PAT 去初始化自部署；自部署通过其官方管理接口配置后，保存同样的公开 binding。
 3. 一次性替换前端五项公开变量，按上节重新生成 CSP 并 prebuild/deploy；若前端域名变更，同时替换账号入口 `VITE_ACCOUNT_PORTAL_URL` 和 Logto/CyberGrid 精确 origins。桌面 `account-cloud.json` 完整覆盖 endpoint/issuer、SPA/Native IDs、resource、Grid URL、frontend origin。任何一侧只换 issuer 或只换 app ID 均不算完整迁移。
 4. 用户在新 issuer 重新注册/登录、在桌面重新显式允许远程访问，形成新的设备登记和本机认证命名空间。不迁移 refresh/access tokens、端到端私钥或本机工作内容；旧设备索引不是新租户的授权。先独立验证注册/默认权限、Account API、发现、加密业务及退出关闭，再启用 `ANYWORK_ACCOUNT_READY`。不新增 AnyWork 云业务数据库。
 
-以上仅实现配置可迁移性，不声称已搭建或验收自部署 Logto。
+本轮已实际配置自部署 AnyWork 对象；完整 Native/Web/协调真实链路须另行验收。
 
 本轮 Development/自部署配置改动的离线作者检查：9项配置安全、7项前端CSP/真实临时目录CLI及Git prepare→assemble源码字节核对、18项协调部署恢复、28项发布器以及6项source-export检查通过；`scripts/check.sh` 已包含三组cloud检查。这里未运行真实云变更、未设置启用flag、未刷新任何OAuth grant；独立审查与合并后验证另行记录。
+
+## 自部署 default 租户切换（当前实施契约）
+
+用户随后授权以 `https://auth.x.aixgg.com` 的自部署 default 业务租户代替本轮 Cloud Development 配置。issuer 为 `https://auth.x.aixgg.com/oidc`，管理 API 地址为 `https://auth.x.aixgg.com/api`，管理 resource **单独固定**为 `https://default.logto.app/api`；禁止从自定义域名推导该 audience。管理凭据与恢复状态只存仓库外0600文件，不进入公开客户端配置、日志或上传产物。Cloud Development 资源保留。
+
+配置仅创建/更新 AnyWork 拥有的 SPA、Native、独立远控 resource/connect 和默认用户 role，并启用 Account API 所需 customData Edit、name/avatar/email ReadOnly；不修改用户提供的管理 M2M、不整体覆盖共享 sign-in experience。当前租户只有用户名与密码注册/登录且没有邮件连接器，因此保持现状，不能宣称邮箱验证或邮件投递可用。
+
+协调服务使用独立项目 `anywork-cybergrid-selfhost` 与专用 Upstash 内独立 namespace `anywork:selfhost:v1`，不得重置 Development 数据。固定上游目录硬编码 `origin/api` 与 `all`，而此自部署系统 Management resource 仅提供 `all`；本轮采用显式公开应用目录适配，运行期仅接收已核验的 SPA/Native ID/type，完全不配置 Management M2M ID/secret，也不伪造只读管理 scope。固定 issuer/audience/client/connect 校验保持不变。前端部署仍等待最终精确源码与真实链路审查。
+
+### 自部署配置与协调发布恢复
+
+`configure-selfhost.py` 使用独立仓库外状态的显式 `mode=self-hosted`、tokenEndpoint、managementApi 和 managementResource。每个新对象先保存创建 intent，再提交，已有 ID/名称/类型必须与库存一致；响应未知时先按库存恢复，禁止盲目重建。它不调用 Cloud 租户/订阅 API，不写全局 sign-in experience、连接器或用户提供的 M2M。
+
+作者真实配置读回：Account API enabled，customData Edit 与 name/avatar/email ReadOnly；共享 sign-in experience 与配置前对象完全相等。独立无邮箱 synthetic 用户由管理 API 新建后，直接 GET roles 已自动拥有唯一 AnyWork 默认角色，从未显式分配用户角色；旧的首个含连字符用户名被 guard 拒绝，库存确认为0后才改下划线用户名。该证据证明默认角色自动赋予，不代替用户资源 JWT 或真实界面登录验收。测试登录信息与公开七字段分开存仓库外0600文件，GUI不需要读取 bootstrap 状态。
+
+协调适配以固定 CyberGrid `2bd6729c6bbee90ed2926410caca883a0a100890` 加可重现 patch/provenance 发布；不推送上游仓库、不改上游许可。`deploy-cybergrid.py` 的自部署路径必须提供受检 prebuilt staging、完整40位 adapted source SHA、固定 base+patch 摘要的 provenance，以及 Vercel CLI50.28.0。staging 仅包含 `.vercel/project.json` 和受检 output；禁止符号链接、私有构建元数据、`.env`、已知秘密字节；builds.json 仅留 production target。运行期 encrypted env 只含公开信任配置和 Upstash 凭据，显式 `LOGTO_APPLICATION_DIRECTORY_MODE=pinned`/`LOGTO_APPLICATIONS_JSON`，不含 bootstrap M2M。
+
+提交前原子保存 operation、源码/patch/output/config 身份与 submitting 阶段；CLI返回未知时按 operation 及 metadata 对账，不重新上传。实际部署必须同时核对 project、production target、adapted source、fixed upstream、patch 与 artifact/config 摘要。该路径默认不替代既有 Cloud Git 发布；前端发布另有最终门禁。
+
+| Current public field | Self-hosted value |
+| --- | --- |
+| `endpoint` | `https://auth.x.aixgg.com` |
+| `issuer` | `https://auth.x.aixgg.com/oidc` |
+| `nativeClientId` | `x7lzj58abb1sdp16lkd34` |
+| `spaClientId` | `5ere2kbu9mugfu3xd8e90` |
+| `resource` | `https://anywork-cybergrid-selfhost.vercel.app/api` |
+| `cybergridUrl` | `https://anywork-cybergrid-selfhost.vercel.app` |
+| `frontendOrigin` | `https://anywork-tau.vercel.app` |
+| `accountPortalUrl` | `https://anywork-tau.vercel.app/app/` |
+
+作者离线检查：6项自部署配置契约、6项prebuilt隐私/身份/CLI/未知结果契约、20项原发布恢复与新增pinned环境检查、9项配置安全、7项前端配置/CSP、6项源码导出、28项发布器检查，共82项通过；候选变更文件对已知真实bootstrap/管理令牌/synthetic登录秘密字节扫描命中0。真实自部署配置已创建并重放读回，不代表协调服务已部署，也未发布前端或修改运行中的用户服务。

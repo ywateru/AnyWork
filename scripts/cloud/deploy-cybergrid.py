@@ -11,6 +11,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import subprocess
 import uuid
 
 spec = importlib.util.spec_from_file_location('configure', Path(__file__).with_name('configure.py'))
@@ -33,9 +34,14 @@ def configuration_identity(project, name, source, env):
 
 
 def metadata(intent):
-    return {'anyworkOperation': intent['operationId'],
+    result = {'anyworkOperation': intent['operationId'],
             'anyworkConfiguration': intent['identity']['configHash'],
             'anyworkSource': intent['identity']['source']}
+    for key, field in [('sourceKind', 'anyworkSourceKind'), ('upstreamSource', 'anyworkUpstream'),
+                       ('patchHash', 'anyworkPatch'), ('outputHash', 'anyworkArtifact')]:
+        if key in intent['identity']:
+            result[field] = intent['identity'][key]
+    return result
 
 
 def observe(vercel, intent):
@@ -69,7 +75,10 @@ def observe(vercel, intent):
     deployment = vercel('/v13/deployments/' + deployment_id)
     cloud.require(deployment.get('projectId') == identity['projectId'],
                   'Saved deployment belongs to another project; reconcile manually')
-    actual_source = (deployment.get('gitSource') or {}).get('ref') or (deployment.get('meta') or {}).get('githubCommitSha')
+    if identity.get('sourceKind') == 'prebuilt':
+        cloud.require(deployment.get('target') == 'production', 'Prebuilt deployment target differs; reconcile manually')
+    actual_source = ((deployment.get('meta') or {}).get('anyworkSource') if identity.get('sourceKind') == 'prebuilt'
+                     else (deployment.get('gitSource') or {}).get('ref') or (deployment.get('meta') or {}).get('githubCommitSha'))
     cloud.require(actual_source == identity['source'], 'Saved deployment source differs; reconcile manually')
     if not intent.get('legacy'):
         cloud.require(all((deployment.get('meta') or {}).get(k) == v for k, v in metadata(intent).items()),
@@ -85,7 +94,7 @@ def snapshot(state, intent, deployment):
     state['gridSource'] = intent['identity']['source']
 
 
-def deploy(vercel, state, save, desired, env, redeploy=None):
+def deploy(vercel, state, save, desired, env, redeploy=None, submit=None):
     intent = state.get('gridDeploymentIntent')
     if intent is None and state.get('gridDeployment'):
         # Adopt only a legacy result whose private saved configuration is known.
@@ -133,15 +142,82 @@ def deploy(vercel, state, save, desired, env, redeploy=None):
         save()  # Reapplying an identical encrypted env upsert is idempotent.
     intent['phase'] = 'submitting'
     save()  # Crash before/after POST must reconcile, never blindly resubmit.
-    deployment = vercel('/v13/deployments', 'POST', {
-        'name': desired['projectName'], 'project': desired['projectId'], 'target': 'production',
-        'gitSource': {'type': 'github', 'repoId': REPO_ID, 'ref': desired['source']}, 'meta': metadata(intent)})
+    if submit is not None:
+        submit(intent)
+        deployment = observe(vercel, intent)
+    else:
+        cloud.require(desired.get('sourceKind') != 'prebuilt', 'Prebuilt deployment requires the checked CLI uploader')
+        deployment = vercel('/v13/deployments', 'POST', {
+            'name': desired['projectName'], 'project': desired['projectId'], 'target': 'production',
+            'gitSource': {'type': 'github', 'repoId': REPO_ID, 'ref': desired['source']}, 'meta': metadata(intent)})
     cloud.require(deployment.get('id'), 'Deployment response omitted its ID; reconcile inventory before continuing')
     intent.update(deploymentId=deployment['id'], phase='observed', status=deployment.get('readyState'))
     snapshot(state, intent, deployment)
     state['gridEnvironment'] = env  # Existing private-state compatibility; never provider metadata.
     save()
     return deployment
+
+
+def prebuilt_identity(directory, provenance_path, source, project, forbidden):
+    """Validate a private upload-only tree and bind it to reproducible adaptation."""
+    cloud.require(directory.is_absolute() and not directory.is_symlink() and directory.is_dir(), 'Private prebuilt staging required')
+    cloud.require({item.name for item in directory.iterdir()} == {'.vercel'}, 'Upload staging must contain only .vercel')
+    vercel = directory / '.vercel'
+    cloud.require({item.name for item in vercel.iterdir()} == {'project.json', 'output'}, 'Unexpected staging metadata')
+    binding = json.loads((vercel / 'project.json').read_text())
+    cloud.require(binding.get('projectId') == project and binding.get('orgId') == TEAM, 'Prebuilt project binding differs')
+    output = vercel / 'output'
+    cloud.require(output.is_dir() and {item.name for item in output.iterdir()} <= {'config.json', 'functions', 'static', 'builds.json'},
+                  'Unexpected prebuilt output; upload only checked runtime artifacts')
+    config = json.loads((output / 'config.json').read_text())
+    cloud.require(config.get('version') == 3 and (output / 'functions').is_dir(), 'Expected Vercel v3 function output')
+    if (output / 'builds.json').exists():
+        cloud.require(json.loads((output / 'builds.json').read_text()) == {'target': 'production'}, 'Build metadata must be sanitized')
+    provenance = json.loads(provenance_path.read_text())
+    cloud.require(provenance.get('upstreamRepository') == 'https://github.com/ywateru/CyberGrid'
+                  and provenance.get('upstreamCommit') == PIN and provenance.get('adaptedCommit') == source
+                  and re.fullmatch(r'[0-9a-f]{40}', source), 'Adaptation source provenance differs')
+    patch_name = provenance.get('patch')
+    cloud.require(isinstance(patch_name, str) and Path(patch_name).name == patch_name, 'Provenance patch must be adjacent')
+    patch = provenance_path.parent / patch_name
+    cloud.require(patch.is_file() and not patch.is_symlink(), 'Reproducible adaptation patch missing')
+    patch_hash = hashlib.sha256(patch.read_bytes()).hexdigest()
+    cloud.require(provenance.get('patchSha256') == patch_hash, 'Adaptation patch digest differs')
+    digest, count, size = hashlib.sha256(), 0, 0
+    needles = [value.encode() for value in forbidden if isinstance(value, str) and len(value) >= 8]
+    for file in sorted(directory.rglob('*')):
+        cloud.require(not file.is_symlink(), 'Prebuilt symlinks are forbidden')
+        if file.is_dir():
+            continue
+        cloud.require(file.is_file(), 'Prebuilt special files are forbidden')
+        relative = file.relative_to(directory).as_posix()
+        cloud.require(not any(part.startswith('.env') or part in {'.git', 'auth.json', 'diagnostics.json'}
+                              for part in file.relative_to(directory).parts), 'Private build material in staging')
+        count += 1
+        size += file.stat().st_size
+        cloud.require(count <= 50000 and size <= 300 * 1024 * 1024, 'Prebuilt upload exceeds review bounds')
+        raw = file.read_bytes()
+        cloud.require(not any(needle in raw for needle in needles), 'Known private credential appears in prebuilt output')
+        digest.update(relative.encode() + b'\0' + hashlib.sha256(raw).digest())
+    return {'sourceKind': 'prebuilt', 'upstreamSource': PIN, 'patchHash': patch_hash, 'outputHash': digest.hexdigest()}
+
+
+def submit_prebuilt(directory, cli, intent):
+    cloud.require(cli.is_absolute() and cli.is_file(), 'Pinned local Vercel CLI required')
+    try:
+        version = subprocess.run(['node', str(cli), '--version'], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        raise cloud.ConfigurationError('Pinned Vercel CLI unavailable; reconcile saved operation before retrying') from None
+    cloud.require(version.returncode == 0 and version.stdout.strip() == '50.28.0', 'Vercel CLI version differs')
+    argv = ['node', str(cli), 'deploy', '--prebuilt', '--prod', '--yes']
+    for key, value in metadata(intent).items():
+        argv.extend(['--meta', key + '=' + value])
+    # Credentials remain in the existing local CLI auth store, never argv/output.
+    try:
+        result = subprocess.run(argv, cwd=directory, capture_output=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired):
+        raise cloud.ConfigurationError('Prebuilt CLI outcome may be unknown; reconcile saved operation, do not resubmit') from None
+    cloud.require(result.returncode == 0, 'Prebuilt CLI outcome may be unknown; reconcile saved operation, do not resubmit')
 
 
 def main():
@@ -153,6 +229,10 @@ def main():
     p.add_argument('--frontend-origin', default='https://anywork-tau.vercel.app')
     p.add_argument('--grid-origin', required=True)
     p.add_argument('--allow-local-development', action='store_true')
+    p.add_argument('--prebuilt-directory', type=Path, help='Private checked upload-only staging for an adapted self-hosted coordinator')
+    p.add_argument('--provenance', type=Path, help='Reviewed fixed-base adaptation provenance JSON with adjacent patch')
+    p.add_argument('--source', help='Exact accepted adapted CyberGrid commit for prebuilt deployment')
+    p.add_argument('--vercel-cli', type=Path, help='Local pinned Vercel 50.28.0 entrypoint')
     p.add_argument('--redeploy', metavar='UUID', help='Start a deliberate new deployment; reuse this UUID when resuming')
     p.add_argument('--vercel-auth', type=Path, default=Path.home() / 'Library/Application Support/com.vercel.cli/auth.json')
     args = p.parse_args()
@@ -173,7 +253,11 @@ def main():
         def vercel(route, method='GET', data=None):
             return cloud.request('https://api.vercel.com' + route + ('&' if '?' in route else '?') + 'teamId=' + TEAM, method, data, 'Bearer ' + auth)
         cloud.require(state.get('gridResource') and state.get('userRole'), 'Logto resource/default role must be configured first')
-        cloud.require(not args.allow_local_development or state['logtoTenant']['tag'] == 'development', 'Loopback origins are development-only')
+        selfhost = state.get('mode') == 'self-hosted'
+        cloud.require(not args.allow_local_development or selfhost or state['logtoTenant']['tag'] == 'development', 'Loopback origins require explicit development/self-hosted configuration')
+        cloud.require(not selfhost or all((args.prebuilt_directory, args.provenance, args.source, args.vercel_cli)),
+                      'Self-hosted public-directory deployment requires reviewed prebuilt source and provenance')
+        cloud.require(not args.prebuilt_directory or selfhost, 'Adapted prebuilt path requires explicit self-hosted state')
         grid, frontend = cloud.origin(args.grid_origin), cloud.origin(args.frontend_origin)
         cloud.require(state['gridResource']['indicator'] == grid + '/api', 'Fixed audience does not match the saved deployment configuration')
         cloud.require(db.get('tls') is True and db.get('eviction') is False, 'Redis must use TLS with eviction disabled')
@@ -186,16 +270,32 @@ def main():
         project = state['vercelGridProject']
         actual = vercel('/v9/projects/' + project)
         cloud.require(actual['name'] == args.project, 'Saved Vercel project ID differs; refusing to overwrite another project')
-        directory = state['logtoTenant']['defaultApplication']
         origins = [frontend] + (['http://127.0.0.1:4173', 'http://localhost:5173'] if args.allow_local_development else [])
         env = {'LOGTO_ISSUER': state['tenantEndpoint'] + '/oidc', 'LOGTO_RESOURCE': state['gridResource']['indicator'],
-               'LOGTO_BROWSER_CLIENT_ID': state['spaApplication']['id'], 'LOGTO_MANAGEMENT_CLIENT_ID': directory['id'],
-               'LOGTO_MANAGEMENT_CLIENT_SECRET': directory['secret'], 'UPSTASH_REDIS_REST_URL': 'https://' + db['endpoint'],
+               'LOGTO_BROWSER_CLIENT_ID': state['spaApplication']['id'], 'UPSTASH_REDIS_REST_URL': 'https://' + db['endpoint'],
                'UPSTASH_REDIS_REST_TOKEN': db['rest_token'], 'CYBERGRID_REDIS_PREFIX': args.prefix,
                'CYBERGRID_PUBLIC_ORIGIN': grid, 'CYBERGRID_BROWSER_ORIGINS': ','.join(origins)}
-        identity = configuration_identity(project, args.project, PIN, env)
-        deployment = deploy(vercel, state, lambda: cloud.save_private(args.state, state), identity, env, args.redeploy)
-        print(json.dumps({'project': project, 'origin': grid, 'source': PIN,
+        if selfhost:
+            env.update(LOGTO_APPLICATION_DIRECTORY_MODE='pinned', LOGTO_APPLICATIONS_JSON=json.dumps([
+                {'id': state['spaApplication']['id'], 'name': 'AnyWork Web', 'type': 'SPA', 'isDeviceFlow': False},
+                {'id': state['nativeApplication']['id'], 'name': 'AnyWork Desktop', 'type': 'Native', 'isDeviceFlow': False}], separators=(',', ':')))
+            existing = vercel('/v9/projects/' + project + '/env')
+            cloud.require(isinstance(existing.get('envs'), list), 'Invalid production environment inventory')
+            cloud.require(all(item.get('key') in env for item in existing['envs']
+                              if 'production' in item.get('target', [])),
+                          'Unexpected existing production environment; do not retain management credentials in pinned mode')
+        else:
+            directory = state['logtoTenant']['defaultApplication']
+            env.update(LOGTO_MANAGEMENT_CLIENT_ID=directory['id'], LOGTO_MANAGEMENT_CLIENT_SECRET=directory['secret'])
+        identity = configuration_identity(project, args.project, args.source if selfhost else PIN, env)
+        submit = None
+        if selfhost:
+            bootstrap = state['logtoTenant']['defaultApplication']['secret']
+            identity.update(prebuilt_identity(args.prebuilt_directory, args.provenance, args.source, project,
+                                              [bootstrap, state.get('managementToken'), db['rest_token'], auth]))
+            submit = lambda intent: submit_prebuilt(args.prebuilt_directory, args.vercel_cli, intent)
+        deployment = deploy(vercel, state, lambda: cloud.save_private(args.state, state), identity, env, args.redeploy, submit)
+        print(json.dumps({'project': project, 'origin': grid, 'source': identity['source'],
                           'deploymentId': deployment['id'], 'status': deployment.get('readyState')}, indent=2))
 
 

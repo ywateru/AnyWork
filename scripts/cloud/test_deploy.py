@@ -268,6 +268,51 @@ class DeploymentAcceptance(unittest.TestCase):
             self.run_cli(['--redeploy', 'invalid'])
         self.assertEqual(self.requests, [])
 
+    def test_selfhost_uses_only_pinned_public_directory_and_separate_namespace(self):
+        state = self.read()
+        state.update(mode='self-hosted', nativeApplication={'id': 'native'})
+        deploy.cloud.save_private(self.state_file, state)
+        original = self.provider
+        def provider(url, *args, **kwargs):
+            if urllib.parse.urlsplit(url).path == '/v9/projects/prj_fixture/env':
+                return {'envs': []}
+            return original(url, *args, **kwargs)
+        self.provider = provider
+        def upload(directory, cli, intent):
+            self.assertEqual(self.read()['gridDeploymentIntent']['phase'], 'submitting')
+            self.deployments.append({'id': 'dpl_1', 'uid': 'dpl_1', 'projectId': 'prj_fixture',
+                                     'target': 'production', 'readyState': 'READY', 'meta': deploy.metadata(intent)})
+        extra = ['--prebuilt-directory', str(self.root / 'upload'), '--provenance', str(self.root / 'provenance.json'),
+                 '--source', 'a' * 40, '--vercel-cli', str(self.root / 'vc.js'), '--allow-local-development',
+                 '--prefix', 'anywork:selfhost:isolated']
+        with patch.object(deploy, 'prebuilt_identity', return_value={'sourceKind': 'prebuilt', 'upstreamSource': deploy.PIN,
+                                                                    'patchHash': 'patch', 'outputHash': 'artifact'}), \
+             patch.object(deploy, 'submit_prebuilt', side_effect=upload):
+            self.run_cli(extra)
+        runtime = self.read()['gridEnvironment']
+        self.assertFalse(any(key.startswith('LOGTO_MANAGEMENT') for key in runtime))
+        self.assertNotIn('private-m2m-fixture', json.dumps(runtime))
+        self.assertEqual(runtime['LOGTO_APPLICATION_DIRECTORY_MODE'], 'pinned')
+        self.assertEqual([app['type'] for app in json.loads(runtime['LOGTO_APPLICATIONS_JSON'])], ['SPA', 'Native'])
+        self.assertEqual(runtime['CYBERGRID_REDIS_PREFIX'], 'anywork:selfhost:isolated')
+        self.assertEqual(self.read()['gridDeploymentIntent']['identity']['sourceKind'], 'prebuilt')
+
+    def test_selfhost_refuses_retained_management_environment_before_upsert(self):
+        state = self.read()
+        state.update(mode='self-hosted', nativeApplication={'id': 'native'})
+        deploy.cloud.save_private(self.state_file, state)
+        original = self.provider
+        def provider(url, *args, **kwargs):
+            if urllib.parse.urlsplit(url).path == '/v9/projects/prj_fixture/env':
+                return {'envs': [{'key': 'LOGTO_MANAGEMENT_CLIENT_SECRET', 'target': ['production']}]}
+            return original(url, *args, **kwargs)
+        self.provider = provider
+        extra = ['--prebuilt-directory', str(self.root / 'upload'), '--provenance', str(self.root / 'provenance.json'),
+                 '--source', 'a' * 40, '--vercel-cli', str(self.root / 'vc.js')]
+        with self.assertRaisesRegex(deploy.cloud.ConfigurationError, 'Unexpected existing production environment'):
+            self.run_cli(extra)
+        self.assertEqual(self.counts(), (0, 0))
+
 
 class ReleaseCallChain(unittest.TestCase):
     def test_normal_release_dispatches_vercel_and_pages_is_manual_only(self):

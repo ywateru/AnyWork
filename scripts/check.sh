@@ -28,8 +28,10 @@ python3 scripts/goal-editor-test.py
 python3 scripts/goal-mode-test.py
 python3 scripts/review-test.py
 python3 scripts/cloud/test_configure.py
+python3 scripts/cloud/test_selfhost.py
 python3 scripts/cloud/test_frontend.py
 python3 scripts/cloud/test_deploy.py
+python3 scripts/cloud/test_prebuilt.py
 python3 scripts/source-archive-test.py
 python3 scripts/release-version-test.py
 python3 scripts/publish-test.py
