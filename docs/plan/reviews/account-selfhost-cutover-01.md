@@ -1,6 +1,6 @@
 # 自部署 Logto 切换：当前集成状态
 
-日期：2026-11-10，Asia/Shanghai。本文记录当前自部署切换，优先于早期 Cloud Development / Keychain 验收描述；它不是整套交付完成声明。
+日期：2026-11-10，Asia/Shanghai。本阶段自部署配置、正式主页、真实隔离加密链路及本机更新已交付。本文优先于早期Cloud Development / Keychain描述；未验证的邮件、物理手机及安装位置额外GUI检查在下方明确列出。
 
 ## 已完成
 
@@ -12,6 +12,7 @@
 - 本机 Vite Web 使用完整新配置，连接已上线的新协调服务；实际登录回跳、健康空设备页、退出、再次登录及再次健康空态均已观察通过。注册按钮实际进入 `auth.x.aixgg.com` 的托管用户名注册表单；没有提交注册，也没有证明邮件投递。该租户未增加邮件连接器。
 - [正式主页已READY并完成HTTP验收](account-homepage-selfhost-live.md)：`https://anywork-tau.vercel.app/`。精确原操作仅提交一次，9项GET逐字节匹配受检静态产物，源码/CSP/安全headers正确。没有新增前端函数或业务数据库。
 - 移除隔离Native完整公开配置覆盖后，以已接受二进制的正式默认配置启动：初始未登录/远程关闭；真实自部署登录、显式启用、正式域名Web登录/发现、公钥与Native精确一致、确认后进入真实公网加密空工作区。实际390×844与1440×1000均无水平溢出；正式主页在两种实际尺寸也通过。Native退出立即使Web离开工作区，Native最终未登录/远程关闭；Web退出后再点注册进入新issuer托管注册表单。随后停止唯一任务拥有的app/server，测试隧道退出，原四条隧道保留。
+- [本机更新完成](account-selfhost-local-rollout-01.md)并[独立接受](account-local-update-01.md)：安装app与原3210服务从0.1.10更新至0.1.13本地debug/ad-hoc构建，服务PID81502。107个原会话ID逐项保留，原访问令牌、manager、宿主描述与四条隧道身份不变；严格签名、实际HTTP资源及源码匹配受检候选。15项临时故障回归、30项独立postflight和启动尝试后的14项最终复核均通过。
 
 ## 精确产物与检查
 
@@ -22,7 +23,7 @@ AnyWork 产品来源为 `75726758a4c9ffd7e7da4fb45e115bba92803650`。后续部�
 | 产品检查 | 合并后的327 Vitest +8 Node通过；既有全系统检查与611浏览器通过/1既有跳过，以及最终桌面影响范围作者/独立各46通过，详见[总验收](account-device-acceptance.md)；自部署默认值另有48桌面/4既有忽略、6远控与UI/clippy独立检查 |
 | 云及发布恢复检查 | 原82项合并检查通过；随后诊断、文件物化与残留映射拒绝增量合并，root重跑5 materialize +9 prebuilt +20 deployment通过；独立真实CLI旧缺文件/新792项hash、零网络调用通过 |
 | 官网产物与发布 | 437静态文件、440上传文件、0 functions；完整公开配置、自部署CSP、精确Git源与manifest、已知秘密扫描通过；[独立审查](account-homepage-selfhost-artifact-01.md)另完成真实CLI离线439项hash/零网络调用及18已知秘密×1120文件/成员零命中；已按同一受检产物发布READY |
-| 本机候选 | 0.1.13 debug / ad-hoc本机包，复用接受的 Native / server二进制；签名、arm64、逐Git源、Web manifest、已知秘密扫描及回滚计划经独立复验；尚未切换 |
+| 本机安装 | 0.1.13 debug / ad-hoc本机包已切换，复用接受的Native/server二进制；签名、arm64、逐Git源、Web manifest、已知秘密扫描及实际HTTP资源经独立复验；107会话/token/config/四条隧道保留 |
 | 实际正式域名截图 | 本地忽略文件 `artifacts/anywork-selfhost-homepage-live-1440.png`、`artifacts/anywork-selfhost-homepage-live-390.png`、`artifacts/anywork-selfhost-remote-live-1440.png`、`artifacts/anywork-selfhost-remote-live-390.png`、`artifacts/anywork-selfhost-signup-live.png` |
 
 早期本地页两次viewport设置后实际宽仍1392，因此未将其记为1440/390验收。正式站点复验时相同公开capability已正确生效，逐次DOM读回精确1440和390、无水平溢出，截图与实际尺寸一致；结束后已reset override。没有以浏览器小屏检查代替物理手机/蜂窝验证。
@@ -31,14 +32,14 @@ AnyWork 产品来源为 `75726758a4c9ffd7e7da4fb45e115bba92803650`。后续部�
 
 审查过程另有一项已处理的本地草稿错误：一个密码类占位符被展开写入未发布的报告草稿。独立审查者移除该行后，只清除了该草稿两条reflog及6个唯一不可达loose对象，没有进行全库gc或改动其他历史；草稿对象已不可读，未推送或归档。最终报告完整Git tree对14个已知秘密扫描零命中。此事件不作为云端泄漏或其他账号凭据已被证实暴露的声明。
 
-## 当前待续
+## 交付收尾与验证边界
 
 锁屏已解除，上述Native GUI真实链路已完成；没有绕过锁屏或用内部IPC代替显式启用。真实公网空工作区、重启换钥确认与退出均有GUI证据，截图位于本地忽略文件 `artifacts/anywork-selfhost-local-remote.png`、`artifacts/anywork-selfhost-native-enabled.png`、`artifacts/anywork-selfhost-key-change.png`。
 
-1. 按独立接受的回滚方案更新安装 app / 原用户服务，复核全部107个既有会话ID、原访问令牌、manager配置及宿主/隧道进程。正式域名门槛已通过，独立最终基线确认原服务0.1.10、busy0、107会话与token/config一致、四条隧道不变、无运行中的desktop；已授权执行单次本机切换，结果另记。
+本机切换先后遇到私有WAL快照普通只读打开失败，以及停止服务后源WAL协调文件缺失的备份失败。第二次失败后先按原参数恢复旧服务，再独立审查精确续接；未恢复用户数据库或重放apply。最终SQLite backup源连接采用既有DB的`mode=rw + query_only`，允许SQLite协调，禁止业务SQL写入；目标快照转DELETE并普通只读核验。所有失败journal与快照保留原字节，详细恢复与验证见上述本机报告。
 
-第一次本机切换在备份检查阶段安全停止，未停止原服务或替换安装文件。SQLite backup已生成107会话的一致快照，但目标仍为WAL模式、没有sidecars，随后普通只读打开报OperationalError；不把该异常臆断成特定SQLite extended code。独立确认原服务0.1.10/107会话/token/manager/app/Web/source/四条隧道全部不变。修复仅把私有快照转换为DELETE模式、以普通只读重新验证；失败journal和原快照保留，恢复必须通过精确backup-only状态及旧基线检查，不能重放apply。
+额外正常启动已安装app后，CUA再次遇到Mac锁屏，未能观察安装位置界面；没有按钮操作、登录或在用户真实workspace启用远程。只停止了该次任务拥有的GUI进程，独立最终检查确认新版服务和所有保留项不变。安装位置的额外GUI检查未验证；相同受检产品在隔离环境和正式默认域名上的原生GUI链已通过，不能混为同一项证据。
 
 私有运行器为 `/tmp/anywork-selfhost-runtime.py`，唯一任务 base 为 `/private/var/folders/ll/s836stz50mg85d4h0g4xc8jm0000gn/T/anywork-selfhost-acceptance-6ql3v2a6`；`runtime.json`绑定自有 PID / 启动身份，停止只针对这些进程。测试账号凭据、管理凭据与状态均在仓库外，不写入本记录。
 
-未发布新 GitHub release / updater 或修改既有不可变资产。官网候选下载仍指向现有v0.1.13。物理手机/蜂窝、邮件投递、用户真实业务写入不在当前实测证据中；DEV旧真实链、22项加密业务互操作夹具与这次自部署实际链分别记账。
+未发布新GitHub release / updater或修改既有不可变资产；正式主页下载仍指向现有v0.1.13，不能把这些旧公开资产等同于本次本机新构建。物理手机/蜂窝、邮件投递、最终托管注册提交、用户真实业务写入不在当前实测证据中；新用户默认角色另有synthetic用户只读核验。DEV旧真实链、22项加密业务互操作夹具与这次自部署实际链分别记账。隔离验收自有Native/server/隧道与额外GUI均已停止，新版用户服务继续运行；浏览器viewport已恢复，正式主页标签保留为交付入口。

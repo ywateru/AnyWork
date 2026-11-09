@@ -1,7 +1,7 @@
 ---
 id: account-client-entry
 scope: existing-client-account-entry-development-logto
-status: in-progress
+status: complete
 depends-on: [account-web, account-desktop]
 ---
 
@@ -50,4 +50,4 @@ depends-on: [account-web, account-desktop]
 
 此前Development真实链路作为历史已通过证据保留，不能替代新issuer验收；最终Vercel发布和本机更新的前置条件是自部署配置/链路及独立审查完成，实际进度以下方日期记录为准。
 
-2026-11-10当前进度：[自部署切换记录](../reviews/account-selfhost-cutover-01.md)。新Logto配置与默认值已独立接受，CyberGrid与[正式主页](../reviews/account-homepage-selfhost-live.md)已READY。实际新issuer Native显式启用、Web发现/核对/公网加密空工作区、关闭/退出、同安装重启换钥确认通过，独立目录记录恰1条且keyVersion2；正式默认配置/域名与实际390/1440视口另行通过。托管注册表单入口通过，未验证邮件投递；本机候选及安全切换脚本已独立接受，现有107会话/token/manager/四条隧道最终基线通过，已授权单次切换，结果见当前记录。
+2026-11-10本阶段交付完成：[自部署切换记录](../reviews/account-selfhost-cutover-01.md)。新Logto配置与默认值已独立接受，CyberGrid与[正式主页](../reviews/account-homepage-selfhost-live.md)已READY。实际新issuer Native显式启用、Web发现/核对/公网加密空工作区、关闭/退出、同安装重启换钥确认通过，独立目录记录恰1条且keyVersion2；正式默认配置/域名与实际390/1440视口另行通过。托管注册表单入口通过，未提交新注册或验证邮件投递；本机app和原服务已更新0.1.13本地构建，107会话/token/manager/四条隧道保留，[独立更新验收](../reviews/account-local-update-01.md)通过。额外安装位置GUI因锁屏未观察，物理手机/蜂窝未实测，无新GitHub二进制release；这些边界与已完成的隔离原生链路分别记录。
