@@ -1,6 +1,6 @@
 # AnyWork 账号、设备发现与云端入口改进方案
 
-状态：方案已获用户实施授权，隔离开发中；以下验收通过前不宣称功能完成。日期：2026-11-09（Asia/Shanghai）。本版已重新调研 CyberGrid `1e6532893fbfa29619807a3ee66b389e57695a22`，替换上一轮单进程版本的部署结论。
+状态：方案已获用户实施授权，隔离开发与独立审查中；以下验收通过前不宣称功能完成。日期：2026-11-09（Asia/Shanghai）。调研基线为 CyberGrid `1e6532893fbfa29619807a3ee66b389e57695a22`；实施已核对并固定更新后的 `2bd6729c6bbee90ed2926410caca883a0a100890`（补充 Vercel KV 环境变量支持，SDK 不变），替换上一轮单进程版本的部署结论。
 
 **核心目标：AnyWork 运营侧不收集、不存储、不处理用户业务明文。云端需要持久保存的账号和最少设备配置统一放在 Logto；设备发现、在线信息和同步交换使用 CyberGrid；会话、文件、终端内容与 Agent 凭据留在用户设备上。**
 
@@ -74,7 +74,7 @@ flowchart TB
   W <-->|业务端到端加密；必要中转只见密文| A
 ```
 
-图中按用户指定使用 Upstash；本轮仍为配置调研，没有创建或更改云资源。不引入 AnyWork 云端 Control API。Logto token 由官方 SDK 管理，前端直接调用当前用户 Account API；CyberGrid JS SDK 使用宿主提供的 resource token 回调读取设备。设备授权由桌面验证，业务会话由桌面创建。
+图中按用户指定使用 Upstash；调研阶段未更改资源，获实施授权后已创建专用 Logto 租户、Upstash 数据库与 DEV CyberGrid 部署，生产启用仍受套餐和完整验收门槛限制。不引入 AnyWork 云端 Control API。Logto token 由官方 SDK 管理，前端直接调用当前用户 Account API；CyberGrid JS SDK 使用宿主提供的 resource token 回调读取设备。设备授权由桌面验证，业务会话由桌面创建。
 
 “主要在前端实现功能”适用于注册登录、设备页、配置读写和连接交互。当前本机服务仅支持固定 bearer，CyberGrid JS SDK 也不提供浏览器业务加密传输；**这些安全能力不能靠改页面或开服务配置自动获得**。所需修改落在用户桌面本地适配器及客户端传输层，不新增持久化云端后端。
 
@@ -95,7 +95,7 @@ Logto 官方 Account API 支持：
 
 | 对象 | 配置 | 约束 |
 | --- | --- | --- |
-| Logto 租户 | 独立 AnyWork 租户；地区、Dev/Prod 与套餐核验 | 地区创建后不可更改；本轮未创建 |
+| Logto 租户 | 独立 AnyWork 租户；地区、Dev/Prod 与套餐核验 | 已创建 JP 生产 Free 与独立 Development 租户；生产 resource/角色额度不足，不能用开发租户冒充生产 |
 | Web 应用 | 普通 SPA、授权码 + PKCE、精确回跳/退出回跳/origin | Vercel 生产与预览环境分开配置 |
 | Native 应用 | 普通 Native，Device Flow 关闭；桌面与原生手机使用同一设备应用 ID | 保持 CyberGrid 同应用发现；使用 AnyWork 自己的回跳 |
 | Grid resource | 固定 audience、`connect` 权限，匹配 CyberGrid | 验证实际 ES384 JWT、issuer、scope 与 client ID |
