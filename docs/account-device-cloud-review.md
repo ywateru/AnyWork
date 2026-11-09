@@ -121,6 +121,7 @@ Logto 官方 Account API 支持：
       "installation-id": {
         "label": "工作电脑",
         "platform": "macos",
+        "gridDeviceId": "public-coordination-device-id",
         "publicKey": "public-device-key",
         "keyVersion": 1
       }
@@ -129,7 +130,7 @@ Logto 官方 Account API 支持：
 }
 ```
 
-只保存用户知晓可见的别名、平台、随机安装标识和公开公钥。工作目录、IP、当前 tunnel URL、最后会话标题、在线心跳、会话摘要、文件名、访问密钥、refresh token、私钥、加密主密钥都不放入 `customData`。设备显示名可能包含个人信息，默认使用中性名称，并允许用户改名。
+只保存用户知晓可见的别名、平台、随机安装标识、公开协调设备 ID (`gridDeviceId`) 和公开公钥。`gridDeviceId` 仅用于将协调目录与安装索引对应，不用于授权；账号权限由桌面验证，公钥仍绑定安装身份。工作目录、IP、当前 tunnel URL、最后会话标题、在线心跳、会话摘要、文件名、访问密钥、refresh token、私钥、加密主密钥都不放入 `customData`。设备显示名可能包含个人信息，默认使用中性名称，并允许用户改名。
 
 设备数量、条目长度与整个配置体积设应用上限，并核验租户/API 配额；不能默认这是无限容量数据库。不上报业务事件来占用 customData。避免把整个设备目录自动复制进每个 JWT claim。
 
