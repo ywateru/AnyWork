@@ -1,6 +1,6 @@
 # 账号与设备云入口：最终集成验收记录
 
-状态：待实现与独立审查。此文件是验收清单，不是已通过证明。用户授权按方案实施、整体测试并更新；方案见 [设计](../../account-device-cloud-review.md)，任务见 [交付](../tasks/account-device-cloud.md)。
+状态：分支实现已提交，独立审查与修复进行中，尚未合并或发布。此文件是验收清单，不是整套功能已通过证明。用户授权按方案实施、整体测试并更新；方案见 [设计](../../account-device-cloud-review.md)，任务见 [交付](../tasks/account-device-cloud.md)。
 
 ## 证据规则
 
@@ -31,3 +31,13 @@
 ## 已有历史证据的范围
 
 调研时两次 Upstash Developer API 请求成功、可见列表为空；四次 CyberGrid 公共路由无凭据探测证明有限入口行为。这些不证明新租户/新部署、AnyWork账号功能或加密业务链路已可用。
+
+## 实施中证据（2026-11-09；尚非最终验收）
+
+- 云候选 `983a016`：独立验证以官方固定版本 `redis.ts` 访问真实专用 Upstash，11 项断言通过，覆盖独立 store 共享 epoch、并发注册幂等、跨实例发现/信号、owner 隔离、冷启动会话、撤销失败关闭、永久注册 fence、分布式限流、全新 namespace 隔离及无效 REST token 失败关闭。仅写入 `anywork:acceptance:<随机 UUID>` 测试数据，结束后删除本次新建键；未读取业务或重置既有 namespace。
+- 同一云候选的 28 项发布器测试及 7 项离线配置安全测试通过。独立评审已发现 release workflow 仍显式触发旧 Pages 部署，修复及复验前不合并。
+- Web 候选 `13ead5c` 的独立评审为 blocked：浏览器默认 `fetch` 调用绑定失败；取消上传后的迟到加密 ACK 会关闭其他请求/PTY。作者已在修复，必须复验新提交。
+- 桌面候选 `d23f5a8` 正在独立评审：已发现重新发布设备索引覆盖用户名称；refresh checkpoint 崩溃恢复与实际 Logto JWT 验证继续检查。
+- DEV 托管登录和浏览器设备页、浏览器/Rust 加密夹具的作者证据仍须按对应独立评审确认。实际桌面 GUI 登录、Keychain grant、启用注册到 Web 的完整链路未通过；原生验收时电脑处于锁屏状态，不能用夹具替代。
+
+生产 Logto 套餐授权、CyberGrid 可分发许可、注册邮件/default-role 与实际手机蜂窝网络等门槛仍开放。未进行生产套餐升级、产品源码公开发布、最终前端生产部署或 release 更新。

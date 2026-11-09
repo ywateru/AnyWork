@@ -1,7 +1,7 @@
 ---
 id: account-verification
 scope: account-device-independent-review
-status: pending
+status: in-progress
 depends-on: [account-web, account-desktop, account-cloud]
 ---
 
@@ -34,3 +34,9 @@ Review the exact committed heads for cloud, web and desktop branches and all cal
 - Review publisher exact-source gate, resumability, failure recovery, no tag/asset overwrite, no accidental Pages double deploy, secret handling.
 
 Findings: severity P1/P2/P3, blocking/non-blocking, exact contract and file locations; finish pass/blocked with precise test evidence and limitations. A source-review pass is not approval to publish unverified production functionality.
+
+## Progress (2026-11-09)
+
+Independent reviews are active against committed lane candidates. Web review found browser-native `fetch` binding and late cancelled-upload acknowledgement failures; fixes await exact-commit re-review. Cloud review independently passed 11 actual Upstash checks through the pinned official Redis store, using a unique synthetic acceptance namespace and removing only its own keys afterward. It also found a release workflow still dispatching legacy Pages alongside the Vercel migration. Native review found desktop registration overwrites user-edited device labels and is examining durable refresh checkpoint recovery.
+
+These findings block merging the affected candidates. Actual Upstash evidence does not replace full native login/Keychain/device registration/browser acceptance, new-account email/default-role acceptance, physical mobile-network testing, or production publication gates.
