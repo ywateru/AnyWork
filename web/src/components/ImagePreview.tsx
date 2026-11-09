@@ -152,21 +152,12 @@ export default function ImagePreview({
     setSrc("");
     const load = async () => {
       // Data images from Codex input content contain no remote network address.
-      const response = await fetch(
-        activePath.startsWith("data:image/")
-          ? activePath
-          : api.url(
-              `/api/sessions/${sessionId}/image?path=${encodeURIComponent(activePath)}`,
-            ),
-        {
-          headers: activePath.startsWith("data:")
-            ? {}
-            : { Authorization: `Bearer ${api.connection.token}` },
-          signal: controller.signal,
-        },
-      );
-      if (!response.ok) throw new Error("图片无法读取或已被移动");
-      const blob = await response.blob();
+      const blob = activePath.startsWith("data:image/")
+        ? await (await fetch(activePath, { signal: controller.signal })).blob()
+        : await api.binary(
+            `/sessions/${sessionId}/image?path=${encodeURIComponent(activePath)}`,
+            { signal: controller.signal },
+          );
       if (!/^image\/(png|jpeg|gif|webp)$/.test(blob.type))
         throw new Error("不支持此图片格式");
       if (blob.size > 20 * 1024 * 1024) throw new Error("图片超过 20 MiB");

@@ -27,7 +27,10 @@ export default function SubagentComposer({
   name: string;
   onChanged: () => void;
 }) {
-  const [draft, setDraft] = useSessionDraft(api.connection.url, session.id);
+  const [draft, setDraft] = useSessionDraft(
+    api.connection.scope ?? api.connection.url,
+    session.id,
+  );
   const [attachments, setAttachments] = useState<Attachment[]>([]),
     [uploading, setUploading] = useState(0),
     [sending, setSending] = useState(false),

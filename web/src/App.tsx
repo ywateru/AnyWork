@@ -141,9 +141,12 @@ function chatLocation() {
   const route = location.hash.slice(1);
   return sessionReviewTarget(route) ?? { id: route, review: undefined };
 }
-export default function App() {
+export default function App({
+  initial,
+  onDisconnect,
+}: { initial?: Connection; onDisconnect?: () => void } = {}) {
   const [connection, setConnection] = useState<Connection | null>(
-      initialConnection,
+      () => initial ?? initialConnection(),
     ),
     [sessions, setSessions] = useState<Session[]>([]),
     [sessionsLoadedFor, setSessionsLoadedFor] = useState<Api | null>(null),
@@ -182,7 +185,7 @@ export default function App() {
     [sending, setSending] = useState(false),
     [uploading, setUploading] = useState(0);
   const { appearance, setAppearance, theme, toggleTheme } = useAppearance();
-  const serverKey = connection?.url || "";
+  const serverKey = connection?.scope ?? connection?.url ?? "";
   const [sidebarAgent, setSidebarAgent] = useSidebarAgent(serverKey);
   const panels = useConversationPanels(serverKey, selected);
   const { tab, setTab, fileTarget } = panels;
@@ -977,7 +980,7 @@ export default function App() {
           ? "queue"
           : "steer");
       appendPromptHistory(
-        api.connection.url,
+        api.connection.scope ?? api.connection.url,
         sessionId,
         submission?.composer ?? { plain: draft },
       );
@@ -1334,7 +1337,12 @@ export default function App() {
                 title="工作空间总览"
                 onClick={() => select("")}
               >
-                <img src="/icon.svg" width="18" height="18" alt="" />
+                <img
+                  src={import.meta.env.BASE_URL + "icon.svg"}
+                  width="18"
+                  height="18"
+                  alt=""
+                />
                 <span>AnyWork</span>
                 <span className="sidebar-version">v0.1</span>
               </button>
@@ -1370,7 +1378,13 @@ export default function App() {
             {!session && (
               <header className="topbar">
                 <span className="overview-title">
-                  <img src="/icon.svg" width="20" height="20" alt="" /> AnyWork
+                  <img
+                    src={import.meta.env.BASE_URL + "icon.svg"}
+                    width="20"
+                    height="20"
+                    alt=""
+                  />{" "}
+                  AnyWork
                 </span>
                 <button
                   className="icon-button"
@@ -1681,7 +1695,7 @@ export default function App() {
                         !historyError &&
                         historySession === selected && (
                           <ConversationHistory
-                            key={`${api.connection.url}:${session.id}`}
+                            key={`${serverKey}:${session.id}`}
                             turns={view.turns}
                             scrollRef={chatScroll}
                             hasOlder={!!historyCursor}
@@ -1784,7 +1798,7 @@ export default function App() {
                                     session.agent === "deepseek-harness"
                                   }
                                   timestamp={turnTimestamps[index]}
-                                  storageKey={`${api.connection.url}:${session.id}:${turn.id}`}
+                                  storageKey={`${serverKey}:${session.id}:${turn.id}`}
                                   latestWorking={
                                     index === view.turns.length - 1 && busy
                                   }
@@ -2025,6 +2039,7 @@ export default function App() {
                   (window as any).RemoteAgentAndroid?.openConnections?.();
                   localStorage.removeItem("ra.connection");
                   setConnection(null);
+                  onDisconnect?.();
                   setSessions([]);
                   setModal(null);
                 }}
@@ -2036,7 +2051,11 @@ export default function App() {
                 AnyWork v{appVersion} · AGPL-3.0-only
                 <br />
                 部分界面代码来自 tiann/hapi。
-                <a href={api.url("/source")} target="_blank" rel="noreferrer">
+                <a
+                  href={connection.transport ? "/source" : api.url("/source")}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   下载对应源码（AGPL）
                 </a>
               </p>
@@ -2122,7 +2141,12 @@ function Login({ onConnect }: { onConnect: (connection: Connection) => void }) {
       <div className="login-art">
         <div className="brand">
           <div className="brand-icon">
-            <img src="/icon.svg" width="40" height="40" alt="" />
+            <img
+              src={import.meta.env.BASE_URL + "icon.svg"}
+              width="40"
+              height="40"
+              alt=""
+            />
           </div>
           <span>
             Any<span className="brand-light">Work</span>
