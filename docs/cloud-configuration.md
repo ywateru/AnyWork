@@ -98,7 +98,7 @@ vercel build --prod
 vercel deploy --prebuilt --prod
 ```
 
-目前受支持的是上述 workflow/prebuilt 发布路径；Vercel 平台直接从 Git 构建时也必须先在构建配置解析前执行准备步骤，否则自部署 issuer 的 CSP 不会生效。代码仓库内的 `vercel.json` 仅携带当前 Development origin，运行生成的配置是公开部署产物；源代码归档仍来自精确提交，生成规则包含在对应源码中。
+目前受支持的是上述 workflow/prebuilt 发布路径；Vercel 平台直接从 Git 构建时也必须先在构建配置解析前执行准备步骤，否则自部署 issuer 的 CSP 不会生效。代码仓库内的 `vercel.json` 仅携带当前 Development origin，运行生成的配置是公开部署产物；组装显式调用 `source-archive.py --revision <HEAD>`，从不可变 Git tree/blob 导出对应源码，仍执行公开文件过滤并拒绝公开 symlink/submodule；生成的 CSP 只进入部署产物，不以该 SHA 的源码文件归档。通用源码导出命令不带 `--revision` 时保留原工作区导出行为。生成规则包含在对应源码中。
 
 ## 切换自部署 Logto
 
@@ -109,4 +109,4 @@ vercel deploy --prebuilt --prod
 
 以上仅实现配置可迁移性，不声称已搭建或验收自部署 Logto。
 
-本轮 Development/自部署配置改动的离线作者检查：9项配置安全、6项前端CSP/真实临时目录CLI、18项协调部署恢复、28项发布器以及4项source-export检查通过；`scripts/check.sh` 已包含三组cloud检查。这里未运行真实云变更、未设置启用flag、未刷新任何OAuth grant；独立审查与合并后验证另行记录。
+本轮 Development/自部署配置改动的离线作者检查：9项配置安全、7项前端CSP/真实临时目录CLI及Git prepare→assemble源码字节核对、18项协调部署恢复、28项发布器以及6项source-export检查通过；`scripts/check.sh` 已包含三组cloud检查。这里未运行真实云变更、未设置启用flag、未刷新任何OAuth grant；独立审查与合并后验证另行记录。

@@ -22,7 +22,7 @@ depends-on: [account-web, account-desktop]
 
 1. Web：`web/`、`docs/account-web-layout.md`。在当前工作区增加常驻可发现的注册/登录或我的设备入口；支持桌面/移动；不能丢失手动连接状态或把旧业务请求送入账号模式。明确账号模式返回设备入口。完整公开构建配置覆盖用于迁移自部署。
 2. Desktop：`crates/desktop/`、`desktop/ui/`、`docs/account-desktop.md`。默认切换现有 Development tenant/clients/resource/Grid；当前主界面展示直接注册/登录入口，保留“账号与远程访问”页和显式远程授权。修复失败登录状态阻止重新登录问题，注册和登录应均可达。已有 account-cloud.json 是完整覆盖；配置切换隔离旧授权/安装身份并要求新授权。
-3. Cloud：`scripts/cloud/`、`.github/workflows/vercel.yml`、`vercel.json`、`scripts/assemble-vercel.py`、`scripts/check.sh`、发布工具测试、`docs/cloud-configuration.md`、`docs/releasing.md`。部署文案与开关允许明确的 Development-backed 本阶段交付，不能把它称作 Logto production；保留真实链路和精确源码验收条件。提供公开配置与自部署迁移步骤，不读写业务或付费升级。
+3. Cloud：`scripts/cloud/`、`.github/workflows/vercel.yml`、`vercel.json`、`scripts/assemble-vercel.py`、`scripts/source-archive.py`及其边界回归、`scripts/check.sh`、发布工具测试、`docs/cloud-configuration.md`、`docs/releasing.md`。部署文案与开关允许明确的 Development-backed 本阶段交付，不能把它称作 Logto production；保留真实链路和精确源码验收条件。提供公开配置与自部署迁移步骤，不读写业务或付费升级。
 
 ## verification
 

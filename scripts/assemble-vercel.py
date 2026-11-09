@@ -26,7 +26,7 @@ def main():
     shutil.copytree(ROOT / 'web/dist', app)
     version = json.loads((ROOT / 'package.json').read_text())['version']
     (DIST / 'build.json').write_text(json.dumps({'source': source, 'version': version}, separators=(',', ':')) + '\n')
-    subprocess.run(['python3', 'scripts/source-archive.py'], cwd=ROOT, check=True)
+    subprocess.run(['python3', 'scripts/source-archive.py', '--revision', source], cwd=ROOT, check=True)
     shutil.copy2(ROOT / 'artifacts/anywork-source.tar.gz', DIST / 'anywork-source.tar.gz')
     print('Assembled static website and account application with exact-source offer')
 
