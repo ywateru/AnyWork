@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { watch } from "node:fs";
 import {
   chmod,
   lstat,
@@ -97,33 +96,53 @@ test("accepts stricter owner-only input, locks its owner, replaces atomically wi
   const { path, directory, roots } = await fixture(t);
   await chmod(path, 0o400);
   const before = await lstat(path);
-  const lease = await openPrivateBrowserState(path, roots);
-  await assert.rejects(openPrivateBrowserState(path, roots));
-  const observed = [];
-  const pending = [];
-  const watcher = watch(directory, (_event, name) => {
-    if (name?.startsWith(".anywork-state-"))
-      pending.push(
-        lstat(join(directory, name)).then(
-          (stat) => observed.push(stat.mode & 0o777),
-          () => {},
-        ),
-      );
-  });
-  try {
-    const next = fakeState("fake-rotated-" + "x".repeat(1024 * 1024));
-    await lease.checkpoint(next);
-    await Promise.all(pending);
-    assert.deepEqual(await read(path), next);
-    const after = await lstat(path);
-    assert.notEqual(after.ino, before.ino);
-    assert.equal(after.mode & 0o777, 0o600);
-    assert.ok(observed.length > 0);
-    assert.ok(observed.every((mode) => mode === 0o600));
-  } finally {
-    watcher.close();
-    await lease.release();
-  }
+  // Observe the real open result before the helper can chmod, write or rename.
+  // A child keeps the builtin hook isolated from all other test cases.
+  const probe = `
+    import fs from "node:fs/promises";
+    import { syncBuiltinESMExports } from "node:module";
+    import { basename } from "node:path";
+    import assert from "node:assert/strict";
+    const { openPrivateBrowserState } = await import(process.argv[1]);
+    const originalOpen = fs.open;
+    const observed = [];
+    fs.open = async (...args) => {
+      const handle = await originalOpen(...args);
+      if (basename(args[0]).startsWith(".anywork-state-")) {
+        const stat = await handle.stat();
+        observed.push({ mode: stat.mode & 0o777, size: stat.size, flags: args[1] });
+      }
+      return handle;
+    };
+    syncBuiltinESMExports();
+    let lease;
+    try {
+      const roots = JSON.parse(process.argv[3]);
+      lease = await openPrivateBrowserState(process.argv[2], roots);
+      await assert.rejects(openPrivateBrowserState(process.argv[2], roots));
+      const next = structuredClone(lease.value);
+      next.origins[0].localStorage[0].value = "fake-rotated";
+      await lease.checkpoint(next);
+    } finally {
+      await lease?.release();
+      fs.open = originalOpen;
+      syncBuiltinESMExports();
+    }
+    console.log(JSON.stringify(observed));
+  `;
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    "--input-type=module",
+    "-e",
+    probe,
+    new URL("./private-browser-state.mjs", import.meta.url).href,
+    path,
+    JSON.stringify(roots),
+  ]);
+  assert.deepEqual(JSON.parse(stdout), [{ mode: 0o600, size: 0, flags: "wx" }]);
+  assert.deepEqual(await read(path), fakeState("fake-rotated"));
+  const after = await lstat(path);
+  assert.notEqual(after.ino, before.ino);
+  assert.equal(after.mode & 0o777, 0o600);
   assert.deepEqual((await readdir(directory)).sort(), [
     "other-worktree",
     "repo",
