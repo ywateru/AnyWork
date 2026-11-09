@@ -70,10 +70,34 @@ class CloudSafety(unittest.TestCase):
         p = cloud.Provisioner(Path('/unused'), {'tenantEndpoint': 'https://tenant.invalid',
               'spaApplication': {'id': 'spa', 'secret': 'never-public'},
               'nativeApplication': {'id': 'native', 'secret': 'never-public'},
-              'gridOrigin': 'https://grid.invalid', 'logtoCloudPat': 'never-public'})
+              'gridOrigin': 'https://grid.invalid', 'gridResource': {'indicator': 'https://grid.invalid/api'}, 'logtoCloudPat': 'never-public'})
         public = p.public()
         self.assertEqual(len(public), 5)
         self.assertNotIn('never-public', json.dumps(public))
+
+
+    def test_public_export_refuses_incomplete_binding_instead_of_using_production(self):
+        complete = {'tenantEndpoint': 'https://tenant.invalid', 'spaApplication': {'id': 'spa'},
+                    'nativeApplication': {'id': 'native'}, 'gridOrigin': 'https://grid.invalid',
+                    'gridResource': {'indicator': 'https://grid.invalid/api'}}
+        for missing in complete:
+            with self.subTest(missing=missing):
+                state = {k: v for k, v in complete.items() if k != missing}
+                with self.assertRaises(cloud.ConfigurationError):
+                    cloud.Provisioner(Path('/unused'), state).public()
+
+    def test_public_validation_allows_complete_self_hosted_binding_and_rejects_unsafe_urls(self):
+        values = dict(zip(cloud.PUBLIC_KEYS, ['https://identity.example.invalid', 'spa',
+            'https://grid.example.invalid/api', 'https://grid.example.invalid', 'native']))
+        self.assertEqual(cloud.validate_public_config(values), values)
+        for key, bad in [('VITE_LOGTO_ENDPOINT', 'https://identity.invalid/oidc'),
+                         ('VITE_LOGTO_ENDPOINT', 'https://a.invalid;object-src'),
+                         ('VITE_CYBERGRID_URL', 'https://grid.invalid?query=secret'),
+                         ('VITE_LOGTO_RESOURCE', 'https://name:secret@grid.invalid/api'),
+                         ('VITE_LOGTO_RESOURCE', 'https://grid.invalid:99999/api'),
+                         ('VITE_LOGTO_APP_ID', 'invalid application id')]:
+            with self.subTest(key=key, bad=bad), self.assertRaises(cloud.ConfigurationError):
+                cloud.validate_public_config({**values, key: bad})
 
 
 if __name__ == '__main__':

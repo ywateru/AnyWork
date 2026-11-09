@@ -108,7 +108,7 @@ Android release signing uses the three secrets above and the `anywork` alias. Ba
 
 官网源文件在 `site/`。`python3 scripts/build-site.py` 输出英文 `/en/`、中文 `/zh/`、默认英文首页、SEO 元信息、sitemap 与下载元数据。使用 `--fetch-release` 将真实的最新 Release 附件写入静态页面；尚无 Release 时链接到发行列表，不生成假下载地址。浏览器可进一步刷新最新元数据，API 不可用时保留静态下载。
 
-The static download pages are built by `scripts/build-site.py`; the combined Vercel build also installs and builds the Web application under `/app/`. `Publish Vercel website` (`vercel.yml`) checks the production acceptance flag, checks out the exact event commit, pulls the dedicated Vercel project configuration, then builds and deploys prebuilt output. The release job explicitly dispatches `vercel.yml` to refresh immutable download links because a release created by `GITHUB_TOKEN` does not trigger another workflow by itself. The publisher checks release metadata and `/build.json` against the required source commit. Production credentials/configuration and activation requirements are recorded in [cloud configuration](cloud-configuration.md).
+The static download pages are built by `scripts/build-site.py`; the combined Vercel build also installs and builds the Web application under `/app/`. `Publish Vercel website` (`vercel.yml`) checks the account/transport acceptance flag (Development Logto is supported), checks out the exact event commit, pulls the dedicated Vercel project configuration, binds the CSP to all five explicit public account variables with `scripts/cloud/prepare-frontend.py`, then builds and deploys prebuilt output. Assembly rejects a stale CSP or incomplete account binding, including when switching to self-hosted Logto. The release job explicitly dispatches `vercel.yml` to refresh immutable download links because a release created by `GITHUB_TOKEN` does not trigger another workflow by itself. The publisher checks release metadata and `/build.json` against the required source commit. Deployment credentials, complete public configuration and activation requirements are recorded in [cloud configuration](cloud-configuration.md).
 
 ```bash
 python3 scripts/build-site.py
@@ -144,7 +144,7 @@ The Release workflow independently verifies trusted, successful Checks for the e
 Publishing preflight and final authorization both peel the existing remote tag and require the exact workflow source commit. Manual publishing no longer creates a missing tag implicitly. Missing, moved, malformed or wrong-source tags fail closed without mutations. Repository tag protections are still needed against an external writer racing the final read/create boundary.
 
 
-2026-11-09：官网发布目标迁移为 Vercel `https://anywork-tau.vercel.app`。`--site-only` 修复网站，原 `--pages-only` 保留命令兼容；不可变 GitHub Release 不变。CI 需要 Vercel secret/公开项目变量，以及完成生产账号套餐和安全验收后才设置的 `ANYWORK_PRODUCTION_READY=true`。发布器验证 `/build.json` 的精确源码提交，不能仅用静态页面可达作为发布成功。实际云资源、费用与未完成门槛见 [cloud-configuration.md](cloud-configuration.md)。
+2026-11-09：官网发布目标迁移为 Vercel `https://anywork-tau.vercel.app`。`--site-only` 修复网站，原 `--pages-only` 保留命令兼容；不可变 GitHub Release 不变。CI 需要 Vercel secret/公开项目变量，完整五项公开账号配置，以及所选账号/加密传输链路经独立验收后才设置的 `ANYWORK_ACCOUNT_READY=true`（本阶段使用 Development Logto，不要求生产套餐）。发布器验证 `/build.json` 的精确源码提交，不能仅用静态页面可达作为发布成功。实际云资源、费用与未完成门槛见 [cloud-configuration.md](cloud-configuration.md)。
 
 ## 旧 Pages 网站手动恢复
 
