@@ -6,6 +6,7 @@ import pathlib
 import socket
 import sys
 import threading
+from socketserver import TCPServer
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 parser = argparse.ArgumentParser()
@@ -14,7 +15,7 @@ parser.add_argument('--data-dir')
 parser.add_argument('--workspace')
 parser.add_argument('--fixture-root', required=True)
 parser.add_argument('--fixture-mode', required=True,
-                    choices=['normal', 'startup-error', 'bind-conflict', 'unauthorized'])
+                    choices=['normal', 'startup-error', 'bind-conflict', 'unauthorized', 'dns-forbidden'])
 args, _ = parser.parse_known_args()
 root = pathlib.Path(args.fixture_root)
 state = {'stage': 'starting', 'infoRequests': 0, 'authorizedInfoRequests': 0,
@@ -67,6 +68,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+class FixtureServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer otherwise calls getfqdn after bind, before listen. This
+        # loopback fixture needs no resolved hostname; retain real TCP/reuse
+        # behavior and the inherited ThreadingHTTPServer request lifecycle.
+        TCPServer.server_bind(self)
+        self.server_name = 'fixture'
+        self.server_port = self.server_address[1]
+
+
+def forbidden_dns(host):
+    raise AssertionError('NATIVE_FIXTURE_DNS_FORBIDDEN')
+
+
 record()
 try:
     if args.fixture_mode == 'startup-error':
@@ -79,7 +94,9 @@ try:
         collision = socket.socket()
         collision.bind((host, int(port)))
         collision.listen()
-    server = ThreadingHTTPServer((host, int(port)), Handler)
+    if args.fixture_mode == 'dns-forbidden':
+        socket.getfqdn = forbidden_dns
+    server = FixtureServer((host, int(port)), Handler)
     record(stage='ready')
     server.serve_forever()
 except OSError as error:

@@ -8,6 +8,7 @@ use std::{
 
 pub(crate) struct Service {
     root: PathBuf,
+    python: PathBuf,
     pub executable: PathBuf,
 }
 fn quoted(path: &Path) -> String {
@@ -15,7 +16,16 @@ fn quoted(path: &Path) -> String {
 }
 impl Service {
     pub fn new(root: &Path, mode: &str) -> Self {
-        assert!(["normal", "startup-error", "bind-conflict", "unauthorized"].contains(&mode));
+        assert!(
+            [
+                "normal",
+                "startup-error",
+                "bind-conflict",
+                "unauthorized",
+                "dns-forbidden"
+            ]
+            .contains(&mode)
+        );
         // Resolve before the manager prepends its production PATH. -I ignores
         // Python environment/site customizations; preflight the exact stdlib used.
         let preflight = std::process::Command::new("python3")
@@ -49,6 +59,7 @@ impl Service {
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         Self {
             root: root.into(),
+            python,
             executable,
         }
     }
@@ -105,7 +116,9 @@ fn fixture_config(root: &Path, service: &Service) -> config::Config {
 #[tokio::test]
 async fn pinned_fixture_ignores_path_shadow_and_preserves_single_owned_child() {
     let dir = tempfile::tempdir().unwrap();
-    let service = Service::new(dir.path(), "normal");
+    // The actual child must serve authenticated HTTP even if any reverse-DNS
+    // lookup raises immediately, as well as under the PATH shadow below.
+    let service = Service::new(dir.path(), "dns-forbidden");
     let config = fixture_config(dir.path(), &service);
     config::write_token(&config, "synthetic-fixture-token").unwrap();
     let shadow = dir.path().join("shadow");
@@ -276,7 +289,10 @@ async fn owned_startup_failure_stays_closed_until_explicit_retry() {
     // Replacing the fixture's child implementation does not issue a manager
     // command; recovery starts only through this explicit second preparation.
     assert_eq!(manager.snapshot().service, crate::manager::Phase::Error);
-    manager.prepare_workspace().await.unwrap();
+    manager
+        .prepare_workspace()
+        .await
+        .unwrap_or_else(|error| panic!("{error}; {}", recovered.diagnostics()));
     assert!(manager.snapshot().owned && manager.snapshot().authorized);
     assert_eq!(config::read_token(&config), token);
     assert_eq!(recovered.status()["ticketRequests"], 0);
@@ -285,5 +301,30 @@ async fn owned_startup_failure_stays_closed_until_explicit_retry() {
         tokio::net::TcpStream::connect(("127.0.0.1", config.port))
             .await
             .is_err()
+    );
+}
+
+#[tokio::test]
+async fn stdlib_http_server_can_block_after_tcp_bind_on_reverse_dns() {
+    let dir = tempfile::tempdir().unwrap();
+    let fixture = Service::new(dir.path(), "normal");
+    let output = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::process::Command::new(&fixture.python)
+            .args(["-I", "-c", include_str!("test_service_dns.py")])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .expect("stdlib DNS control exceeded its bound")
+    .unwrap();
+    assert!(
+        output.status.success(),
+        "stdlib DNS control failed: {}",
+        output.status
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap().trim(),
+        "STDLIB_BOUND_WAITING_FOR_DNS"
     );
 }
