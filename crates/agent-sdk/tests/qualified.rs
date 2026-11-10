@@ -9,7 +9,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 struct Authority {
     allowed: AtomicBool,
@@ -36,8 +36,20 @@ fn authority() -> (Arc<Authority>, Qualification) {
 fn deadline() -> Instant {
     Instant::now() + Duration::from_secs(5)
 }
-fn python() -> &'static str {
-    if cfg!(windows) { "python" } else { "python3" }
+fn python() -> String {
+    match std::env::var_os("ANYWORK_TEST_PYTHON") {
+        Some(value) => {
+            let path = PathBuf::from(value);
+            assert!(
+                path.is_absolute() && path.is_file(),
+                "ANYWORK_TEST_PYTHON must identify an existing absolute interpreter path"
+            );
+            path.into_os_string()
+                .into_string()
+                .expect("Python path is UTF-8")
+        }
+        None => if cfg!(windows) { "python" } else { "python3" }.into(),
+    }
 }
 fn fixture() -> String {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -47,13 +59,14 @@ fn fixture() -> String {
         .into()
 }
 fn manifest(mode: &str, extra: &[String]) -> PluginManifest {
-    let mut args = vec!["-u".into(), fixture(), mode.into()];
+    // Ignore user-site/PYTHON* startup customization; this peer needs only stdlib.
+    let mut args = vec!["-I".into(), "-u".into(), fixture(), mode.into()];
     args.extend_from_slice(extra);
     PluginManifest {
         id: "fake".into(),
         name: "fixture".into(),
         protocol_version: 1,
-        command: python().into(),
+        command: python(),
         args,
         env: HashMap::new(),
         capabilities: vec![],
@@ -85,13 +98,20 @@ impl Drop for Temporary {
     }
 }
 async fn opened() -> (Transport, MetadataReceiver, EventReceiver) {
-    let (t, m, mut e) = Transport::open(Endpoint::Owned(manifest("stdio", &[])), Limits::default())
+    opened_mode("stdio", &[]).await
+}
+async fn opened_mode(mode: &str, extra: &[String]) -> (Transport, MetadataReceiver, EventReceiver) {
+    let (t, m, mut e) = Transport::open(Endpoint::Owned(manifest(mode, extra)), Limits::default())
         .await
         .unwrap();
-    let ready = tokio::time::timeout(Duration::from_secs(5), e.recv())
-        .await
-        .unwrap()
-        .unwrap();
+    let ready = match tokio::time::timeout(Duration::from_secs(5), e.recv()).await {
+        Ok(Some(ready)) => ready,
+        result => {
+            let stage = if result.is_err() { "timeout" } else { "closed" };
+            assert_eq!(t.close().await, Resource::Reaped);
+            panic!("disposable Python peer readiness {stage}; owned child reaped");
+        }
+    };
     assert_eq!(ready["method"], "ready");
     drop(ready);
     (t, m, e)
@@ -224,13 +244,9 @@ async fn actual_stdio_deadline_cancellation_and_eof_leave_no_pending() {
 async fn actual_owned_partial_pipe_write_is_unknown_and_reaped() {
     let folder = Temporary::new();
     let count = folder.0.join("count");
-    let (t, _metadata, _events) = Transport::open(
-        Endpoint::Owned(manifest("partial", &[count.to_str().unwrap().into()])),
-        Limits::default(),
-    )
-    .await
-    .unwrap();
-    let (_, q) = authority();
+    // Establish that the real reader is running before starting the write deadline.
+    let (t, _metadata, _events) = opened_mode("partial", &[count.to_str().unwrap().into()]).await;
+    let (a, q) = authority();
     let error = t
         .send(
             q,
@@ -240,10 +256,52 @@ async fn actual_owned_partial_pipe_write_is_unknown_and_reaped() {
         .await
         .unwrap_err();
     assert_eq!(error.disposition, Disposition::Unknown);
+    assert_eq!(a.count.load(Ordering::Acquire), 1);
     assert_eq!(t.close().await, Resource::Reaped);
     assert_eq!(std::fs::read_to_string(&count).unwrap(), "4096");
     assert_eq!(t.pending_count(), 0);
     assert_eq!(t.outgoing_usage(), Usage::default());
+}
+
+#[tokio::test]
+async fn partial_peer_waits_for_exact_prefix_across_short_pipe_reads() {
+    let folder = Temporary::new();
+    let count = folder.0.join("count");
+    let mut child = tokio::process::Command::new(python())
+        .args(["-I", "-u", &fixture(), "partial", count.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = tokio::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let ready = tokio::time::timeout(Duration::from_secs(5), output.next_line())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&ready).unwrap()["method"],
+        "ready"
+    );
+    input.write_all(&[b'x'; 17]).await.unwrap();
+    input.flush().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(child.try_wait().unwrap().is_none());
+    assert!(!count.exists());
+    input.write_all(&[b'x'; 4096 - 17]).await.unwrap();
+    input.flush().await.unwrap();
+    // Keep stdin open: the fixture must finish at the prefix, without waiting for EOF.
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), child.wait())
+            .await
+            .unwrap()
+            .unwrap()
+            .success()
+    );
+    assert_eq!(std::fs::read_to_string(&count).unwrap(), "4096");
 }
 
 #[cfg(unix)]
@@ -253,7 +311,7 @@ async fn unix_external_process_survives_detach_and_accepts_another_connection() 
     let folder = Temporary::new_at(std::path::Path::new("/tmp"));
     let path = folder.0.join("peer.sock");
     let mut child = tokio::process::Command::new(python())
-        .args(["-u", &fixture(), "unix", path.to_str().unwrap()])
+        .args(["-I", "-u", &fixture(), "unix", path.to_str().unwrap()])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)

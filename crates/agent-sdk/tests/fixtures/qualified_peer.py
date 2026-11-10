@@ -78,7 +78,15 @@ def unix_host(path):
 if sys.argv[1] == "unix":
     unix_host(sys.argv[2])
 elif sys.argv[1] == "partial":
-    data = sys.stdin.buffer.read(4096)
+    print(json.dumps({"method": "ready", "params": {"pid": os.getpid()}}), flush=True)
+    # Read the pipe directly so the prefix boundary does not depend on Python's
+    # stdin buffering. Short reads must not end the prefix early.
+    data = b""
+    while len(data) < 4096:
+        chunk = os.read(sys.stdin.fileno(), 4096 - len(data))
+        if not chunk:
+            break
+        data += chunk
     with open(sys.argv[2], "w", encoding="ascii") as out:
         out.write(str(len(data)))
 else:

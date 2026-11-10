@@ -49,6 +49,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        id: qualified-python
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -63,6 +67,8 @@ jobs:
       - name: Build native applications
         run: cargo build --locked --release -p anywork -p anywork-desktop
       - name: Test native applications
+        env:
+          ANYWORK_TEST_PYTHON: ${{ steps.qualified-python.outputs.python-path }}
         run: cargo test --locked --release -p anywork -p anywork-desktop -p remote-agent-sdk
   android:
     runs-on: ubuntu-latest
