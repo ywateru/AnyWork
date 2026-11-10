@@ -6,8 +6,18 @@ use std::{
 };
 
 pub(crate) struct OwnerGuard {
-    // Closing the OS handle releases the lock, including after process failure.
+    // Normal teardown unlocks explicitly; OS handle close also covers crashes.
     _file: File,
+}
+impl Drop for OwnerGuard {
+    fn drop(&mut self) {
+        // Store drops its SQLite connection before this guard. Closing only our
+        // fd is insufficient while a forked child still shares its description.
+        // If unlock fails, handle close remains the fail-closed OS cleanup path.
+        if unlock(&self._file).is_err() {
+            tracing::warn!("Database ownership unlock failed during teardown");
+        }
+    }
 }
 impl OwnerGuard {
     pub(super) fn acquire(path: &Path) -> Result<(Self, PathBuf)> {
@@ -69,6 +79,7 @@ impl OwnerGuard {
         #[cfg(not(any(unix, windows)))]
         let file = OpenOptions::new().read(true).write(true).open(&canonical)?;
         lock(&file).context("Database ownership unavailable; it may already be in use by another AnyWork service. Close that service before retrying; never delete a lock to force recovery")?;
+        let owner = Self { _file: file };
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
@@ -80,7 +91,7 @@ impl OwnerGuard {
                 "Database identity changed during opening"
             );
         }
-        Ok((Self { _file: file }, canonical))
+        Ok((owner, canonical))
     }
 }
 
@@ -90,8 +101,23 @@ fn lock(file: &File) -> Result<()> {
     file.try_lock().map_err(anyhow::Error::from)
 }
 
+#[cfg(unix)]
+fn unlock(file: &File) -> Result<()> {
+    file.unlock().map_err(anyhow::Error::from)
+}
+
 #[cfg(windows)]
 fn lock(file: &File) -> Result<()> {
+    windows_lock(file, true)
+}
+
+#[cfg(windows)]
+fn unlock(file: &File) -> Result<()> {
+    windows_lock(file, false)
+}
+
+#[cfg(windows)]
+fn windows_lock(file: &File, acquire: bool) -> Result<()> {
     use std::{ffi::c_void, os::windows::io::AsRawHandle};
     #[repr(C)]
     struct Overlapped {
@@ -111,6 +137,13 @@ fn lock(file: &File) -> Result<()> {
             high: u32,
             overlapped: *mut Overlapped,
         ) -> i32;
+        fn UnlockFileEx(
+            file: *mut c_void,
+            reserved: u32,
+            low: u32,
+            high: u32,
+            overlapped: *mut Overlapped,
+        ) -> i32;
     }
     // One byte at 2^62: outside SQLite's <=2^48 byte database range and its
     // reserved locking page near 2^30. No data is written/extended. Whole-file
@@ -122,9 +155,16 @@ fn lock(file: &File) -> Result<()> {
         offset_high: 0x4000_0000,
         event: std::ptr::null_mut(),
     };
-    // SAFETY: live synchronous file handle; valid OVERLAPPED for the duration of
-    // a fail-immediately exclusive lock request. Handle drop releases the lock.
-    if unsafe { LockFileEx(file.as_raw_handle(), 0x1 | 0x2, 0, 1, 0, &mut overlapped) } == 0 {
+    // SAFETY: live synchronous handle and OVERLAPPED. Both operations use the
+    // same reserved byte; never use whole-file std unlock on the SQLite inode.
+    let result = unsafe {
+        if acquire {
+            LockFileEx(file.as_raw_handle(), 0x1 | 0x2, 0, 1, 0, &mut overlapped)
+        } else {
+            UnlockFileEx(file.as_raw_handle(), 0, 1, 0, &mut overlapped)
+        }
+    };
+    if result == 0 {
         return Err(std::io::Error::last_os_error().into());
     }
     Ok(())
@@ -133,4 +173,79 @@ fn lock(file: &File) -> Result<()> {
 #[cfg(not(any(unix, windows)))]
 fn lock(_file: &File) -> Result<()> {
     anyhow::bail!("This platform has no supported database ownership lock")
+}
+
+#[cfg(not(any(unix, windows)))]
+fn unlock(_file: &File) -> Result<()> {
+    anyhow::bail!("This platform has no supported database ownership lock")
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use crate::store::Store;
+    use std::process::{Child, Command, Stdio};
+
+    struct OwnedChild(Child);
+    impl Drop for OwnedChild {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[test]
+    fn store_drop_unlocks_while_a_child_retains_the_inherited_guard_description() {
+        let folder = tempfile::Builder::new()
+            .prefix("anywork-owner-inherited-")
+            .tempdir()
+            .unwrap();
+        let path = folder.path().join("store.db");
+        let store = Store::open(&path).unwrap();
+        assert!(
+            Store::open(&path)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("ownership unavailable")
+        );
+        let inherited = store.1.as_ref().unwrap()._file.try_clone().unwrap();
+        // Passing the shared description as stdin keeps it open across exec
+        // without custom fork hooks or unsafe post-fork Rust. The peer never
+        // reads stdin, opens this database or acquires a second ownership lock.
+        let mut child = OwnedChild(
+            Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "store::schema::tests::ownership_child"])
+                .env("ANYWORK_TEST_SCHEMA_CHILD_PATH", &path)
+                .env("ANYWORK_TEST_SCHEMA_CHILD_MODE", "inheritedguard")
+                .stdin(Stdio::from(inherited))
+                .spawn()
+                .unwrap(),
+        );
+        let ready = path.with_extension("db.ready");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !ready.exists() && std::time::Instant::now() < deadline {
+            assert!(child.0.try_wait().unwrap().is_none());
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(
+            ready.exists(),
+            "owned child did not acknowledge its descriptor"
+        );
+        assert!(child.0.try_wait().unwrap().is_none());
+        drop(store);
+        // No retry or delay: the child still owns the inherited description.
+        let reopened = Store::open(&path).unwrap();
+        assert!(child.0.try_wait().unwrap().is_none());
+        child.0.kill().unwrap();
+        child.0.wait().unwrap();
+        // Closing the old inherited description cannot release the new owner.
+        assert!(
+            Store::open(&path)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("ownership unavailable")
+        );
+        drop(reopened);
+    }
 }

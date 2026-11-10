@@ -481,6 +481,12 @@ fn ownership_child() {
         return;
     };
     let mode = std::env::var("ANYWORK_TEST_SCHEMA_CHILD_MODE").unwrap();
+    if mode == "inheritedguard" {
+        fs::write(format!("{path}.ready"), b"ready").unwrap();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
     if mode == "migrationcrash" {
         FAIL_AT.with(|point| *point.borrow_mut() = Some("crash_after_ddl"));
         let _ = Store::open(Path::new(&path));

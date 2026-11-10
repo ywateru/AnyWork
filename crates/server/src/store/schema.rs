@@ -35,15 +35,17 @@ pub(super) fn open(path: &Path) -> Result<(Connection, Option<OwnerGuard>)> {
     let _opening = OPENING
         .lock()
         .map_err(|_| anyhow::anyhow!("Database initialization guard is unavailable"))?;
-    let (mut db, owner) = if path == Path::new(":memory:") {
-        (Connection::open_in_memory()?, None)
+    // Local bindings drop in reverse order on an opening error: close SQLite
+    // before releasing ownership, just as Store's field order does on success.
+    let (owner, mut db) = if path == Path::new(":memory:") {
+        (None, Connection::open_in_memory()?)
     } else {
         anyhow::ensure!(
             !path.as_os_str().to_string_lossy().starts_with("file:"),
             "SQLite URI database paths are unsupported; use a local file path"
         );
         let (owner, canonical) = OwnerGuard::acquire(path)?;
-        (Connection::open(canonical)?, Some(owner))
+        (Some(owner), Connection::open(canonical)?)
     };
     // Do not configure journal mode, DDL, recovery or version before this read.
     supported(version(&db)?)?;
