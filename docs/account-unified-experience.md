@@ -26,6 +26,8 @@ Web与手机远程：固定HTTPS `/app/` 注册登录 → 我的设备 → 明�
 
 本地Web根路径 `/` 是本机入口，不复用`ra.connection`任意远程地址或旧Android桥接。已获本机会话时直接进入同一工作区；未获会话时提示从桌面“打开工作区”，同时可进入正式账号设备页。刷新可继续本机会话，不要求复制服务令牌。本地无云账号亦能工作；Native已登录时展示其受限本机上下文，但不宣称浏览器已独立完成Logto授权。
 
+本机ticket内公开上下文是打开时快照，不是持续账号状态。使用“由〈账号名称〉在本机打开”等来源描述；不得把它渲染为当前Logto已登录/远程仍开启。Native之后退出或换号不影响本地工作区权限，也不能让此快照取得任何远程授权。
+
 Android现有App本轮改为固定正式账号入口的Custom Tab宿主，复用系统浏览器的安全登录与同一移动Web，不在WebView注入令牌或Native桥接。移除旧ConnectionActivity、WireGuard、地址/令牌及配对deep link的可执行路径与依赖；不读取/迁移旧加密凭据，不删除旧文件。手机浏览器/PWA同样支持。未安装Custom Tabs provider时，可打开同一固定HTTPS地址到系统浏览器；无浏览器则明确报错，不回退手动连接。此行为有清晰文案，并验证完整Logto跳转返回。现阶段不声称新增原生iOS应用。
 
 ## 本机Web的安全交接
@@ -34,10 +36,10 @@ Android现有App本轮改为固定正式账号入口的Custom Tab宿主，复用
 
 1. Native对已验证本机服务调用 `POST /api/service/browser-ticket`，携带现有本机bearer和 `X-AnyWork-Service-Control: desktop`。仅直接loopback、可信loopback Host、无Origin/代理转发头接受。返回 `{ticket, expiresIn:60}`。可携带可选的公开上下文 `{accountLabel, installationId, remoteEnabled}`，长度/格式有界，不含subject或凭据。
 2. Native打开 `http://127.0.0.1:<port>/#local-ticket=<ticket>`。随机ticket至少128位熵、单次使用、60秒过期；只放fragment，不进入HTTP路径/query、日志或持久存储。浏览器在首次执行时读取并立即用 `history.replaceState`清除，严禁把它当会话hash。
-3. 浏览器同源 `POST /api/local/session` JSON `{ticket}`兑换。服务验证直接loopback、精确Host和Origin、无代理转发头，消费ticket后设置随机HttpOnly、SameSite=Strict、Path=/的会话cookie（名称按port隔离），返回公开上下文。ticket重用/过期/未知均失败，不泄露具体秘密。响应 `Cache-Control: no-store`。
+3. 浏览器同源 `POST /api/local/session` JSON `{ticket}`兑换。服务验证直接loopback、精确Host和Origin、无代理转发头，原子消费ticket后设置随机HttpOnly、SameSite=Strict、Path=/的会话cookie（名称包含port避免不同实例名称冲突），返回公开上下文。cookie本身不按端口隔离，不把命名当安全隔离；同一用户的可信本机进程属于现有信任边界。ticket重用/过期/未知均失败，不泄露具体秘密。响应 `Cache-Control: no-store`。
 4. `GET /api/local/session`读取同一本机会话的公开上下文，`DELETE`结束本机会话。会话只存服务RAM、闲置1小时或绝对8小时到期，普通合法请求可推进闲置期限；重启服务即失效。ticket最多32、session最多64，有界清理；容量满明确失败，不驱逐活跃会话掩盖错误。
-5. 业务HTTP可使用cookie认证，但仅在直接loopback、精确本机Host、同源Origin/Fetch Metadata、无代理转发头时接受；绝不因cookie存在而放宽现有bearer或CORS校验。跨站、跨origin、转发访问拒绝本机会话。`/api/service/*`仍需真正bearer，cookie不能取得服务控制或签发ticket。`/api/local/*`不加入远程网关业务allowlist。
-6. 本机PTY使用同源cookie升级及固定非秘密首帧标记，既有bearer首帧仍供内部网关/CLI使用。本机会话到期/退出或服务关闭时终止其PTY。所有本机cookie失败返回明确401；前端回到本机入口，不能重新显示旧手动令牌表单。不得把cookie返回JS或转交远程通道。
+5. 业务HTTP可使用cookie认证，但仅在直接loopback、精确本机Host、无代理转发头，并且Origin精确同源，或无Origin但 `Sec-Fetch-Site: same-origin` 时接受。`same-site`、`none`、`Origin:null`、重复/无效Origin均拒绝。绝不因cookie存在而放宽现有bearer或CORS校验；出现无效Authorization时不可降级cookie认证。跨站、跨origin、转发访问拒绝本机会话。`/api/service/*`仍需真正bearer，cookie不能取得任何服务控制或签发ticket。`/api/local/*`不加入远程网关业务allowlist。
+6. 本机PTY使用精确同源Origin的cookie升级及固定非秘密首帧标记，既有bearer首帧仍供内部网关/CLI使用。本机会话到期/退出或服务关闭时主动终止其PTY，不依赖后续HTTP请求才检查。所有本机cookie失败返回明确401；前端回到本机入口，不能重新显示旧手动令牌表单。不得把cookie返回JS或转交远程通道。
 
 接口实现可增加固定错误码与安全字段，不能输出任意底层错误。旧服务不具备交接能力时，桌面明确提示升级本地服务；不得退回fragment长期bearer或复制令牌。服务变更不迁移schema，不新增持久业务/账号库。必须用真实HTTP/浏览器验证cookie、fragment清理、刷新和PTY，不仅验证mock。
 
@@ -52,6 +54,8 @@ Android现有App本轮改为固定正式账号入口的Custom Tab宿主，复用
 Native账号和私钥继续RAM-only，不用Keychain、不落普通文件；重启需重新登录和显式开启，换钥需确认。关闭远程只关账号通道，不停止本地工作。退出账号、关闭远程、退出本地Web会话分别说明范围；删除设备显示不等于撤销。
 
 旧独立路由的退役既检查UI也检查启动、重连、IPC及构建依赖；保留旧配置以便明确回滚，但新代码不运行它们。真实在用客户端/服务的替换必须先盘点活动会话、连接与所有权；不随意kill现有Agent或无关隧道，不迁移数据库。最终更新要来自同一受检源码，保存可回退产物并核对原会话/服务凭据保留。正式Web通过新持久发布operation上线；不重放已完成发布。
+
+隔离验收不得改写`HOME`、`USERPROFILE`或`CODEX_HOME`来假装另一个用户环境，也不得写入使用者的Codex附件目录。服务提供可选、显式的`ANYWORK_CODEX_DATA_DIR`配置，限定AnyWork自身解析的Codex数据目录；未配置时维持原有目录解析。浏览器夹具仅为独立子进程设置此任务专用变量并移除继承的用户目录变量，使用临时空目录、假Agent和关闭的自动发现，不改变真实Agent进程的环境。此配置不是账号或连接流程的一部分，不修改业务存储格式。
 
 ## 验收
 

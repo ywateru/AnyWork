@@ -1,5 +1,9 @@
 # DeepSeek Harness delivery
 
+## Unified account and workspace experience
+
+The [CyberGrid integration feedback](../cybergrid-product-feedback.md) is ready for upstream discussion; it has not been sent automatically. The active [unified experience contract](../account-unified-experience.md) and [delivery task](tasks/account-unified-experience.md) cover retiring standalone desktop tunnels, opening the local workspace without copying credentials, and using the same account/device entry on hosted Web and Android. Implementation and independent review are in progress. Source acceptance, formal Web deployment, and adoption of a newly compiled Mac bundle remain separate gates; the [baseline review](reviews/account-unified-baseline.md) does not establish completion of those gates.
+
 ## Account and device cloud proposal
 
 The [account/device proposal](../account-device-cloud-review.md) is now authorized for implementation, full testing and update. [Tasks](tasks/account-device-cloud.md) track three isolated lanes: cloud provisioning, Web/site and local desktop security. The research pin was CyberGrid `1e65328`; implementation has checked and pinned the update `2bd6729`. Logto owns account/config data, Upstash is only CyberGrid coordination storage, and business content/private keys remain on user devices. Research probes do not count as feature acceptance. Final publication requires independent review, real integration evidence and merged-system checks.
