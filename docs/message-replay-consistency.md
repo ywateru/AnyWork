@@ -10,4 +10,12 @@ Previously `SessionHistoryCache.read()` sorted the merged event list, while `rec
 
 The deterministic cache regression loads compact completed history first, then delivers the missing start/delta, another item below the snapshot watermark, and the repeated completion. It checks text, item/turn completion, ordering and the concurrent item's update after each relevant delivery. Another regression verifies consecutive identical chunks, replay identity and isolation across sessions with matching item IDs. A browser fixture repeats this snapshot-first scenario through the actual history and SSE client and checks one visible document link and one answer article after a later event confirms replay delivery. The existing real fixture document-preview test keeps its strict locator.
 
+## Delayed history invalidation after local edits
+
+The local Cookie transport uses the shared global polling channel. After an edit, an explicit history refresh can already include the edit before the queued `thread/reverted` or `history/reset` event arrives. Resetting again at that point would discard older pages the user has just loaded.
+
+An accepted latest-page response may establish authoritative snapshot coverage only when it supplies an explicit, nonnegative safe-integer `latest_seq`. Coverage records the response's source and the entry's current generation, and replaces the previous coverage rather than taking a maximum across sources. Synthetic projected event IDs and the live cursor do not establish coverage. A reset event already covered by that accepted snapshot may be ignored only while the snapshot is loaded and its source and generation still match. A newer or uncovered reset retains the existing invalidation path and clears coverage. Source changes must not carry an old source's watermark into a new sequence space.
+
+This rule applies only to history invalidation. It does not drop ordinary events below a watermark, change authorization, or replay an edit. Regressions must cover a reflected late reset preserving loaded older pages, a newer reset despite an even higher live cursor from another event, and a source change with a lower watermark still accepting a required reset.
+
 The separate desktop-manager geometry check now waits for bundled fonts and reads the host and stop button rectangles in one synchronous DOM evaluation. It checks containment on all four sides without tolerance. The previous two protocol calls could compare different layouts during `font-display: swap`; no desktop layout CSS or service behavior changes are needed.
