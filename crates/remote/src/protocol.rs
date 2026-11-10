@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
 use serde::Deserialize;
+use std::collections::HashSet;
 pub const NOISE_SUITE: &str = "Noise_IK_25519_ChaChaPoly_SHA256";
 pub const MAX_BODY: usize = 22 * 1024 * 1024;
 pub const CHUNK: usize = 32768;
@@ -18,6 +19,12 @@ pub struct Authentication {
 #[derive(Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum Incoming {
+    #[serde(rename = "auth.renew")]
+    AuthRenew {
+        id: u64,
+        #[serde(rename = "accessToken")]
+        access_token: String,
+    },
     #[serde(rename = "request")]
     Request {
         id: String,
@@ -52,6 +59,36 @@ pub fn valid_id(id: &str) -> bool {
         && id
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+}
+/// Product request IDs are monotonic, so a renewed connection needs no growing
+/// replay set. Preserve the bounded legacy namespace for older custom clients.
+#[derive(Default)]
+pub(crate) struct RequestIds {
+    generated: u64,
+    legacy: HashSet<String>,
+}
+impl RequestIds {
+    pub(crate) fn insert(&mut self, id: &str) -> bool {
+        if !valid_id(id) {
+            return false;
+        }
+        if let Some(number) = id.strip_prefix('r').filter(|v| {
+            v.as_bytes()
+                .first()
+                .is_some_and(|c| matches!(c, b'1'..=b'9'))
+                && v.bytes().all(|c| c.is_ascii_digit())
+        }) {
+            let Ok(number) = number.parse::<u64>() else {
+                return false;
+            };
+            if number <= self.generated || number > 9_007_199_254_740_991 {
+                return false;
+            }
+            self.generated = number;
+            return true;
+        }
+        self.legacy.len() < 1024 && self.legacy.insert(id.to_owned())
+    }
 }
 fn resource_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 256 && id.bytes().all(|c| c >= 0x20 && c != 0x7f)
@@ -156,5 +193,23 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<Incoming>(raw).is_err());
         }
+    }
+    #[test]
+    fn generated_ids_are_bounded_monotonic_and_keep_legacy_replay_protection() {
+        let mut ids = RequestIds::default();
+        for n in 1..=2048 {
+            assert!(ids.insert(&format!("r{n}")));
+        }
+        assert!(!ids.insert("r2048"));
+        assert!(!ids.insert("r1"));
+        for id in ["r01", "r0", "legacy", "r-not-decimal"] {
+            assert!(ids.insert(id));
+            assert!(!ids.insert(id));
+        }
+        assert!(!ids.insert("r9007199254740992"));
+        assert!(!ids.insert("r9999999999999999999999999999999"));
+        assert!(ids.insert("r9007199254740991"));
+        assert!(!ids.insert("r9007199254740991"));
+        assert_eq!(ids.legacy.len(), 4);
     }
 }

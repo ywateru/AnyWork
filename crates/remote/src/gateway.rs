@@ -17,11 +17,7 @@ use axum::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
     net::TcpListener,
     sync::{Semaphore, mpsc},
@@ -161,7 +157,7 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket) -> Result<()> {
         .local_private_key(&ctx.cfg.private_key)?
         .prologue(&protocol::prologue(&ctx.cfg.installation_id))?
         .build_responder()?;
-    let account = tokio::select! {
+    let (account, mut authorization_token) = tokio::select! {
         _=ctx.stop.cancelled()=>return Ok(()),
         result=tokio::time::timeout(Duration::from_secs(10),async {
             let first=binary(&mut socket).await?;
@@ -170,10 +166,10 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket) -> Result<()> {
             if auth.r#type!="auth" || auth.installation_id!=ctx.cfg.installation_id { bail!("AUTH_REJECTED") }
             let account=ctx.cfg.verifier.verify(&auth.access_token).await?;
             if account.expires_at<=now() {bail!("AUTH_REJECTED")}
-            let payload=serde_json::to_vec(&json!({"type":"ready","expiresAt":account.expires_at.min(now()+300)}))?;
+            let payload=serde_json::to_vec(&json!({"type":"ready","expiresAt":account.expires_at.min(now()+300),"authRenewal":1}))?;
             let length=handshake.write_message(&payload,&mut plain)?;
             socket.send(Message::Binary(plain[..length].to_vec().into())).await?;
-            Ok::<_,anyhow::Error>(account)
+            Ok::<_,anyhow::Error>((account,auth.access_token))
         })=>result??,
     };
     let remote = handshake
@@ -191,6 +187,8 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket) -> Result<()> {
         account.expires_at.min(now() + 300).saturating_sub(now()),
     ));
     tokio::pin!(deadline);
+    let mut authorization_expires_at = account.expires_at.min(now() + 300);
+    let mut renewal_sequence = 0_u64;
     let (out, mut output) = mpsc::channel::<Value>(16);
     let (done, mut completed) = mpsc::channel::<String>(16);
     let mut assemblies: HashMap<String, Assembly> = HashMap::new();
@@ -198,10 +196,11 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket) -> Result<()> {
         tasks: HashMap::new(),
         terminals: HashMap::new(),
     };
-    let mut used = HashSet::new();
+    let mut used = protocol::RequestIds::default();
     let mut buffer = vec![0; 65535];
     loop {
         tokio::select! {
+            biased;
             _=ctx.stop.cancelled()=>break,
             _=&mut deadline=>break,
             Some(id)=completed.recv()=>{children.tasks.remove(&id);children.terminals.remove(&id);},
@@ -217,6 +216,40 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket) -> Result<()> {
                 let bytes=match message {Message::Binary(bytes)=>bytes,Message::Ping(p)=>{tokio::select!{_=&mut deadline=>break,_=ctx.stop.cancelled()=>break,result=tokio::time::timeout(Duration::from_secs(1),socket.send(Message::Pong(p)))=>{result??;}}continue},Message::Pong(_)=>continue,_=>break};
                 let length=noise.read_message(&bytes,&mut buffer)?;
                 let incoming:Incoming=serde_json::from_slice(&buffer[..length])?;
+                if now() >= authorization_expires_at || tokio::time::Instant::now() >= deadline.deadline() {
+                    break;
+                }
+                if let Incoming::AuthRenew {id,access_token} = incoming {
+                    if id != renewal_sequence + 1 || id > 9_007_199_254_740_991 || access_token.is_empty() || access_token.len() > 16384 || access_token == authorization_token {
+                        bail!("AUTH_REJECTED")
+                    }
+                    let renewed = tokio::select! {
+                        biased;
+                        _=&mut deadline=>break,
+                        _=ctx.stop.cancelled()=>break,
+                        result=tokio::time::timeout(Duration::from_secs(10),ctx.cfg.verifier.verify(&access_token))=>result??,
+                    };
+                    let expires_at = renewed.expires_at.min(now() + 300);
+                    if renewed.subject != account.subject || expires_at <= authorization_expires_at || now() >= authorization_expires_at || tokio::time::Instant::now() >= deadline.deadline() {
+                        bail!("AUTH_REJECTED")
+                    }
+                    let plain=serde_json::to_vec(&json!({"type":"auth.renewed","id":id,"expiresAt":expires_at}))?;
+                    let length=noise.write_message(&plain,&mut buffer)?;
+                    tokio::select! {
+                        biased;
+                        _=&mut deadline=>break,
+                        _=ctx.stop.cancelled()=>break,
+                        result=tokio::time::timeout(Duration::from_secs(10),socket.send(Message::Binary(buffer[..length].to_vec().into())))=>result??,
+                    }
+                    if now() >= authorization_expires_at || tokio::time::Instant::now() >= deadline.deadline() || ctx.stop.is_cancelled() {
+                        break;
+                    }
+                    authorization_expires_at=expires_at;
+                    authorization_token=access_token;
+                    renewal_sequence=id;
+                    deadline.as_mut().reset(tokio::time::Instant::now()+Duration::from_secs(expires_at.saturating_sub(now())));
+                    continue;
+                }
                 incoming_frame(incoming,&ctx,&client_id,&out,&done,&mut assemblies,&mut children,&mut used).await?;
             },
         }
@@ -235,9 +268,10 @@ async fn incoming_frame(
     done: &mpsc::Sender<String>,
     assemblies: &mut HashMap<String, Assembly>,
     children: &mut Children,
-    used: &mut HashSet<String>,
+    used: &mut protocol::RequestIds,
 ) -> Result<()> {
     match incoming {
+        Incoming::AuthRenew { .. } => bail!("AUTH_REJECTED"),
         Incoming::Request {
             id,
             method,
@@ -245,7 +279,7 @@ async fn incoming_frame(
             content_type,
             size,
         } => {
-            if !protocol::valid_id(&id) || used.len() >= 1024 || !used.insert(id.clone()) {
+            if !used.insert(&id) {
                 bail!("INVALID_REQUEST_ID")
             }
             if size > MAX_BODY
@@ -325,11 +359,7 @@ async fn incoming_frame(
             out.try_send(json!({"type":"pty.closed","id":id}))?;
         }
         Incoming::PtyOpen { id, session_id } => {
-            if !protocol::valid_id(&id)
-                || !protocol::valid_id(&session_id)
-                || used.len() >= 1024
-                || !used.insert(id.clone())
-            {
+            if !protocol::valid_id(&id) || !protocol::valid_id(&session_id) || !used.insert(&id) {
                 bail!("INVALID_REQUEST_ID")
             }
             if children.terminals.len() >= 2 {
