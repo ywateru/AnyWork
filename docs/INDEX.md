@@ -1,6 +1,7 @@
 # Documentation index
 
 - [给 CyberGrid 开发组的使用反馈与改进要求（2026-11-10）](cybergrid-product-feedback.md)：统一账号连接前的能力、分工与验收讨论稿。
+- [统一账号与工作区体验](account-unified-experience.md) · [实施与验收任务](plan/tasks/account-unified-experience.md)
 - [账号、设备发现与 Vercel 云入口专家评审方案（2026-11-09）](account-device-cloud-review.md) · [调研证据](plan/analysis/account-device-cloud.md) · [实施拆分](plan/tasks/account-device-cloud.md)
 - [账号入口验收状态](plan/reviews/account-device-acceptance.md) · [云配置与费用](cloud-configuration.md) · [桌面账号与隔离验收](account-desktop.md) · [加密协议](account-remote-protocol.md) · [官网/设备页布局](account-web-layout.md)
 - [当前自部署切换与验收](plan/reviews/account-selfhost-cutover-01.md) · [自部署CyberGrid上线证据](plan/reviews/account-selfhost-grid-live.md) · [正式主页发布证据](plan/reviews/account-homepage-selfhost-live.md)
