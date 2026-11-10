@@ -170,5 +170,5 @@
   "privacyDetails": "Data and security boundaries",
   "supportMatrix": "See the support matrix",
   "accountPlatformNote": "Account remote access is currently qualified on macOS. Android opens the same HTTPS account and device page in a Custom Tab or system browser. Windows and Linux account endpoints require separate validation.",
-  "downloadUpdateNote": "Account connections require AnyWork 0.1.14 or later. Sign in and enable remote access on your computer, then use the same account on the Web or your phone to find it."
+  "downloadUpdateNote": "Account connections require AnyWork 0.1.15 or later. Sign in and enable remote access on your computer, then use the same account on the Web or your phone to find it."
 }

@@ -4,6 +4,7 @@ import base64
 import importlib
 import json
 import pathlib
+import re
 import shutil
 import tempfile
 import unittest
@@ -25,6 +26,12 @@ class ReleaseVersions(unittest.TestCase):
             new = bump.bump('patch', root)
             self.assertGreater(bump.version_tuple(new), bump.version_tuple(original))
             self.assertEqual(guard.check_local('v' + new, root)[0], new)
+            lock = root / 'Cargo.lock'
+            valid_lock = lock.read_text()
+            lock.write_text(re.sub(r'(name = "anywork-remote"\nversion = ")[^"]+', lambda m: m[1] + original, valid_lock))
+            with self.assertRaisesRegex(ValueError, 'Workspace lock version mismatch: anywork-remote'):
+                guard.check_local('v' + new, root)
+            lock.write_text(valid_lock)
             for value in [new, original, '0.0.0', '1.00.0', '1.0.0-beta']:
                 with self.assertRaises(ValueError):
                     bump.bump(value, root)

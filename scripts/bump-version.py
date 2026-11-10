@@ -7,6 +7,7 @@ import plistlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+WORKSPACE_PACKAGES = ('anywork', 'anywork-desktop', 'anywork-remote', 'remote-agent-sdk', 'remote-agent-codex')
 
 def current_version(root=ROOT):
     return re.search(r'\[workspace.package\]\s*version\s*=\s*"([^"]+)"', (root / 'Cargo.toml').read_text())[1]
@@ -38,7 +39,7 @@ def bump(value, root=ROOT):
     path.write_text(json.dumps(lock, indent=2) + '\n')
     path = root / 'Cargo.lock'
     text = path.read_text()
-    for name in ['anywork', 'anywork-desktop', 'remote-agent-sdk', 'remote-agent-codex']:
+    for name in WORKSPACE_PACKAGES:
         text = re.sub(r'(name = "' + re.escape(name) + r'"\nversion = ")[^"]+', lambda m: m[1] + new, text)
     path.write_text(text)
     path = root / 'android/app/build.gradle.kts'

@@ -18,6 +18,11 @@ def check_local(tag, root=ROOT):
     versions.version_tuple(version)
     if tag != 'v' + version:
         raise ValueError('Release tag must match Cargo.toml')
+    cargo_lock = (root / 'Cargo.lock').read_text()
+    for name in versions.WORKSPACE_PACKAGES:
+        locked = re.findall(r'(?m)^name = "' + re.escape(name) + r'"\nversion = "([^"]+)"', cargo_lock)
+        if locked != [version]:
+            raise ValueError(f'Workspace lock version mismatch: {name}')
     for name in ['package.json', 'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json']:
         if json.loads((root / name).read_text())['version'] != version:
             raise ValueError(f'Version mismatch: {name}')
