@@ -2,19 +2,23 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.16 / 本次更新**
+**What's new / 本次更新**
 
-The desktop client now brings local workspace access and account-based remote connections into one home screen. It displays the saved local browser address, provides copy/open actions, and explains first-time browser authorization, same-account device discovery, identity checks, encryption and computer availability. Settings and updates use the same visual layout, including narrow windows.
+The desktop client now starts with a feature introduction and device diagram, then asks you to register or sign in through the system browser. Only after successful native authorization does it prepare or verify the local service. Preparation does not open a browser or enable remote access; a failed attempt needs an explicit retry. Restarting the client or installing an update begins the introduction and sign-in flow again.
 
-桌面客户端将本地工作区与账号远程连接整合到同一首页，显示实际本地访问地址，提供复制与打开操作，并说明首次浏览器授权、同账号设备发现、身份核对、加密及电脑在线要求。设置和更新页面统一视觉样式，并适配窄窗口。
+桌面客户端先展示功能介绍与设备关系图，再引导你在系统浏览器中注册或登录。原生授权成功后才准备或核验本地服务；准备过程不会打开浏览器或自动开启远程，失败后需手动重试。重新启动客户端或安装更新后，重新进入介绍与登录流程。
 
-Register and sign in through the system browser using the self-hosted Logto service. Remote access still requires explicit permission on the hosting computer; the Web and phone use the same account to select it. The desktop UI removes the previous anonymous/fixed tunnel and WireGuard choices. Local browser access remains available without a cloud account, using a one-time handoff and an HttpOnly session cookie.
+The prepared console shows the saved bare local address and a separate browser-open action that establishes a one-time handoff and HttpOnly session cookie. First use, a different browser or an expired local session requires that action. Desktop startup and new browser-open actions require sign-in; an already authorized local browser session and the standalone CLI remain separate access paths. Signing out closes remote authorization but does not stop an already running local service.
 
-使用自部署 Logto，在系统浏览器中完成注册和登录。远程访问仍需在提供工作区的电脑上明确开启；网页和手机使用同一账号选择设备。桌面界面移除原有匿名／固定隧道和 WireGuard 选项。本机浏览器无需云账号，通过一次性交接和 HttpOnly 会话 Cookie 访问。
+准备完成后，控制台显示已保存的本地裸地址，并提供通过一次性交接与 HttpOnly Cookie 建立会话的打开按钮。首次使用、更换浏览器或本机会话过期时需点击该按钮。桌面客户端准备服务和提交新的浏览器打开操作需要先登录；已授权的本机浏览器会话与独立 CLI 仍是各自独立的访问入口。退出账号会关闭远程授权，但不会停止已经运行的本地服务。
 
-Native account credentials and device private keys remain in memory, with no Keychain storage; restarting the client requires signing in and enabling remote access again. Cloud services handle identity and necessary connection metadata; workspace files, conversations and terminal content stay on user devices and travel through the encrypted connection. Renewal keeps the existing encrypted connection authorized, and Agent images are available at both application and compatibility paths.
+Remote access remains an explicit choice. The console explains how to enable it, copy or open the configured HTTPS account page on another device, sign in to the same account and verify the computer's identity. It lists active authenticated encrypted connections, with client-reported phone/browser categories and connection start times. Unavailable status is distinct from an empty list, and separate connections from the same device may appear separately. The previous anonymous/fixed tunnel and WireGuard controls remain retired. Desktop account support is qualified on macOS; unsupported platforms explain the limit and do not bypass sign-in to start services.
 
-Native 账号凭据与设备私钥只保留在内存，不写入钥匙串；重启客户端后需重新登录并开启远程。云端处理身份与必要连接元数据，工作区文件、会话和终端内容保留在用户设备，经加密连接传输。连接支持原通道内续期，Agent 图片同时支持应用路径与兼容直链。
+远程访问仍由你明确开启。控制台说明如何开启远程、在另一设备复制或打开配置中的 HTTPS 账号入口、登录同一账号并核对本机身份。连接区显示已经通过认证的活动加密连接，以及客户端提示的手机／浏览器类别和连接开始时间；状态不可用与真实空列表分别显示，同一设备的不同连接可以分别显示。原有匿名／固定隧道和 WireGuard 控件继续退役。桌面账号当前已验证 macOS；不支持的平台会说明限制，不会绕过登录启动服务。
+
+Native account credentials and device private keys remain in memory, with no Keychain storage; restarting requires signing in and explicitly enabling remote access again. Cloud services handle identity and necessary connection metadata; workspace files, conversations and terminal content stay on user devices and travel through the encrypted connection. Existing compatible external services are verified and reused without changing their workspace or credentials. Settings and updates share the new responsive layout, and installation still needs confirmation.
+
+Native 账号凭据与设备私钥只保留在内存，不写入钥匙串；重启后需重新登录并明确开启远程。云端处理身份与必要连接元数据，工作区文件、会话和终端内容保留在用户设备，经加密连接传输。兼容的已有外部服务会在核验后复用，不更换其工作目录或凭据。设置和更新沿用新布局并适配窄窗口，安装仍需确认。
 
 Fixes Windows terminal startup to use the Windows command interpreter. Release checks cover desktop interactions, encrypted renewal, native Windows, Android and container builds. Responsive phone-browser tests do not establish physical Android, cellular-network or installed-upgrade acceptance. macOS apps remain ad-hoc signed and are not notarized.
 

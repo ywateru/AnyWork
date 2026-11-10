@@ -288,3 +288,56 @@ test("owned service settings keep stop and running-directory constraints", async
     "desktop_action:stop_server",
   ]);
 });
+
+test("a new UI runtime always introduces itself even with a retained native grant", async ({
+  page,
+}) => {
+  await manager(page, { stage: "intro", signedIn: true });
+  await page.waitForTimeout(1200);
+  expect(await calls(page)).toEqual([]);
+  await page.reload();
+  await expect(
+    page.getByRole("region", { name: "AnyWork 功能介绍", exact: true }),
+  ).toBeVisible();
+  await page.waitForTimeout(1200);
+  expect(await calls(page)).toEqual([]);
+  await page.getByRole("button", { name: "开始使用", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+  ).toBeVisible();
+  expect(await calls(page)).toEqual(["desktop_start"]);
+});
+test("a pending local browser handoff remains a single action", async ({
+  page,
+}) => {
+  await manager(page, { holdOpen: true });
+  await page
+    .getByRole("button", { name: "打开本地工作区", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "正在打开…", exact: true }),
+  ).toBeDisabled();
+  expect(await calls(page)).toEqual(["desktop_start", "desktop_open"]);
+  await page.evaluate(() =>
+    (window as unknown as { finishOpen: () => void }).finishOpen(),
+  );
+  await expect(
+    page.getByRole("button", { name: "打开本地工作区", exact: true }),
+  ).toBeEnabled();
+});
+test("settings failures are visible without losing the current phase", async ({
+  page,
+}) => {
+  await manager(page, { failSave: true });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "保存本机设置", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("保存失败");
+  await page.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+  ).toBeVisible();
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "desktop_action:save_service",
+  ]);
+});
