@@ -11,6 +11,9 @@
 | `npm run build` | TypeScript、生产构建及PWA生成通过；API不缓存 |
 | `npm run build:desktop-ui` | TypeScript与Native UI生产构建通过 |
 | `npm run format:check` | 通过 |
+| `node scripts/local-browser-session-check.mjs <4699e3d的新服务>` | 真实HTTP、Chrome Cookie、单用/容量/来源校验、刷新、PTY ACK/输出与退出取消通过；没有使用真实用户服务 |
+
+后续测试专用提交`a8bad5b`经独立审查接受并合入，替换已退役的桌面线路界面测试。新测试为18个统一工作区/账号场景×两个浏览器项目，作者实际运行36项全部通过、没有跳过；独立审查确认构建后的真实UI通过严格合成IPC执行，覆盖外部服务所有权、手动重试、显式远程启用、取消/重新认证和四种视口。此证据不等于真实Native OAuth。
 
 检查使用独立测试资源与已有构建缓存，没有替换运行服务、安装客户端或提交部署。Rust日志为`/tmp/anywork-unified-merged-rust.log`。忽略项不计为通过；构建器保留现有大chunk提示，不影响成功退出。
 
