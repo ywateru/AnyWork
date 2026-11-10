@@ -2,7 +2,7 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.19 / 本次更新**
+**New in 0.1.20 / 本次更新**
 
 The desktop client now starts with a feature introduction and device diagram, then asks you to register or sign in through the system browser. Only after successful native authorization does it prepare or verify the local service. Preparation does not open a browser or enable remote access; a failed attempt needs an explicit retry. Restarting the client or installing an update begins the introduction and sign-in flow again.
 
