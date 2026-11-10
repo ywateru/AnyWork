@@ -6,10 +6,23 @@ export type SessionNotice = {
   title: string;
   body: string;
   requestId?: string | number;
+  turnId?: string;
   createdAt: number;
   read: boolean;
   resolved?: boolean;
 };
+function stableTurnId(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+}
+function completedTurnId(event: AgentEvent): string | undefined {
+  const nested = event.params.turn?.id;
+  const direct = event.params.turnId;
+  if (nested !== undefined && direct !== undefined && nested !== direct)
+    return undefined;
+  return stableTurnId(nested !== undefined ? nested : direct);
+}
 export function noticeForEvent(
   event: AgentEvent,
   sessionTitle: string,
@@ -33,6 +46,7 @@ export function noticeForEvent(
         p.turnId ?? "",
       ]),
       requestId: event.request_id,
+      turnId: stableTurnId(p.turnId),
       kind: question ? "question" : "approval",
       title: question ? "需要你回答" : "需要权限或确认",
     };
@@ -64,8 +78,11 @@ export function resolveNotices(
       event.method === "serverRequest/resolved" &&
       typeof n.requestId === typeof event.params.requestId &&
       n.requestId === event.params.requestId;
-    if (!matches && !["turn/completed", "plugin/exited"].includes(event.method))
-      return n;
+    const completed =
+      event.method === "turn/completed" &&
+      n.turnId !== undefined &&
+      n.turnId === completedTurnId(event);
+    if (!matches && !completed && event.method !== "plugin/exited") return n;
     changed = true;
     return { ...n, resolved: true, read: true };
   });

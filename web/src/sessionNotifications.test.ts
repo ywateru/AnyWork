@@ -69,9 +69,66 @@ describe("session notifications", () => {
     expect(resolved[0]).toMatchObject({ resolved: true, read: true });
     expect(resolved[1].read).toBe(false);
     expect(resolved[2].read).toBe(false);
-    expect(resolveNotices(resolved, event("turn/completed"))[1].resolved).toBe(
+    expect(resolveNotices(resolved, event("turn/completed"))).toBe(resolved);
+    expect(resolveNotices(resolved, event("plugin/exited"))[1].resolved).toBe(
       true,
     );
     expect(notices[0].read).toBe(false);
+  });
+  it("does not resolve a newer pending request when an older turn completion arrives after history", () => {
+    const old = noticeForEvent(event("approval", { turnId: "old" }, 1), "a")!;
+    const pending = noticeForEvent(
+      event("approval", { turnId: "new" }, 2),
+      "a",
+    )!;
+    const other = { ...old, id: "other", sessionId: "two" };
+    const resolved = resolveNotices(
+      [old, pending, other],
+      event("turn/completed", { turn: { id: "old" } }),
+    );
+    expect(resolved[0]).toMatchObject({ read: true, resolved: true });
+    expect(resolved[1]).toBe(pending);
+    expect(resolved[2]).toBe(other);
+    expect(
+      resolveNotices(resolved, event("turn/completed", { turnId: "new" }))[1],
+    ).toMatchObject({ read: true, resolved: true });
+  });
+  it("requires stable unambiguous turn identities and retains explicit request and exit resolution", () => {
+    const pending = noticeForEvent(
+      event("approval", { turnId: "new" }, 2),
+      "a",
+    )!;
+    const notices = [pending];
+    for (const params of [
+      {},
+      { turn: { id: "" } },
+      { turn: { id: " " } },
+      { turn: { id: 2 } },
+      { turn: { id: "new" }, turnId: "old" },
+    ])
+      expect(resolveNotices(notices, event("turn/completed", params))).toBe(
+        notices,
+      );
+    for (const turnId of [undefined, "", " ", 2]) {
+      const unknown = noticeForEvent(event("approval", { turnId }, 2), "a")!;
+      const current = [unknown];
+      expect(unknown.turnId).toBeUndefined();
+      expect(
+        resolveNotices(
+          current,
+          event("turn/completed", { turn: { id: "new" } }),
+        ),
+      ).toBe(current);
+      expect(
+        resolveNotices(
+          current,
+          event("serverRequest/resolved", { requestId: 2 }),
+        )[0],
+      ).toMatchObject({ read: true, resolved: true });
+      expect(resolveNotices(current, event("plugin/exited"))[0]).toMatchObject({
+        read: true,
+        resolved: true,
+      });
+    }
   });
 });

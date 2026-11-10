@@ -3,7 +3,13 @@ import { Bell, CheckCheck, ShieldCheck, X } from "lucide-react";
 import type { useSessionNotifications } from "../hooks/useSessionNotifications";
 import "./notifications.css";
 type Center = ReturnType<typeof useSessionNotifications>;
-export default function NotificationCenter({ center }: { center: Center }) {
+export default function NotificationCenter({
+  center,
+  hasPendingRequest = false,
+}: {
+  center: Center;
+  hasPendingRequest?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const surface = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -129,7 +135,7 @@ export default function NotificationCenter({ center }: { center: Center }) {
           </div>
         </section>
       )}
-      {!open && !center.hasCurrentRequest && (
+      {!open && !hasPendingRequest && !center.hasCurrentRequest && (
         <div
           className="notification-toasts"
           aria-label="会话提醒"

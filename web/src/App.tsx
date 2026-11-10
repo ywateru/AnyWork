@@ -1548,7 +1548,10 @@ export default function App({
                         </div>
                       </details>
                     </div>
-                    <NotificationCenter center={notifications} />
+                    <NotificationCenter
+                      center={notifications}
+                      hasPendingRequest={pendingRequests.length > 0}
+                    />
                     {tab === "chat" && panelLauncher}
                   </header>
                 }

@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "./local-fixture";
+import { expect, fetchLocalRoute, test, type Page } from "./local-fixture";
+import { fillPromptText } from "./prompt-editor-helpers";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 async function fixture(
   page: Page,
@@ -86,6 +87,80 @@ async function fixture(
 const toasts = (page: Page) => page.getByLabel("会话提醒", { exact: true });
 const center = (page: Page) =>
   page.getByRole("dialog", { name: "通知中心", exact: true });
+
+test("pending history survives an older completion and request replay without toast overlap", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let blocked = false;
+  let replayed = false;
+  const delivered: { method: string; turnId?: string; requestId?: number }[] =
+    [];
+  await page.route("**/api/events/poll?after=*", async (route) => {
+    if (replayed) return route.continue();
+    blocked = true;
+    await held;
+    const response = await fetchLocalRoute(route);
+    const body = await response.json();
+    for (const event of body.events)
+      delivered.push({
+        method: event.method,
+        turnId: event.params.turn?.id ?? event.params.turnId,
+        requestId: event.request_id,
+      });
+    replayed = true;
+    await route.fulfill({ response });
+  });
+  try {
+    await fixture(page);
+    await expect.poll(() => blocked).toBe(true);
+    const editor = page.getByRole("textbox", { name: "消息", exact: true });
+    await fillPromptText(editor, "hello");
+    await page.getByTitle("发送", { exact: true }).click();
+    await expect(page.getByText("你的远程工作空间已连接，")).toBeVisible();
+    await fillPromptText(editor, "approval");
+    await expect(page.getByTitle("发送", { exact: true })).toBeEnabled();
+    await page.getByTitle("发送", { exact: true }).click();
+    const approve = page.getByRole("button", { name: "允许一次", exact: true });
+    await expect(approve).toBeVisible();
+    await expect(page).toHaveTitle("(1) AnyWork");
+    await expect(toasts(page)).toHaveCount(0);
+
+    // History has already restored turn B's pending request. Only now let the
+    // global stream deliver turn A's completion followed by the same request.
+    release();
+    await expect.poll(() => replayed).toBe(true);
+    const oldCompletion = delivered.find((e) => e.method === "turn/completed");
+    const pending = delivered.find((e) => e.requestId === 700);
+    expect(oldCompletion?.turnId).toBeTruthy();
+    expect(pending?.turnId).toBeTruthy();
+    expect(pending?.turnId).not.toBe(oldCompletion?.turnId);
+    expect(delivered.indexOf(oldCompletion!)).toBeLessThan(
+      delivered.indexOf(pending!),
+    );
+    await page.getByRole("button", { name: /通知，.*未读/ }).click();
+    await expect(center(page)).toContainText("会话执行完成");
+    const request = center(page)
+      .locator(".notification-item")
+      .filter({ hasText: "需要权限或确认" });
+    await expect(request).toHaveCount(1);
+    await expect(request).not.toContainText("已处理");
+    await page
+      .getByRole("button", { name: "关闭通知中心", exact: true })
+      .click();
+    await expect(toasts(page)).toHaveCount(0);
+    await expect(approve).toBeVisible();
+    await approve.click();
+    await expect(page.getByText("审批已处理。")).toBeVisible();
+    await expect(approve).toHaveCount(0);
+    await expect(toasts(page)).toContainText("会话执行完成");
+    await page.getByRole("button", { name: /通知，.*未读/ }).click();
+    await expect(request).toContainText("已处理");
+  } finally {
+    release();
+  }
+});
 
 test("foreground completion shows an in-app reminder, opens the correct chat, and supports dismiss/outside/Escape", async ({
   page,
