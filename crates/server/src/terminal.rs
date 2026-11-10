@@ -87,6 +87,10 @@ async fn run(
         pixel_width: 0,
         pixel_height: 0,
     })?;
+    #[cfg(windows)]
+    let mut cmd =
+        CommandBuilder::new(std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into()));
+    #[cfg(not(windows))]
     let mut cmd = CommandBuilder::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into()));
     cmd.cwd(&session.cwd);
     cmd.env("TERM", "xterm-256color");

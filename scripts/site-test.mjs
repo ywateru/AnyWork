@@ -39,7 +39,8 @@ try {
     assert.equal(await page.locator('.site-device').count(), 2);
     assert.equal(await page.locator('[data-route]').count(), 0);
     const updateNote = await page.locator('.download-update-note').innerText();
-    assert(updateNote.includes(locale === 'zh' ? '安装包尚未包含' : 'installers do not yet include'));
+    assert(updateNote.includes('0.1.14'));
+    assert(updateNote.includes(locale === 'zh' ? '同一账号' : 'same account'));
     assert.equal(await page.locator('.download-update-note a').getAttribute('href'), '/app/');
     assert(!/WireGuard|高级手动连接|advanced manual connections/.test(await page.locator('body').innerText()));
     const background = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);

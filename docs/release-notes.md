@@ -4,6 +4,24 @@ AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android
 
 **New in 0.1.13 / 本次更新**
 
+The desktop client now brings local workspace access and account-based remote connections into one home screen. It displays the saved local browser address, provides copy/open actions, and explains first-time browser authorization, same-account device discovery, identity checks, encryption and computer availability. Settings and updates use the same visual layout, including narrow windows.
+
+桌面客户端将本地工作区与账号远程连接整合到同一首页，显示实际本地访问地址，提供复制与打开操作，并说明首次浏览器授权、同账号设备发现、身份核对、加密及电脑在线要求。设置和更新页面统一视觉样式，并适配窄窗口。
+
+Register and sign in through the system browser using the self-hosted Logto service. Remote access still requires explicit permission on the hosting computer; the Web and phone use the same account to select it. The desktop UI removes the previous anonymous/fixed tunnel and WireGuard choices. Local browser access remains available without a cloud account, using a one-time handoff and an HttpOnly session cookie.
+
+使用自部署 Logto，在系统浏览器中完成注册和登录。远程访问仍需在提供工作区的电脑上明确开启；网页和手机使用同一账号选择设备。桌面界面移除原有匿名／固定隧道和 WireGuard 选项。本机浏览器无需云账号，通过一次性交接和 HttpOnly 会话 Cookie 访问。
+
+Native account credentials and device private keys remain in memory, with no Keychain storage; restarting the client requires signing in and enabling remote access again. Cloud services handle identity and necessary connection metadata; workspace files, conversations and terminal content stay on user devices and travel through the encrypted connection. Renewal keeps the existing encrypted connection authorized, and Agent images are available at both application and compatibility paths.
+
+Native 账号凭据与设备私钥只保留在内存，不写入钥匙串；重启客户端后需重新登录并开启远程。云端处理身份与必要连接元数据，工作区文件、会话和终端内容保留在用户设备，经加密连接传输。连接支持原通道内续期，Agent 图片同时支持应用路径与兼容直链。
+
+Fixes Windows terminal startup to use the Windows command interpreter. Release checks cover desktop interactions, encrypted renewal, native Windows, Android and container builds. Responsive phone-browser tests do not establish physical Android, cellular-network or installed-upgrade acceptance. macOS apps remain ad-hoc signed and are not notarized.
+
+修复 Windows 终端启动时的命令解释器选择。发布检查涵盖桌面交互、加密续期、Windows 原生、Android 和容器构建；手机浏览器尺寸测试不代表物理 Android、蜂窝网络或实装升级验收。macOS 应用仍为临时签名，尚未公证。
+
+**Previous release 0.1.13 / 上一版本**
+
 Global event streams and polling now enforce the same workspace and Agent scope as the conversation list. Bounded scan cursors advance through hidden records so reconnecting and polling can reach subsequent visible updates without exposing out-of-scope message bodies.
 
 全局事件流与轮询现在遵循与会话列表一致的工作目录及 Agent 范围。扫描游标可以越过不可见记录，继续接收后续可见更新，避免泄露范围外的消息正文。
@@ -96,9 +114,9 @@ macOS downloads are now DMG installers for Apple Silicon and Intel. Open the ima
 
 macOS 现提供 Apple Silicon 和 Intel 的 DMG 安装盘。打开后将 AnyWork 拖入应用程序，并参考盘内中英文 `INSTALL-macOS.txt`，其中包含当前临时签名应用的运行命令 `sudo xattr -cr "/Applications/AnyWork.app"`。构建时只读挂载每个 DMG，验证应用签名、处理器架构、资源，并逐文件确认与签名自动更新包内的应用一致。
 
-Quick Tunnel retains automatic recovery, preferring to keep its existing process and temporary address. The website prefers DMG downloads and automatically chooses Chinese or English at its language-neutral entry point, while preserving manual language selections.
+The website prefers DMG downloads and automatically chooses Chinese or English at its language-neutral entry point, while preserving manual language selections.
 
-匿名隧道保留自动恢复能力，优先维持现有进程和临时地址。官网优先下载 DMG，并在语言中立入口根据浏览器自动选择中文或英文，保留用户手动选择的语言。
+官网优先下载 DMG，并在语言中立入口根据浏览器自动选择中文或英文，保留用户手动选择的语言。
 
 Desktop updates continue downloading quietly and install only after confirmation. Every release increments all app versions and Android versionCode; packages include the matching server, Web and corresponding source.
 
@@ -122,9 +140,9 @@ Checksums are provided in `SHA256SUMS`. Desktop packages include the correspondi
 
 **Scope / 能力边界**
 
-Codex is included; DeepSeek Harness uses the official 0.2.2-rc.1 loopback HTTP carrier. Harness goal/plan, fork and message editing are not supported, and independent TUI processes without a shared carrier cannot be controlled. Codex desktop hot attach depends on compatible Unix sharing interfaces; Windows uses CLI-backed chats. Full goal operations need a compatible shared engine; the desktop follower supports reading/pausing. Temporary tunnel addresses can change. Voice and closed-browser push are not included.
+Codex is included; DeepSeek Harness uses the official 0.2.2-rc.1 loopback HTTP carrier. Harness goal/plan, fork and message editing are not supported, and independent TUI processes without a shared carrier cannot be controlled. Codex desktop hot attach depends on compatible Unix sharing interfaces; Windows uses CLI-backed chats. Full goal operations need a compatible shared engine; the desktop follower supports reading/pausing. Voice and closed-browser push are not included.
 
-内置 Codex，并新增官方 0.2.2-rc.1 本机 HTTP 共享主机的 DeepSeek Harness 接入。Harness 暂不支持目标/计划、分叉和消息编辑，也不能控制没有共享入口的独立 TUI。Codex 桌面热接入依赖兼容的 Unix 共享入口；Windows 使用 CLI 会话。完整目标操作需兼容共享引擎，follower 支持读取/暂停。临时隧道可能换址。暂不含语音与关闭浏览器后的推送。
+内置 Codex，并新增官方 0.2.2-rc.1 本机 HTTP 共享主机的 DeepSeek Harness 接入。Harness 暂不支持目标/计划、分叉和消息编辑，也不能控制没有共享入口的独立 TUI。Codex 桌面热接入依赖兼容的 Unix 共享入口；Windows 使用 CLI 会话。完整目标操作需兼容共享引擎，follower 支持读取/暂停。暂不含语音与关闭浏览器后的推送。
 
 Independent open-source project, not affiliated with OpenAI. AGPL-3.0-only; see NOTICE for third-party acknowledgements.
 

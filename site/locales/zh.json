@@ -170,5 +170,5 @@
   "privacyDetails": "数据与安全边界",
   "supportMatrix": "查看支持矩阵",
   "accountPlatformNote": "账号远程访问当前已验证 macOS。Android 通过 Custom Tab 或系统浏览器打开同一 HTTPS 账号与设备页；Windows 与 Linux 账号端点仍需独立验证。",
-  "downloadUpdateNote": "公开下载的安装包尚未包含这次账号连接更新。已使用更新版客户端的用户，可以打开账号页面查看设备。"
+  "downloadUpdateNote": "账号连接需要 AnyWork 0.1.14 或更新版本。在电脑客户端登录并开启远程访问后，网页或手机使用同一账号即可查看设备。"
 }

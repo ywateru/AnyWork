@@ -28,6 +28,8 @@ impl AccountVerifier for Fixture {
                 "allowed-test-access" | "same-expiry-access" => 0,
                 "renewed-test-access" => 4,
                 "another-renewal-access" => 8,
+                "long-renewal-access" => 60,
+                "another-long-renewal-access" => 120,
                 "other-owner-access" => 4,
                 "slow-renewal-access" => {
                     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -244,7 +246,9 @@ async fn encrypted_renewal_keeps_same_connection_past_old_expiry_and_1024_reques
     ws.send(Message::Binary(
         encrypt(
             &mut noise,
-            json!({"type":"auth.renew","id":1,"accessToken":"renewed-test-access"}),
+            // Give the 1030 real HTTP round trips a separate CI throughput
+            // budget. Expiry rejection is covered by the short-lease tests.
+            json!({"type":"auth.renew","id":1,"accessToken":"long-renewal-access"}),
         )
         .into(),
     ))
@@ -274,7 +278,7 @@ async fn encrypted_renewal_keeps_same_connection_past_old_expiry_and_1024_reques
     ws.send(Message::Binary(
         encrypt(
             &mut noise,
-            json!({"type":"auth.renew","id":2,"accessToken":"another-renewal-access"}),
+            json!({"type":"auth.renew","id":2,"accessToken":"another-long-renewal-access"}),
         )
         .into(),
     ))
