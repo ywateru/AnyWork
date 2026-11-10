@@ -236,9 +236,7 @@ async function fixture(page: Page, desktopHistory = false) {
       };
     } else if (path.endsWith("/image")) {
       state.images++;
-      expect(route.request().headers().authorization).toBe(
-        "Bearer isolated-history-token",
-      );
+      expect(route.request().headers().authorization).toBeUndefined();
       await route.fulfill({
         contentType: "image/png",
         body: Buffer.from(

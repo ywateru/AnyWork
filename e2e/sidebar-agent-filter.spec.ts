@@ -131,19 +131,40 @@ async function fixture(
         client_presence: false,
       };
     else if (path === "/workspaces") data = { workspaces: [] };
-    else if (path === "/events/poll") data = { events: [], cursor: 0 };
-    else if (path === "/events") {
+    else if (
+      path === "/events/poll" &&
+      !new URL(route.request().url()).searchParams.has("after")
+    )
+      data = { events: [], cursor: 0 };
+    else if (path === "/events/poll") {
       if (!streamed) {
         streamed = true;
         await streamPending;
         await route.fulfill({
-          contentType: "text/event-stream",
-          body: `data: ${JSON.stringify({ seq: 3, session_id: "codex-newest", method: "item/completed", params: { turnId: "t", item: { id: "new-response", type: "agentMessage", text: "流式更新仍然到达", phase: "commentary" } }, created_at: now })}\n\n`,
+          json: {
+            events: [
+              {
+                seq: 3,
+                session_id: "codex-newest",
+                method: "item/completed",
+                params: {
+                  turnId: "t",
+                  item: {
+                    id: "new-response",
+                    type: "agentMessage",
+                    text: "流式更新仍然到达",
+                    phase: "commentary",
+                  },
+                },
+                created_at: now,
+              },
+            ],
+            cursor: 3,
+          },
         });
       } else
         await route.fulfill({
-          contentType: "text/event-stream",
-          body: ": heartbeat\n\n",
+          json: { events: [], cursor: 3 },
         });
       return;
     } else if (path.endsWith("/history"))

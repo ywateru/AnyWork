@@ -39,6 +39,7 @@ type Entry = {
   controller: AbortController;
   source: string;
   liveCursor: number;
+  snapshotCoverage?: { source: string; generation: number; seq: number };
   controlCursor: number;
   generation: number;
   lastUsed: number;
@@ -362,6 +363,16 @@ export class SessionHistoryCache {
     if (entry.controller.signal.aborted) return;
     entry.liveCursor = Math.max(entry.liveCursor, event.seq);
     if (["history/reset", "thread/reverted"].includes(event.method)) {
+      const coverage = entry.snapshotCoverage;
+      // A delayed reset may already be reflected by an authoritative history
+      // read. Ordinary live/control events never establish snapshot coverage.
+      if (
+        entry.snapshot.loaded &&
+        coverage?.source === entry.source &&
+        coverage.generation === entry.generation &&
+        event.seq <= coverage.seq
+      )
+        return;
       this.refresh(entry.session.id, true);
       return;
     }
@@ -415,6 +426,7 @@ export class SessionHistoryCache {
     if (!entry) return;
     if (reset) {
       entry.generation++;
+      entry.snapshotCoverage = undefined;
       entry.controlsLoaded = false;
       this.patch(entry, {
         events: [],
@@ -465,6 +477,15 @@ export class SessionHistoryCache {
             ? page.events
             : refreshHistory(entry.snapshot.events, page);
         const source = page.source || "catalog";
+        // Only a fresh generation starts from an authoritative snapshot.
+        // Routine reads merge existing rows, so their newer watermark cannot
+        // prove that a reset has been applied to the cache's older pages.
+        if (first && entry.snapshot.events.length === 0)
+          entry.snapshotCoverage =
+            Number.isSafeInteger(page.latest_seq) && page.latest_seq! >= 0
+              ? { source, generation, seq: page.latest_seq! }
+              : undefined;
+        else if (source !== entry.source) entry.snapshotCoverage = undefined;
         entry.liveCursor = Math.max(
           entry.liveCursor,
           page.latest_seq ?? page.events.at(-1)?.seq ?? 0,

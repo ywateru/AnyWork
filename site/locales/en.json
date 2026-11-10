@@ -169,5 +169,6 @@
   "accountDemo": "Device interface illustration · Not live device status",
   "privacyDetails": "Data and security boundaries",
   "supportMatrix": "See the support matrix",
-  "accountPlatformNote": "Account remote access is currently qualified on macOS. Android opens the same HTTPS account and device page in a Custom Tab or system browser. Windows and Linux account endpoints require separate validation."
+  "accountPlatformNote": "Account remote access is currently qualified on macOS. Android opens the same HTTPS account and device page in a Custom Tab or system browser. Windows and Linux account endpoints require separate validation.",
+  "downloadUpdateNote": "Public installers do not yet include this account connection update. If you have an updated client, open the account page to find your devices."
 }

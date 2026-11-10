@@ -64,7 +64,7 @@ async function fixture(
   }, permission);
   let streaming = false;
   page.on("request", (r) => {
-    if (new URL(r.url()).pathname === "/api/events") streaming = true;
+    if (new URL(r.url()).pathname === "/api/events/poll") streaming = true;
   });
   await page.goto(`/#${a.id}`);
   await expect(

@@ -128,15 +128,21 @@ test("authentication, chat, approval, questions, files, terminal, and archive", 
           reject(new Error("PTY timeout"));
         }, 8000);
         ws.onopen = () => {
-          ws.send(JSON.stringify({ token: "browser-integration-test-token" }));
-          ws.send(
-            JSON.stringify({
-              type: "input",
-              data: "printf 'PTY-browser-%s\\n' ok\n",
-            }),
-          );
+          ws.send("anywork-local-session");
         };
         ws.onmessage = (e) => {
+          if (
+            typeof e.data === "string" &&
+            JSON.parse(e.data).type === "local.session.ready"
+          ) {
+            ws.send(
+              JSON.stringify({
+                type: "input",
+                data: "printf 'PTY-browser-%s\\n' ok\n",
+              }),
+            );
+            return;
+          }
           text +=
             typeof e.data === "string"
               ? e.data
@@ -263,8 +269,14 @@ test("PWA keeps the shell available offline without caching API data", async ({
   await context.setOffline(true);
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "从哪里开始？" }),
+    page.getByRole("heading", { name: "这台电脑的工作区" }),
   ).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "服务器地址" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("textbox", { name: "消息", exact: true }),
+  ).toHaveCount(0);
   await context.setOffline(false);
 });
 
