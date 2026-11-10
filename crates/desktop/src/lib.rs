@@ -9,3 +9,6 @@ pub mod config;
 pub mod manager;
 pub mod process;
 pub mod updates;
+
+#[cfg(all(test, unix))]
+mod test_service;
