@@ -56,7 +56,7 @@
 | macOS 桌面账号宿主 | 官方 Native 注册/登录、账号令牌及私钥仅进程内存、本机显式开启、独立加密入口 | 内存实现与真实自部署重启换钥已通过；进程退出后重新登录及开启，不自动恢复授权；注册入口到达托管用户名表单，未验证邮件投递 |
 | Linux 桌面账号宿主 | 新账号路径不使用系统 Secret Service，授权和密钥只在进程内存 | 编译/运行及上游provider矩阵待验证，不据macOS验收声称所有发行版支持 |
 | Windows 桌面账号宿主 | 上游 Rust SDK 凭据模块当前依赖 Unix；账号远程访问明确不可用 | 本地工作仍可用；不以恢复旧手动入口假装平台支持完成，SDK支持另立阶段 |
-| Android 账号入口 | 当前源码使用Custom Tabs/系统浏览器打开与Web/PWA相同的正式账号页；原生传输SDK接入另立阶段 | 旧手动连接、WireGuard及WebView桥退役；新APK/实际手机证据见统一入口任务，iOS浏览器可用不等于新增原生iOS客户端 |
+| Android 账号入口 | 当前源码使用Custom Tabs/系统浏览器打开与Web/PWA相同的正式账号页；原生传输SDK接入另立阶段 | 旧手动连接、WireGuard及WebView桥退役；新APK/实际手机证据见统一入口任务。网页支持目标包含iOS浏览器，不等于新增原生iOS客户端；Safari/手机验证另记 |
 | 当前账号云服务 | 最新配置已改自部署Logto default业务租户，独立CyberGrid项目/Upstash namespace；旧Cloud Development资源保留 | 新应用/权限/Account API已配置并独立读回；协调服务与正式主页READY；真实CORS/Redis/Native-Web加密链通过，本机更新见[当前记录](plan/reviews/account-selfhost-cutover-01.md)；无Cloud付费升级 |
 
 账号数据与最少配置在 Logto，Upstash 仅作 CyberGrid 协调；业务正文和端到端私钥留在用户两端。HTTPS 本身不等于端到端加密。首次公钥目录、浏览器托管代码及终端仍是信任边界，详情见[方案](account-device-cloud-review.md)。

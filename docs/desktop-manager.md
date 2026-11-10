@@ -1,6 +1,6 @@
 # AnyWork 桌面与手机账号入口
 
-本页描述当前源码的统一体验。旧发行包的独立匿名/固定隧道、WireGuard、配对链接和手动令牌流程已经退役；新版本不从旧配置恢复这些路由。历史实现与验收保留在Git和旧发布记录中。[完整契约](account-unified-experience.md) · [账号安全](account-desktop.md) · [支持矩阵](support-matrix.md)
+本页描述当前源码的统一体验。当前源码已退役旧版的独立匿名/固定隧道、WireGuard、配对链接和手动令牌流程；新版本不从旧配置恢复这些路由。已发布旧包以对应发行记录为准，历史实现与验收保留在Git中。[完整契约](account-unified-experience.md) · [账号安全](account-desktop.md) · [支持矩阵](support-matrix.md)
 
 ## 本地工作
 
