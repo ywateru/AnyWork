@@ -2,7 +2,7 @@
 
 ## Unified account and workspace experience
 
-The [CyberGrid integration feedback](../cybergrid-product-feedback.md) is ready for upstream discussion; it has not been sent automatically. The [unified experience contract](../account-unified-experience.md) and [delivery task](tasks/account-unified-experience.md) were delivered with [live independent checks](reviews/account-unified-live-independent.md), retaining their stated platform and public-tunnel test limits. The current follow-up improves the [desktop console layout, local address and connection explanation](../desktop-workspace-layout.md); its [task](tasks/desktop-workspace-layout.md) preserves the accepted authorization and service lifecycle.
+The [CyberGrid integration feedback](../cybergrid-product-feedback.md) is ready for upstream discussion; it has not been sent automatically. The [unified experience contract](../account-unified-experience.md) and [delivery task](tasks/account-unified-experience.md) were delivered with [live independent checks](reviews/account-unified-live-independent.md), retaining their stated platform and public-tunnel test limits. The [desktop console layout, local address and connection explanation](../desktop-workspace-layout.md) follow-up is also delivered: its [task](tasks/desktop-workspace-layout.md) records independent UI checks and actual Mac clipboard verification, with the existing server retained without restart.
 
 ## Account and device cloud proposal
 
