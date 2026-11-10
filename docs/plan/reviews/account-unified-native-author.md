@@ -20,3 +20,9 @@ Scope: the unified workspace/account entry, retirement of standalone routes, and
 ## Delivery limitations
 
 The same-source new server is required in the final Mac bundle; the older accepted server cannot implement the new ticket API. Web/mobile integration and long-running encrypted remote acceptance belong to the other author and independent reviewer. An external old service is deliberately left running until the root's reviewed, reversible rollout and current activity/ownership checks authorize an actual switch. Screenshots use synthetic Tauri state and prove rendering; they do not prove real OAuth. No runtime user data, credentials or active tunnels were used for these author checks.
+
+## Follow-up acceptance support and desktop E2E
+
+The server resolver accepts optional `ANYWORK_CODEX_DATA_DIR` before the unchanged `CODEX_HOME` and `HOME/.codex` fallback. Its focused test covers precedence, override without either fallback, both legacy fallbacks and unavailable configuration without mutating process environment. The rebuilt debug server and all-target Native/server clippy passed at `4699e3d`.
+
+The obsolete `e2e/desktop-*` route-map tests now exercise the unified contract through strict synthetic IPC: four viewport sizes, no retired controls or token forms, one local-open action with pending/error states, settings drafts across polling, selected-service ownership, explicit account enable/disable, fixed-stage/manual retry, logout, cancellation, reauthentication, unsupported accounts and device portal. All 36 cases passed in Chrome desktop and mobile emulation against the actual production UI build. A temporary Playwright configuration omitted `webServer` because these tests intercept all desktop UI resources and never use the real API; the separate real HTTP/cookie/PTY check remains the backend acceptance. This run did not start a user service or call OAuth. Screenshots are test-output artifacts, not live account evidence.

@@ -2,22 +2,21 @@ import { expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-// Exercise the shipped manager frontend with isolated Tauri IPC; never touch live services.
+// Shipped UI with strict synthetic IPC. No cloud, user service or credentials.
 export async function manager(
   page: Page,
   options: {
-    available?: boolean;
-    failFirst?: boolean;
-    hold?: boolean;
-    supported?: boolean;
-    reconnecting?: boolean;
-    changed?: boolean;
     owned?: boolean;
     off?: boolean;
-    unconfigured?: boolean;
-    lan?: boolean;
     failSave?: boolean;
-    legacyService?: boolean;
+    failOpen?: boolean;
+    holdOpen?: boolean;
+    signedIn?: boolean;
+    enabled?: boolean;
+    unsupported?: boolean;
+    authorizing?: boolean;
+    reauth?: boolean;
+    failEnable?: boolean;
   } = {},
 ) {
   await page.route("http://anywork-desktop.test/**", async (route) => {
@@ -25,115 +24,85 @@ export async function manager(
     const root = path.resolve("desktop/ui/dist");
     const file = path.resolve(root, `.${name === "/" ? "/index.html" : name}`);
     if (!file.startsWith(`${root}${path.sep}`)) return route.abort();
-    const type = file.endsWith(".html")
-      ? "text/html"
-      : file.endsWith(".js")
-        ? "application/javascript"
-        : file.endsWith(".css")
-          ? "text/css"
-          : "application/octet-stream";
-    await route.fulfill({ contentType: type, body: await readFile(file) });
+    await route.fulfill({
+      contentType: file.endsWith(".html")
+        ? "text/html"
+        : file.endsWith(".js")
+          ? "application/javascript"
+          : file.endsWith(".css")
+            ? "text/css"
+            : "application/octet-stream",
+      body: await readFile(file),
+    });
   });
   await page.addInitScript((opts) => {
     const scope = window as unknown as {
       __TAURI__: unknown;
       desktopCalls: string[];
       desktopFixture: unknown;
-      finishInstall?: () => void;
+      accountFixture: unknown;
+      finishOpen?: () => void;
     };
     const calls: string[] = [];
     scope.desktopCalls = calls;
-    let available = !!opts.available,
-      attempts = 0;
     const config = {
-      workspace: "/fixture",
-      dataDirectory: "/fixture/data",
+      workspace: "/workspace",
+      dataDirectory: "/workspace/data",
       port: 3210,
-      allowLAN: !!opts.lan,
+      allowLAN: false,
       serverBinary: "",
       cloudflaredBinary: "",
       tunwgBinary: "",
-      publicURL: opts.unconfigured ? "" : "https://fixture.example.com",
-      relayDomain: opts.unconfigured ? "" : "relay.example.com",
+      publicURL: "",
+      relayDomain: "",
       forceRelay: false,
       welcomed: true,
     };
-    const routes = [
-      { phase: "off", url: "", error: "" },
-      { phase: "off", url: "", error: "" },
-      { phase: "running", url: "https://relay.example.com", error: "" },
-    ];
-    if (opts.off || opts.unconfigured)
-      routes.forEach((route) =>
-        Object.assign(route, { phase: "off", url: "" }),
-      );
-    if (opts.reconnecting || opts.changed)
-      Object.assign(routes[0], {
-        phase: opts.changed ? "running" : "reconnecting",
-        url: "https://fixture.trycloudflare.com",
-        error: opts.changed ? "" : "保留匿名隧道并等待网络恢复。",
-        restart_attempts: 2,
-        retry_in_seconds: opts.changed ? 0 : 4,
-        address_changed: !!opts.changed,
-      });
     const snapshot = {
       config,
-      token: "fixture-access-key-00000000",
-      secrets: opts.unconfigured
-        ? ["", "", ""]
-        : ["", "fixture-token", "fixture-relay"],
-      secrets_loaded: true,
       service: opts.off ? "off" : "running",
       owned: !opts.off && !!opts.owned,
       external: !opts.off && !opts.owned,
       authorized: !opts.off,
-      info: { local_service_control: !opts.legacyService },
+      info: { local_service_control: true, local_browser_session: true },
       clients: [],
-      routes,
       error: "",
       notice: "",
     };
+    const account = {
+      authorizationStatus: opts.unsupported
+        ? "unsupported"
+        : opts.authorizing
+          ? "authorizing"
+          : opts.reauth
+            ? "reauthRequired"
+            : opts.signedIn
+              ? "signedIn"
+              : "signedOut",
+      transactionId: opts.authorizing ? "test-transaction" : null,
+      signedIn: !!opts.signedIn,
+      accountLabel: opts.signedIn ? "Test Account" : null,
+      subject: null,
+      enabled: !!opts.enabled,
+      busy: false,
+      error: null,
+      gridDeviceId: null,
+      installationId: opts.enabled ? "public-installation" : null,
+      publicKey: opts.enabled ? "public-key" : null,
+    };
     scope.desktopFixture = snapshot;
+    scope.accountFixture = account;
     scope.__TAURI__ = {
       core: {
         invoke: async (
           command: string,
-          args?: {
-            action?: {
-              type: string;
-              kind: string;
-              config?: typeof config;
-              token?: string;
-              secret?: string;
-            };
-            kind?: string;
-            value?: string;
-          },
+          args?: { action?: { type: string; config?: typeof config } },
         ) => {
           if (command === "desktop_snapshot") return structuredClone(snapshot);
-          if (command === "desktop_preview") return null;
-          if (command === "desktop_lan") return "http://192.0.2.10:3210";
-          // Only this exact read-only account poll is excluded. Account
-          // mutations and unknown commands still enter the strict log below.
-          if (command === "account_snapshot")
-            return {
-              authorizationStatus: "signedOut",
-              transactionId: null,
-              signedIn: false,
-              subject: null,
-              accountLabel: null,
-              enabled: false,
-              busy: false,
-              error: null,
-              gridDeviceId: null,
-              installationId: null,
-              publicKey: null,
-            };
-          // Status polling is read-only, like desktop_snapshot above. Keep the
-          // operation log strict so an unintended install/start still fails.
+          if (command === "account_snapshot") return structuredClone(account);
           if (command === "desktop_update_snapshot")
             return {
-              currentVersion: "0.1.2",
+              currentVersion: "0.1.13",
               version: "",
               phase: "idle",
               enabled: false,
@@ -147,97 +116,72 @@ export async function manager(
             };
           calls.push(
             command === "desktop_action"
-              ? `${args?.action?.type}:${args?.action?.kind}`
+              ? `desktop_action:${args?.action?.type}`
               : command,
           );
-          if (command === "desktop_cloudflared_status")
-            return {
-              available,
-              canDownload: opts.supported !== false,
-              reason: "找不到 cloudflared，或程序位置已失效。",
-            };
-          if (command === "desktop_install_cloudflared") {
-            attempts++;
-            if (opts.hold)
+          if (command === "desktop_open") {
+            if (opts.holdOpen)
               await new Promise<void>((resolve) => {
-                scope.finishInstall = resolve;
+                scope.finishOpen = resolve;
               });
-            if (opts.failFirst && attempts === 1)
-              throw "无法获取 cloudflared 官方版本，请检查网络后重试。";
-            available = true;
-            config.cloudflaredBinary = "/fixture/AnyWork/bin/cloudflared";
-            return config.cloudflaredBinary;
+            if (opts.failOpen) throw "无法建立本机浏览器会话，请重试。";
+            Object.assign(snapshot, { service: "running", authorized: true });
+            return;
           }
-          if (
-            command === "desktop_action" &&
-            args?.action?.type === "start_route"
-          ) {
-            routes[["quick", "named", "relay"].indexOf(args.action.kind)] = {
-              phase: "starting",
-              url: "",
-              error: "",
-            };
+          if (command === "desktop_account_portal") return;
+          if (command === "desktop_action") {
+            if (args?.action?.type === "stop_server") {
+              Object.assign(snapshot, {
+                service: "off",
+                authorized: false,
+                owned: false,
+                external: false,
+              });
+              return;
+            }
+            if (
+              ["save_service", "save_programs"].includes(
+                args?.action?.type ?? "",
+              )
+            ) {
+              if (opts.failSave) throw "保存失败，请检查配置后重试。";
+              Object.assign(config, args?.action?.config);
+              return;
+            }
           }
-          if (
-            command === "desktop_action" &&
-            args?.action?.type === "stop_route"
-          )
-            routes[["quick", "named", "relay"].indexOf(args.action.kind)] = {
-              phase: "off",
-              url: "",
-              error: "",
-            };
-          if (
-            command === "desktop_action" &&
-            args?.action?.type === "stop_server"
-          ) {
-            Object.assign(snapshot, {
-              service: "off",
-              authorized: false,
-              owned: false,
-              external: false,
+          if (command === "account_enable" || command === "account_disable") {
+            if (opts.failEnable && command === "account_enable")
+              throw "REMOTE_ENABLE_GRID_CONFIG";
+            Object.assign(account, {
+              enabled: command === "account_enable",
+              installationId: "public-installation",
+              publicKey: "public-key",
             });
-            routes.forEach((route) =>
-              Object.assign(route, { phase: "off", url: "" }),
-            );
+            return;
           }
-          if (
-            command === "desktop_action" &&
-            args?.action?.type === "start_server"
-          )
-            Object.assign(snapshot, {
-              service: "running",
-              authorized: true,
-              owned: true,
-              external: false,
+          if (command === "account_logout" || command === "account_cancel") {
+            Object.assign(account, {
+              authorizationStatus: "signedOut",
+              transactionId: null,
+              signedIn: false,
+              enabled: false,
+              accountLabel: null,
             });
-          if (command === "desktop_pairing") {
-            const url =
-              routes[["quick", "named", "relay"].indexOf(args!.kind!)].url;
-            return {
-              url,
-              link: "anywork://pair?fixture=1",
-              svg: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100"/></svg>',
-            };
+            return;
           }
-          if (
-            command === "desktop_action" &&
-            args?.action?.type.startsWith("save_")
-          ) {
-            if (opts.failSave) throw "保存失败，请检查配置后重试。";
-            Object.assign(config, args.action.config);
-            if (args.action.token) snapshot.token = args.action.token;
-            if (args.action.kind && args.action.secret)
-              snapshot.secrets[
-                ["quick", "named", "relay"].indexOf(args.action.kind)
-              ] = args.action.secret;
-            snapshot.notice = "配置已保存";
-          }
-          return null;
+          if (command === "account_begin") throw "登录服务暂时不可用，请重试。";
+          throw new Error(`Unexpected IPC: ${command}`);
         },
       },
     };
   }, options);
   await page.goto("http://anywork-desktop.test/");
-  await expect(page.locator(".network-map")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
+  ).toBeVisible();
 }
+
+export const calls = (page: Page) =>
+  page.evaluate(
+    () => (window as unknown as { desktopCalls: string[] }).desktopCalls,
+  );
