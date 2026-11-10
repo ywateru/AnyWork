@@ -35,12 +35,13 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        valid = (self.path == '/api/health' or
+                 (args.fixture_mode != 'unauthorized' and
+                  self.headers.get('Authorization') == 'Bearer ' +
+                  (pathlib.Path(args.data_dir) / 'access-token').read_text().strip()))
         if self.path == '/api/health':
             body, status = {'status': 'ok'}, 200
         elif self.path == '/api/info':
-            valid = (args.fixture_mode != 'unauthorized' and
-                     self.headers.get('Authorization') == 'Bearer ' +
-                     (pathlib.Path(args.data_dir) / 'access-token').read_text().strip())
             with lock:
                 state['infoRequests'] += 1
                 state['authorizedInfoRequests' if valid else 'unauthorizedInfoRequests'] += 1
@@ -49,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
                     'workspace': args.workspace, 'local_browser_session': True} if valid else {}
             status = 200 if valid else 401
         else:
-            body, status = {'clients': []}, 200
+            body, status = ({'clients': []}, 200) if valid else ({}, 401)
         raw = json.dumps(body).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')

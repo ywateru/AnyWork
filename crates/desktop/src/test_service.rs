@@ -137,6 +137,28 @@ async fn pinned_fixture_ignores_path_shadow_and_preserves_single_owned_child() {
         .unwrap();
     assert_eq!(info.workspace, config.workspace);
     assert!(info.local_browser_session);
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    for token in [None, Some("synthetic-wrong-token")] {
+        let request = client.get(format!("{}/api/clients", config.local_url()));
+        let request = match token {
+            Some(token) => request.bearer_auth(token),
+            None => request,
+        };
+        assert_eq!(
+            request.send().await.unwrap().status(),
+            reqwest::StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        client
+            .get(format!("{}/api/clients", config.local_url()))
+            .bearer_auth(config::read_token(&config))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::OK
+    );
     unsafe {
         libc::kill(child.id().unwrap() as i32, libc::SIGTERM);
     }
