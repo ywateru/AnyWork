@@ -2,6 +2,8 @@
 
 ## Unified account and workspace experience
 
+Current user revision: [desktop introduction, account-first startup and live connected clients](../desktop-onboarding-layout.md), with disjoint [Native](tasks/desktop-onboarding-native.md) and [UI](tasks/desktop-onboarding-ui.md) author tasks followed by independent verification. The pending 0.1.16 publisher was interrupted before tagging so publication will include this new flow. Existing runtime services remain untouched during isolated implementation.
+
 The [CyberGrid integration feedback](../cybergrid-product-feedback.md) is ready for upstream discussion; it has not been sent automatically. The [unified experience contract](../account-unified-experience.md) and [delivery task](tasks/account-unified-experience.md) were delivered with [live independent checks](reviews/account-unified-live-independent.md), retaining their stated platform and public-tunnel test limits. The [desktop console layout, local address and connection explanation](../desktop-workspace-layout.md) follow-up is also delivered: its [task](tasks/desktop-workspace-layout.md) records independent UI checks and actual Mac clipboard verification, with the existing server retained without restart.
 
 ## Account and device cloud proposal
