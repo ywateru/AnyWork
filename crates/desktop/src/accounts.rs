@@ -527,6 +527,9 @@ impl Handle {
             account_write: Mutex::new(()),
         })))
     }
+    pub fn portal_url(&self) -> String {
+        format!("{}/app/", self.0.config.frontend_origin)
+    }
     pub async fn snapshot(&self) -> Snapshot {
         let state = self.0.state.lock().await;
         let mut snapshot = state.snapshot.clone();
@@ -927,12 +930,10 @@ impl Handle {
             cwd: self.0.support.clone(),
         };
         let (tx, mut rx) = mpsc::channel(8);
-        let mut provider = EnableStage::Provider.at(OwnedProcess::spawn(
-            &plan,
-            Some((config::RouteKind::Quick, 1, tx)),
-        ))?;
+        let mut provider =
+            EnableStage::Provider.at(OwnedProcess::spawn_account_provider(&plan, tx))?;
         let url = match tokio::time::timeout(Duration::from_secs(45), rx.recv()).await {
-            Ok(Some(output)) => output.url,
+            Ok(Some(url)) => url,
             _ => {
                 gateway.close().await;
                 provider.stop().await;

@@ -16,6 +16,7 @@ mod editing;
 mod feedback;
 mod files;
 mod harness;
+mod local_session;
 mod native_app_input;
 mod native_image_context;
 mod observer;
@@ -169,6 +170,7 @@ pub struct App {
     workspace: PathBuf,
     data_dir: PathBuf,
     token: String,
+    local_browser: local_session::BrowserSessions,
     clients: clients::Clients,
     trust_local_proxy: bool,
     plugins: HashMap<String, PluginManifest>,
@@ -246,16 +248,28 @@ impl IntoResponse for ApiError {
     }
 }
 async fn auth(State(app): State<Arc<App>>, req: axum::extract::Request, next: Next) -> Response {
-    let token = req
-        .headers()
-        .get("authorization")
+    let bearer = req.headers().get("authorization");
+    let bearer_ok = bearer
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
-        .unwrap_or("");
-    if !app.authorized(token) {
+        .is_some_and(|token| app.authorized(token));
+    let control =
+        req.uri().path().starts_with("/service/") || req.uri().path().starts_with("/api/service/");
+    let peer = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|v| v.0);
+    let cookie_ok = bearer.is_none()
+        && !control
+        && peer.is_some_and(|peer| {
+            app.local_browser
+                .authorize(peer, req.headers(), false)
+                .is_some()
+        });
+    if !bearer_ok && !cookie_ok {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error":"Invalid access token"})),
+            Json(json!({"error":"LOCAL_SESSION_OR_BEARER_REQUIRED"})),
         )
             .into_response();
     }
@@ -356,6 +370,8 @@ async fn main() -> Result<()> {
             }
         }
     }
+    let listener = tokio::net::TcpListener::bind(&args.bind).await?;
+    let local_port = listener.local_addr()?.port();
     let app = Arc::new(App {
         catalog: Mutex::new(catalog::Catalog::default()),
         harness,
@@ -374,6 +390,7 @@ async fn main() -> Result<()> {
         workspace,
         data_dir,
         token,
+        local_browser: local_session::BrowserSessions::new(local_port),
         clients: Default::default(),
         trust_local_proxy: args.trust_local_proxy,
         plugins,
@@ -392,6 +409,10 @@ async fn main() -> Result<()> {
         .route("/info", get(api::info))
         .route("/update-readiness", get(api::update_readiness))
         .route("/service/stop", post(api::stop_service))
+        .route(
+            "/service/browser-ticket",
+            post(local_session::ticket).layer(DefaultBodyLimit::max(1024)),
+        )
         .route("/clients", get(clients::list))
         .route("/clients/heartbeat", post(clients::heartbeat))
         .route("/plugins", get(api::plugins))
@@ -469,6 +490,13 @@ async fn main() -> Result<()> {
             "/api/health",
             get(|| async { Json(json!({"status":"ok","version":env!("CARGO_PKG_VERSION")})) }),
         )
+        .route(
+            "/api/local/session",
+            post(local_session::create)
+                .get(local_session::read)
+                .delete(local_session::delete)
+                .layer(DefaultBodyLimit::max(1024)),
+        )
         .route("/ws/terminal/{id}", get(terminal::upgrade))
         .route_service("/source", ServeFile::new("artifacts/anywork-source.tar.gz"))
         .fallback_service(
@@ -479,7 +507,6 @@ async fn main() -> Result<()> {
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(app.clone());
-    let listener = tokio::net::TcpListener::bind(&args.bind).await?;
     tracing::info!(
         "AnyWork listening at http://{}; access token file: {}",
         listener.local_addr()?,

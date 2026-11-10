@@ -787,6 +787,7 @@ mod tests {
                 store: crate::store::Store::open(Path::new(":memory:")).unwrap(),
                 workspace: self.0.clone(),
                 data_dir: self.0.join("anywork"),
+                local_browser: crate::local_session::BrowserSessions::new(3210),
                 token: "fixture-not-for-production".into(),
                 clients: Default::default(),
                 trust_local_proxy: false,

@@ -175,7 +175,9 @@ try {
   await expect(
     page.getByRole("button", { name: "退出账号", exact: true }),
   ).toHaveCount(0);
-  await expect(entry.getByRole("status")).toHaveText("尚未登录");
+  await expect(
+    entry.getByRole("status").filter({ hasText: "尚未登录" }),
+  ).toBeVisible();
   await page.screenshot({ path: "/tmp/anywork-desktop-account-entry.png" });
   for (const [button, screen] of [
     ["注册", "register"],
@@ -236,12 +238,20 @@ try {
   await expect(
     entry.getByRole("button", { name: "登录", exact: true }),
   ).toBeEnabled();
-  await entry
-    .getByRole("button", { name: "账号与远程访问", exact: true })
-    .click();
   await expect(
-    page.getByRole("heading", { name: "账号与远程访问", exact: true }),
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "从其他设备继续", exact: true }),
+  ).toBeVisible();
+  for (const retired of [
+    "匿名隧道",
+    "固定隧道",
+    "WireGuard",
+    "访问密钥",
+    "配对链接",
+  ])
+    await expect(page.getByText(retired, { exact: true })).toHaveCount(0);
   await expect(
     page.getByText("账号凭据和设备私钥只留在内存", { exact: false }),
   ).toBeVisible();
@@ -320,22 +330,24 @@ try {
   await expect(
     page.getByRole("button", { name: "登录", exact: true }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "使用说明", exact: true }).click();
-  const welcomeEntry = page.getByRole("region", { name: "AnyWork 账号入口" });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
   await expect(
-    welcomeEntry.getByRole("button", { name: "注册", exact: true }),
+    page.getByRole("heading", { name: "本机设置", exact: true }),
   ).toBeVisible();
-  const welcomeBefore = await page.evaluate(() => window.fixtureUrls.length);
-  await welcomeEntry.getByRole("button", { name: "注册", exact: true }).focus();
+  await expect(page.getByLabel("服务数据目录", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "访问密钥", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+  await entry.getByRole("button", { name: "注册", exact: true }).focus();
+  const keyboardBefore = await page.evaluate(() => window.fixtureUrls.length);
   await page.keyboard.press("Enter");
   await expect
     .poll(() => page.evaluate(() => window.fixtureUrls.length))
-    .toBe(welcomeBefore + 1);
-  await expect(
-    welcomeEntry.getByRole("button", { name: "登录", exact: true }),
-  ).toBeEnabled();
+    .toBe(keyboardBefore + 1);
   await page.screenshot({
-    path: "/tmp/anywork-desktop-welcome-account-entry.png",
+    path: "/tmp/anywork-desktop-unified-account-entry.png",
+    fullPage: true,
   });
   assert.deepEqual(errors, []);
   console.log(

@@ -244,3 +244,7 @@ POST connect 成功连接时返回 `{ok:true,connected:true,mode:"control"}`。�
 `/api/info` 提供 codex_scope 与 agent_scope，均为 workspace 或 all。`--agent-scope all`（ANYWORK_AGENT_SCOPE）明确启用 Codex、dsh、WorkBuddy 跨项目历史；旧 `--codex-scope all` 仍仅影响 Codex。桌面管理服务显式启用通用 all。新建自管会话仍使用配置工作区，文件路径仍按当前会话 cwd 检查。
 
 dsh 与 WorkBuddy 可从选定本机 profile 只读加载历史，原进程离线不阻止 `/history` 与按 seq 的工具详情读取。部分历史通过 history_notice 说明，旧缓存不因源暂不可读而清空；models/composer 无实时入口时返回 HTTP 200 与 settings_available:false。详见 [dsh 历史](harness-persisted-history.md) 和 [WorkBuddy 历史](workbuddy-persisted-history.md)。
+
+## Local browser handoff
+
+The RAM-only ticket, cookie and local PTY authentication boundary is defined in [local browser sessions](local-browser-session.md). Service-control routes remain bearer-only and are unavailable through the account remote gateway.

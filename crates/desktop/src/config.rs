@@ -5,7 +5,6 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-use url::Url;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
@@ -56,64 +55,6 @@ impl Config {
             bail!("服务数据目录必须是绝对路径。")
         }
         Ok(())
-    }
-    pub fn validate_route(&self, kind: RouteKind, secret: &str) -> Result<()> {
-        match kind {
-            RouteKind::Quick => (),
-            RouteKind::Named => {
-                secure_url(&self.public_url)?;
-                if secret.trim().is_empty() {
-                    bail!("请填写 Cloudflare 连接器令牌。")
-                }
-            }
-            RouteKind::Relay => {
-                if self.relay_domain.is_empty()
-                    || self.relay_domain.contains(['/', ':', '?', '#', '@'])
-                    || self.relay_domain.chars().any(char::is_whitespace)
-                {
-                    bail!("请填写不含协议和路径的中继域名。")
-                }
-                secure_url(&format!("https://{}", self.relay_domain))?;
-                if secret.trim().is_empty() {
-                    bail!("请填写中继授权密钥。")
-                }
-            }
-        }
-        if secret.contains(['\r', '\n', '\0']) {
-            bail!("连接凭据包含无效字符。")
-        }
-        Ok(())
-    }
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum RouteKind {
-    Quick,
-    Named,
-    Relay,
-}
-impl RouteKind {
-    pub const ALL: [Self; 3] = [Self::Quick, Self::Named, Self::Relay];
-    pub fn index(self) -> usize {
-        match self {
-            Self::Quick => 0,
-            Self::Named => 1,
-            Self::Relay => 2,
-        }
-    }
-    pub fn title(self) -> &'static str {
-        match self {
-            Self::Quick => "匿名隧道",
-            Self::Named => "固定隧道",
-            Self::Relay => "WireGuard + TLS 中继",
-        }
-    }
-    pub fn account(self) -> Option<&'static str> {
-        match self {
-            Self::Quick => None,
-            Self::Named => Some("cloudflare-token"),
-            Self::Relay => Some("relay-auth"),
-        }
     }
 }
 pub fn home() -> PathBuf {
@@ -180,7 +121,31 @@ pub fn load(path: &Path) -> Result<Config> {
 }
 pub fn save(path: &Path, config: &Config) -> Result<()> {
     config.validate()?;
-    atomic_private(path, &serde_json::to_vec_pretty(config)?)
+    let bytes = match fs::read(path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    if let Some(raw) = &bytes {
+        let backup = path.with_file_name("manager-before-unified.json");
+        if !backup.try_exists()? {
+            atomic_private(&backup, raw)?;
+        }
+    }
+    let mut merged = match bytes {
+        Some(raw) => serde_json::from_slice::<serde_json::Value>(&raw)?,
+        None => serde_json::json!({}),
+    };
+    let object = merged
+        .as_object_mut()
+        .context("桌面配置格式不正确，原文件已保留。")?;
+    for (key, value) in serde_json::to_value(config)?
+        .as_object()
+        .context("无效配置")?
+    {
+        object.insert(key.clone(), value.clone());
+    }
+    atomic_private(path, &serde_json::to_vec_pretty(&merged)?)
 }
 pub fn validate_token(token: &str) -> Result<()> {
     if !(16..=1024).contains(&token.len()) || !token.bytes().all(|b| b.is_ascii_graphic()) {
@@ -196,10 +161,22 @@ pub fn write_token(config: &Config, token: &str) -> Result<()> {
     )
 }
 pub fn read_token(config: &Config) -> String {
-    fs::read_to_string(Path::new(&config.data_directory).join("access-token"))
+    let path = Path::new(&config.data_directory).join("access-token");
+    let Ok(meta) = fs::symlink_metadata(&path) else {
+        return String::new();
+    };
+    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 1024 {
+        return String::new();
+    }
+    let value = fs::read_to_string(path)
         .unwrap_or_default()
         .trim()
-        .into()
+        .to_owned();
+    if validate_token(&value).is_ok() {
+        value
+    } else {
+        String::new()
+    }
 }
 pub fn generate_token() -> String {
     format!(
@@ -208,56 +185,6 @@ pub fn generate_token() -> String {
         uuid::Uuid::new_v4().simple()
     )
 }
-pub fn secure_url(value: &str) -> Result<Url> {
-    let url = Url::parse(value).context("请填写完整的 HTTPS 地址。")?;
-    if url.scheme() != "https"
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-        || url.path() != "/"
-    {
-        bail!("请填写不含路径、查询参数和凭据的 HTTPS 地址。")
-    }
-    Ok(url)
-}
-pub fn pairing_link(server: &str, token: &str, transport: &str) -> String {
-    let mut url = Url::parse("anywork://connect").expect("constant URL");
-    url.query_pairs_mut()
-        .append_pair("server", server)
-        .append_pair("token", token)
-        .append_pair("transport", transport);
-    url.into()
-}
-/// OS credential storage; deliberately no plaintext fallback.
-pub trait Secrets: Send + Sync {
-    fn read(&self, account: &str) -> Result<String>;
-    fn write(&self, account: &str, value: &str) -> Result<()>;
-}
-pub struct OsSecrets;
-impl Secrets for OsSecrets {
-    fn read(&self, account: &str) -> Result<String> {
-        match keyring::Entry::new("dev.anywork.manager", account)?.get_password() {
-            Ok(value) => Ok(value),
-            Err(keyring::Error::NoEntry) => Ok(String::new()),
-            Err(_) => bail!("无法读取系统凭据存储，请解锁钥匙串或 Secret Service。"),
-        }
-    }
-    fn write(&self, account: &str, value: &str) -> Result<()> {
-        let entry = keyring::Entry::new("dev.anywork.manager", account)?;
-        let result = if value.is_empty() {
-            entry.delete_credential()
-        } else {
-            entry.set_password(value)
-        };
-        match result {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => bail!("无法保存到系统凭据存储；连接凭据未写入普通配置文件。"),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,29 +217,48 @@ mod tests {
             assert!(atomic_private(&link, b"bad").is_err());
         }
     }
-    #[test]
-    fn pairing_roundtrip_preserves_reserved_characters() {
-        let link = pairing_link(
-            "https://example.com",
-            "abcdefgh12345678&=?",
-            "wireguard-relay",
-        );
-        let url = Url::parse(&link).unwrap();
-        let pairs: std::collections::HashMap<_, _> = url.query_pairs().collect();
-        assert_eq!(pairs["token"], "abcdefgh12345678&=?");
-    }
+
     #[test]
     fn validates_origins_and_credentials() {
-        for value in [
-            "http://example.com",
-            "https://u:p@example.com",
-            "https://example.com/path",
-            "https://example.com?token=x",
-        ] {
-            assert!(secure_url(value).is_err());
-        }
-        assert!(secure_url("https://example.com:443").is_ok());
         assert!(validate_token("abcdefghijklmnop\n").is_err());
         assert!(validate_token("abcdefghijklmnop").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod unified_tests {
+    use super::*;
+    #[test]
+    fn saving_preserves_original_and_unknown_legacy_settings_without_reading_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("manager.json");
+        let original=serde_json::to_vec(&serde_json::json!({"workspace":dir.path(),"dataDirectory":dir.path().join("data"),"tunnelMode":"legacy","oldProvider":{"neverActivate":true}})).unwrap();
+        atomic_private(&path, &original).unwrap();
+        let mut c = load(&path).unwrap();
+        c.port = 4567;
+        save(&path, &c).unwrap();
+        save(&path, &c).unwrap();
+        assert_eq!(
+            fs::read(dir.path().join("manager-before-unified.json")).unwrap(),
+            original
+        );
+        let merged: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(merged["tunnelMode"], "legacy");
+        assert_eq!(merged["oldProvider"]["neverActivate"], true);
+    }
+    #[test]
+    fn selected_data_directory_token_is_bounded_and_never_changed_by_reading() {
+        let dir = tempfile::tempdir().unwrap();
+        let c = Config {
+            data_directory: dir.path().to_string_lossy().into(),
+            ..Default::default()
+        };
+        let path = dir.path().join("access-token");
+        fs::write(&path, "local-selected-bearer-value").unwrap();
+        assert_eq!(read_token(&c), "local-selected-bearer-value");
+        assert_eq!(
+            fs::read_to_string(path).unwrap(),
+            "local-selected-bearer-value"
+        );
     }
 }

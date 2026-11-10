@@ -2,7 +2,7 @@
 
 ## Current contract: account secrets stay in memory
 
-The native account path keeps refresh/access tokens, Noise private keys and CyberGrid registration material only in process memory. It does not call OS Keychain/Secret Service, read old account credential records, or write secrets to ordinary files. Closing the client loses this authorization: the next process starts signed out and remote access disabled. Existing manual connection credential settings remain separate and unchanged.
+The native account path keeps refresh/access tokens, Noise private keys and CyberGrid registration material only in process memory. It does not call OS Keychain/Secret Service, read old account credential records, or write secrets to ordinary files. Closing the client loses this authorization: the next process starts signed out and remote access disabled. Standalone manual routes are retired: no legacy route startup, recovery, credential loading, pairing or token export remains. Old configuration files are preserved; cloudflared remains internal to the account gateway. See [local browser handoff](local-browser-session.md).
 
 The desktop manager owns one serialized refresh lifecycle. Initial authorization uses the official Logto JavaScript client with an in-memory adapter; Rust brokers pinned issuer requests and the fixed loopback callback `http://127.0.0.1:17897/callback`. Rust retains each returned rotation in RAM before returning it across IPC. JavaScript requests the opaque Account API token and the Grid resource JWT serially. The `OwnedInMemory` handoff ACK transfers exclusive refresh ownership to Rust; JavaScript clears its tokens and stops refreshing. Rust then serves both token classes under one mutex. No refresh owner is restored after restart.
 
@@ -16,27 +16,25 @@ The only generated account identity file is `<manager support>/account-installat
 
 For the same owner/config/support directory, each new process reuses this public ID but generates fresh Noise keys when remote access is enabled. The public Logto record at `customData.anywork.devices[installationId]` contains `label`, `platform`, `publicKey`, `keyVersion` and `gridDeviceId`. A changed public key increments the existing positive safe-integer `keyVersion`; retries with the same key retain its version. Invalid/exhausted versions fail closed. Repeated restarts update one directory item, rather than adding offline installations. Different owners/configurations receive separate IDs and fresh keys. Removing the local ID file deliberately creates a new installation and can leave its old public directory item behind.
 
-The browser's old pin is never silently accepted after a key change: the user must explicitly confirm the new key against the host's displayed installation/public key. Login alone does not enable access. The host must explicitly enable it with the local service authenticated. Disable closes active remote work before retiring coordination/provider lifecycles. Manual transports are independent advanced controls and are not an account-flow fallback. See [remote protocol](account-remote-protocol.md) for encrypted HTTP/files/event/PTY boundaries.
+The browser's old pin is never silently accepted after a key change: the user must explicitly confirm the new key against the host's displayed installation/public key. Login alone does not enable access. The host must explicitly enable it with the local service authenticated. Disable closes active remote work before retiring coordination/provider lifecycles. Standalone manual transports are retired; remote access uses the account flow. See [remote protocol](account-remote-protocol.md) for encrypted HTTP/files/event/PTY boundaries.
 
 `gridDeviceId` joins the current authenticated CyberGrid directory; it is not an authorization claim. The SDK has no registration-key import/export API, so a fresh SDK Client can have a different Grid ID. The stable installation ID maps to the current Grid registration. Old Grid leases/registration fences may briefly coexist according to upstream retention; unmapped devices cannot be opened as a trusted installation. This client does not change cloud metadata retention. The Logto index permits at most 32 devices and 32 KiB customData. Writes preserve valid aliases (80 UTF-16 units, no control characters), other devices, preferences and other namespaces; they are locally serialized and compared against a full readback. Cross-device read/replace races remain possible. Removing an index item does not revoke a host authorization.
 
 ## Client entry and state
 
 ```text
-┌ AnyWork 账号 ──────────────────────────────────────────────┐
-│ 尚未登录                  [注册] [登录] [账号与远程访问] │
-└────────────────────────────────────────────────────────────┘
-  Existing overview / local service / advanced connections
-
-┌ 账号与远程访问 ────────────────────────────────────────────┐
-│ 已登录 · account email/username                 [退出账号]│
-│ 凭据和设备私钥仅存内存，退出客户端后需重新登录             │
-│ 允许我的其他设备访问                         [开启/关闭] │
-│ 已开启：设备身份、公钥、复制控件                           │
-└────────────────────────────────────────────────────────────┘
+AnyWork                                      [Settings] [Updates]
+This computer
+  Local workspace     Ready / Preparing / Off    [Open workspace]
+  Working directory   …
+Continue from another device
+  Signed out                              [Register] [Sign in]
+  or: account label                       [Sign out]
+  Allow my other devices                  [Enable / Disable]
+  [Identity verification ▾]               [My devices]
 ```
 
-The overview and welcome screen expose independent registration and login actions. One controller and official adapter use `firstScreen:register` or `firstScreen:signIn`. The account label comes from the existing Account API response (email, username or name; otherwise a short subject); no additional management request or scope is added. The black/white UI never displays tokens, private keys, sensitive paths or public tunnel URLs.
+A single workspace screen exposes independent registration/login and explicit remote enable. One controller and official adapter use `firstScreen:register` or `firstScreen:signIn`. Account labels come from the existing Account API response without additional management requests or scopes. The local browser receives only a bounded public snapshot; a subject-derived Native label is omitted. Neither interface displays service tokens, private keys or provider URLs. Settings select the workspace, selected service data directory, local port and server program without a token form. The one-action workspace open starts an owned local service or reuses an authenticated existing service and obtains a one-use browser ticket. External services and their data are never replaced or stopped by this action.
 
 Native `authorizationStatus` controls actions: signedOut offers registration/login; authorizing/loginInterrupted retain cancellation; signedIn offers logout; reauthRequired offers ending this authorization before relogin; unsupported explains platform limits. Generic network errors never imply a signed-in account. After failures the UI re-reads native state. Native transaction IDs survive renderer remounts, and a stale JS adapter keeps an explicit cancellation control until cleaned. There are no checkpoint, saved-grant recovery or Keychain actions in the current account UI.
 
@@ -64,7 +62,7 @@ Missing/unknown fields, insecure service URLs and issuer/endpoint mismatch are r
 
 ## Platform and verification scope
 
-The pinned SDK imports `std::os::unix` unconditionally. Account integration is gated to Unix; Windows displays unavailable while existing manual routes remain supported. macOS arm64 is the initial actual integration target. Linux source compilation does not establish validated runtime/provider deployment. Upstream licensing/distribution permission remains independently recorded in [native dependency notices](../desktop/CYBERGRID_NOTICES.md).
+The pinned SDK imports `std::os::unix` unconditionally. Account integration is gated to Unix; Windows retains the local workspace entry and displays account integration as unavailable. Standalone manual routes are retired on every platform. macOS arm64 is the initial actual integration target. Linux source compilation does not establish validated runtime/provider deployment. Upstream licensing/distribution permission remains independently recorded in [native dependency notices](../desktop/CYBERGRID_NOTICES.md).
 
 Memory-only regressions use isolated HTTP fixtures and temporary directories: serialized Account/Grid rotation; unknown exchange refusing replay; process restart signed out with stable public ID/fresh keys; owner/full-config isolation; malformed/symlink identity rejection; one updated directory record/version increment; alias/preferences/namespace preservation; failed revocation retaining RAM and successful retry; existing legacy sentinel left untouched. Rendered UI tests use a synthetic Tauri bridge, not a real OAuth or Keychain operation, and cover separate hosted screens, failed-login retry, cancellation races, RAM-only notice, account label and reauthentication controls.
 
@@ -76,7 +74,7 @@ The previous design persisted grants/private keys and used checkpoint/write-ahea
 
 An earlier native acceptance attempt stopped at the exact computer-use error “The Mac is locked and automatic unlock could not unlock it. Ask the user to unlock the Mac manually before continuing.” No consent screen or full Keychain/Grid chain was validated then. The outside-repository `/tmp/anywork-native-runtime.py` runner was an isolated test helper with empty workspace/history and disconnected fixture descriptors; it must be reviewed against the current candidate before reuse. Never read/migrate old test or user Keychain grants for memory-only acceptance. Keep existing user processes/history untouched.
 
-Memory-only author checks for this candidate: `CARGO_INCREMENTAL=0 cargo test -p anywork-desktop --lib` passed 45 tests with four existing external tests ignored (11 current account tests); desktop TypeScript/production build and rendered `test:account-entry` regression passed. These tests accessed no real Keychain, OAuth grants, user history or existing services. Full clippy/debug-binary checks are reported separately with the delivered candidate.
+Historical memory-only author checks before standalone-route retirement passed 45 desktop tests with four external tests ignored. These counts describe that earlier candidate only. Current unified-entry checks, including 37 passed Native tests and two existing opt-in tests ignored, are recorded in the [unified Native author report](plan/reviews/account-unified-native-author.md). Those checks accessed no real Keychain, OAuth grants, user history or existing services.
 
 ## Safe enable-stage diagnostics
 
