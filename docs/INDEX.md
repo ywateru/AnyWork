@@ -2,6 +2,7 @@
 
 - [给 CyberGrid 开发组的使用反馈与改进要求（2026-11-10）](cybergrid-product-feedback.md)：统一账号连接前的能力、分工与验收讨论稿。
 - [统一账号与工作区体验](account-unified-experience.md) · [实施与验收任务](plan/tasks/account-unified-experience.md)
+- [桌面控制台布局与访问说明](desktop-workspace-layout.md) · [界面优化任务](plan/tasks/desktop-workspace-layout.md)
 - [统一入口合并检查](plan/reviews/account-unified-merged.md) · [运行与产物独立验收](plan/reviews/account-unified-runtime-artifacts.md) · [正式 Web 上线记录](plan/reviews/account-unified-web-live.md) · [Mac 本机上线记录](plan/reviews/account-unified-native-live.md)
 - [统一账号上线独立核验](plan/reviews/account-unified-live-independent.md)：正式域名、实际 Mac 包与进程、原环境、配置及会话标识保留的最终核对。
 - [账号、设备发现与 Vercel 云入口专家评审方案（2026-11-09）](account-device-cloud-review.md) · [调研证据](plan/analysis/account-device-cloud.md) · [实施拆分](plan/tasks/account-device-cloud.md)

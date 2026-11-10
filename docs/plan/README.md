@@ -2,7 +2,7 @@
 
 ## Unified account and workspace experience
 
-The [CyberGrid integration feedback](../cybergrid-product-feedback.md) is ready for upstream discussion; it has not been sent automatically. The active [unified experience contract](../account-unified-experience.md) and [delivery task](tasks/account-unified-experience.md) cover retiring standalone desktop tunnels, opening the local workspace without copying credentials, and using the same account/device entry on hosted Web and Android. Implementation and independent review are in progress. Source acceptance, formal Web deployment, and adoption of a newly compiled Mac bundle remain separate gates; the [baseline review](reviews/account-unified-baseline.md) does not establish completion of those gates.
+The [CyberGrid integration feedback](../cybergrid-product-feedback.md) is ready for upstream discussion; it has not been sent automatically. The [unified experience contract](../account-unified-experience.md) and [delivery task](tasks/account-unified-experience.md) were delivered with [live independent checks](reviews/account-unified-live-independent.md), retaining their stated platform and public-tunnel test limits. The current follow-up improves the [desktop console layout, local address and connection explanation](../desktop-workspace-layout.md); its [task](tasks/desktop-workspace-layout.md) preserves the accepted authorization and service lifecycle.
 
 ## Account and device cloud proposal
 
