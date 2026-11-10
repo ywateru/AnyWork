@@ -20,6 +20,10 @@ Native account credentials and device private keys remain in memory, with no Key
 
 Native 账号凭据与设备私钥只保留在内存，不写入钥匙串；重启后需重新登录并明确开启远程。云端处理身份与必要连接元数据，工作区文件、会话和终端内容保留在用户设备，经加密连接传输。兼容的已有外部服务会在核验后复用，不更换其工作目录或凭据。设置和更新沿用新布局并适配窄窗口，安装仍需确认。
 
+Releases database ownership explicitly after closing the store, so a concurrently spawned child cannot retain an inherited lock and briefly block reopening. Active services still hold exclusive ownership; this change does not retry or bypass a contested lock.
+
+数据库关闭后显式释放所有权锁，避免并发启动的子进程短暂保留继承的锁，阻碍立即重新打开。运行中的服务仍保持独占所有权，不重试或绕过发生冲突的锁。
+
 Fixes Windows terminal startup to use the Windows command interpreter. Release checks cover desktop interactions, encrypted renewal, native Windows, Android and container builds. Responsive phone-browser tests do not establish physical Android, cellular-network or installed-upgrade acceptance. macOS apps remain ad-hoc signed and are not notarized.
 
 修复 Windows 终端启动时的命令解释器选择。发布检查涵盖桌面交互、加密续期、Windows 原生、Android 和容器构建；手机浏览器尺寸测试不代表物理 Android、蜂窝网络或实装升级验收。macOS 应用仍为临时签名，尚未公证。
