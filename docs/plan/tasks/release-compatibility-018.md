@@ -22,3 +22,7 @@ Keep the [onboarding contract](../../desktop-onboarding-layout.md) and all autho
 ## verification
 
 Targeted compiler/lint, registry lifecycle/overflow/concurrency and actual qualified-transport tests must pass without expanding privileges. The subsequent exact source must pass the full trusted GitHub Checks before publication. No real account, remote enable, production service restart or local candidate adoption is part of either source-fix lane.
+
+## progress
+
+Both exact changes passed [independent review](../reviews/release-compatibility-018-independent.md): allocator `a221932` and Windows peer/CI setup `85d6194`. Root merged them and reran formatting plus the remote and SDK suites together with an explicit Python interpreter: all 40 tests passed. The earlier complete Mac UI/service/browser checks remain recorded separately. A fresh publisher candidate must still pass its own Linux/Windows/Android/container Checks; the v0.1.17 failure is not retried as if it were a transient success.
