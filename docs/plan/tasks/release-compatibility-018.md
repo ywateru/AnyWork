@@ -1,7 +1,7 @@
 ---
 id: release-compatibility-018
 scope: exact-source-release-compatibility
-status: in-progress
+status: done
 depends-on: [desktop-onboarding-native, desktop-onboarding-ui]
 ---
 
@@ -26,3 +26,5 @@ Targeted compiler/lint, registry lifecycle/overflow/concurrency and actual quali
 ## progress
 
 Both exact changes passed [independent review](../reviews/release-compatibility-018-independent.md): allocator `a221932` and Windows peer/CI setup `85d6194`. Root merged them and reran formatting plus the remote and SDK suites together with an explicit Python interpreter: all 40 tests passed. The earlier complete Mac UI/service/browser checks remain recorded separately. A fresh publisher candidate must still pass its own Linux/Windows/Android/container Checks; the v0.1.17 failure is not retried as if it were a transient success.
+
+The new v0.1.18 run `42820324352` passed Windows, Android and container checks, and passed the corrected Rust/compiler checks in server-web. A separate mobile browser test then timed out before its assertions; its trace and correction are tracked in [mobile reload synchronization](release-mobile-menu-synchronization.md). This closes the two compatibility corrections without claiming that the entire v0.1.18 run passed. No v0.1.18 tag was created, and its unadopted local candidate was permanently abandoned.
