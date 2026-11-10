@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { manager } from "./desktop-fixture";
+import { manager, calls } from "./desktop-fixture";
 
 for (const [width, height] of [
   [1440, 1000],
@@ -7,353 +7,154 @@ for (const [width, height] of [
   [800, 620],
   [390, 844],
 ]) {
-  test(`connection map and popup remain usable at ${width}×${height}`, async ({
+  test(`unified workspace and account remain usable at ${width}×${height}`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width, height });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await manager(page, { owned: true, lan: true, changed: true });
+    await manager(page);
     await expect(
-      page.getByRole("button", { name: "Codex 设置", exact: true }),
+      page.getByRole("region", { name: "本地工作区", exact: true }),
     ).toBeVisible();
-    await expect(page.getByText(/Cursor|Claude Code/)).toHaveCount(0);
-    await expect(page.locator(".route-node")).toHaveCount(3);
-    await expect(page.locator(".overview-footer, .host-service")).toHaveCount(
-      0,
-    );
     await expect(
-      page.getByText("工作环境与文件保留在本机", { exact: true }),
+      page.getByRole("button", { name: "打开工作区", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "注册", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "开启远程访问", exact: true }),
+    ).toBeDisabled();
+    await expect(page.getByText(/账号凭据和设备私钥只留在内存/)).toBeVisible();
+    await expect(page.locator(".route-node, .network-map")).toHaveCount(0);
+    await expect(
+      page.getByText(/匿名隧道|固定隧道|WireGuard|连接器令牌|配对二维码/),
     ).toHaveCount(0);
-    await expect(page.locator(".host-node")).toContainText("127.0.0.1:3210");
-    await expect(page.locator(".agent-node")).toHaveText("Codex");
-    await expect(page.locator(".lan-node, .host-managed")).toHaveCount(0);
-    const address = page
-      .getByRole("button", { name: "匿名隧道详情" })
-      .locator(".route-address");
-    await expect(address).toBeVisible();
-    await expect(address).toHaveText("fixture.trycloudflare.com");
-    await expect(address).toHaveAttribute(
-      "title",
-      "https://fixture.trycloudflare.com",
-    );
-    expect(
-      await page
-        .locator(".route-nodes")
-        .evaluate((el) => getComputedStyle(el).borderTopWidth),
-    ).toBe("0px");
-    expect(
-      await page
-        .locator("html")
-        .evaluate((el) => getComputedStyle(el).backgroundColor),
-    ).toBe("rgb(255, 255, 255)");
-    await page.evaluate(() => document.fonts.ready.then(() => undefined));
-    if (width >= 800) {
-      await expect(
-        page.getByRole("button", { name: "停止服务", exact: true }),
-      ).toBeVisible();
-      // A font-display:swap reflow between separate protocol calls can mix two
-      // layouts. Read both rectangles synchronously after font readiness instead.
-      const { hub, stop } = await page
-        .locator(".host-node")
-        .evaluate((node) => {
-          const control = node.querySelector<HTMLButtonElement>(".host-power");
-          if (!control) throw new Error("Missing host service control");
-          return {
-            hub: node.getBoundingClientRect().toJSON(),
-            stop: control.getBoundingClientRect().toJSON(),
-          };
-        });
-      expect(stop.left).toBeGreaterThanOrEqual(hub.left);
-      expect(stop.top).toBeGreaterThanOrEqual(hub.top);
-      expect(stop.right).toBeLessThanOrEqual(hub.right);
-      expect(stop.bottom).toBeLessThanOrEqual(hub.bottom);
-      await expect(page.locator(".network-lines > path")).toHaveCount(4);
-    }
+    expect(await calls(page)).toEqual([]);
+    await page.evaluate(() => document.fonts.ready);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth > innerWidth,
       ),
     ).toBe(false);
     await page.screenshot({
-      path: info.outputPath(`overview-${width}.png`),
+      path: info.outputPath(`workspace-${width}.png`),
       fullPage: true,
     });
-    await page.getByRole("button", { name: "匿名隧道详情" }).click();
-    const popup = page.getByRole("dialog", { name: "匿名隧道", exact: true });
+    await page.getByRole("button", { name: "设置", exact: true }).click();
     await expect(
-      popup.getByText("https://fixture.trycloudflare.com", { exact: true }),
+      page.getByRole("textbox", { name: "工作目录", exact: true }),
     ).toBeVisible();
-    const rect = await popup.boundingBox();
-    expect(rect!.x).toBeGreaterThanOrEqual(15);
-    expect(rect!.y).toBeGreaterThanOrEqual(15);
-    expect(rect!.x + rect!.width).toBeLessThanOrEqual(width - 15);
-    expect(rect!.y + rect!.height).toBeLessThanOrEqual(height - 15);
-    await page.screenshot({
-      path: info.outputPath(`detail-${width}.png`),
-      fullPage: true,
-    });
-    await page.keyboard.press("Escape");
-    await expect(popup).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "匿名隧道详情" }),
-    ).toBeFocused();
-    await page.getByRole("button", { name: "固定隧道详情" }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "查看配置", exact: true })
-      .click();
-    await expect(
-      page.getByRole("textbox", { name: "公开 HTTPS 地址" }),
+      page.getByRole("textbox", { name: "服务数据目录", exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: /密钥|令牌|HTTPS|中继/ }),
+    ).toHaveCount(0);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth > innerWidth,
       ),
     ).toBe(false);
-    await page.mouse.click(3, 3);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.screenshot({
+      path: info.outputPath(`settings-${width}.png`),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "这台电脑", exact: true }),
+    ).toBeVisible();
   });
 }
 
-test("the three routes toggle independently, including stopping only the selected route", async ({
+test("opening local workspace is a single action without cloud login", async ({
   page,
 }) => {
-  await manager(page, { available: true });
-  await page.getByRole("switch", { name: "匿名隧道开关" }).click();
+  await manager(page, { off: true, holdOpen: true });
+  await page.getByRole("button", { name: "打开工作区", exact: true }).click();
   await expect(
-    page.getByRole("switch", { name: "匿名隧道开关" }),
-  ).toHaveAttribute("aria-checked", "true");
-  await page.getByRole("switch", { name: "固定隧道开关" }).click();
-  for (const name of [
-    "匿名隧道开关",
-    "固定隧道开关",
-    "WireGuard + TLS 中继开关",
-  ])
-    await expect(page.getByRole("switch", { name })).toHaveAttribute(
-      "aria-checked",
-      "true",
+    page.getByRole("button", { name: "正在打开…", exact: true }),
+  ).toBeDisabled();
+  expect(await calls(page)).toEqual(["desktop_open"]);
+  await page.evaluate(() =>
+    (window as unknown as { finishOpen: () => void }).finishOpen(),
+  );
+  await expect(
+    page.getByRole("button", { name: "打开工作区", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByText("尚未登录", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "开启远程访问", exact: true }),
+  ).toBeDisabled();
+});
+
+test("failed local handoff gives feedback and permits manual retry", async ({
+  page,
+}) => {
+  await manager(page, { failOpen: true });
+  for (let n = 1; n <= 2; n++) {
+    await page.getByRole("button", { name: "打开工作区", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText(
+      "无法建立本机浏览器会话",
     );
-  await page.getByRole("button", { name: "固定隧道详情" }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "关闭此连接" })
-    .click();
-  await expect(
-    page.getByRole("switch", { name: "固定隧道开关" }),
-  ).toHaveAttribute("aria-checked", "false");
-  await expect(
-    page.getByRole("switch", { name: "匿名隧道开关" }),
-  ).toHaveAttribute("aria-checked", "true");
-  await expect(
-    page.getByRole("switch", { name: "WireGuard + TLS 中继开关" }),
-  ).toHaveAttribute("aria-checked", "true");
+    expect(await calls(page)).toHaveLength(n);
+  }
 });
 
-test("opening or switching details sends no engine commands and only one popup stays open", async ({
-  page,
-}) => {
-  await manager(page);
-  const quick = page.getByRole("button", { name: "匿名隧道详情" });
-  await quick.click();
-  await quick.click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await quick.click();
-  // Switch via keyboard, including when a popup overlaps the next card.
-  await page.getByRole("button", { name: "固定隧道详情" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("dialog")).toHaveCount(1);
-  await expect(
-    page.getByRole("dialog", { name: "固定隧道", exact: true }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { desktopCalls: string[] }).desktopCalls,
-    ),
-  ).toEqual([]);
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "设置", exact: true }),
-  ).toBeVisible();
-});
-
-test("an unconfigured route opens its form without sending a start command", async ({
-  page,
-}) => {
-  await manager(page, { unconfigured: true, available: true });
-  await page.getByRole("switch", { name: "固定隧道开关" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "公开 HTTPS 地址" }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { desktopCalls: string[] }).desktopCalls,
-    ),
-  ).toEqual([]);
-  await page
-    .getByRole("textbox", { name: "公开 HTTPS 地址" })
-    .fill("https://new.example.com");
-  await page
-    .getByRole("textbox", { name: "连接器令牌" })
-    .fill("new-fixture-token");
-  await page.waitForTimeout(1200); // A snapshot poll must not replace an unsaved draft.
-  await expect(
-    page.getByRole("textbox", { name: "公开 HTTPS 地址" }),
-  ).toHaveValue("https://new.example.com");
-  await page.getByRole("button", { name: "保存配置", exact: true }).click();
-  const start = page.getByRole("button", { name: "保存并开启", exact: true });
-  await expect(start).toBeEnabled();
-  await start.click();
-  await expect(
-    page.getByRole("switch", { name: "固定隧道开关" }),
-  ).toHaveAttribute("aria-checked", "true");
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { desktopCalls: string[] }).desktopCalls,
-    ),
-  ).toEqual([
-    "save_route:named",
-    "desktop_cloudflared_status",
-    "start_route:named",
-  ]);
-});
-
-test("service controls stay at the host and respect external service ownership", async ({
-  page,
-}) => {
-  await manager(page, { off: true, available: true });
-  await expect(
-    page.getByRole("switch", { name: "匿名隧道开关" }),
-  ).toBeDisabled();
-  await page.getByRole("button", { name: "启动服务", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "停止服务", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "停止服务", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "启动服务", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("switch", { name: "匿名隧道开关" }),
-  ).toBeDisabled();
-});
-
-test("an authenticated compatible CLI service can be stopped from its node", async ({
-  page,
-}) => {
-  await manager(page);
-  const stop = page
-    .locator(".host-node")
-    .getByRole("button", { name: "停止服务", exact: true });
-  await expect(stop).toBeEnabled();
-  await expect(page.getByText("由命令行管理", { exact: true })).toHaveCount(0);
-  await stop.click();
-  await expect(
-    page
-      .locator(".host-node")
-      .getByRole("button", { name: "启动服务", exact: true }),
-  ).toBeVisible();
-});
-
-test("an older CLI service does not pretend to support desktop stopping", async ({
-  page,
-}) => {
-  await manager(page, { legacyService: true });
-  const stop = page
-    .locator(".host-node")
-    .getByRole("button", { name: "停止服务", exact: true });
-  await expect(stop).toBeDisabled();
-  await expect(stop).toHaveAttribute(
-    "title",
-    "请先将命令行服务升级到支持桌面启停的版本",
-  );
-});
-
-test("verified connection details support copying, opening and Android QR pairing", async ({
-  page,
-}) => {
-  await manager(page, { changed: true, lan: true });
-  await page.getByRole("button", { name: "匿名隧道详情" }).click();
-  await page.getByRole("button", { name: "复制访问地址", exact: true }).click();
-  await page.getByRole("button", { name: "打开网页", exact: true }).click();
-  await page.getByRole("button", { name: "生成二维码", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "连接 AnyWork Android" });
-  await expect(
-    dialog.getByRole("img", { name: "AnyWork Android 配对二维码" }),
-  ).toBeVisible();
-  await expect(dialog).toContainText("https://fixture.trycloudflare.com");
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
-  await page.getByRole("button", { name: "本地服务详情" }).click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "http://192.0.2.10:3210",
-  );
-});
-
-test("node settings lead to working configuration and save feedback stays visible", async ({
+test("settings preserve an unsaved draft through polling and save without a token", async ({
   page,
 }) => {
   await manager(page, { off: true });
-  await page.getByRole("button", { name: "Codex 设置", exact: true }).click();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
   const workspace = page.getByRole("textbox", {
     name: "工作目录",
     exact: true,
   });
-  await workspace.fill("/fixture/new-workspace");
-  await page.getByRole("button", { name: "保存服务配置", exact: true }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "配置已保存" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "总览", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Codex 设置", exact: true }),
-  ).toHaveAttribute("title", "工作目录：/fixture/new-workspace");
-  await page.getByRole("button", { name: "本地服务详情", exact: true }).click();
-  const local = page.getByRole("dialog", { name: "本地服务", exact: true });
-  await expect(
-    local.getByRole("button", { name: "打开工作台", exact: true }),
-  ).toBeDisabled();
-  await local
-    .getByRole("button", { name: "查看服务配置", exact: true })
-    .click();
-  await expect(
-    local.getByRole("textbox", { name: "工作目录", exact: true }),
-  ).toHaveValue("/fixture/new-workspace");
-});
-
-test("settings save failures give visible feedback", async ({ page }) => {
-  await manager(page, { off: true, failSave: true });
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "保存服务配置", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "保存失败，请检查配置后重试。",
+  await workspace.fill("/workspace/next");
+  await page.waitForTimeout(1200);
+  await expect(workspace).toHaveValue("/workspace/next");
+  await page.getByRole("button", { name: "保存本机设置", exact: true }).click();
+  await expect.poll(() => calls(page)).toEqual(["desktop_action:save_service"]);
+  await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+  await expect(page.locator(".workspace-path")).toContainText(
+    "/workspace/next",
   );
 });
 
-test("long route URLs truncate inside their card while details retain the full address", async ({
+test("save failures are visible", async ({ page }) => {
+  await manager(page, { failSave: true });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "保存本机设置", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("保存失败");
+});
+
+test("external service is reused without exposing a stop control", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 800, height: 620 });
-  const url =
-    "https://a-very-long-anonymous-tunnel-name-for-anywork.trycloudflare.com";
-  await manager(page, { changed: true });
-  await page.evaluate((value) => {
-    const fixture = (
-      window as unknown as { desktopFixture: { routes: { url: string }[] } }
-    ).desktopFixture;
-    fixture.routes[0].url = value;
-  }, url);
-  const card = page.getByRole("button", { name: "匿名隧道详情" });
-  const address = card.locator(".route-address");
-  await expect(address).toHaveAttribute("title", url);
-  expect(await address.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
-    true,
-  );
-  expect(
-    await address.evaluate((el) => getComputedStyle(el).textOverflow),
-  ).toBe("ellipsis");
-  await card.click();
+  await manager(page);
   await expect(
-    page.getByRole("dialog").getByText(url, { exact: true }),
+    page.getByText("已就绪 · 复用已有服务", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "停止本地服务", exact: true }),
+  ).toHaveCount(0);
+  expect(await calls(page)).toEqual([]);
+});
+
+test("owned service may stop and cannot change running directories", async ({
+  page,
+}) => {
+  await manager(page, { owned: true });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "保存本机设置", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "停止本地服务", exact: true }).click();
+  await expect.poll(() => calls(page)).toEqual(["desktop_action:stop_server"]);
+  await expect(
+    page.getByRole("button", { name: "停止本地服务", exact: true }),
+  ).toHaveCount(0);
 });
