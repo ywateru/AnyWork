@@ -8,7 +8,7 @@
 
 Continue Codex or DeepSeek Harness from your browser or Android phone.<br />Your workspace and agent process stay on your own computer.
 
-[Website](https://ywateru.github.io/AnyWork/en/) · [Download](https://github.com/ywateru/AnyWork/releases/latest) · [中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md)
+[Website](https://anywork-tau.vercel.app/en/) · [My devices](https://anywork-tau.vercel.app/app/) · [Download](https://github.com/ywateru/AnyWork/releases/latest) · [中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md)
 
 [![Checks](https://github.com/ywateru/AnyWork/actions/workflows/ci.yml/badge.svg)](https://github.com/ywateru/AnyWork/actions/workflows/ci.yml)
 [![Build releases](https://github.com/ywateru/AnyWork/actions/workflows/release.yml/badge.svg)](https://github.com/ywateru/AnyWork/actions/workflows/release.yml)
@@ -20,7 +20,7 @@ Continue Codex or DeepSeek Harness from your browser or Android phone.<br />Your
 
 AnyWork gives agents running on your computer a remote workspace: streaming conversations, approvals, tool activity, files and previews. Codex also integrates subagents, diffs and a terminal. Open the same work on another screen, send a follow-up, or respond when the agent needs you.
 
-The Rust desktop manager starts the local service and manages connection addresses, access keys and connected devices. Use a browser or the native Android app. There is no AnyWork-hosted account or mandatory AnyWork cloud relay; your Codex model calls still use your own account and model provider.
+The Rust desktop app starts your local workspace and opens it in your browser. For remote access, sign in on the host and allow your other devices to connect, then sign in to the same account on the website or phone. Logto manages accounts and minimal device settings; CyberGrid coordinates connections. Conversations, files, terminal content and endpoint private keys stay on your devices. Model calls continue to use your own model account and provider.
 
 DeepSeek Harness is also available through its existing local Web/Desktop host: [shared-host setup and verification](docs/harness-setup.md). It preserves native session ownership and keeps Codex available alongside it.
 
@@ -31,24 +31,26 @@ Existing dsh and WorkBuddy histories can be browsed alongside Codex, including s
 - **Continue the conversation.** Discover local Codex history, group chats by project, cache conversations and reconnect event streams. Attach to supported desktop sharing interfaces without starting a second execution engine.
 - **Stay involved while work runs.** Queue or steer messages, see tool and subagent activity, answer approval requests, and receive browser completion and attention notifications.
 - **Work with the output.** Browse files, preview documents and images, annotate image attachments, inspect Git diffs, and open a PTY terminal beside the chat.
-- **Move between screens.** Responsive browser/PWA and a native Android host with connection profiles, file sharing and optional WireGuard support.
-- **Choose your connection.** Local network, your own HTTPS proxy or VPN, Cloudflare temporary/named tunnels, or a configured WireGuard + TLS relay. The desktop manager can run multiple routes together.
+- **Move between screens.** Use the same account and device list in a desktop browser, mobile browser/PWA or the Android account launcher.
+- **Open your workspace.** Open locally from the desktop app, or select an authorized computer after signing in remotely. No server address, shared access key or tunnel selection is required in the user flow.
 
 ## Download and connect
 
-Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest), or use the [bilingual download page](https://ywateru.github.io/AnyWork/en/#download).
+Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest), or use the [bilingual download page](https://anywork-tau.vercel.app/en/#download). These instructions describe the current source; published packages retain the capabilities recorded in their release notes. Account remote hosting is qualified first on macOS; other platform availability is tracked in the [support matrix](docs/support-matrix.md).
 
 | Platform | Package | Requirements |
 | --- | --- | --- |
 | macOS Apple Silicon / Intel | `.dmg` installer; drag `AnyWork.app` into Applications | macOS 14+; ad-hoc signed, not notarized |
 | Windows x64 | Per-user installer or portable `.zip` | Windows 10/11, Microsoft Edge WebView2; unsigned |
 | Linux x64 / ARM64 | AppImage or portable `.tar.gz` | GTK 3, WebKitGTK 4.1; x64 built on Ubuntu 22.04, ARM64 on Ubuntu 24.04 |
-| Android | Signed universal `.apk` | Android 8.0+, current Android System WebView |
+| Android | `.apk` account launcher | Android 8.0+, a current HTTPS browser; Custom Tabs when available |
 | Web / source | `.tar.gz` | Self-hosted deployment / development |
 
 1. Set up the [Codex CLI](https://github.com/openai/codex) or an existing [supported Harness host](docs/harness-setup.md) **on the host computer**. Keep that computer awake while tasks run.
-2. Open the AnyWork desktop manager, choose your workspace, and start the service.
-3. Open the displayed address on your other device and enter the access key. For internet access, enable a tunnel or use your own HTTPS/VPN setup.
+2. Open AnyWork, choose your workspace if needed, and click **Open workspace** for local browser access. Local use does not require a cloud account.
+3. To connect remotely, register or sign in on the host and enable **Allow my other devices to access**. Open [My devices](https://anywork-tau.vercel.app/app/) on another computer or phone, sign in to the same account, verify the host identity and open its workspace.
+
+Native account credentials and endpoint keys stay in process memory. After exiting the desktop app, sign in and enable remote access again. A new endpoint key requires confirmation. Closing remote access leaves local work available.
 
 Desktop 0.1.1+ quietly checks and downloads updates, then installs only after confirmation. Use the Windows installer or Linux AppImage for automatic updates; portable directories update manually. Version 0.1.0 requires one manual upgrade. [Update guide](docs/updates.md).
 
@@ -68,7 +70,7 @@ cargo build --locked --release -p anywork
 ./target/release/anywork --workspace /absolute/path/to/projects
 ```
 
-Open `http://127.0.0.1:3210`. The access key is generated in `.anywork/access-token`. To discover all local projects, add `--codex-scope all`. To listen on your trusted LAN, add `--bind 0.0.0.0:3210`. Use HTTPS or a VPN across untrusted networks.
+The service listens on `http://127.0.0.1:3210`; its internal bearer remains in `.anywork/access-token` for desktop/API authentication. Use the desktop app with the matching data directory to open the local Web workspace through a one-time ticket and HttpOnly local session. The Web UI does not offer a manual address/key form. Add `--codex-scope all` to discover all local projects. Use account-authorized encrypted connections for remote work.
 
 ```bash
 # Desktop manager (build the Web client first)
@@ -79,20 +81,22 @@ bash scripts/build-desktop.sh
 bash scripts/build-android.sh
 ```
 
-Release packages are built by [GitHub Actions](.github/workflows/release.yml). Each desktop package includes the local server, Web client, licenses and corresponding source archive. Cloudflared is downloaded on demand with user confirmation. The optional `tunwg` helper must be installed/configured separately; see [desktop connection details](docs/desktop-manager.md).
+Release packages are built by [GitHub Actions](.github/workflows/release.yml). Each desktop package includes the local server, Web client, licenses and corresponding source archive. Cloudflared can be used internally by the encrypted account connection. Standalone anonymous/named tunnels and WireGuard are retired from the desktop user flow; see [desktop and mobile behavior](docs/desktop-manager.md).
 
 ## How it connects
 
 ```mermaid
 flowchart LR
-    B[Browser or Android app] -->|Access key · HTTPS / VPN / LAN| S[AnyWork local service]
+    B[Remote browser / phone] -->|Same account · end-to-end encrypted session| G[Local account gateway]
+    G --> S[AnyWork local service]
+    L[Local browser] -->|Loopback-only browser session| S
     D[AnyWork desktop manager] --> S
     S --> C[Codex app-server / supported local sharing interface]
     C --> W[Your workspace and tools]
     C --> M[Your model provider]
 ```
 
-AnyWork is a personal, trusted-device tool with the host user's file and terminal permissions. It is not a multi-tenant sandbox. Third-party tunnels carry traffic according to their own policies; a temporary Cloudflare URL can change when its process restarts.
+AnyWork is a personal, trusted-device tool with the host user's file and terminal permissions. It is not a multi-tenant sandbox. Identity and coordination services process necessary metadata; relays carry encrypted business traffic. Initial device discovery and hosted frontend code remain trust boundaries.
 
 ### Current scope
 

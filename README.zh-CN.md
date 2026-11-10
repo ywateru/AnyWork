@@ -8,7 +8,7 @@
 
 从浏览器和 Android 手机继续本机的 Codex 或 DeepSeek Harness 会话。<br />工作目录和 Agent 执行进程，始终留在自己的电脑上。
 
-[产品官网](https://ywateru.github.io/AnyWork/zh/) · [下载](https://github.com/ywateru/AnyWork/releases/latest) · [English](README.md) · [使用指南](docs/getting-started.zh-CN.md)
+[产品官网](https://anywork-tau.vercel.app/zh/) · [我的设备](https://anywork-tau.vercel.app/app/) · [下载](https://github.com/ywateru/AnyWork/releases/latest) · [English](README.md) · [使用指南](docs/getting-started.zh-CN.md)
 
 [![检查](https://github.com/ywateru/AnyWork/actions/workflows/ci.yml/badge.svg)](https://github.com/ywateru/AnyWork/actions/workflows/ci.yml)
 [![构建发行版](https://github.com/ywateru/AnyWork/actions/workflows/release.yml/badge.svg)](https://github.com/ywateru/AnyWork/actions/workflows/release.yml)
@@ -20,7 +20,7 @@
 
 AnyWork 为电脑上的 Agent 提供远程工作界面：流式对话、权限审批、工具活动、文件和预览。Codex 还集成子 Agent、差异和终端。换一个屏幕继续同一项工作，补充指令，在 Agent 需要你时及时回应。
 
-Rust 桌面管理器负责启动本地服务、管理连接地址、访问密钥和在线设备。浏览器与原生 Android App 都能连接。无需 AnyWork 云端账号，也无需强制经过 AnyWork 云端中继；模型调用继续使用你自己的 Codex 账号和模型服务。
+Rust 桌面应用负责启动本地工作区，一键在浏览器打开。需要远程访问时，在电脑上登录并允许其他设备访问，然后在网页或手机登录同一账号、选择电脑即可继续工作。Logto 管理账号与最少设备配置，CyberGrid 负责协调连接；对话、文件、终端内容和端点私钥留在用户设备上。模型调用继续使用你自己的模型账号和服务。
 
 也可接入已有 DeepSeek Harness Web/桌面主机，与 Codex 并列使用，保留同一原生会话：[共享主机接入与验证](docs/harness-setup.md)。
 
@@ -31,24 +31,26 @@ Rust 桌面管理器负责启动本地服务、管理连接地址、访问密钥
 - **延续已有会话。** 发现本机 Codex 历史，按项目整理会话，缓存消息并恢复事件流。通过支持的桌面共享入口协作，不另起第二个执行引擎。
 - **随时参与执行。** 排队或引导消息，查看工具和子 Agent 活动，处理权限申请，接收浏览器完成与待处理提醒。
 - **直接处理结果。** 浏览文件，预览文档与图片，为图片附件添加批注，检查 Git 差异，在对话旁打开 PTY 终端。
-- **在设备间切换。** 响应式浏览器/PWA，以及支持连接配置、文件分享和可选 WireGuard 的原生 Android 宿主。
-- **选择连接方式。** 局域网、自有 HTTPS 代理或 VPN、Cloudflare 临时/固定隧道、配置好的 WireGuard + TLS 中继。桌面管理器支持多条连接并行开启。
+- **在设备间切换。** 电脑浏览器、手机浏览器/PWA 和 Android 账号入口使用同一账号及设备列表。
+- **打开自己的工作区。** 桌面一键本地打开，远程登录后选择已授权电脑；正常流程无需地址、共享访问密钥或隧道选择。
 
 ## 下载与连接
 
-从 [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest) 获取安装包，或访问[双语下载页](https://ywateru.github.io/AnyWork/zh/#download)。
+从 [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest) 获取安装包，或访问[双语下载页](https://anywork-tau.vercel.app/zh/#download)。本指南描述当前源码；已发布安装包以对应发行说明为准。账号远程宿主首先验收 macOS，其他平台范围见[支持矩阵](docs/support-matrix.md)。
 
 | 平台 | 下载内容 | 安装要求 |
 | --- | --- | --- |
 | macOS Apple Silicon / Intel | `.dmg` 安装盘，将 `AnyWork.app` 拖入应用程序 | macOS 14+；临时签名，尚未公证 |
 | Windows x64 | 当前用户安装版或便携 `.zip` | Windows 10/11、Microsoft Edge WebView2；未做发行商签名 |
 | Linux x64 / ARM64 | AppImage 或便携 `.tar.gz` | GTK 3、WebKitGTK 4.1；x64 基于 Ubuntu 22.04，ARM64 基于 Ubuntu 24.04 构建 |
-| Android | 持久签名的通用 `.apk` | Android 8.0+，较新的 Android System WebView |
+| Android | `.apk` 账号入口 | Android 8.0+、较新的 HTTPS 浏览器；优先使用 Custom Tabs |
 | Web / 源码 | `.tar.gz` | 自托管部署 / 开发 |
 
 1. 在**执行工作的电脑**配置 [Codex CLI](https://github.com/openai/codex)，或已有的[兼容 Harness 主机](docs/harness-setup.md)，执行期间保持电脑唤醒。
-2. 打开 AnyWork 桌面管理器，选择工作目录并启动服务。
-3. 在其他设备打开管理器显示的地址，输入访问密钥。需要外网访问时开启隧道，或使用自有 HTTPS/VPN。
+2. 打开 AnyWork，按需选择工作目录，点击“打开工作区”进入本地浏览器。本地使用不要求云端账号。
+3. 需要远程访问时，在电脑端注册或登录，开启“允许我的其他设备访问”。其他电脑或手机打开[我的设备](https://anywork-tau.vercel.app/app/)，登录同一账号、核对电脑身份并打开工作区。
+
+Native账号凭据和端点私钥只留在进程内存；退出桌面应用后，需要重新登录并开启远程访问，新公钥需要确认。关闭远程访问后，本地工作仍可继续。
 
 桌面端 0.1.1 起支持静默检查下载，确认后安装重启。Windows 请用安装版，Linux 请用 AppImage；便携目录手动更新。0.1.0 需要先手动升级一次。[更新说明](docs/updates.md)。
 
@@ -68,7 +70,7 @@ cargo build --locked --release -p anywork
 ./target/release/anywork --workspace /absolute/path/to/projects
 ```
 
-访问 `http://127.0.0.1:3210`，使用生成的 `.anywork/access-token` 登录。添加 `--codex-scope all` 显示所有本机项目；添加 `--bind 0.0.0.0:3210` 供可信局域网访问。跨越不可信网络时使用 HTTPS 或 VPN。
+服务监听 `http://127.0.0.1:3210`，内部bearer保存在 `.anywork/access-token`，用于桌面与API鉴权。桌面应用选择匹配的数据目录后，通过一次性票据和HttpOnly本机会话打开Web，无需手动填写地址或密钥。添加 `--codex-scope all` 显示所有本机项目；远程工作使用同账号加密连接。
 
 ```bash
 # 桌面管理器：先构建 Web 界面
@@ -79,20 +81,22 @@ bash scripts/build-desktop.sh
 bash scripts/build-android.sh
 ```
 
-[GitHub Actions](.github/workflows/release.yml) 自动生成发行包。每个桌面包包含本地服务、Web 界面、许可证和对应源码归档。缺少 Cloudflared 时，管理器在用户确认后下载。可选 `tunwg` 需要单独安装和配置，详见[桌面连接说明](docs/desktop-manager.md)。
+[GitHub Actions](.github/workflows/release.yml) 自动生成发行包。每个桌面包包含本地服务、Web 界面、许可证和对应源码归档。Cloudflared可作为账号加密通道的内部实现；桌面不再提供独立匿名/固定隧道及WireGuard连接，详见[桌面和手机体验](docs/desktop-manager.md)。
 
 ## 连接原理
 
 ```mermaid
 flowchart LR
-    B[浏览器或 Android App] -->|访问密钥 · HTTPS / VPN / 局域网| S[AnyWork 本地服务]
+    B[远程浏览器 / 手机] -->|同一账号 · 端到端加密会话| G[本机账号网关]
+    G --> S[AnyWork 本地服务]
+    L[本机浏览器] -->|仅回环的本机会话| S
     D[AnyWork 桌面管理器] --> S
     S --> C[Codex app-server / 支持的本地共享入口]
     C --> W[自己的工作目录和工具]
     C --> M[自己的模型服务]
 ```
 
-AnyWork 面向个人与可信设备，使用宿主系统用户的文件和终端权限，不提供多租户隔离。第三方隧道按照各自策略传输流量；Cloudflare 临时地址可能在进程重启后改变。
+AnyWork 面向个人与可信设备，使用宿主系统用户的文件和终端权限，不提供多租户隔离。账号与协调基础设施处理必要身份和连接元数据，第三方中继只传送业务密文；首次设备目录与托管Web代码仍属于信任边界。
 
 ### 当前能力边界
 

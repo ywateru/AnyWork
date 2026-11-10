@@ -33,30 +33,30 @@
 | macOS arm64 / Intel | macOS 14+，Rust/Tauri，DMG 与更新包内容/架构检查，版本绑定更新签名 | 当前 ad-hoc 签名，未 Apple 公证；完整慢网络下载安装验收未闭环，不将资产核验视为实装升级 |
 | Windows x64 | Windows 10/11 + WebView2，安装版/便携包，已有原生 release 构建与测试 | 无发行商签名；便携包不自动替换；不支持 Codex 桌面 Unix 热接入 |
 | Linux x64 / arm64 | AppImage/便携包；GTK3/WebKitGTK4.1；基于 Ubuntu 22.04 / 24.04 的不同架构构建 | 实际发行版/桌面环境矩阵未穷尽；glib 告警和可达性风险见[安全说明](../SECURITY.md) |
-| Android | Android 8.0+，Java WebView 宿主；编译/目标 SDK 36、Build Tools 36.0.0、JDK17；签名通用 APK，Keystore 配置加密、系统文件桥、可选 WireGuard | build/lint/unit 与手机浏览器验证不替代实体设备；VPN/Doze/杀进程/系统升级/后台提醒的实际矩阵尚未闭环 |
+| Android | Android 8.0+；当前源码改为固定HTTPS账号入口的Custom Tabs宿主，系统浏览器回退；不再使用旧WebView业务桥、WireGuard或手动连接配置 | 新构建/验收见统一体验任务；build/lint/unit与手机浏览器验证不替代实体设备；后台持续连接不作承诺。旧公开APK能力以对应发行记录为准 |
 | Docker | 仅构建服务端；Linux x64 CI 已实测干净镜像、非 root、认证、源码绑定 Web/完整文件摘要与持久化 | [精确提交 `aacaa19` 实际容器验收](https://github.com/ywateru/AnyWork/actions/runs/42376388458/job/128414728192)通过，包含 I05a schema 与 I07a 纯读取模块；不等同其他架构、原生登录/模型或宿主桌面共享验收；本机 daemon 仍不可用 |
 
 平台依赖与安装步骤见[中文指南](getting-started.zh-CN.md) / [English guide](getting-started.md)。Android applicationId 和既有内部名称保留兼容，不能为了品牌改名破坏覆盖升级和数据。
 
 ## 连接、权限和持续可用性 / Connection boundaries
 
-- 本地执行、无需 AnyWork 云账号，不表示模型推理离线，也不表示所有可选公网链路均由本人设施承载。Cloudflare 边缘处理 HTTPS；自有 tunwg/私有 WireGuard 的 TLS 终止点与信任方见[桌面连接说明](desktop-manager.md)。
-- 本服务面向个人可信设备；共享访问密钥拥有宿主系统用户的工作权限。在线设备表是 presence，不是每设备独立授权。跨不可信网络使用 HTTPS/VPN。
-- 匿名 URL 在现有连接器进程存活时尽量保留；进程重建不能保证原址。SSE/poll 和路由健康有各自恢复边界。
+- 本地工作不依赖AnyWork云账号，不表示模型推理离线。当前源码统一远程账号入口，独立匿名/固定/WireGuard连接退役；底层provider可传输业务密文，不向用户公开独立业务URL。
+- 本服务面向个人可信设备，使用宿主系统用户的工作权限。本机Web使用受限cookie会话；远程在加密通道内校验同账号短期证明。在线设备表是presence，不是业务授权。首次目录、设备和托管前端均属于信任边界。
+- 短期授权可在原加密通道内更新；失效或本机关闭会终止子请求/PTY。传输断开不保证原字节流无缝恢复，不自动重放业务写入。
 - Web 前台事件与浏览器通知已有实现；浏览器关闭/Android 进程被杀后的原生后台推送未实现。语音听写/朗读继续延后。
 - 管理器退出会清理其拥有的服务/路由，独立原生 Agent 不因其断开而被结束；“关窗口继续后台”的完整平台规范尚未建立。
 
-## 账号与自动设备访问（开发中）
+## 账号与统一设备访问
 
-本节描述正在开发的独立账号链路，不改变 v0.1.13 手动连接的既有支持声明。[交付](plan/tasks/account-device-cloud.md)及[最终验收](plan/reviews/account-device-acceptance.md)通过前，不宣传为已发布功能。
+已有自部署账号链路验收与当前[统一入口改造](plan/tasks/account-unified-experience.md)分别记录；本轮源代码退役旧手动入口，不能从旧v0.1.13包推断新版行为，也不能从源码改动推断所有平台均已发布/实机验收。
 
 | 范围 | 当前目标与限制 | 证据状态 |
 | --- | --- | --- |
 | Web/手机浏览器 → 用户电脑 | Logto 登录、CyberGrid 发现；浏览器到本机 Noise 加密网关；业务仍由本机服务执行 | 自部署真实原生启用/发现/换钥/公网加密空工作区/关闭与退出、正式域名390/1440视口通过；22项浏览器/Rust业务互操作夹具另记；物理手机蜂窝未实测 |
 | macOS 桌面账号宿主 | 官方 Native 注册/登录、账号令牌及私钥仅进程内存、本机显式开启、独立加密入口 | 内存实现与真实自部署重启换钥已通过；进程退出后重新登录及开启，不自动恢复授权；注册入口到达托管用户名表单，未验证邮件投递 |
 | Linux 桌面账号宿主 | 新账号路径不使用系统 Secret Service，授权和密钥只在进程内存 | 编译/运行及上游provider矩阵待验证，不据macOS验收声称所有发行版支持 |
-| Windows 桌面账号宿主 | 上游 Rust SDK 凭据模块当前依赖 Unix；新账号远程访问明确不可用 | 现有手动远程连接继续保留；不假装跨平台 SDK 支持已完成 |
-| 原生 Android 账号客户端 | 本期手机范围是浏览器/PWA；原生 SDK 接入另立阶段 | 现有 Android 手动连接不变 |
+| Windows 桌面账号宿主 | 上游 Rust SDK 凭据模块当前依赖 Unix；账号远程访问明确不可用 | 本地工作仍可用；不以恢复旧手动入口假装平台支持完成，SDK支持另立阶段 |
+| Android 账号入口 | 当前源码使用Custom Tabs/系统浏览器打开与Web/PWA相同的正式账号页；原生传输SDK接入另立阶段 | 旧手动连接、WireGuard及WebView桥退役；新APK/实际手机证据见统一入口任务，iOS浏览器可用不等于新增原生iOS客户端 |
 | 当前账号云服务 | 最新配置已改自部署Logto default业务租户，独立CyberGrid项目/Upstash namespace；旧Cloud Development资源保留 | 新应用/权限/Account API已配置并独立读回；协调服务与正式主页READY；真实CORS/Redis/Native-Web加密链通过，本机更新见[当前记录](plan/reviews/account-selfhost-cutover-01.md)；无Cloud付费升级 |
 
 账号数据与最少配置在 Logto，Upstash 仅作 CyberGrid 协调；业务正文和端到端私钥留在用户两端。HTTPS 本身不等于端到端加密。首次公钥目录、浏览器托管代码及终端仍是信任边界，详情见[方案](account-device-cloud-review.md)。
