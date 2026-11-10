@@ -1,5 +1,5 @@
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import type { AgentEvent } from "../web/src/types";
 
 const approvalEvent = (
@@ -48,6 +48,8 @@ async function fixture(page: Page, initial: AgentEvent[] = [approvalEvent()]) {
     updated_at: 1,
   }));
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url());
     const path = url.pathname.slice(4);
     const id = path.split("/")[2];
@@ -122,13 +124,6 @@ async function fixture(page: Page, initial: AgentEvent[] = [approvalEvent()]) {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: "https://approval-fixture.trycloudflare.com",
-        token: "approval-ui-fixture",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   await page.goto(`${process.env.APPROVAL_TEST_URL || ""}/#approval-a`);

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 
 async function fixture(page: Page, legacy = false, delayInitial = false) {
   let configured = false;
@@ -9,6 +9,8 @@ async function fixture(page: Page, legacy = false, delayInitial = false) {
     releaseInitial = resolve;
   });
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const path = new URL(route.request().url()).pathname.slice(4);
     if (route.request().method() !== "GET") {
       writes.push(route.request().postDataJSON());
@@ -46,12 +48,6 @@ async function fixture(page: Page, legacy = false, delayInitial = false) {
       await initialPending;
     await route.fulfill({ json: data });
   });
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({ url: location.origin, token: "default-agent-fixture" }),
-    ),
-  );
   await page.goto("/");
   return {
     writes,

@@ -1,5 +1,5 @@
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import { readFile } from "node:fs/promises";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 async function answer(page: Page) {
@@ -32,13 +32,7 @@ async function answer(page: Page) {
     .toBe("idle");
   await page.addInitScript(() => {
     localStorage.setItem("ra.appearance-v1", JSON.stringify({ mode: "light" }));
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "browser-integration-test-token",
-      }),
-    );
+
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {

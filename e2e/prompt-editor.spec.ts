@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./local-fixture";
 import type { AgentEvent } from "../web/src/types";
 import {
   expectPromptText,
@@ -57,6 +57,8 @@ async function openEditor(page: Page, initialText = "等待编辑的问题") {
     release: undefined as (() => void) | undefined,
   };
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url());
     const path = url.pathname.slice(4);
     let data: unknown = {};
@@ -114,13 +116,6 @@ async function openEditor(page: Page, initialText = "等待编辑的问题") {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: "https://prompt-fixture.trycloudflare.com",
-        token: "prompt-fixture",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   await page.goto(`${process.env.USER_MESSAGE_TEST_URL || ""}/#${session.id}`);

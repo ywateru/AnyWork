@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./local-fixture";
 for (const agent of ["deepseek-harness", "workbuddy"]) {
   test(`${agent} persisted body remains visible when host connection and SSE are unavailable`, async ({
     page,
@@ -18,6 +18,8 @@ for (const agent of ["deepseek-harness", "workbuddy"]) {
     };
     let messages = 0;
     await page.route("**/api/**", async (route) => {
+      if (new URL(route.request().url()).pathname === "/api/local/session")
+        return route.fallback();
       const path = new URL(route.request().url()).pathname.slice(4);
       if (path.endsWith("/messages")) messages++;
       let data: unknown = {};
@@ -83,15 +85,6 @@ for (const agent of ["deepseek-harness", "workbuddy"]) {
       else if (/^\/sessions\/[^/]+$/.test(path)) data = { session };
       await route.fulfill({ json: data });
     });
-    await page.addInitScript(() =>
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({
-          url: location.origin,
-          token: "isolated-history-fixture-key",
-        }),
-      ),
-    );
     await page.goto(`/#${session.id}`);
     await expect(page.locator(".chat-scroll")).toContainText(
       `${agent} 保存的问题`,

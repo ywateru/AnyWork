@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./local-fixture";
 
 // Reproduce the real compact-history/SSE ordering from release CI without racing
 // a fast local process or sending a prompt to an existing engine.
@@ -47,6 +47,8 @@ test("compacted completed history and delayed live replay retain one canonical a
   });
   let delivered = false;
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const path = new URL(route.request().url()).pathname.slice(4);
     let data: unknown = {};
     if (path === "/info")
@@ -122,12 +124,6 @@ test("compacted completed history and delayed live replay retain one canonical a
     else if (path === "/sessions/replay") data = { session };
     await route.fulfill({ json: data });
   });
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({ url: location.origin, token: "replay-fixture" }),
-    ),
-  );
   await page.goto("/#replay");
   const answer = page.getByRole("link", { name: "设计说明", exact: true });
   await expect(answer).toHaveCount(1);

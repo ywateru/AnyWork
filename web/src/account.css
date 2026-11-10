@@ -589,3 +589,119 @@
     transition: none !important;
   }
 }
+
+/* Unified account entry: device information carries the hierarchy. */
+.account-root {
+  color: #202630;
+  background: #f7f8fa;
+}
+.account-header,
+.account-device-list,
+.account-dialog {
+  background: #fff;
+}
+.account-root button,
+.account-root a.account-primary {
+  min-height: 44px;
+  border-color: #dce2e9;
+}
+.account-root .account-primary {
+  background: #2457d6;
+  border-color: #2457d6;
+  color: #fff;
+}
+.account-root .account-primary:hover {
+  background: #1945b2;
+}
+.account-root :focus-visible {
+  outline-color: #2457d6;
+}
+.account-main {
+  margin-inline: auto;
+}
+.account-device-list {
+  padding-inline: 22px;
+  border: 1px solid #dce2e9;
+  border-radius: 10px;
+}
+.account-device:last-child {
+  border-bottom: 0;
+}
+.account-root .account-device-settings button {
+  min-height: 44px;
+}
+.account-current-user {
+  align-self: center;
+  color: #697482;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.local-entry-main {
+  width: min(640px, 100%);
+  padding: 72px 24px;
+  margin-inline: auto;
+}
+.local-entry-main h1 {
+  font-size: 28px;
+  letter-spacing: -0.5px;
+  margin-block: 22px 14px;
+}
+.local-entry-main p {
+  color: #697482;
+  line-height: 1.8;
+}
+.local-entry-main .local-entry-hint {
+  margin-bottom: 30px;
+}
+.workspace-context {
+  font-size: 12px;
+  color: var(--muted, #697482);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: auto;
+  max-width: 42vw;
+}
+.window-tabbar .workspace-context + .workspace-account-entry {
+  margin-left: 4px;
+}
+.window-tabbar .workspace-account-entry {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+@media (max-width: 650px) {
+  .account-current-user {
+    display: none;
+  }
+  .account-device-list {
+    padding-inline: 14px;
+  }
+  .account-device-settings {
+    gap: 16px;
+  }
+  .workspace-context {
+    max-width: 100px;
+    font-size: 11px;
+  }
+  .window-tabbar .workspace-account-entry {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+  .local-entry-main {
+    padding-top: 44px;
+  }
+}
+.account-mobile-user {
+  display: none;
+}
+@media (max-width: 650px) {
+  .account-page-heading .account-mobile-user {
+    display: block;
+    margin-block: -4px 12px;
+    color: #202630;
+    overflow-wrap: anywhere;
+  }
+}

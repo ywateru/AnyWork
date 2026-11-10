@@ -1,10 +1,11 @@
+import { fetchLocalRoute } from "./local-fixture";
 import {
   expectPromptText,
   fillPromptText,
   pastePromptText,
   selectPromptText,
 } from "./prompt-editor-helpers";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 
 async function fixture(page: Page) {
@@ -32,13 +33,6 @@ async function fixture(page: Page) {
     ).toBe(true);
   }
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "browser-integration-test-token",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   return {
@@ -520,7 +514,7 @@ test("keyboard queue actions never skip an unavailable queue edge", async ({
   const { session, open } = await fixture(page);
   await page.route(`**/api/sessions/${session.id}/queue`, async (route) => {
     if (route.request().method() === "GET") {
-      const response = await route.fetch();
+      const response = await fetchLocalRoute(route);
       const data = await response.json();
       data.items[0].status = "uncertain";
       data.items[1].status = "sending";
@@ -733,7 +727,7 @@ test("empty queued steer requires a confirmed running turn rather than a connect
 }) => {
   const { session, open } = await fixture(page);
   await page.route(`**/api/sessions/${session.id}`, async (route) => {
-    const response = await route.fetch();
+    const response = await fetchLocalRoute(route);
     const data = await response.json();
     data.session.status = "starting";
     await route.fulfill({ response, json: data });
@@ -767,7 +761,7 @@ test("queued steer confirmation preserves new typing and cancels when the turn b
   await page.route(`**/api/sessions/${session.id}`, async (route) => {
     confirmations++;
     await gate;
-    const response = await route.fetch();
+    const response = await fetchLocalRoute(route);
     const data = await response.json();
     data.session.status = status;
     await route.fulfill({ response, json: data });

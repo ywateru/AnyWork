@@ -37,6 +37,8 @@ try {
     assert.equal(await page.locator('.hero-actions .primary').getAttribute('href'), '/app/?signup=1');
     assert(await page.locator('.device-preview').isVisible());
     assert.equal(await page.locator('.site-device').count(), 2);
+    assert.equal(await page.locator('[data-route]').count(), 0);
+    assert(!/WireGuard|高级手动连接|advanced manual connections/.test(await page.locator('body').innerText()));
     const background = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
     assert(!['rgb(45, 108, 223)'].includes(background));
     await page.locator('#tab-changes').click();
@@ -46,12 +48,12 @@ try {
     assert(await page.locator('#panel-terminal').isVisible());
     await page.locator('#tab-terminal').press('Home');
     assert(await page.locator('#panel-chat').isVisible());
-    await page.locator('#route-tunnel').click();
-    assert(await page.locator('#route-panel-tunnel').isVisible());
-    assert.equal(await page.locator('.network-route-label').textContent(),'HTTPS');
-    await page.locator('#route-tunnel').press('ArrowRight');
-    assert(await page.locator('#route-panel-vpn').isVisible());
-    await page.locator('#route-vpn').press('Home');
+    await page.locator('#step-devices').click();
+    assert(await page.locator('#step-panel-devices').isVisible());
+    assert.equal(await page.locator('.network-route-label').textContent(),locale === 'zh' ? '找到电脑' : 'Find your computer');
+    await page.locator('#step-devices').press('ArrowRight');
+    assert(await page.locator('#step-panel-workspace').isVisible());
+    await page.locator('#step-workspace').press('Home');
     await page.locator('.faq summary').first().click();
     assert(await page.locator('.faq details').first().getAttribute('open') !== null);
     await page.locator('#demo-approve').click();

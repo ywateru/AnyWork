@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { fetchLocalRoute } from "./local-fixture";
+import { expect, test, type Page } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 const reason =
@@ -24,7 +25,7 @@ async function fixture(page: Page, existing = false, draftMode = false) {
       await route.continue();
       return;
     }
-    const response = await route.fetch();
+    const response = await fetchLocalRoute(route);
     const data = await response.json();
     await route.fulfill({
       response,
@@ -43,13 +44,6 @@ async function fixture(page: Page, existing = false, draftMode = false) {
   });
   await page.addInitScript(
     ({ id, mode }) => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({
-          url: location.origin,
-          token: "browser-integration-test-token",
-        }),
-      );
       localStorage.setItem("ra.sidebar-pinned", "false");
       if (mode)
         sessionStorage.setItem(

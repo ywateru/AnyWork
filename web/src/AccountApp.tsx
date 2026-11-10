@@ -22,6 +22,8 @@ import {
   X,
 } from "lucide-react";
 import App from "./App";
+import LocalApp from "./LocalApp";
+import { isLocalEntry } from "./localBootstrap";
 import type { Connection } from "./types";
 import {
   AccountError,
@@ -109,12 +111,11 @@ const initialLocale = () => {
 const zh = {
   devices: "我的设备",
   guide: "使用指南",
-  advanced: "高级连接",
   title: "工作，随你继续。",
   intro: "在自己的电脑上运行 Agent，从另一块屏幕继续对话和工作。",
   signIn: "登录",
   signUp: "注册账号",
-  accountHint: "登录后即可查看你的设备。密码由 Logto 安全管理。",
+  accountHint: "登录后即可查看你的设备。密码只在安全账号页面输入。",
   localHint: "需要在这台电脑上开启远程访问？",
   download: "下载桌面端",
   loading: "正在加载…",
@@ -145,14 +146,13 @@ const zh = {
   save: "保存",
   close: "关闭",
   addTitle: "添加一台电脑",
-  step1:
-    "在 Mac 上安装并打开 AnyWork 桌面端。账号远程访问首发支持 macOS；其他平台可继续使用高级连接。",
+  step1: "在 Mac 上安装并打开 AnyWork 桌面端。账号远程访问当前支持 macOS。",
   step2: "登录与当前页面相同的账号。",
   step3: "在电脑上开启“允许我的其他设备访问”。",
   addFoot: "完成后，设备会出现在这里。电脑需要保持开机联网。",
   security: "业务内容只在你的设备间解密",
   securityText:
-    "账号与最少设备配置由 Logto 管理，CyberGrid 交换必要连接信息。对话、文件、终端内容和设备私钥留在你的设备上。",
+    "账号服务保存必要的账号与设备配置，连接服务交换必要连接信息。对话、文件和终端内容在设备间加密，设备私钥留在本机。",
   back: "返回我的设备",
   firstKey: "确认这台电脑的身份",
   changedKey: "这台电脑的公钥已改变",
@@ -167,19 +167,17 @@ const zh = {
   loginError: "登录未完成，请重新登录。",
   connectError: "无法建立安全连接。请确认电脑在线、远程访问已开启，然后重试。",
   sessionExpired: "连接授权已过期，请返回设备页重新连接。",
-  manualBack: "返回账号入口",
 };
 const en: typeof zh = {
   devices: "My devices",
   guide: "Getting started",
-  advanced: "Advanced connection",
   title: "Pick up where you left off.",
   intro:
     "Run your agents on your own computer. Continue the conversation and the work from another screen.",
   signIn: "Sign in",
   signUp: "Create account",
   accountHint:
-    "Sign in to see your devices. Logto securely manages your password.",
+    "Sign in to see your devices. Enter your password only on the secure account page.",
   localHint: "Want to access this computer remotely?",
   download: "Download desktop app",
   loading: "Loading…",
@@ -213,14 +211,14 @@ const en: typeof zh = {
   close: "Close",
   addTitle: "Add a computer",
   step1:
-    "Install and open AnyWork on your Mac. Account remote access initially supports macOS; other platforms retain advanced manual connections.",
+    "Install and open AnyWork on your Mac. Account remote access currently supports macOS.",
   step2: "Sign in with the same account you use here.",
   step3: "Enable “Allow my other devices to access”.",
   addFoot:
     "Your device will appear here. Keep the computer powered on and connected.",
   security: "Your devices decrypt your work",
   securityText:
-    "Logto manages your account and minimal device settings. CyberGrid exchanges connection information. Conversations, files, terminal content and device private keys stay on your devices.",
+    "Account services store essential account and device settings; connection services exchange necessary connection information. Conversations, files and terminals are encrypted between your devices. Private device keys stay on the computer.",
   back: "Back to devices",
   firstKey: "Confirm this computer's identity",
   changedKey: "This computer's public key has changed",
@@ -240,10 +238,9 @@ const en: typeof zh = {
     "A secure connection could not be established. Check that the computer is online with remote access enabled, then try again.",
   sessionExpired:
     "Connection authorization has expired. Return to devices to reconnect.",
-  manualBack: "Back to account entry",
 };
 export default function AccountApp() {
-  if (!location.pathname.startsWith("/app")) return <App />;
+  if (isLocalEntry()) return <LocalApp />;
   let config: AccountConfig | null;
   try {
     config = resolveAccountConfig(import.meta.env);
@@ -254,8 +251,7 @@ export default function AccountApp() {
       </div>
     );
   }
-  if (!config) return <App />;
-  if ((window as any).RemoteAgentAndroid?.getConnection?.()) return <App />;
+  if (!config) return <div role="alert">账号服务配置无效</div>;
   return (
     <AccountProvider config={config}>
       {location.pathname.replace(/\/$/, "").endsWith("/callback") ? (
@@ -342,7 +338,8 @@ function AccountHome({ config }: { config: AccountConfig }) {
   } = useAccountAuth();
   const [locale, setLocale] = useState<"zh-CN" | "en">(initialLocale),
     t = locale === "zh-CN" ? zh : en;
-  const [manual, setManual] = useState(false),
+  const [accountLabel, setAccountLabel] = useState(""),
+    [deviceLabel, setDeviceLabel] = useState(""),
     [subject, setSubject] = useState<string>(),
     [profile, setProfile] = useState<AccountProfile>(),
     [devices, setDevices] = useState<Device[]>([]),
@@ -426,7 +423,16 @@ function AccountHome({ config }: { config: AccountConfig }) {
     if (isAuthenticated)
       void getIdTokenClaims()
         .then((claims) => {
-          if (!controller.signal.aborted && claims?.sub) setSubject(claims.sub);
+          if (!controller.signal.aborted && claims?.sub) {
+            setSubject(claims.sub);
+            setAccountLabel(
+              String(
+                claims.name ||
+                  claims.email ||
+                  (locale === "zh-CN" ? "当前账号" : "Current account"),
+              ),
+            );
+          }
         })
         .catch(() => {
           if (!controller.signal.aborted) setError(t.loginError);
@@ -662,6 +668,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
       } catch {
         /* keep in-memory trust for current session */
       }
+      setDeviceLabel(device.label);
       setConnection(c);
     } catch {
       if (!controller.signal.aborted) setError(t.connectError);
@@ -696,29 +703,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
       setSaving(false);
     }
   };
-  if (manual)
-    return (
-      <div className="account-root">
-        <header className="account-header">
-          <Brand />
-          <button onClick={() => setManual(false)}>{t.manualBack}</button>
-        </header>
-        <main className="account-main">
-          <h1>{t.advanced}</h1>
-          <p>
-            {locale === "zh-CN"
-              ? "高级手动连接请在桌面端或你自己的 AnyWork 本地 Web 界面中使用。这个托管账号入口只连接经过端到端加密的设备。"
-              : "Use advanced manual connections in the desktop app or your own local AnyWork Web interface. This hosted account entry connects only through end-to-end encrypted device sessions."}
-          </p>
-          <a
-            className="account-primary"
-            href={locale === "zh-CN" ? "/zh/#download" : "/en/#download"}
-          >
-            {t.download}
-          </a>
-        </main>
-      </div>
-    );
   if (connection)
     return (
       <App
@@ -726,6 +710,9 @@ function AccountHome({ config }: { config: AccountConfig }) {
         initial={connection}
         onDisconnect={closeConnection}
         onDevices={closeConnection}
+        onSignOut={() => void logout()}
+        contextLabel={`${deviceLabel} · ${accountLabel}`}
+        disconnectLabel="返回我的设备"
       />
     );
   const records = profile?.anywork.devices ?? {};
@@ -740,6 +727,9 @@ function AccountHome({ config }: { config: AccountConfig }) {
       <header className="account-header">
         <Brand />
         <div>
+          {isAuthenticated && (
+            <span className="account-current-user">{accountLabel}</span>
+          )}
           <button
             className="account-language"
             onClick={() => setLocale(locale === "zh-CN" ? "en" : "zh-CN")}
@@ -804,6 +794,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
             <div className="account-page-heading">
               <div>
                 <h1>{t.devices}</h1>
+                <p className="account-mobile-user">{accountLabel}</p>
                 <p>{t.subtitle}</p>
               </div>
               <div className="account-page-actions">
@@ -965,7 +956,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
       )}
       <footer className="account-footer">
         <span>AnyWork</span>
-        <button onClick={() => setManual(true)}>{t.advanced}</button>
         <a href="/source">{locale === "zh-CN" ? "对应源码" : "Source"}</a>
         <a href="https://github.com/ywateru/AnyWork">GitHub</a>
       </footer>

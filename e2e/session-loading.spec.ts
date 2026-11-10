@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./local-fixture";
 
 for (const group of ["directory", "status"]) {
   test(`initial ${group} list shows loading until sessions resolve`, async ({
@@ -10,13 +10,6 @@ for (const group of ["directory", "status"]) {
     });
     let requests = 0;
     await page.addInitScript((group) => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({
-          url: location.origin,
-          token: "browser-integration-test-token",
-        }),
-      );
       localStorage.setItem("ra.group-mode-v2", group);
     }, group);
     await page.route("**/api/sessions", async (route) => {
@@ -44,15 +37,6 @@ test("session load failure shows retry instead of an empty state", async ({
   page,
 }, testInfo) => {
   let fail = true;
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "browser-integration-test-token",
-      }),
-    ),
-  );
   await page.route("**/api/sessions", async (route) => {
     await route.fulfill(
       fail

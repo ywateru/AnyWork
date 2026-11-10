@@ -3,8 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, expect } from "@playwright/test";
-
-// Local UI fixtures only: this check never logs in or contacts cloud services.
+// Render-only local fixtures. Real cookie/PTY integration is account-unified.spec.ts.
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const types = {
   ".js": "text/javascript",
@@ -21,12 +20,11 @@ const server = createServer(async (req, res) => {
         ? resolve(dist, "index.html")
         : resolve(dist, "." + path);
     if (!file.startsWith(dist)) throw new Error();
-    const bytes = await readFile(file);
     res.writeHead(200, {
       "Content-Type": types[extname(file)] ?? "application/octet-stream",
       "Cache-Control": "no-store",
     });
-    res.end(bytes);
+    res.end(await readFile(file));
   } catch {
     res.writeHead(404);
     res.end();
@@ -44,15 +42,29 @@ try {
       locale: "zh-CN",
       serviceWorkers: "block",
     });
-    await context.route("**/*", async (route) => {
+    let local = false,
+      expired = false;
+    await context.route("**/*", (route) => {
       const url = new URL(route.request().url());
       if (url.origin !== origin)
         return route.fulfill({
           status: 200,
           contentType: "text/html",
-          body: "<h1>Isolated account destination fixture</h1>",
+          body: "<h1>Isolated account destination</h1>",
         });
       if (!url.pathname.startsWith("/api/")) return route.continue();
+      if (url.pathname === "/api/local/session")
+        return route.fulfill({
+          status: local ? 200 : 401,
+          json: local
+            ? { accountLabel: "Fixture", remoteEnabled: false }
+            : { error: "LOCAL_SESSION_REQUIRED" },
+        });
+      if (expired)
+        return route.fulfill({
+          status: 401,
+          json: { error: "LOCAL_SESSION_REQUIRED" },
+        });
       const data =
         url.pathname === "/api/info"
           ? {
@@ -66,14 +78,28 @@ try {
               ? { plugins: [] }
               : url.pathname === "/api/workspaces"
                 ? { workspaces: [] }
-                : {};
+                : { events: [], cursor: 0 };
       return route.fulfill({ json: data });
     });
+    await context.addInitScript(() => {
+      localStorage.setItem(
+        "ra.connection",
+        JSON.stringify({ url: "https://retired.invalid", token: "obsolete" }),
+      );
+      window.RemoteAgentAndroid = {
+        getConnection() {
+          throw new Error("retired bridge called");
+        },
+      };
+    });
     const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(origin);
     await expect(
-      page.getByRole("heading", { name: "登录查看你的设备" }),
+      page.getByRole("heading", { name: "这台电脑的工作区" }),
     ).toBeVisible();
+    await expect(page.locator("input")).toHaveCount(0);
     const signup = page.getByRole("link", {
       name: "注册账号（在新标签页打开）",
       exact: true,
@@ -89,73 +115,49 @@ try {
     await expect(popup).toHaveURL(
       "https://anywork-tau.vercel.app/app/?signup=1",
     );
-    await expect(
-      page.getByRole("heading", { name: "登录查看你的设备" }),
-    ).toBeVisible();
     await popup.close();
-    const saved = JSON.stringify({ url: origin, token: "isolated-ui-fixture" });
-    await page.evaluate(
-      (value) => localStorage.setItem("ra.connection", value),
-      saved,
-    );
+    local = true;
     await page.reload();
     await expect(
       page.getByRole("heading", { name: "从哪里开始？" }),
     ).toBeVisible();
-    const entry = page.getByRole("link", {
-      name: "登录查看设备（在新标签页打开）",
-      exact: true,
-    });
-    await expect(entry).toBeVisible();
-    await entry.focus();
-    await expect(entry).toBeFocused();
-    const [workspacePopup] = await Promise.all([
-      page.waitForEvent("popup"),
-      entry.press("Enter"),
-    ]);
-    await expect(workspacePopup).toHaveURL(
-      "https://anywork-tau.vercel.app/app/",
+    await expect(page.locator(".workspace-context")).toContainText(
+      "由 Fixture 在本机打开",
     );
     await expect(
-      page.getByRole("heading", { name: "从哪里开始？" }),
+      page.getByRole("link", { name: "账号与设备（在新标签页打开）" }),
     ).toBeVisible();
-    expect(
-      await page.evaluate(() => localStorage.getItem("ra.connection")),
-    ).toBe(saved);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-    await page.screenshot({ path: `/tmp/anywork-client-account-${width}.png` });
-    await workspacePopup.close();
-    // Account mode must not restore the manual connection already stored above.
+    await page.screenshot({
+      path: `/tmp/anywork-unified-workspace-${width}.png`,
+      fullPage: true,
+    });
+    expired = true;
+    await expect(
+      page.getByRole("heading", { name: "这台电脑的工作区" }),
+    ).toBeVisible({ timeout: 5000 });
     await page.goto(origin + "/app/");
     await expect(
       page.getByRole("button", { name: "登录", exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "注册账号", exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "从哪里开始？" }),
-    ).toHaveCount(0);
-    expect(
-      await page.evaluate(() => localStorage.getItem("ra.connection")),
-    ).toBe(saved);
+    await expect(page.getByText("高级连接", { exact: true })).toHaveCount(0);
+    await expect(page.locator("input")).toHaveCount(0);
+    await page.screenshot({
+      path: `/tmp/anywork-unified-account-${width}.png`,
+      fullPage: true,
+    });
     await page.goto(origin + "/app/callback");
-    await expect(
-      page.getByRole("link", { name: "重新登录 / Try again" }),
-    ).toBeVisible();
-    await page.getByRole("link", { name: "重新登录 / Try again" }).click();
-    await expect(
-      page.getByRole("button", { name: "登录", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText(/登录未完成/)).toBeVisible();
+    expect(errors).toEqual([]);
     await context.close();
+    console.log(
+      `Passed ${width}px: unified entry, ignored old connection/bridge, local context, 401 teardown, mobile layout, callback recovery (render fixtures only)`,
+    );
   }
-  console.log(
-    "Client account entry: 1440/390px, signup/login popup, keyboard, retained manual connection, isolated account mode and callback recovery passed.",
-  );
 } finally {
   await browser.close();
   await new Promise((done) => server.close(done));

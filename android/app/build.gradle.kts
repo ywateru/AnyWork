@@ -21,16 +21,9 @@ android {
             signingConfig = signingConfigs.findByName("distribution")
         }
     }
-    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("web-assets"))
 }
-val bundleWeb by tasks.registering(Sync::class) {
-    from(System.getenv("ANYWORK_ANDROID_WEB_DIR") ?: "../../web/dist")
-    into(layout.buildDirectory.dir("web-assets/www"))
-    doFirst { check(file((System.getenv("ANYWORK_ANDROID_WEB_DIR") ?: "../../web/dist") + "/index.html").exists()) { "Build the web app first: npm run build" } }
-}
-tasks.named("preBuild").configure { dependsOn(bundleWeb) }
 
 dependencies {
-    implementation("com.wireguard.android:tunnel:1.0.20260102")
+    implementation("androidx.browser:browser:1.8.0")
     testImplementation("junit:junit:4.13.2")
 }

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import type { AgentEvent } from "../web/src/types";
 import {
   expectPromptText,
@@ -109,6 +109,8 @@ async function fixture(
     updated_at: 1,
   }));
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url()),
       path = url.pathname.slice(4),
       id = path.split("/")[2];
@@ -257,13 +259,6 @@ async function fixture(
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: "https://user-edit-fixture.trycloudflare.com",
-        token: "user-edit-fixture",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   await page.goto(`${process.env.USER_MESSAGE_TEST_URL || ""}/#edit-a`);

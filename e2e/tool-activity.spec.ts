@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 
 async function fixture(page: Page, longOutput = false) {
   const now = Date.now();
@@ -104,6 +104,8 @@ async function fixture(page: Page, longOutput = false) {
   ];
   const requests: string[] = [];
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const path = new URL(route.request().url()).pathname.slice(4);
     if (
       route.request().method() === "POST" &&
@@ -167,10 +169,6 @@ async function fixture(page: Page, longOutput = false) {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({ url: location.origin, token: "tool-activity-fixture" }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
     localStorage.setItem("ra.theme", "system");
   });

@@ -113,17 +113,6 @@ const statusNames: Record<string, string> = {
   disconnected: "待恢复",
   external: "运行状态未知",
 };
-const initialConnection = () => {
-  try {
-    const native = (window as any).RemoteAgentAndroid?.getConnection?.();
-    if (native) return JSON.parse(native) as Connection | null;
-    return JSON.parse(
-      localStorage.getItem("ra.connection") || "null",
-    ) as Connection | null;
-  } catch {
-    return null;
-  }
-};
 
 function queueAttachmentName(path: string, sessionId: string) {
   const parts = path.replace(/\\/g, "/").split("/");
@@ -146,13 +135,19 @@ export default function App({
   initial,
   onDisconnect,
   onDevices,
+  onSignOut,
+  contextLabel,
+  disconnectLabel = "返回连接入口",
 }: {
   initial?: Connection;
   onDisconnect?: () => void;
   onDevices?: () => void;
+  onSignOut?: () => void;
+  contextLabel?: string;
+  disconnectLabel?: string;
 } = {}) {
   const [connection, setConnection] = useState<Connection | null>(
-      () => initial ?? initialConnection(),
+      () => initial ?? null,
     ),
     [sessions, setSessions] = useState<Session[]>([]),
     [sessionsLoadedFor, setSessionsLoadedFor] = useState<Api | null>(null),
@@ -1126,10 +1121,6 @@ export default function App({
         ),
         text = JSON.stringify(data, null, 2),
         name = `anywork-${session.id}.json`;
-      if (window.RemoteAgentAndroid) {
-        window.RemoteAgentAndroid.saveFile(name, text);
-        return;
-      }
       const url = URL.createObjectURL(
           new Blob([text], { type: "application/json" }),
         ),
@@ -1186,12 +1177,13 @@ export default function App({
   ]);
   if (!connection || !api)
     return (
-      <Login
-        onConnect={(c) => {
-          localStorage.setItem("ra.connection", JSON.stringify(c));
-          setConnection(c);
-        }}
-      />
+      <div className="account-loading">
+        <p>连接已关闭，请返回入口继续。</p>
+        <AccountEntry
+          onDevices={onDevices}
+          label={onDevices ? undefined : "账号与设备"}
+        />
+      </div>
     );
 
   const leaveReviewRoute = () => {
@@ -1380,7 +1372,19 @@ export default function App({
               </button>
               {!session && sessionTabs}
               {!session && <NotificationCenter center={notifications} />}
-              <AccountEntry onDevices={onDevices} />
+              <span className="workspace-context" title={contextLabel}>
+                {contextLabel}
+              </span>
+              <AccountEntry
+                onDevices={onDevices}
+                label={onDevices ? undefined : "账号与设备"}
+              />
+              {onSignOut && (
+                <button className="workspace-account-entry" onClick={onSignOut}>
+                  <LogOut size={15} />
+                  退出账号
+                </button>
+              )}
             </div>
             {!session && (
               <header className="topbar">
@@ -2043,8 +2047,6 @@ export default function App({
               <button
                 className="logout"
                 onClick={() => {
-                  (window as any).RemoteAgentAndroid?.openConnections?.();
-                  localStorage.removeItem("ra.connection");
                   setConnection(null);
                   onDisconnect?.();
                   setSessions([]);
@@ -2052,7 +2054,7 @@ export default function App({
                 }}
               >
                 <LogOut size={15} />
-                断开服务器连接
+                {disconnectLabel}
               </button>
               <p className="license">
                 AnyWork v{appVersion} · AGPL-3.0-only
@@ -2134,122 +2136,6 @@ export default function App({
   );
 }
 
-function Login({ onConnect }: { onConnect: (connection: Connection) => void }) {
-  const [url, setUrl] = useState(
-      location.hostname === "appassets.androidplatform.net"
-        ? ""
-        : location.origin,
-    ),
-    [token, setToken] = useState(""),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  return (
-    <div className="login-page">
-      <div className="login-art">
-        <div className="brand">
-          <div className="brand-icon">
-            <img
-              src={import.meta.env.BASE_URL + "icon.svg"}
-              width="40"
-              height="40"
-              alt=""
-            />
-          </div>
-          <span>
-            Any<span className="brand-light">Work</span>
-          </span>
-        </div>
-        <span className="pill">YOUR AGENTS, CONNECTED</span>
-        <h1>
-          从任何地方，
-          <br />
-          继续你的构建。
-        </h1>
-        <p>
-          你的工具。你的机器。
-          <br />
-          一个始终在线的开发工作空间。
-        </p>
-        <div className="login-art-bottom">
-          <i className="dot" /> Powered by Rust · Extensible by design
-        </div>
-      </div>
-      <form
-        className="login-form"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          setError("");
-          try {
-            const normalized = new URL(url);
-            if (!["http:", "https:"].includes(normalized.protocol))
-              throw new Error("请输入 HTTP 或 HTTPS 地址");
-            if (
-              normalized.username ||
-              normalized.password ||
-              normalized.search ||
-              normalized.hash
-            )
-              throw new Error("服务器地址不能包含账号、查询参数或片段");
-            const connection = { url: normalized.origin, token: token.trim() };
-            await new Api(connection).request("/info");
-            onConnect(connection);
-          } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <div className="eyebrow">AnyWork</div>
-        <section className="login-account-intro" aria-label="账号与设备">
-          <h2>登录查看你的设备</h2>
-          <p>登录同一账号，找到已开启远程访问的电脑。</p>
-          <div className="login-account-actions">
-            <AccountEntry />
-            <AccountEntry signup />
-          </div>
-          <p className="hint">账号页面在新标签页打开，当前连接和工作保留。</p>
-        </section>
-        <h2 className="manual-connect-title">高级连接</h2>
-        <p>输入服务器地址与访问令牌，开始远程工作。</p>
-        <label>
-          服务器地址
-          <input
-            type="url"
-            required
-            placeholder="https://agent.example.com"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
-        </label>
-        <label>
-          访问令牌
-          <input
-            type="password"
-            required
-            autoComplete="current-password"
-            placeholder="粘贴服务端生成的访问令牌"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-          />
-        </label>
-        {error && (
-          <p role="alert" className="danger">
-            {error}
-          </p>
-        )}
-        <Button disabled={busy}>
-          {busy ? "正在连接…" : "连接工作空间"}
-          <ArrowUpRight size={17} />
-        </Button>
-        <p className="hint">
-          <ShieldCheck size={14} /> 访问令牌保存在当前设备中。
-        </p>
-      </form>
-    </div>
-  );
-}
 function CreateSession({
   api,
   plugins,

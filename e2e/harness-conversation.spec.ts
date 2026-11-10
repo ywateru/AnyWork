@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import { fillPromptText } from "./prompt-editor-helpers";
 
 async function fixture(page: Page, status = "running") {
@@ -17,6 +17,8 @@ async function fixture(page: Page, status = "running") {
   }));
   const writes: string[] = [];
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const path = new URL(route.request().url()).pathname.slice(4);
     if (
       route.request().method() === "POST" &&
@@ -190,10 +192,6 @@ async function fixture(page: Page, status = "running") {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({ url: location.origin, token: "harness-ui-fixture" }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
     localStorage.setItem("ra.theme", "light");
   });

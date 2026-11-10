@@ -2,14 +2,7 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 cd "$RA_PROJECT_ROOT"
-# Keep the running server's Web directory untouched during Android packaging.
-if [[ -z "${ANYWORK_ANDROID_WEB_DIR:-}" ]]; then
-    android_web="$(mktemp -d "${TMPDIR:-/tmp}/anywork-android-web.XXXXXX")"
-    trap 'rm -rf "$android_web"' EXIT
-    npm run typecheck
-    (cd web && ../node_modules/.bin/vite build --outDir "$android_web" && node scripts/pwa.mjs "$android_web")
-    export ANYWORK_ANDROID_WEB_DIR="$android_web"
-fi
+# Android is a fixed HTTPS Custom Tab host; no bundled Web assets or user data.
 cd android
 "${ANYWORK_GRADLE_BIN:-./gradlew}" :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
 mkdir -p ../artifacts

@@ -5,8 +5,6 @@ const newClientId = () =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
 const clientId = (() => {
-  const native = (window as any).RemoteAgentAndroid?.getClientId?.();
-  if (native) return native;
   try {
     const key = "anywork.client-id";
     let id = localStorage.getItem(key);
