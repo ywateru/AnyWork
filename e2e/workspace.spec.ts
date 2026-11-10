@@ -1991,6 +1991,11 @@ test("native goal banner pauses, resumes, opens the goal tab and clears without 
   await expect(banner).toContainText("进行中的目标");
   await expect(banner.locator(".goal-banner-objective")).toHaveText(objective);
   await fillPromptText(input, "暂停和查看目标时保留草稿");
+  // The fixture completes immediately, but its shared poll arrives later than
+  // the goal snapshot. Wait for that completion before dismissing its toast.
+  await expect(
+    page.getByRole("button", { name: "关闭提醒", exact: true }),
+  ).toBeVisible();
   await dismissReminders(page);
   const statusRequest = page.waitForRequest(
     (request) =>
