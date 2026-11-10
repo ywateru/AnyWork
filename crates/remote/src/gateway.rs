@@ -83,6 +83,18 @@ struct ActiveClient {
     clients: Arc<Clients>,
     id: u64,
 }
+fn next_connection_id(counter: &AtomicU64) -> Result<u64> {
+    let mut id = counter.load(Ordering::Relaxed);
+    loop {
+        let next = id
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("REMOTE_CONNECTION_LIMIT"))?;
+        match counter.compare_exchange_weak(id, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return Ok(id),
+            Err(current) => id = current,
+        }
+    }
+}
 impl Drop for ActiveClient {
     fn drop(&mut self) {
         self.clients
@@ -103,9 +115,7 @@ impl Clients {
         if stop.is_cancelled() {
             bail!("REMOTE_CLOSED")
         }
-        let id = NEXT_ID
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .map_err(|_| anyhow::anyhow!("REMOTE_CONNECTION_LIMIT"))?;
+        let id = next_connection_id(&NEXT_ID)?;
         clients.insert(
             id,
             RemoteClient {
@@ -131,6 +141,7 @@ impl Clients {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 }
+
 enum SessionEvent {
     Completed(Option<String>),
     Output(Option<Value>),
@@ -623,4 +634,59 @@ async fn terminal(
     }
     let _ = ws.close(None).await;
     Ok(())
+}
+
+#[cfg(test)]
+mod connection_id_tests {
+    use super::*;
+    use std::thread;
+
+    #[test]
+    fn concurrent_ids_are_unique_and_monotonic_without_reuse() {
+        let counter = Arc::new(AtomicU64::new(1));
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                let counter = counter.clone();
+                thread::spawn(move || {
+                    (0..1000)
+                        .map(|_| next_connection_id(&counter).unwrap())
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let mut ids = Vec::new();
+        for worker in workers {
+            let allocated = worker.join().unwrap();
+            assert!(allocated.windows(2).all(|pair| pair[0] < pair[1]));
+            ids.extend(allocated);
+        }
+        ids.sort_unstable();
+        assert_eq!(ids, (1..=8000).collect::<Vec<_>>());
+        assert_eq!(counter.load(Ordering::Relaxed), 8001);
+    }
+
+    #[test]
+    fn exhausted_ids_fail_closed_without_wrapping_under_contention() {
+        let counter = Arc::new(AtomicU64::new(u64::MAX - 1));
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                let counter = counter.clone();
+                thread::spawn(move || next_connection_id(&counter))
+            })
+            .collect();
+        let mut allocated = Vec::new();
+        for worker in workers {
+            match worker.join().unwrap() {
+                Ok(id) => allocated.push(id),
+                Err(error) => assert_eq!(error.to_string(), "REMOTE_CONNECTION_LIMIT"),
+            }
+        }
+        assert_eq!(allocated, vec![u64::MAX - 1]);
+        assert_eq!(counter.load(Ordering::Relaxed), u64::MAX);
+        assert_eq!(
+            next_connection_id(&counter).unwrap_err().to_string(),
+            "REMOTE_CONNECTION_LIMIT"
+        );
+        assert_eq!(counter.load(Ordering::Relaxed), u64::MAX);
+    }
 }
