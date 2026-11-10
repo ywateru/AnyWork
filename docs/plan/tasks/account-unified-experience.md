@@ -1,7 +1,7 @@
 ---
 id: account-unified-experience
 scope: desktop-local-web-hosted-web-android-account-entry
-status: in-progress
+status: complete
 depends-on: [account-live-reliability]
 ---
 
@@ -25,3 +25,13 @@ depends-on: [account-live-reliability]
 ## verification
 
 按设计验收条目逐项出证据。跨层必须走真实调用，渲染mock只证明布局状态，不能替代cookie认证或实际OAuth/设备加密通道。最终交付包括受检源码、Web上线、新Mac产物和可用手机入口；保留不可验证范围与活动用户工作约束，不宣称尚未执行的部署/实机已通过。
+
+## delivery evidence
+
+- [给 CyberGrid 的反馈](../../cybergrid-product-feedback.md)已完成，可独立转发；未自动向上游发送。
+- 产品源码冻结于 `113ddba1433e6437f73bdfebc6a4ea1d6e2fa74f`；后续报告提交不改变已构建产物。[独立源码审查](../reviews/account-unified-independent.md)和[合并检查](../reviews/account-unified-merged.md)覆盖 Native/server、Web、Android 与旧连接退役。
+- [运行与产物验收](../reviews/account-unified-runtime-artifacts.md)记录实际本机 Cookie/PTY、真实自托管授权的两次续期、精确 Mac/Web 产物审查及测试边界。
+- [正式 Web 上线记录](../reviews/account-unified-web-live.md)：正式 `/app/` 已绑定新静态部署，桌面/移动尺寸及图片字节验证通过。
+- [Mac 本机上线记录](../reviews/account-unified-native-live.md)：同一冻结源码构建的客户端已安装到 `/Applications/AnyWork.app` 并运行；现有服务已交接至包内二进制。本机 GUI 确认统一入口和正确工作目录；108 条原会话标识、完整 schema、服务凭据、管理器配置和原进程环境均通过上线后核对。旧服务退出等待问题经单独审查的一次恢复处理，未停止无关代理或隧道。
+
+现代 Android 系统浏览器内完整登录回程、实体手机切网/后台恢复，以及 Native 通过公共隧道连接正式 Web 的完整组合，仍不属于已完成的实机验收。本轮不发布新的公开二进制版本；官网保留旧安装包未包含本次更新的说明。
