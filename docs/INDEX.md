@@ -4,6 +4,7 @@
 - [账号入口验收状态](plan/reviews/account-device-acceptance.md) · [云配置与费用](cloud-configuration.md) · [桌面账号与隔离验收](account-desktop.md) · [加密协议](account-remote-protocol.md) · [官网/设备页布局](account-web-layout.md)
 - [当前自部署切换与验收](plan/reviews/account-selfhost-cutover-01.md) · [自部署CyberGrid上线证据](plan/reviews/account-selfhost-grid-live.md) · [正式主页发布证据](plan/reviews/account-homepage-selfhost-live.md)
 - [本机更新与恢复记录](plan/reviews/account-selfhost-local-rollout-01.md) · [本机更新独立验收](plan/reviews/account-local-update-01.md)
+- [账号连接可靠性修正](plan/tasks/account-live-reliability.md) · [本次故障调查](plan/analysis/account-live-reliability.md)
 - [全项目改进与专家评审稿（2026-11-07）](project-improvement-review.md)
 - [当前支持与验收矩阵 / Support matrix](support-matrix.md)
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)
