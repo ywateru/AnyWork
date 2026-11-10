@@ -1,7 +1,7 @@
 ---
 id: release-approval-notification-race
 scope: pending-request-notifications
-status: in-progress
+status: done
 depends-on: [release-slider-touch-synchronization]
 ---
 
@@ -18,3 +18,7 @@ The UI author owns the minimal notification hook, NotificationCenter/App pending
 ## verification and delivery
 
 Use isolated synthetic sessions to deterministically deliver newer pending history before an older completion/global batch, retain the newer pending notice, suppress overlap and permit an ordinary real approval click; authoritative resolution must clear the card and permit subsequent notifications. Retain existing notification and workspace tests and run appropriate Web build/type/unit checks. Independent review accepts the exact committed fix and targeted actual browser evidence before root merges for a new v0.1.22 publisher operation. Full exact-source Checks and all release platforms remain required; no prior failure is retried as an external transient. Local Native and the retained production service remain untouched.
+
+## delivery
+
+Fix `a81cc53` is merged as `cdb1609`. Independent verification accepted the exact source with six unit tests and four actual Chrome runs on the new production Web across desktop and mobile, covering the deterministic interleaving and original workspace approval flow. The author additionally passed all eight notification cases and both original workspace cases. No approval policy, backend, authentication, timeout or skip changes were introduced. Root is preparing v0.1.22 with the accepted code and review; full exact-source CI, release matrix and website verification remain publication gates.
