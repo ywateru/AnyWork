@@ -6,6 +6,11 @@ import {
   FolderOpen,
   Settings,
   RefreshCw,
+  Copy,
+  Monitor,
+  Smartphone,
+  LockKeyhole,
+  Network,
 } from "lucide-react";
 import { AccountPage, useAccountController } from "./accounts";
 import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
@@ -39,7 +44,11 @@ function App() {
     [page, setPage] = useState("workspace"),
     [error, setError] = useState(""),
     [opening, setOpening] = useState(false),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [copyFeedback, setCopyFeedback] = useState<{
+      address: string;
+      message: string;
+    } | null>(null);
   const initialized = useRef(false);
   useEffect(() => {
     let live = true;
@@ -99,6 +108,26 @@ function App() {
     if (path) setConfig((c) => (c ? { ...c, [key]: path } : c));
   }
   const ready = state?.authorized && state.service === "running";
+  const port = state?.config.port;
+  const localAddress =
+    typeof port === "number" &&
+    Number.isInteger(port) &&
+    port >= 1024 &&
+    port <= 65535
+      ? `http://127.0.0.1:${port}/`
+      : null;
+  async function copyLocalAddress() {
+    if (!ready || !localAddress) return;
+    try {
+      await navigator.clipboard.writeText(localAddress);
+      setCopyFeedback({ address: localAddress, message: "本地地址已复制" });
+    } catch {
+      setCopyFeedback({
+        address: localAddress,
+        message: "未能复制，请选中上方地址手动复制。",
+      });
+    }
+  }
   const status = opening
     ? "正在准备工作区"
     : ready
@@ -144,52 +173,133 @@ function App() {
         )}
         {page === "workspace" && (
           <>
-            <header>
+            <header className="page-heading">
               <div>
                 <h1>这台电脑</h1>
-                <p>在本机工作，或从其他设备继续。</p>
+                <p>
+                  这是工作区的控制台。在本机浏览器工作，也能从其他设备继续。
+                </p>
               </div>
             </header>
-            <section className="workspace-panel" aria-label="本地工作区">
-              <div className="section-heading">
-                <div>
+            <div className="access-layout">
+              <section
+                className="workspace-panel local-panel"
+                aria-label="本地工作区"
+              >
+                <div className="panel-heading">
+                  <Monitor size={20} aria-hidden="true" />
                   <h2>本地工作区</h2>
-                  <p role="status">
-                    <span
-                      className={ready ? "status-dot ready" : "status-dot"}
-                    />
-                    {status}
+                </div>
+                <p className="service-status" role="status">
+                  <span className={ready ? "status-dot ready" : "status-dot"} />
+                  {status}
+                </p>
+                <div className="local-address-block">
+                  <div className="address-heading">
+                    <span>本地访问地址</span>
+                    <span className="address-scope">仅这台电脑</span>
+                  </div>
+                  <div className="address-value">
+                    <code data-testid="local-address">
+                      {localAddress ?? "地址暂不可用"}
+                    </code>
+                    <button
+                      className="copy-address"
+                      aria-label="复制本地地址"
+                      disabled={!ready || !localAddress}
+                      onClick={() => void copyLocalAddress()}
+                    >
+                      <Copy size={16} aria-hidden="true" />
+                      复制
+                    </button>
+                  </div>
+                  {!ready && localAddress && (
+                    <p className="hint address-state">
+                      已配置，服务就绪后可使用。
+                    </p>
+                  )}
+                  <p className="copy-feedback" role="status" aria-live="polite">
+                    {ready && copyFeedback?.address === localAddress
+                      ? copyFeedback.message
+                      : ""}
                   </p>
                 </div>
                 <button
-                  className="primary"
+                  className="primary open-workspace"
                   disabled={
                     opening || !state || updates.state?.phase === "installing"
                   }
                   onClick={() => void openWorkspace()}
                 >
-                  <ExternalLink size={17} />
+                  <ExternalLink size={17} aria-hidden="true" />
                   {opening ? "正在打开…" : "打开工作区"}
                 </button>
-              </div>
-              <p className="workspace-path">
-                <span>工作目录</span>
-                <strong>
-                  {state?.info?.workspace ||
-                    state?.config.workspace ||
-                    "正在读取"}
-                </strong>
-              </p>
-              <p className="hint">
-                无需云账号即可使用本地工作区。浏览器会话只在这台电脑有效。
-              </p>
-              {state?.external && !ready && (
-                <p className="hint">
-                  已有服务由其他进程管理。请在设置中选择它的数据目录，本应用会验证并复用。
+                <p className="hint local-session-help">
+                  首次使用、切换浏览器或本机会话过期时，请用上方按钮建立访问会话。已授权的同一浏览器可通过本地地址再次进入。
                 </p>
-              )}
+                <div className="workspace-path">
+                  <span>当前工作目录</span>
+                  <strong>
+                    {state?.info?.workspace ||
+                      state?.config.workspace ||
+                      "正在读取"}
+                  </strong>
+                </div>
+                {state?.external && !ready && (
+                  <p className="hint">
+                    已有服务由其他进程管理。请在设置中选择它的数据目录，本应用会验证并复用。
+                  </p>
+                )}
+              </section>
+              <AccountPage localReady={Boolean(ready)} controller={account} />
+            </div>
+            <section className="principles" aria-labelledby="principle-title">
+              <div className="principle-heading">
+                <Network size={19} aria-hidden="true" />
+                <h2 id="principle-title">工作原理</h2>
+              </div>
+              <p className="principle-intro">
+                这台电脑运行 Agent，处理会话、文件和终端内容。
+              </p>
+              <div className="connection-paths">
+                <div className="connection-path">
+                  <Monitor size={20} aria-hidden="true" />
+                  <div>
+                    <h3>
+                      本地浏览器 <span aria-hidden="true">→</span> 这台电脑
+                    </h3>
+                    <p>
+                      通过本机地址访问，无需云账号。地址只在这台电脑有效，不能用于手机访问。
+                    </p>
+                  </div>
+                </div>
+                <div className="connection-path">
+                  <Smartphone size={20} aria-hidden="true" />
+                  <div>
+                    <h3>
+                      手机或远程网页 <span aria-hidden="true">→</span> 这台电脑
+                    </h3>
+                    <p>
+                      登录同一账号发现设备，首次连接或身份变更时核对设备身份，通过端到端加密通道继续工作。
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="privacy-note">
+                <LockKeyhole size={17} aria-hidden="true" />
+                <div>
+                  <p>
+                    云端负责登录、设备发现和连接协调，会处理账号与必要连接元数据。会话、文件和终端内容留在你的设备，远程连接在设备两端解密。
+                  </p>
+                  <p>
+                    远程需要这台电脑开机、联网且已开启远程访问。关闭远程不影响本地工作。
+                  </p>
+                  <p>
+                    本客户端的账号凭据和设备私钥只留在内存；退出客户端后需要重新登录并开启远程访问。
+                  </p>
+                </div>
+              </div>
             </section>
-            <AccountPage localReady={Boolean(ready)} controller={account} />
           </>
         )}
         {page === "settings" && config && (
@@ -200,7 +310,7 @@ function App() {
                 <p>选择工作目录和已有服务的数据目录。</p>
               </div>
             </header>
-            <section className="workspace-panel">
+            <section className="workspace-panel settings-panel">
               <h2>本地服务</h2>
               <p className="hint">
                 本机访问自动建立安全会话，无需输入或复制访问密钥。已有服务和数据不会被替换。
@@ -252,7 +362,7 @@ function App() {
                 <p className="hint">本应用的服务运行时不能修改目录和端口。</p>
               )}
             </section>
-            <details className="workspace-panel">
+            <details className="workspace-panel settings-panel">
               <summary>服务程序</summary>
               <label>
                 服务程序路径

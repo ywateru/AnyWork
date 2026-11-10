@@ -17,6 +17,9 @@ export async function manager(
     authorizing?: boolean;
     reauth?: boolean;
     failEnable?: boolean;
+    port?: number;
+    unauthorized?: boolean;
+    snapshotUnavailable?: boolean;
   } = {},
 ) {
   await page.route("http://anywork-desktop.test/**", async (route) => {
@@ -48,7 +51,7 @@ export async function manager(
     const config = {
       workspace: "/workspace",
       dataDirectory: "/workspace/data",
-      port: 3210,
+      port: opts.port ?? 3210,
       allowLAN: false,
       serverBinary: "",
       cloudflaredBinary: "",
@@ -63,7 +66,7 @@ export async function manager(
       service: opts.off ? "off" : "running",
       owned: !opts.off && !!opts.owned,
       external: !opts.off && !opts.owned,
-      authorized: !opts.off,
+      authorized: !opts.off && !opts.unauthorized,
       info: { local_service_control: true, local_browser_session: true },
       clients: [],
       error: "",
@@ -98,7 +101,11 @@ export async function manager(
           command: string,
           args?: { action?: { type: string; config?: typeof config } },
         ) => {
-          if (command === "desktop_snapshot") return structuredClone(snapshot);
+          if (command === "desktop_snapshot") {
+            if (opts.snapshotUnavailable)
+              throw new Error("Fixture status unavailable");
+            return structuredClone(snapshot);
+          }
           if (command === "account_snapshot") return structuredClone(account);
           if (command === "desktop_update_snapshot")
             return {

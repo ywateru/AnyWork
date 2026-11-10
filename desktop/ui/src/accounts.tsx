@@ -361,86 +361,102 @@ export function AccountPage({
       className="workspace-panel account-panel"
       aria-label="AnyWork 账号入口"
     >
-      <header>
-        <div>
-          <h2>从其他设备继续</h2>
-          <p>登录同一账号后，从手机或浏览器找到这台电脑。</p>
-        </div>
-        <ShieldCheck size={28} aria-hidden="true" />
-      </header>
-      <section className="settings-section">
-        <p className="hint">
-          注册和密码输入在登录服务中完成。账号凭据和设备私钥只留在内存；退出客户端后需要重新登录并开启远程访问。
-        </p>
-        <p role="status">
+      <div className="panel-heading">
+        <ShieldCheck size={20} aria-hidden="true" />
+        <h2>从其他设备继续</h2>
+      </div>
+      <p className="hint account-intro">
+        手机或网页登录同一账号，选择这台电脑。
+        {(!state ||
+          ["signedOut", "authorizing", "loginInterrupted"].includes(
+            state.authorizationStatus,
+          )) &&
+          "注册和登录会在系统浏览器中完成。"}
+      </p>
+      <section className="account-identity" aria-label="账号状态">
+        <p className="account-status" role="status">
           {state ? accountStatusText(state) : "正在读取账号状态"}
         </p>
         <div className="account-entry-actions">
           <AccountActions controller={controller} />
         </div>
       </section>
-      <section className="settings-section">
+      <section className="remote-control" aria-label="远程访问设置">
         <h3>允许我的其他设备访问</h3>
-        <p className="hint">
-          会话、文件和终端内容保留在这台电脑。远程连接在设备两端解密。
-        </p>
-        <p role="status">
-          {state?.enabled ? "远程访问已开启" : "远程访问未开启"}
-        </p>
-        <button
-          disabled={
-            pending || (!state?.enabled && (!state?.signedIn || !localReady))
-          }
-          onClick={() =>
-            void action(() =>
-              invoke(state?.enabled ? "account_disable" : "account_enable"),
-            )
-          }
-        >
-          {state?.enabled ? "关闭远程访问" : "开启远程访问"}
-        </button>
+        <p className="hint">登录后仍需在这台电脑开启远程访问。</p>
+        <div className="remote-status-row">
+          <p role="status">
+            <span
+              className={state?.enabled ? "status-dot ready" : "status-dot"}
+            />
+            {state?.enabled ? "远程访问已开启" : "远程访问未开启"}
+          </p>
+          <button
+            disabled={
+              pending || (!state?.enabled && (!state?.signedIn || !localReady))
+            }
+            onClick={() =>
+              void action(() =>
+                invoke(state?.enabled ? "account_disable" : "account_enable"),
+              )
+            }
+          >
+            {state?.enabled ? "关闭远程访问" : "开启远程访问"}
+          </button>
+        </div>
         {!localReady && (
-          <p className="hint">先打开本地工作区，再开启远程访问。</p>
+          <p className="hint remote-next-step">
+            先打开本地工作区，再开启远程访问。
+          </p>
         )}
+        {pending && (
+          <p className="hint" role="status">
+            正在处理账号操作，请稍候。
+          </p>
+        )}
+      </section>
+      <div className="device-actions">
+        <button
+          onClick={() => void action(() => invoke("desktop_account_portal"))}
+        >
+          查看我的设备
+        </button>
         {state?.enabled && state.installationId && state.publicKey ? (
           <details aria-label="本机身份核对">
             <summary>身份核对</summary>
-            <p className="hint">
-              首次从浏览器连接时，请核对以下设备身份和公钥。
-            </p>
-            <label>
-              设备身份
-              <input
-                aria-label="设备身份"
-                readOnly
-                value={state.installationId}
-              />
-            </label>
-            <label>
-              设备公钥
-              <input aria-label="设备公钥" readOnly value={state.publicKey} />
-            </label>
-            <button
-              onClick={() =>
-                void action(async () => {
-                  await navigator.clipboard.writeText(
-                    `${state.installationId}\n${state.publicKey}`,
-                  );
-                })
-              }
-            >
-              复制设备身份与公钥
-            </button>
+            <div className="identity-content">
+              <p className="hint">
+                首次从浏览器连接或身份变更时，请核对以下设备身份和公钥。
+              </p>
+              <label>
+                设备身份
+                <input
+                  aria-label="设备身份"
+                  readOnly
+                  value={state.installationId}
+                />
+              </label>
+              <label>
+                设备公钥
+                <input aria-label="设备公钥" readOnly value={state.publicKey} />
+              </label>
+              <button
+                onClick={() =>
+                  void action(async () => {
+                    await navigator.clipboard.writeText(
+                      `${state.installationId}\n${state.publicKey}`,
+                    );
+                  })
+                }
+              >
+                复制设备身份与公钥
+              </button>
+            </div>
           </details>
         ) : (
-          <p className="hint">开启远程访问后，可在此核对本机身份与公钥。</p>
+          <p className="hint">开启远程后可核对本机身份。</p>
         )}
-      </section>
-      <button
-        onClick={() => void action(() => invoke("desktop_account_portal"))}
-      >
-        查看我的设备
-      </button>
+      </div>
       {(error || state?.error) && (
         <div role="alert" className="error">
           {error || state?.error}
