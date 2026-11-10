@@ -16,10 +16,14 @@ use axum::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, StreamExt};
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
-    collections::HashMap,
-    sync::Arc,
+    collections::{BTreeMap, HashMap},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
@@ -37,6 +41,96 @@ pub struct GatewayConfig {
     pub local_token: String,
     pub verifier: Arc<dyn AccountVerifier>,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ClientKind {
+    Ios,
+    Android,
+    Desktop,
+    Unknown,
+}
+impl ClientKind {
+    // A display hint only. Never retained verbatim or used for authorization.
+    fn from_user_agent(value: Option<&str>) -> Self {
+        let Some(value) = value else {
+            return Self::Unknown;
+        };
+        if value.contains("iPhone") || value.contains("iPad") || value.contains("iPod") {
+            Self::Ios
+        } else if value.contains("Android") {
+            Self::Android
+        } else if value.contains("Macintosh")
+            || value.contains("Windows")
+            || value.contains("X11")
+            || value.contains("Linux")
+        {
+            Self::Desktop
+        } else {
+            Self::Unknown
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteClient {
+    pub id: String,
+    pub kind: ClientKind,
+    pub connected_at: u64,
+}
+#[derive(Default)]
+struct Clients(Mutex<BTreeMap<u64, RemoteClient>>);
+struct ActiveClient {
+    clients: Arc<Clients>,
+    id: u64,
+}
+impl Drop for ActiveClient {
+    fn drop(&mut self) {
+        self.clients
+            .0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.id);
+    }
+}
+impl Clients {
+    fn register(
+        self: &Arc<Self>,
+        kind: ClientKind,
+        stop: &CancellationToken,
+    ) -> Result<ActiveClient> {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let mut clients = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if stop.is_cancelled() {
+            bail!("REMOTE_CLOSED")
+        }
+        let id = NEXT_ID
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .map_err(|_| anyhow::anyhow!("REMOTE_CONNECTION_LIMIT"))?;
+        clients.insert(
+            id,
+            RemoteClient {
+                id: format!("connection-{id}"),
+                kind,
+                connected_at: now(),
+            },
+        );
+        Ok(ActiveClient {
+            clients: self.clone(),
+            id,
+        })
+    }
+    fn snapshot(&self) -> Vec<RemoteClient> {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .cloned()
+            .collect()
+    }
+    fn clear(&self) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+}
 enum SessionEvent {
     Completed(Option<String>),
     Output(Option<Value>),
@@ -47,11 +141,13 @@ struct Context {
     stop: CancellationToken,
     permits: Arc<Semaphore>,
     http: reqwest::Client,
+    clients: Arc<Clients>,
 }
 pub struct Gateway {
     pub port: u16,
     stop: CancellationToken,
     task: Option<JoinHandle<()>>,
+    clients: Arc<Clients>,
 }
 impl Gateway {
     pub async fn start(cfg: GatewayConfig) -> Result<Self> {
@@ -75,10 +171,12 @@ impl Gateway {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let port = listener.local_addr()?.port();
         let stop = CancellationToken::new();
+        let clients = Arc::new(Clients::default());
         let context = Arc::new(Context {
             cfg,
             stop: stop.clone(),
             permits: Arc::new(Semaphore::new(4)),
+            clients: clients.clone(),
             http: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .timeout(Duration::from_secs(30))
@@ -97,10 +195,18 @@ impl Gateway {
             port,
             stop,
             task: Some(task),
+            clients,
         })
+    }
+    pub fn remote_clients(&self) -> Vec<RemoteClient> {
+        if self.stop.is_cancelled() {
+            return vec![];
+        }
+        self.clients.snapshot()
     }
     pub async fn close(&mut self) {
         self.stop.cancel();
+        self.clients.clear();
         if let Some(task) = self.task.take() {
             let _ = tokio::time::timeout(Duration::from_secs(3), task).await;
         }
@@ -109,6 +215,7 @@ impl Gateway {
 impl Drop for Gateway {
     fn drop(&mut self) {
         self.stop.cancel();
+        self.clients.clear();
     }
 }
 async fn upgrade(
@@ -126,11 +233,12 @@ async fn upgrade(
     let Ok(permit) = ctx.permits.clone().try_acquire_owned() else {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     };
+    let kind = ClientKind::from_user_agent(headers.get("user-agent").and_then(|v| v.to_str().ok()));
     ws.max_message_size(65535)
         .max_frame_size(65535)
         .on_upgrade(move |socket| async move {
             let _permit = permit;
-            let _ = connection(ctx, socket).await;
+            let _ = connection(ctx, socket, kind).await;
         })
         .into_response()
 }
@@ -165,7 +273,7 @@ fn lease_duration(expires_at: u64) -> Result<Duration> {
     Ok(Duration::from_secs(expires_at)
         .saturating_sub(SystemTime::now().duration_since(UNIX_EPOCH)?))
 }
-async fn connection(ctx: Arc<Context>, mut socket: WebSocket) -> Result<()> {
+async fn connection(ctx: Arc<Context>, mut socket: WebSocket, kind: ClientKind) -> Result<()> {
     let mut handshake = snow::Builder::new(protocol::NOISE_SUITE.parse()?)
         .local_private_key(&ctx.cfg.private_key)?
         .prologue(&protocol::prologue(&ctx.cfg.installation_id))?
@@ -197,6 +305,10 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket) -> Result<()> {
             .collect::<String>()
     );
     let mut noise = handshake.into_transport_mode()?;
+    if now() >= authorization_expires_at {
+        bail!("AUTH_REJECTED")
+    }
+    let _active_client = ctx.clients.register(kind, &ctx.stop)?;
     let deadline = tokio::time::sleep(lease_duration(authorization_expires_at)?);
     tokio::pin!(deadline);
     let mut renewal_sequence = 0_u64;

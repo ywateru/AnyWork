@@ -137,6 +137,7 @@ pub enum Command {
     SavePrograms(Config),
     StartServer(Config, String),
     StopServer,
+    PrepareWorkspace(oneshot::Sender<Result<(), String>>),
     OpenWorkspace(BrowserContext, oneshot::Sender<Result<String, String>>),
     PauseForUpdate(oneshot::Sender<Result<(), String>>),
     Shutdown(oneshot::Sender<()>),
@@ -156,6 +157,17 @@ pub struct Handle {
     tx: mpsc::UnboundedSender<Command>,
 }
 impl Handle {
+    #[cfg(test)]
+    pub(crate) fn test_commands(snapshot: Snapshot) -> (Self, mpsc::UnboundedReceiver<Command>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (
+            Self {
+                state: Arc::new(Mutex::new(snapshot)),
+                tx,
+            },
+            rx,
+        )
+    }
     pub fn preview(snapshot: Snapshot) -> Self {
         let (tx, _) = mpsc::unbounded_channel();
         Self {
@@ -173,6 +185,13 @@ impl Handle {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(Command::OpenWorkspace(context, tx))
+            .map_err(|_| "桌面服务已关闭。".to_string())?;
+        rx.await.map_err(|_| "桌面服务已关闭。".to_string())?
+    }
+    pub async fn prepare_workspace(&self) -> Result<(), String> {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send(Command::PrepareWorkspace(tx))
             .map_err(|_| "桌面服务已关闭。".to_string())?;
         rx.await.map_err(|_| "桌面服务已关闭。".to_string())?
     }
@@ -519,6 +538,11 @@ impl Worker {
                     ))
                 }
             }
+            Command::PrepareWorkspace(done) => {
+                let result = self.prepare_workspace().await.map_err(|e| e.to_string());
+                let _ = done.send(result);
+                Ok(())
+            }
             Command::OpenWorkspace(context, done) => {
                 let result = self
                     .open_workspace(context)
@@ -618,7 +642,7 @@ impl Worker {
         self.reset_probe();
         Ok(())
     }
-    async fn open_workspace(&mut self, context: BrowserContext) -> Result<String> {
+    async fn prepare_workspace(&mut self) -> Result<()> {
         let mut s = self.snapshot();
         let occupied = tokio::net::TcpStream::connect(("127.0.0.1", s.config.port))
             .await
@@ -653,6 +677,10 @@ impl Worker {
             v.info = Some(info);
             v.external = !v.owned;
         });
+        Ok(())
+    }
+    async fn open_workspace(&mut self, context: BrowserContext) -> Result<String> {
+        self.prepare_workspace().await?;
         let current = self.snapshot();
         #[derive(Deserialize)]
         struct Ticket {
@@ -805,8 +833,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let app=Router::new().route("/api/health",get(||async{Json(serde_json::json!({"status":"ok"}))})).route("/api/info",get(||async{Json(serde_json::json!({"hostname":"fixture","product":"AnyWork","workspace":"/existing-workspace","local_browser_session":true}))})).route("/api/service/browser-ticket",post(|headers:axum::http::HeaderMap,Json(body):Json<serde_json::Value>|async move{
-            assert_eq!(headers["authorization"],"Bearer selected-local-service-bearer");assert_eq!(headers["x-anywork-service-control"],"desktop");assert_eq!(body["remoteEnabled"],false);assert!(body.get("subject").is_none());Json(serde_json::json!({"ticket":"a".repeat(64),"expiresIn":60}))}));
+        let tickets = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let issued = tickets.clone();
+        let app=Router::new().route("/api/health",get(||async{Json(serde_json::json!({"status":"ok"}))})).route("/api/info",get(||async{Json(serde_json::json!({"hostname":"fixture","product":"AnyWork","workspace":"/existing-workspace","local_browser_session":true}))})).route("/api/service/browser-ticket",post(move |headers:axum::http::HeaderMap,Json(body):Json<serde_json::Value>|{let issued=issued.clone();async move{
+            issued.fetch_add(1,std::sync::atomic::Ordering::SeqCst);
+            assert_eq!(headers["authorization"],"Bearer selected-local-service-bearer");assert_eq!(headers["x-anywork-service-control"],"desktop");assert_eq!(body["remoteEnabled"],false);assert!(body.get("subject").is_none());Json(serde_json::json!({"ticket":"a".repeat(64),"expiresIn":60}))}}));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let c = Config {
             workspace: dir.path().display().to_string(),
@@ -821,6 +852,10 @@ mod tests {
             resources: dir.path().into(),
         })
         .unwrap();
+        let saved = std::fs::read(dir.path().join("manager.json")).unwrap();
+        handle.prepare_workspace().await.unwrap();
+        assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(handle.snapshot().external && handle.snapshot().authorized);
         let url = handle
             .open_workspace(BrowserContext::default())
             .await
@@ -828,6 +863,11 @@ mod tests {
         assert_eq!(
             url,
             format!("http://127.0.0.1:{port}/#local-ticket={}", "a".repeat(64))
+        );
+        assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            std::fs::read(dir.path().join("manager.json")).unwrap(),
+            saved
         );
         assert!(handle.snapshot().authorized);
         assert!(!handle.snapshot().owned);
@@ -845,6 +885,63 @@ mod tests {
         );
         assert_eq!(config::read_token(&c), "selected-local-service-bearer");
         server.abort();
+    }
+    #[tokio::test]
+    async fn preparation_rejects_external_identity_auth_and_old_capability_without_mutation() {
+        use axum::{
+            Json, Router,
+            http::StatusCode,
+            routing::{get, post},
+        };
+        for mode in ["unauthorized", "wrong-product", "old-service"] {
+            let dir = tempfile::tempdir().unwrap();
+            let tickets = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let issued = tickets.clone();
+            let app = Router::new()
+                .route("/api/health",get(||async {Json(serde_json::json!({"status":"ok"}))}))
+                .route("/api/info", get(move ||async move {
+                    (if mode=="unauthorized" {StatusCode::UNAUTHORIZED}else{StatusCode::OK},Json(serde_json::json!({
+                        "product":if mode=="wrong-product" {"Other"}else{"AnyWork"},
+                        "hostname":"fixture","workspace":"/external-unchanged","local_browser_session":false
+                    })))
+                }))
+                .route("/api/service/browser-ticket",post(move ||{let issued=issued.clone();async move {issued.fetch_add(1,std::sync::atomic::Ordering::SeqCst);StatusCode::INTERNAL_SERVER_ERROR}}));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let config = Config {
+                workspace: dir.path().display().to_string(),
+                data_directory: dir.path().join("data").display().to_string(),
+                port,
+                ..Default::default()
+            };
+            config::save(&dir.path().join("manager.json"), &config).unwrap();
+            config::write_token(&config, "selected-external-service-key").unwrap();
+            let saved = std::fs::read(dir.path().join("manager.json")).unwrap();
+            let handle = start(Options {
+                support: dir.path().into(),
+                resources: dir.path().into(),
+            })
+            .unwrap();
+            assert!(
+                handle.prepare_workspace().await.is_err(),
+                "must reject {mode}"
+            );
+            assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 0);
+            assert!(!handle.snapshot().owned);
+            assert_eq!(
+                std::fs::read(dir.path().join("manager.json")).unwrap(),
+                saved
+            );
+            assert_eq!(config::read_token(&config), "selected-external-service-key");
+            handle.shutdown().await;
+            assert!(
+                tokio::net::TcpStream::connect(("127.0.0.1", port))
+                    .await
+                    .is_ok()
+            );
+            server.abort();
+        }
     }
     #[test]
     fn manager_lock_rejects_a_second_owner() {
