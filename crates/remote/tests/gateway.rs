@@ -155,6 +155,15 @@ async fn receive(socket: &mut Socket, noise: &mut snow::TransportState) -> Value
     let n = noise.read_message(&bytes, &mut b).unwrap();
     serde_json::from_slice(&b[..n]).unwrap()
 }
+async fn assert_closed(socket: &mut Socket, seconds: u64) {
+    let next = tokio::time::timeout(Duration::from_secs(seconds), socket.next())
+        .await
+        .expect("connection did not close before timeout");
+    assert!(
+        matches!(next, None | Some(Ok(Message::Close(_))) | Some(Err(_))),
+        "denied/expired authorization must not send a binary ACK: {next:?}"
+    );
+}
 #[tokio::test]
 async fn encrypted_request_preserves_local_auth_and_disable_closes_it() {
     let (mut gateway, key, calls) = start(60).await;
@@ -173,11 +182,7 @@ async fn encrypted_request_preserves_local_auth_and_disable_closes_it() {
     assert_eq!(receive(&mut ws, &mut noise).await["type"], "end");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     gateway.close().await;
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
 }
 #[tokio::test]
 async fn rejects_unknown_origins_plaintext_and_bad_account() {
@@ -187,11 +192,7 @@ async fn rejects_unknown_origins_plaintext_and_bad_account() {
     ws.send(Message::Text("{\"token\":\"local-test-secret\"}".into()))
         .await
         .unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
     let mut ws = socket(gateway.port, "https://test.example").await.unwrap();
     let mut hs = initiator(&key);
     let mut b = vec![0; 65535];
@@ -199,11 +200,7 @@ async fn rejects_unknown_origins_plaintext_and_bad_account() {
     ws.send(Message::Binary(b[..n].to_vec().into()))
         .await
         .unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
 }
@@ -219,11 +216,7 @@ async fn replay_and_tampering_fail_before_second_local_request() {
         .await
         .unwrap();
     ws.send(Message::Binary(frame.into())).await.unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
     let mut frame = encrypt(
@@ -232,11 +225,7 @@ async fn replay_and_tampering_fail_before_second_local_request() {
     );
     frame[0] ^= 1;
     ws.send(Message::Binary(frame.into())).await.unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
 }
@@ -244,11 +233,7 @@ async fn replay_and_tampering_fail_before_second_local_request() {
 async fn authorization_expiry_closes_without_fallback() {
     let (mut gateway, key, calls) = start(1).await;
     let (mut ws, _noise) = connect(gateway.port, &key, "allowed-test-access").await;
-    assert!(
-        tokio::time::timeout(Duration::from_secs(2), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 2).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
 }
@@ -297,11 +282,7 @@ async fn encrypted_renewal_keeps_same_connection_past_old_expiry_and_1024_reques
     .unwrap();
     assert_eq!(receive(&mut ws, &mut noise).await["id"], 2);
     gateway.close().await;
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
 }
 #[tokio::test]
 async fn bad_renewals_close_before_business_work_or_another_lease() {
@@ -323,11 +304,7 @@ async fn bad_renewals_close_before_business_work_or_another_lease() {
         ))
         .await
         .unwrap();
-        assert!(
-            tokio::time::timeout(Duration::from_secs(1), ws.next())
-                .await
-                .is_ok()
-        );
+        assert_closed(&mut ws, 1).await;
     }
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
@@ -345,11 +322,7 @@ async fn renewal_verification_cannot_outlive_the_previous_lease_or_local_disable
     ))
     .await
     .unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(2), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 2).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
     let (mut gateway, key, _) = start(30).await;
@@ -364,9 +337,5 @@ async fn renewal_verification_cannot_outlive_the_previous_lease_or_local_disable
     .await
     .unwrap();
     gateway.close().await;
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
 }

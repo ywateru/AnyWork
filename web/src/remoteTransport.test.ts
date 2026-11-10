@@ -143,6 +143,24 @@ describe("short authorization leases on one encrypted connection", () => {
     ).toBe(true);
     remote.close();
   });
+  it("bounds retained cancelled ACK exceptions across a long-lived connection", async () => {
+    const remote = await connect();
+    const internals = remote as unknown as {
+      retiredAcks: Map<string, number>;
+      acks: Map<string, unknown>;
+      cancelRequest(id: string, code: string): void;
+    };
+    for (let n = 0; n < 1024; n++) internals.retiredAcks.set(`old${n}`, 1);
+    internals.acks.set("cancelled", {
+      received: 1,
+      timer: setTimeout(() => {}, 10000),
+      reject() {},
+      resolve() {},
+    });
+    internals.cancelRequest("cancelled", "CANCELLED");
+    expect(await remote.ended).toBe("SESSION_LIMIT");
+    expect(internals.retiredAcks.size).toBe(0);
+  });
   it("does not send new control frames to a legacy gateway", async () => {
     Socket.renewalCapability = false;
     const fresh = vi.fn(async () => "token");

@@ -411,7 +411,13 @@ export class RemoteTransport implements BusinessTransport {
   }
   private cancelRequest(id: string, code: string) {
     const ack = this.acks.get(id);
-    if (ack) this.retiredAcks.set(id, ack.received);
+    if (ack) {
+      // A cancelled chunk may never receive its final ACK. Bound retained exceptions
+      // even when the underlying connection is renewed indefinitely.
+      if (this.retiredAcks.size >= 1024)
+        this.closeWithError(new RemoteError("SESSION_LIMIT"));
+      else this.retiredAcks.set(id, ack.received);
+    }
     try {
       if (!this.closed) this.send({ type: "cancel", id });
     } catch {

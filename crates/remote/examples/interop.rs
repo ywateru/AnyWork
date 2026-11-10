@@ -10,17 +10,26 @@ use axum::{
     routing::{get, post},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use std::sync::Arc;
-struct Fixture;
+use std::sync::{
+    Arc, OnceLock,
+    atomic::{AtomicUsize, Ordering},
+};
+struct Fixture {
+    renew_started: OnceLock<u64>,
+}
 impl AccountVerifier for Fixture {
     fn verify<'a>(&'a self, token: &'a str) -> VerifyFuture<'a> {
         Box::pin(async move {
-            if token != "test-access" {
-                anyhow::bail!("AUTH_REJECTED")
+            let expires_at = match token {
+                "test-access" => now() + 300,
+                "renew-initial" => *self.renew_started.get_or_init(now) + 4,
+                "renew-1" => *self.renew_started.get_or_init(now) + 8,
+                "renew-2" => *self.renew_started.get_or_init(now) + 12,
+                _ => anyhow::bail!("AUTH_REJECTED"),
             };
             Ok(VerifiedAccount {
                 subject: "test-owner".into(),
-                expires_at: now() + 300,
+                expires_at,
             })
         })
     }
@@ -29,11 +38,35 @@ impl AccountVerifier for Fixture {
 async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let local_port = listener.local_addr()?.port();
-    let app=Router::new()
-        .route("/api/info",get(||async{axum::Json(serde_json::json!({"hostname":"fixture","workspace":"fixture","version":"test"}))}))
-        .route("/api/sessions/fixture/uploads",post(|body:axum::body::Bytes|async move{body}))
-        .route("/api/sessions/fixture/document",get(||async{([("content-type","application/octet-stream")],vec![42u8;100000])}))
-        .route("/ws/terminal/fixture",get(|ws:WebSocketUpgrade|async move{ws.on_upgrade(|mut socket|async move{let _=socket.recv().await;let _=socket.send(Message::Binary(b"test-ready".to_vec().into())).await;while let Some(Ok(message))=socket.recv().await{if let Message::Text(text)=message {let _=socket.send(Message::Binary(text.as_bytes().to_vec().into())).await;}}}).into_response()})).layer(axum::extract::DefaultBodyLimit::max(22*1024*1024));
+    let active_ptys = Arc::new(AtomicUsize::new(0));
+    let info_ptys = active_ptys.clone();
+    let app = Router::new()
+        .route("/api/info", get(move || {
+            let count = info_ptys.clone();
+            async move { axum::Json(serde_json::json!({"hostname":"fixture","workspace":"fixture","version":"test", "activePtys":count.load(Ordering::SeqCst)})) }
+        }))
+        .route("/api/sessions/fixture/uploads", post(|body:axum::body::Bytes|async move{body}))
+        .route("/api/sessions/slow/document", get(|| async {
+            tokio::time::sleep(std::time::Duration::from_millis(5500)).await;
+            "slow-response"
+        }))
+        .route("/api/sessions/fixture/document", get(||async{([("content-type","application/octet-stream")],vec![42u8;100000])}))
+        .route("/ws/terminal/fixture", get(move |ws: WebSocketUpgrade| {
+            let count = active_ptys.clone();
+            async move {
+                ws.on_upgrade(move |mut socket| async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    let _ = socket.recv().await;
+                    let _ = socket.send(Message::Binary(b"test-ready".to_vec().into())).await;
+                    while let Some(Ok(message)) = socket.recv().await {
+                        if let Message::Text(text) = message {
+                            let _ = socket.send(Message::Binary(text.as_bytes().to_vec().into())).await;
+                        }
+                    }
+                    count.fetch_sub(1, Ordering::SeqCst);
+                }).into_response()
+            }
+        })).layer(axum::extract::DefaultBodyLimit::max(22*1024*1024));
     tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
@@ -41,10 +74,15 @@ async fn main() -> anyhow::Result<()> {
     let mut gateway = Gateway::start(GatewayConfig {
         installation_id: "test-installation".into(),
         private_key: key.private.try_into().unwrap(),
-        allowed_origins: vec!["http://127.0.0.1:5173".into()],
+        allowed_origins: vec![
+            std::env::var("ANYWORK_INTEROP_ORIGIN")
+                .unwrap_or_else(|_| "http://127.0.0.1:5173".into()),
+        ],
         local_port,
         local_token: "test-local-secret".into(),
-        verifier: Arc::new(Fixture),
+        verifier: Arc::new(Fixture {
+            renew_started: OnceLock::new(),
+        }),
     })
     .await?;
     println!(
