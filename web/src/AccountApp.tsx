@@ -1,4 +1,4 @@
-import LogtoClient, { UserScope } from "@logto/browser";
+import { UserScope } from "@logto/browser";
 import { AccountLogtoClient } from "./accountAuth";
 import {
   createContext,
@@ -39,7 +39,7 @@ import { RemoteTransport } from "./remoteTransport";
 import "./account.css";
 
 const LogtoContext = createContext<{
-  logtoClient: LogtoClient;
+  logtoClient: AccountLogtoClient;
   isAuthenticated: boolean;
   isLoading: boolean;
   setIsAuthenticated: (value: boolean) => void;
@@ -271,10 +271,13 @@ function useAccountAuth() {
   const client = context.logtoClient!;
   const methods = useMemo(
     () => ({
-      getAccessToken: client.getAccessToken.bind(client),
+      getAccessToken: (resource?: string) =>
+        client.getAccountAccessToken(resource),
+      getFreshAccessToken: (resource?: string) =>
+        client.getAccountAccessToken(resource, true),
       getIdTokenClaims: client.getIdTokenClaims.bind(client),
-      signIn: client.signIn.bind(client),
-      signOut: client.signOut.bind(client),
+      signIn: client.startAccountSignIn.bind(client),
+      signOut: client.endAccountSession.bind(client),
     }),
     [client],
   );
@@ -334,6 +337,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
     signIn,
     signOut,
     getAccessToken,
+    getFreshAccessToken,
     getIdTokenClaims,
   } = useAccountAuth();
   const [locale, setLocale] = useState<"zh-CN" | "en">(initialLocale),
@@ -366,17 +370,21 @@ function AccountHome({ config }: { config: AccountConfig }) {
     gridRef = useRef<CyberGridClient | undefined>(undefined),
     trigger = useRef<HTMLElement | null>(null),
     dialogRef = useRef<HTMLDialogElement>(null),
-    getToken = useRef(getAccessToken);
+    getToken = useRef(getAccessToken),
+    getFreshToken = useRef(getFreshAccessToken);
   getToken.current = getAccessToken;
+  getFreshToken.current = getFreshAccessToken;
   const subjectRef = useRef(subject);
   subjectRef.current = subject;
   const checkedToken = useCallback(
-    async (resource?: string) => {
+    async (resource?: string, fresh = false) => {
       const before = await getIdTokenClaims();
       const expected = subjectRef.current;
       if (!expected || before?.sub !== expected)
         throw new AccountError("IDENTITY_CHANGED");
-      const token = await getToken.current(resource);
+      const token = await (fresh
+        ? getFreshToken.current(resource)
+        : getToken.current(resource));
       const after = await getIdTokenClaims();
       if (subjectRef.current !== expected || after?.sub !== expected)
         throw new AccountError("IDENTITY_CHANGED");
@@ -605,7 +613,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
         { signal: controller.signal },
       );
       if (!url) throw new AccountError("DEVICE_NOT_READY");
-      const accessToken = await checkedToken(config.resource);
+      const accessToken = await checkedToken(config.resource, true);
       controller.signal.throwIfAborted();
       if (!accessToken) throw new AccountError("LOGIN_REQUIRED");
       const remote = await RemoteTransport.connect({
@@ -613,6 +621,14 @@ function AccountHome({ config }: { config: AccountConfig }) {
         installationId: id,
         publicKey: device.publicKey,
         accessToken,
+        getFreshAccessToken: async () => {
+          controller.signal.throwIfAborted();
+          ownerSignal.throwIfAborted();
+          const token = await checkedToken(config.resource, true);
+          controller.signal.throwIfAborted();
+          ownerSignal.throwIfAborted();
+          return token;
+        },
         signal: controller.signal,
       });
       if (controller.signal.aborted || ownerSignal.aborted) {

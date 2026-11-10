@@ -19,16 +19,30 @@ use tokio_tungstenite::{
 };
 struct Fixture {
     ttl: u64,
+    issued_at: u64,
 }
 impl AccountVerifier for Fixture {
     fn verify<'a>(&'a self, token: &'a str) -> VerifyFuture<'a> {
         Box::pin(async move {
-            if token != "allowed-test-access" {
-                anyhow::bail!("AUTH_REJECTED")
+            let extension = match token {
+                "allowed-test-access" | "same-expiry-access" => 0,
+                "renewed-test-access" => 4,
+                "another-renewal-access" => 8,
+                "other-owner-access" => 4,
+                "slow-renewal-access" => {
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    8
+                }
+                _ => anyhow::bail!("AUTH_REJECTED"),
             };
             Ok(VerifiedAccount {
-                subject: "test-owner".into(),
-                expires_at: now() + self.ttl,
+                subject: if token == "other-owner-access" {
+                    "different-owner"
+                } else {
+                    "test-owner"
+                }
+                .into(),
+                expires_at: self.issued_at + self.ttl + extension,
             })
         })
     }
@@ -71,7 +85,10 @@ async fn start(ttl: u64) -> (Gateway, Vec<u8>, Arc<AtomicUsize>) {
         allowed_origins: vec!["https://test.example".into()],
         local_port: port,
         local_token: "local-test-secret".into(),
-        verifier: Arc::new(Fixture { ttl }),
+        verifier: Arc::new(Fixture {
+            ttl,
+            issued_at: now(),
+        }),
     })
     .await
     .unwrap();
@@ -138,6 +155,15 @@ async fn receive(socket: &mut Socket, noise: &mut snow::TransportState) -> Value
     let n = noise.read_message(&bytes, &mut b).unwrap();
     serde_json::from_slice(&b[..n]).unwrap()
 }
+async fn assert_closed(socket: &mut Socket, seconds: u64) {
+    let next = tokio::time::timeout(Duration::from_secs(seconds), socket.next())
+        .await
+        .expect("connection did not close before timeout");
+    assert!(
+        matches!(next, None | Some(Ok(Message::Close(_))) | Some(Err(_))),
+        "denied/expired authorization must not send a binary ACK: {next:?}"
+    );
+}
 #[tokio::test]
 async fn encrypted_request_preserves_local_auth_and_disable_closes_it() {
     let (mut gateway, key, calls) = start(60).await;
@@ -156,11 +182,7 @@ async fn encrypted_request_preserves_local_auth_and_disable_closes_it() {
     assert_eq!(receive(&mut ws, &mut noise).await["type"], "end");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     gateway.close().await;
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
 }
 #[tokio::test]
 async fn rejects_unknown_origins_plaintext_and_bad_account() {
@@ -170,11 +192,7 @@ async fn rejects_unknown_origins_plaintext_and_bad_account() {
     ws.send(Message::Text("{\"token\":\"local-test-secret\"}".into()))
         .await
         .unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
     let mut ws = socket(gateway.port, "https://test.example").await.unwrap();
     let mut hs = initiator(&key);
     let mut b = vec![0; 65535];
@@ -182,11 +200,7 @@ async fn rejects_unknown_origins_plaintext_and_bad_account() {
     ws.send(Message::Binary(b[..n].to_vec().into()))
         .await
         .unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
 }
@@ -202,11 +216,7 @@ async fn replay_and_tampering_fail_before_second_local_request() {
         .await
         .unwrap();
     ws.send(Message::Binary(frame.into())).await.unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
     let mut frame = encrypt(
@@ -215,11 +225,7 @@ async fn replay_and_tampering_fail_before_second_local_request() {
     );
     frame[0] ^= 1;
     ws.send(Message::Binary(frame.into())).await.unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 1).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
 }
@@ -227,11 +233,109 @@ async fn replay_and_tampering_fail_before_second_local_request() {
 async fn authorization_expiry_closes_without_fallback() {
     let (mut gateway, key, calls) = start(1).await;
     let (mut ws, _noise) = connect(gateway.port, &key, "allowed-test-access").await;
-    assert!(
-        tokio::time::timeout(Duration::from_secs(2), ws.next())
-            .await
-            .is_ok()
-    );
+    assert_closed(&mut ws, 2).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
+}
+#[tokio::test]
+async fn encrypted_renewal_keeps_same_connection_past_old_expiry_and_1024_requests() {
+    let (mut gateway, key, calls) = start(2).await;
+    let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
+    ws.send(Message::Binary(
+        encrypt(
+            &mut noise,
+            json!({"type":"auth.renew","id":1,"accessToken":"renewed-test-access"}),
+        )
+        .into(),
+    ))
+    .await
+    .unwrap();
+    let renewed = receive(&mut ws, &mut noise).await;
+    assert_eq!(renewed["type"], "auth.renewed");
+    assert_eq!(renewed["id"], 1);
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    // The old lease is dead. The original Noise connection remains authorized,
+    // and polling cannot exhaust a total 1024-request budget after renewal.
+    for n in 1..=1030 {
+        let id = format!("r{n}");
+        for frame in [
+            json!({"type":"request","id":id,"method":"GET","path":"/api/info","size":0}),
+            json!({"type":"end","id":id}),
+        ] {
+            ws.send(Message::Binary(encrypt(&mut noise, frame).into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(receive(&mut ws, &mut noise).await["status"], 200);
+        assert_eq!(receive(&mut ws, &mut noise).await["type"], "chunk");
+        assert_eq!(receive(&mut ws, &mut noise).await["type"], "end");
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 1030);
+    ws.send(Message::Binary(
+        encrypt(
+            &mut noise,
+            json!({"type":"auth.renew","id":2,"accessToken":"another-renewal-access"}),
+        )
+        .into(),
+    ))
+    .await
+    .unwrap();
+    assert_eq!(receive(&mut ws, &mut noise).await["id"], 2);
+    gateway.close().await;
+    assert_closed(&mut ws, 1).await;
+}
+#[tokio::test]
+async fn bad_renewals_close_before_business_work_or_another_lease() {
+    let (mut gateway, key, calls) = start(30).await;
+    for (id, token) in [
+        (1, "wrong-token"),
+        (1, "allowed-test-access"),
+        (1, "same-expiry-access"),
+        (1, "other-owner-access"),
+        (2, "renewed-test-access"),
+    ] {
+        let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
+        ws.send(Message::Binary(
+            encrypt(
+                &mut noise,
+                json!({"type":"auth.renew","id":id,"accessToken":token}),
+            )
+            .into(),
+        ))
+        .await
+        .unwrap();
+        assert_closed(&mut ws, 1).await;
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    gateway.close().await;
+}
+#[tokio::test]
+async fn renewal_verification_cannot_outlive_the_previous_lease_or_local_disable() {
+    let (mut gateway, key, calls) = start(1).await;
+    let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
+    ws.send(Message::Binary(
+        encrypt(
+            &mut noise,
+            json!({"type":"auth.renew","id":1,"accessToken":"slow-renewal-access"}),
+        )
+        .into(),
+    ))
+    .await
+    .unwrap();
+    assert_closed(&mut ws, 2).await;
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    gateway.close().await;
+    let (mut gateway, key, _) = start(30).await;
+    let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
+    ws.send(Message::Binary(
+        encrypt(
+            &mut noise,
+            json!({"type":"auth.renew","id":1,"accessToken":"slow-renewal-access"}),
+        )
+        .into(),
+    ))
+    .await
+    .unwrap();
+    gateway.close().await;
+    assert_closed(&mut ws, 1).await;
 }

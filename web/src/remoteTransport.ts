@@ -109,8 +109,17 @@ export class RemoteTransport implements BusinessTransport {
   private preparing = 0;
   private bodyBytes = 0;
   private expiresAt = Date.now() + 300000;
+  private leaseEndsAt = performance.now() + 300000;
   private closed = false;
   private expiry?: ReturnType<typeof setTimeout>;
+  private renewalTimer?: ReturnType<typeof setTimeout>;
+  private renewalSequence = 0;
+  private renewing?: number;
+  private freshToken?: () => Promise<string>;
+  private readonly checkResume = () => {
+    if (this.expired())
+      this.closeWithError(new RemoteError("AUTHORIZATION_EXPIRED"));
+  };
   private constructor(
     private ws: WebSocket,
     private noise: TransportState,
@@ -126,20 +135,27 @@ export class RemoteTransport implements BusinessTransport {
           decoder.decode(this.noise.receiveVec(new Uint8Array(event.data))),
         );
         this.receive(data);
-      } catch {
-        this.closeWithError(new RemoteError("INVALID_FRAME"));
+      } catch (error) {
+        this.closeWithError(
+          error instanceof RemoteError
+            ? error
+            : new RemoteError("INVALID_FRAME"),
+        );
       }
     };
     ws.onerror = () =>
       this.closeWithError(new RemoteError("CONNECTION_CLOSED"));
     ws.onclose = () =>
       this.closeWithError(new RemoteError("CONNECTION_CLOSED"));
+    window.addEventListener("pageshow", this.checkResume);
+    document.addEventListener("visibilitychange", this.checkResume);
   }
   static async connect(options: {
     url: string;
     installationId: string;
     publicKey: string;
     accessToken: string;
+    getFreshAccessToken?: () => Promise<string>;
     signal?: AbortSignal;
   }): Promise<RemoteTransport> {
     options.signal?.throwIfAborted();
@@ -236,14 +252,9 @@ export class RemoteTransport implements BusinessTransport {
           settled = true;
           cleanup();
           const transport = new RemoteTransport(ws, handshake.finalize());
-          transport.expiresAt = ready.expiresAt * 1000;
-          transport.expiry = setTimeout(
-            () =>
-              transport.closeWithError(
-                new RemoteError("AUTHORIZATION_EXPIRED"),
-              ),
-            ttl,
-          );
+          if (ready.authRenewal === 1)
+            transport.freshToken = options.getFreshAccessToken;
+          transport.armLease(ready.expiresAt);
           resolve(transport);
         } catch {
           fail("HANDSHAKE_FAILED");
@@ -254,7 +265,7 @@ export class RemoteTransport implements BusinessTransport {
   }
   async request(path: string, options: RequestInit = {}): Promise<Response> {
     options.signal?.throwIfAborted();
-    if (this.closed) throw new RemoteError("CONNECTION_CLOSED");
+    this.assertActive();
     if (this.pending.size + this.preparing >= 8)
       throw new RemoteError("TOO_MANY_REQUESTS");
     const method = (options.method ?? "GET").toUpperCase();
@@ -287,7 +298,7 @@ export class RemoteTransport implements BusinessTransport {
       };
       const timer = setTimeout(
         () => this.cancelRequest(id, "REQUEST_TIMEOUT"),
-        Math.max(1, Math.min(240000, this.expiresAt - Date.now())),
+        240000,
       );
       this.pending.set(id, {
         resolve,
@@ -375,11 +386,12 @@ export class RemoteTransport implements BusinessTransport {
     this.closeWithError(new RemoteError("CONNECTION_CLOSED"));
   }
   private nextId() {
-    if (++this.sequence > 1024) throw new RemoteError("SESSION_LIMIT");
+    if (!Number.isSafeInteger(++this.sequence))
+      throw new RemoteError("SESSION_LIMIT");
     return "r" + this.sequence;
   }
   private send(value: unknown) {
-    if (this.closed) throw new RemoteError("CONNECTION_CLOSED");
+    this.assertActive();
     const bytes = encoder.encode(JSON.stringify(value));
     if (bytes.length > 65519 || this.ws.bufferedAmount > 2 * 1024 * 1024) {
       this.closeWithError(new RemoteError("BACKPRESSURE"));
@@ -399,7 +411,13 @@ export class RemoteTransport implements BusinessTransport {
   }
   private cancelRequest(id: string, code: string) {
     const ack = this.acks.get(id);
-    if (ack) this.retiredAcks.set(id, ack.received);
+    if (ack) {
+      // A cancelled chunk may never receive its final ACK. Bound retained exceptions
+      // even when the underlying connection is renewed indefinitely.
+      if (this.retiredAcks.size >= 1024)
+        this.closeWithError(new RemoteError("SESSION_LIMIT"));
+      else this.retiredAcks.set(id, ack.received);
+    }
     try {
       if (!this.closed) this.send({ type: "cancel", id });
     } catch {
@@ -422,6 +440,20 @@ export class RemoteTransport implements BusinessTransport {
     }
   }
   private receive(frame: Record<string, unknown>) {
+    this.assertActive();
+    if (frame?.type === "auth.renewed") {
+      if (
+        this.renewing === undefined ||
+        frame.id !== this.renewing ||
+        !Number.isSafeInteger(frame.expiresAt) ||
+        (frame.expiresAt as number) * 1000 <= this.expiresAt ||
+        (frame.expiresAt as number) * 1000 - Date.now() > 301000
+      )
+        throw new RemoteError("INVALID_FRAME");
+      this.renewing = undefined;
+      this.armLease(frame.expiresAt as number);
+      return;
+    }
     if (
       !frame ||
       typeof frame !== "object" ||
@@ -521,6 +553,11 @@ export class RemoteTransport implements BusinessTransport {
     if (this.closed) return;
     this.closed = true;
     clearTimeout(this.expiry);
+    clearTimeout(this.renewalTimer);
+    this.freshToken = undefined;
+    this.renewing = undefined;
+    window.removeEventListener("pageshow", this.checkResume);
+    document.removeEventListener("visibilitychange", this.checkResume);
     this.ws.onmessage = null;
     this.ws.onerror = null;
     this.ws.onclose = null;
@@ -530,5 +567,61 @@ export class RemoteTransport implements BusinessTransport {
     this.terminals.clear();
     this.retiredAcks.clear();
     this.reportEnded(error.code);
+  }
+  private expired() {
+    return (
+      Date.now() >= this.expiresAt || performance.now() >= this.leaseEndsAt
+    );
+  }
+  private assertActive() {
+    if (!this.closed && this.expired()) {
+      this.closeWithError(new RemoteError("AUTHORIZATION_EXPIRED"));
+      throw new RemoteError("AUTHORIZATION_EXPIRED");
+    }
+    if (this.closed) throw new RemoteError("CONNECTION_CLOSED");
+  }
+  private armLease(expiresAt: number) {
+    const ttl = expiresAt * 1000 - Date.now();
+    if (!Number.isSafeInteger(expiresAt) || ttl <= 0 || ttl > 301000) {
+      this.closeWithError(new RemoteError("INVALID_FRAME"));
+      return;
+    }
+    clearTimeout(this.expiry);
+    clearTimeout(this.renewalTimer);
+    this.expiresAt = expiresAt * 1000;
+    this.leaseEndsAt = performance.now() + ttl;
+    this.expiry = setTimeout(
+      () => this.closeWithError(new RemoteError("AUTHORIZATION_EXPIRED")),
+      ttl,
+    );
+    if (this.freshToken) {
+      this.renewalTimer = setTimeout(
+        () => void this.renewAuthorization(),
+        Math.max(1, ttl - Math.min(60000, ttl / 3)),
+      );
+    }
+  }
+  private async renewAuthorization() {
+    if (this.closed || !this.freshToken || this.renewing !== undefined) return;
+    try {
+      this.assertActive();
+      const getToken = this.freshToken;
+      const token = await getToken();
+      // Logout, account changes and a suspended tab cannot revive an expired lease.
+      this.assertActive();
+      if (this.freshToken !== getToken) return;
+      if (
+        !token ||
+        token.length > 16384 ||
+        !Number.isSafeInteger(this.renewalSequence + 1)
+      )
+        throw new RemoteError("AUTHORIZATION_EXPIRED");
+      this.renewing = ++this.renewalSequence;
+      this.send({ type: "auth.renew", id: this.renewing, accessToken: token });
+      // The old expiry remains armed until the matching authenticated ACK arrives.
+    } catch {
+      if (!this.closed)
+        this.closeWithError(new RemoteError("AUTHORIZATION_EXPIRED"));
+    }
   }
 }

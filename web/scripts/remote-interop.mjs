@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 const nativeTree = process.env.ANYWORK_REMOTE_WORKTREE;
+const origin = process.env.ANYWORK_INTEROP_ORIGIN || "http://127.0.0.1:5173";
 if (!nativeTree)
   throw new Error(
     "Set ANYWORK_REMOTE_WORKTREE to the checkout containing anywork-remote isolated example",
@@ -50,7 +51,7 @@ try {
     route.fulfill({
       status: route.request().method() === "OPTIONS" ? 204 : 200,
       headers: {
-        "Access-Control-Allow-Origin": "http://127.0.0.1:5173",
+        "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Headers": "authorization",
         "Access-Control-Allow-Methods": "GET,OPTIONS",
         "Content-Type": "application/json",
@@ -61,7 +62,7 @@ try {
           : JSON.stringify({ customData: { other: { preserved: true } } }),
     }),
   );
-  await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
+  await page.goto(origin, { waitUntil: "networkidle" });
   const result = await page.evaluate(async (config) => {
     const { RemoteTransport } = await import("/src/remoteTransport.ts");
     const RealWebSocket = window.WebSocket;
@@ -95,7 +96,101 @@ try {
       if (!value) throw new Error(description);
     };
     let assertions = 0;
+    // Fixed absolute token expirations exercise real encrypted renewal, rather
+    // than a verifier that could accidentally extend the same JWT forever.
+    let freshCalls = 0,
+      leasePtyData = "",
+      leasePtyClosed = false;
+    const renewing = await connect({
+      accessToken: "renew-initial",
+      getFreshAccessToken: async () => {
+        freshCalls++;
+        if (freshCalls <= 2) return `renew-${freshCalls}`;
+        return new Promise(() => {});
+      },
+    });
+    const renewalSocket = sockets[0];
+    let leaseTerminal;
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("renewal PTY timeout")),
+        3000,
+      );
+      leaseTerminal = renewing.terminal("fixture", {
+        ready() {
+          clearTimeout(timer);
+          resolve();
+        },
+        data(bytes) {
+          leasePtyData += new TextDecoder().decode(bytes);
+        },
+        closed() {
+          leasePtyClosed = true;
+        },
+      });
+    });
+    const slowResponse = await renewing.request("/api/sessions/slow/document");
+    check(
+      (await slowResponse.text()) === "slow-response" && !leasePtyClosed,
+      "active HTTP and original PTY survive initial fixed JWT expiry",
+    );
+    assertions++;
+    const renewalDeadline = Date.now() + 5000;
+    while (freshCalls < 2 || renewing.renewing !== undefined) {
+      check(
+        Date.now() < renewalDeadline,
+        "second renewal completes before fixture deadline",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    leaseTerminal.input("after-second-renewal");
+    const ptyDeadline = Date.now() + 2000;
+    while (
+      !leasePtyData.includes("after-second-renewal") &&
+      Date.now() < ptyDeadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    check(
+      leasePtyData.includes("after-second-renewal") &&
+        !leasePtyClosed &&
+        sockets.length === 1,
+      "two fresh JWT leases preserve one real encrypted PTY and socket",
+    );
+    assertions++;
+    check(
+      renewalSocket.wire.every(
+        (bytes) => !new TextDecoder().decode(bytes).includes("renew-"),
+      ),
+      "renewed JWTs remain encrypted on relay wire",
+    );
+    assertions++;
+    const deniedHttp = renewing.request("/api/sessions/slow/document").then(
+      () => "accepted",
+      (error) => error.code,
+    );
+    // Exercise the real gateway denial path while both original PTY and HTTP
+    // children exist; this deliberately sends a bad encrypted control token.
+    renewing.send({ type: "auth.renew", id: 3, accessToken: "wrong-token" });
+    await renewing.ended;
+    check(
+      (await deniedHttp) !== "accepted" && leasePtyClosed,
+      "denied renewal rejects active HTTP and closes the original browser PTY",
+    );
+    assertions++;
+    sockets.length = 0;
     const transport = await connect();
+    const teardownDeadline = Date.now() + 2000;
+    let activePtys;
+    do {
+      activePtys = (await (await transport.request("/api/info")).json())
+        .activePtys;
+      if (activePtys) await new Promise((resolve) => setTimeout(resolve, 10));
+    } while (activePtys && Date.now() < teardownDeadline);
+    check(
+      activePtys === 0,
+      "denied renewal aborts the original gateway local PTY socket",
+    );
+    assertions++;
     assertions++;
     const { AccountStore } = await import("/src/accountData.ts");
     const settings = await new AccountStore(
