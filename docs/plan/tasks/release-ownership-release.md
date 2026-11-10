@@ -1,7 +1,7 @@
 ---
 id: release-ownership-release
 scope: store-ownership-lifetime
-status: in-progress
+status: done
 depends-on: [release-mobile-menu-synchronization]
 ---
 
@@ -18,3 +18,7 @@ Follow [the ownership contract](../../schema-and-recovery.md): release the guard
 ## ownership and verification
 
 The implementation author owns the minimal guard release in `crates/server/src/store/ownership.rs`, local-binding teardown order in `crates/server/src/store/schema.rs`, deterministic regressions in `crates/server/src/store/schema/tests.rs`, and its author report. Error paths must close SQLite before releasing ownership as well as normal Store teardown; the returned interface stays unchanged. Windows release must match the existing reserved-byte lock range. The independent reviewer checks exact committed code, inherited-descriptor reproduction, live-owner rejection and existing schema/ownership regressions, including appropriate platform compilation/lint. Root merges accepted source and starts a new immutable publisher candidate; v0.1.19 source and tag remain unchanged. The new candidate must pass full trusted Checks and the release matrix. This task does not authorize replacement or restart of the currently retained local business server.
+
+## delivery
+
+Fix `39f1b44` passed [independent acceptance](../reviews/ownership-release-independent.md), including 19 schema/ownership tests and strict all-target server Clippy. The author additionally ran all 193 server tests and a negative control proving the inherited-descriptor regression fails with close-only release. Root merged the exact accepted source and review for a fresh v0.1.20 operation. Native Intel Mac and Windows validation, full exact-source Checks, release assets and website checks remain publication gates. The local Native introduction already runs from the separately accepted v0.1.19 UI candidate; the previously running business server remains unchanged.
