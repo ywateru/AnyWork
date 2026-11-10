@@ -1,3 +1,4 @@
+import { fetchLocalRoute } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 import { expect, test, type Page } from "./local-fixture";
 
@@ -214,7 +215,7 @@ test("single fast tier uses a checkbox and keeps focus after native saves", asyn
 }) => {
   const { session, picker, menu, read } = await fixture(page);
   await page.route(`**/api/sessions/${session.id}/composer`, async (route) => {
-    const response = await route.fetch(),
+    const response = await fetchLocalRoute(route),
       data = await response.json();
     // Exercise the native one-fast-tier branch with an actually advertised ID.
     data.models[0].serviceTiers = [
@@ -348,7 +349,7 @@ for (const rejected of [false, true]) {
             return;
           }
         }
-        const response = await route.fetch(),
+        const response = await fetchLocalRoute(route),
           data = await response.json();
         data.models[0].serviceTiers = [
           {
@@ -460,7 +461,7 @@ for (const rejected of [false, true]) {
               return;
             }
           }
-          const response = await route.fetch(),
+          const response = await fetchLocalRoute(route),
             data = await response.json();
           data.models[0].serviceTiers = [
             {

@@ -1,4 +1,9 @@
-import { test as base, expect, type BrowserContext } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type Route,
+  type BrowserContext,
+} from "@playwright/test";
 export * from "@playwright/test";
 /** Real isolated service handoff, never a production token or persisted connection. */
 export async function authorizeLocalContext(
@@ -29,6 +34,25 @@ export async function authorizeLocalContext(
 export const test = base.extend({
   context: async ({ context, baseURL }, use) => {
     await authorizeLocalContext(context, baseURL!);
-    await use(context);
+    try {
+      await use(context);
+    } finally {
+      await context.request
+        .delete(baseURL! + "/api/local/session", {
+          headers: { Origin: baseURL! },
+        })
+        .catch(() => {});
+    }
   },
 });
+
+/** Playwright's Node route.fetch omits browser Fetch Metadata. Explicit exact
+ * Origin preserves the real cookie boundary for delayed/modified HTTP fixtures. */
+export function fetchLocalRoute(route: Route) {
+  return route.fetch({
+    headers: {
+      ...route.request().headers(),
+      Origin: new URL(route.request().url()).origin,
+    },
+  });
+}

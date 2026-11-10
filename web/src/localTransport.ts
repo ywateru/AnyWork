@@ -98,18 +98,28 @@ export class LocalTransport implements BusinessTransport {
         this.close();
         throw new LocalSessionError("LOCAL_SESSION_REQUIRED");
       }
-      // Keep the request cancellable through body consumption, including files.
-      const body = await response.arrayBuffer();
-      return new Response(
-        [204, 205, 304].includes(response.status) ? null : body,
-        {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers,
-        },
-      );
-    } finally {
+      // Preserve the native response (including URL/body behavior) while keeping
+      // the fetch abortable until the API consumer finishes reading its body.
+      if (!response.body) this.requests.delete(controller);
+      else
+        for (const method of [
+          "arrayBuffer",
+          "blob",
+          "json",
+          "text",
+          "formData",
+        ] as const) {
+          const consume = response[method].bind(response);
+          Object.defineProperty(response, method, {
+            configurable: true,
+            value: (...args: []) =>
+              consume(...args).finally(() => this.requests.delete(controller)),
+          });
+        }
+      return response;
+    } catch (error) {
       this.requests.delete(controller);
+      throw error;
     }
   }
 

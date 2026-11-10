@@ -1,3 +1,4 @@
+import { fetchLocalRoute } from "./local-fixture";
 import { expect, test, type Page } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
@@ -24,7 +25,7 @@ async function fixture(page: Page, existing = false, draftMode = false) {
       await route.continue();
       return;
     }
-    const response = await route.fetch();
+    const response = await fetchLocalRoute(route);
     const data = await response.json();
     await route.fulfill({
       response,

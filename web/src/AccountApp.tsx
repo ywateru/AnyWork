@@ -115,7 +115,7 @@ const zh = {
   intro: "在自己的电脑上运行 Agent，从另一块屏幕继续对话和工作。",
   signIn: "登录",
   signUp: "注册账号",
-  accountHint: "登录后即可查看你的设备。密码由 Logto 安全管理。",
+  accountHint: "登录后即可查看你的设备。密码只在安全账号页面输入。",
   localHint: "需要在这台电脑上开启远程访问？",
   download: "下载桌面端",
   loading: "正在加载…",
@@ -146,14 +146,13 @@ const zh = {
   save: "保存",
   close: "关闭",
   addTitle: "添加一台电脑",
-  step1:
-    "在 Mac 上安装并打开 AnyWork 桌面端。账号远程访问首发支持 macOS；其他平台可继续使用高级连接。",
+  step1: "在 Mac 上安装并打开 AnyWork 桌面端。账号远程访问当前支持 macOS。",
   step2: "登录与当前页面相同的账号。",
   step3: "在电脑上开启“允许我的其他设备访问”。",
   addFoot: "完成后，设备会出现在这里。电脑需要保持开机联网。",
   security: "业务内容只在你的设备间解密",
   securityText:
-    "账号与最少设备配置由 Logto 管理，CyberGrid 交换必要连接信息。对话、文件、终端内容和设备私钥留在你的设备上。",
+    "账号服务保存必要的账号与设备配置，连接服务交换必要连接信息。对话、文件和终端内容在设备间加密，设备私钥留在本机。",
   back: "返回我的设备",
   firstKey: "确认这台电脑的身份",
   changedKey: "这台电脑的公钥已改变",
@@ -178,7 +177,7 @@ const en: typeof zh = {
   signIn: "Sign in",
   signUp: "Create account",
   accountHint:
-    "Sign in to see your devices. Logto securely manages your password.",
+    "Sign in to see your devices. Enter your password only on the secure account page.",
   localHint: "Want to access this computer remotely?",
   download: "Download desktop app",
   loading: "Loading…",
@@ -219,7 +218,7 @@ const en: typeof zh = {
     "Your device will appear here. Keep the computer powered on and connected.",
   security: "Your devices decrypt your work",
   securityText:
-    "Logto manages your account and minimal device settings. CyberGrid exchanges connection information. Conversations, files, terminal content and device private keys stay on your devices.",
+    "Account services store essential account and device settings; connection services exchange necessary connection information. Conversations, files and terminals are encrypted between your devices. Private device keys stay on the computer.",
   back: "Back to devices",
   firstKey: "Confirm this computer's identity",
   changedKey: "This computer's public key has changed",
@@ -795,6 +794,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
             <div className="account-page-heading">
               <div>
                 <h1>{t.devices}</h1>
+                <p className="account-mobile-user">{accountLabel}</p>
                 <p>{t.subtitle}</p>
               </div>
               <div className="account-page-actions">

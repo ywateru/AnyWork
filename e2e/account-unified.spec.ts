@@ -16,6 +16,7 @@ test("local desktop ticket is consumed once, fragment clears, cookie refreshes a
   expect(ticketResponse.status()).toBe(200);
   const { ticket } = await ticketResponse.json();
   await page.addInitScript(() => {
+    localStorage.setItem("anywork.account.locale", "zh-CN");
     localStorage.setItem(
       "ra.connection",
       JSON.stringify({
@@ -53,12 +54,10 @@ test("local desktop ticket is consumed once, fragment clears, cookie refreshes a
     ),
   ).toBe(true);
   expect(
-    await page.evaluate(() =>
-      JSON.stringify({ ...localStorage, ...sessionStorage }).includes(
-        location.hash.startsWith("#local-ticket=")
-          ? location.hash
-          : "local-ticket=",
-      ),
+    await page.evaluate(
+      (ticket) =>
+        JSON.stringify({ ...localStorage, ...sessionStorage }).includes(ticket),
+      ticket,
     ),
   ).toBe(false);
   await page.reload();
@@ -76,6 +75,7 @@ test("local desktop ticket is consumed once, fragment clears, cookie refreshes a
   ).toBe(401);
   // Logout belongs only to this browser session, not the service or cloud account.
   await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "常规", exact: true }).click();
   await page
     .getByRole("button", { name: "退出本机网页会话", exact: true })
     .click();
@@ -165,6 +165,7 @@ test("hosted/mobile account entry has no manual form, saved connection or Androi
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("https://**/*", (route) => route.abort());
   await page.addInitScript(() => {
+    localStorage.setItem("anywork.account.locale", "zh-CN");
     localStorage.setItem(
       "ra.connection",
       JSON.stringify({ url: "https://retired.invalid", token: "obsolete" }),

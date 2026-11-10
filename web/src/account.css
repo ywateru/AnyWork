@@ -694,3 +694,14 @@
     padding-top: 44px;
   }
 }
+.account-mobile-user {
+  display: none;
+}
+@media (max-width: 650px) {
+  .account-page-heading .account-mobile-user {
+    display: block;
+    margin-block: -4px 12px;
+    color: #202630;
+    overflow-wrap: anywhere;
+  }
+}

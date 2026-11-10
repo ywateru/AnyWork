@@ -1,3 +1,4 @@
+import { fetchLocalRoute } from "./local-fixture";
 import { test, expect, type Page, type Route } from "./local-fixture";
 
 const token = "browser-integration-test-token";
@@ -89,7 +90,7 @@ async function holdPut(page: Page, id: string) {
   const pattern = `**/api/sessions/${id}/files`;
   const handler = async (route: Route) => {
     if (route.request().method() !== "PUT") return route.continue();
-    const response = await route.fetch();
+    const response = await fetchLocalRoute(route);
     received();
     await gate;
     try {
@@ -253,7 +254,7 @@ test("unknown result and transport failure retain draft without blind retry", as
   await editor.fill("keep uncertain draft");
   await page.route(pattern, async (route) => {
     if (route.request().method() !== "PUT") return route.continue();
-    await route.fetch();
+    await fetchLocalRoute(route);
     await route.fulfill({ json: { ok: true } });
   });
   await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -324,7 +325,7 @@ for (const kind of ["file", "session"] as const) {
       )
         return route.continue();
       captured = true;
-      const response = await route.fetch();
+      const response = await fetchLocalRoute(route);
       arrived();
       await gate;
       try {
@@ -444,7 +445,7 @@ test("uncertain post-publication response retains draft and requires explicit co
   const pattern = `**/api/sessions/${sessions[0].id}/files`;
   await page.route(pattern, async (route) => {
     if (route.request().method() !== "PUT") return route.continue();
-    expect((await route.fetch()).status()).toBe(200);
+    expect((await fetchLocalRoute(route)).status()).toBe(200);
     await route.fulfill({
       status: 503,
       json: {

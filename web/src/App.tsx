@@ -1179,7 +1179,10 @@ export default function App({
     return (
       <div className="account-loading">
         <p>连接已关闭，请返回入口继续。</p>
-        <AccountEntry onDevices={onDevices} />
+        <AccountEntry
+          onDevices={onDevices}
+          label={onDevices ? undefined : "账号与设备"}
+        />
       </div>
     );
 
@@ -1372,7 +1375,10 @@ export default function App({
               <span className="workspace-context" title={contextLabel}>
                 {contextLabel}
               </span>
-              <AccountEntry onDevices={onDevices} />
+              <AccountEntry
+                onDevices={onDevices}
+                label={onDevices ? undefined : "账号与设备"}
+              />
               {onSignOut && (
                 <button className="workspace-account-entry" onClick={onSignOut}>
                   <LogOut size={15} />
