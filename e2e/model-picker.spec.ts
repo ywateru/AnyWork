@@ -193,7 +193,7 @@ test("slider serializes rapid changes and supports wheel, pointer and touch inpu
   await expect(menu).toHaveAttribute("aria-busy", "false");
   const bounds = (await slider.boundingBox())!;
   if (info.project.name === "android-web") {
-    await page.touchscreen.tap(bounds.x + bounds.width - 14, bounds.y + 14);
+    await slider.tap({ position: { x: bounds.width - 14, y: 14 } });
   } else {
     await page.mouse.move(bounds.x + 14, bounds.y + 14);
     await page.mouse.down();
