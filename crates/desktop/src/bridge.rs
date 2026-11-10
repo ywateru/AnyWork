@@ -59,10 +59,18 @@ pub async fn desktop_pick(folder: bool) -> Result<Option<String>, String> {
     .map_err(|_| "无法打开文件选择器。".into())
 }
 #[tauri::command]
-pub async fn desktop_open(
+pub async fn desktop_start(
     state: State<'_, DesktopState>,
     accounts: State<'_, crate::accounts::Handle>,
     updates: State<'_, crate::updates::Handle>,
+) -> Result<(), String> {
+    check_workspace_action(&state, &updates)?;
+    authorized_context(&accounts).await?;
+    state.handle.prepare_workspace().await
+}
+fn check_workspace_action(
+    state: &DesktopState,
+    updates: &crate::updates::Handle,
 ) -> Result<(), String> {
     if state.preview.is_some() {
         return Err("界面预览不会启动服务或打开工作区。".into());
@@ -70,13 +78,33 @@ pub async fn desktop_open(
     if updates.snapshot().phase == crate::updates::Phase::Installing {
         return Err("正在安装更新，请稍后重试。".into());
     }
+    Ok(())
+}
+async fn authorized_context(accounts: &crate::accounts::Handle) -> Result<BrowserContext, String> {
     #[cfg(unix)]
-    let context = local_context(&accounts.snapshot().await);
+    {
+        let snapshot = accounts.snapshot().await;
+        if !snapshot.signed_in
+            || snapshot.authorization_status != crate::accounts::AuthorizationStatus::SignedIn
+        {
+            return Err("DESKTOP_SIGN_IN_REQUIRED".into());
+        }
+        Ok(local_context(&snapshot))
+    }
     #[cfg(not(unix))]
-    let context = {
+    {
         let _ = accounts;
-        BrowserContext::default()
-    };
+        Err("DESKTOP_ACCOUNT_UNSUPPORTED".into())
+    }
+}
+#[tauri::command]
+pub async fn desktop_open(
+    state: State<'_, DesktopState>,
+    accounts: State<'_, crate::accounts::Handle>,
+    updates: State<'_, crate::updates::Handle>,
+) -> Result<(), String> {
+    check_workspace_action(&state, &updates)?;
+    let context = authorized_context(&accounts).await?;
     let url = state.handle.open_workspace(context).await?;
     open::that_detached(url).map_err(|_| "无法打开默认浏览器，请重试。".into())
 }

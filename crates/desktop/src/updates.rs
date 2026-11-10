@@ -273,10 +273,11 @@ impl Handle {
         self.ready(update, bytes.len() as u64);
         Ok(())
     }
-    pub fn start(&self, app: AppHandle, service: manager::Handle) {
+    pub fn start<R: tauri::Runtime>(&self, app: AppHandle<R>) {
         let handle = self.clone();
         tauri::async_runtime::spawn(async move {
-            resume_saved(&handle.directory, &service).await;
+            // A new process must complete account-first onboarding. Old disk
+            // resume hints stay untouched and never admit a service startup.
             if !handle.snapshot().supported {
                 return;
             }
@@ -362,42 +363,21 @@ fn read_package(directory: &Path) -> Result<Vec<u8>> {
     Ok(std::fs::read(path)?)
 }
 
-// Only switches are persisted; access keys remain in their existing protected stores.
-#[derive(Debug, Serialize, Deserialize)]
+// RAM-only recovery for a failed installation in this admitted lifecycle.
 struct ResumePlan {
-    owned: bool,
-    created: u64,
+    service: Option<(config::Config, String)>,
 }
 impl ResumePlan {
     fn capture(snapshot: &manager::Snapshot) -> Self {
         Self {
-            owned: snapshot.owned,
-            created: now(),
+            service: snapshot
+                .owned
+                .then(|| (snapshot.config.clone(), snapshot.token.clone())),
         }
     }
     async fn resume(&self, service: &manager::Handle) {
-        if self.owned {
-            let state = service.snapshot();
-            service.send(manager::Command::StartServer(state.config, state.token));
-        }
-    }
-}
-async fn resume_saved(directory: &Path, service: &manager::Handle) {
-    let path = directory.join("resume.json");
-    if let Ok(bytes) = std::fs::read(&path) {
-        // Legacy route recovery plans stay untouched and are never executed.
-        if serde_json::from_slice::<serde_json::Value>(&bytes)
-            .ok()
-            .is_some_and(|v| v.get("routes").is_some())
-        {
-            return;
-        }
-        // Consume modern local-service plans once.
-        let _ = std::fs::remove_file(path);
-        if let Ok(plan) = serde_json::from_slice::<ResumePlan>(&bytes)
-            && now().saturating_sub(plan.created) < 60 * 60
-        {
-            plan.resume(service).await;
+        if let Some((config, token)) = &self.service {
+            service.send(manager::Command::StartServer(config.clone(), token.clone()));
         }
     }
 }
@@ -513,15 +493,8 @@ async fn install_ready(
         return Err(updates.snapshot().error);
     }
     let plan = ResumePlan::capture(&service.snapshot());
-    let resume_path = updates.directory.join("resume.json");
-    config::atomic_private(
-        &resume_path,
-        &serde_json::to_vec(&plan).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
     updates.edit(|data| data.snapshot.phase = Phase::Installing);
     if let Err(error) = service.pause_for_update().await {
-        let _ = std::fs::remove_file(resume_path);
         updates.fail(error.context("无法安全暂停本应用的服务，未安装更新"));
         return Err(updates.snapshot().error);
     }
@@ -529,7 +502,6 @@ async fn install_ready(
     match result {
         Ok(Ok(())) => Ok(()),
         error => {
-            let _ = std::fs::remove_file(resume_path);
             let message = match error {
                 Ok(Err(e)) => e.to_string(),
                 Err(e) => e.to_string(),
@@ -849,11 +821,56 @@ mod tests {
         assert!(read_package(dir.path()).is_err());
     }
     #[test]
-    fn resume_plan_never_contains_credentials_or_external_service_ownership() {
+    fn resume_plan_does_not_capture_external_service() {
         let mut snapshot = manager::Snapshot::new(config::Config::default(), "secret-token".into());
         snapshot.external = true;
         let plan = ResumePlan::capture(&snapshot);
-        assert!(!plan.owned);
-        assert!(!serde_json::to_string(&plan).unwrap().contains("secret"));
+        assert!(plan.service.is_none());
+    }
+    #[tokio::test]
+    async fn failed_install_rollback_uses_only_the_captured_owned_service() {
+        let mut snapshot = manager::Snapshot::new(config::Config::default(), "admitted-key".into());
+        snapshot.owned = true;
+        snapshot.config.port = 32651;
+        let plan = ResumePlan::capture(&snapshot);
+        let mut later = snapshot.clone();
+        later.config.port = 32652;
+        later.token = "later-key".into();
+        let (service, mut commands) = manager::Handle::test_commands(later);
+        plan.resume(&service).await;
+        match commands.try_recv().unwrap() {
+            manager::Command::StartServer(config, token) => {
+                assert_eq!(config.port, 32651);
+                assert_eq!(token, "admitted-key");
+            }
+            _ => panic!("expected only owned service recovery"),
+        }
+        snapshot.owned = false;
+        ResumePlan::capture(&snapshot).resume(&service).await;
+        assert!(commands.try_recv().is_err());
+    }
+    #[tokio::test]
+    async fn startup_preserves_disk_resume_hints_without_starting_a_service() {
+        let dir = tempfile::tempdir().unwrap();
+        let updates = Handle::new(dir.path(), false);
+        std::fs::create_dir_all(&updates.directory).unwrap();
+        let path = updates.directory.join("resume.json");
+        let bytes = serde_json::to_vec(&serde_json::json!({"owned":true,"created":now()})).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let (service, mut commands) = manager::Handle::test_commands(manager::Snapshot::new(
+            config::Config::default(),
+            String::new(),
+        ));
+        let app = tauri::test::mock_builder()
+            .manage(crate::bridge::DesktopState {
+                handle: service,
+                preview: None,
+            })
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        updates.start(app.handle().clone());
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(commands.try_recv().is_err());
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
     }
 }

@@ -1,5 +1,5 @@
 //! Upstream CyberGrid's current Unix-only credential module cannot be compiled
-//! on Windows. Local workspace remains available; remote access fails clearly.
+//! on Windows. Account-first Native startup is unavailable; CLI is independent.
 use serde_json::{Value, json};
 #[derive(Clone)]
 pub struct Handle;
@@ -13,12 +13,12 @@ impl Handle {
     }
 }
 fn unsupported() -> String {
-    "当前平台尚未提供账号远程访问，请使用本地工作区。".into()
+    "当前平台尚未提供原生账号登录，无法在桌面程序中准备工作区。可使用独立 CLI。".into()
 }
 #[tauri::command]
 pub async fn account_snapshot() -> Result<Value, String> {
     Ok(
-        json!({"authorizationStatus":"unsupported","transactionId":null,"signedIn":false,"subject":null,"accountLabel":null,"enabled":false,"busy":false,"error":"当前平台尚未提供账号远程访问。","gridDeviceId":null,"installationId":null,"publicKey":null}),
+        json!({"authorizationStatus":"unsupported","transactionId":null,"signedIn":false,"subject":null,"accountLabel":null,"enabled":false,"busy":false,"error":unsupported(),"gridDeviceId":null,"installationId":null,"publicKey":null,"remoteClients":[],"accountPortalUrl":"https://anywork-tau.vercel.app/app/"}),
     )
 }
 #[tauri::command]
@@ -61,4 +61,18 @@ pub async fn account_disable() -> Result<(), String> {
 #[tauri::command]
 pub async fn account_logout() -> Result<(), String> {
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn snapshot_reports_unsupported_without_inventing_an_account_or_connections() {
+        let snapshot = account_snapshot().await.unwrap();
+        assert_eq!(snapshot["authorizationStatus"], "unsupported");
+        assert_eq!(snapshot["signedIn"], false);
+        assert_eq!(snapshot["remoteClients"], json!([]));
+        assert_eq!(snapshot["accountPortalUrl"], Handle.portal_url());
+        assert!(account_begin().await.is_err());
+        assert!(account_enable().await.is_err());
+    }
 }

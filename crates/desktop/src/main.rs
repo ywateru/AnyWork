@@ -99,6 +99,7 @@ fn run() -> anyhow::Result<()> {
             bridge::desktop_preview,
             bridge::desktop_action,
             bridge::desktop_pick,
+            bridge::desktop_start,
             bridge::desktop_open,
             bridge::desktop_account_portal,
             updates::desktop_update_snapshot,
@@ -110,10 +111,7 @@ fn run() -> anyhow::Result<()> {
         ])
         .setup(move |app| {
             if update_service {
-                updater.start(
-                    app.handle().clone(),
-                    app.state::<DesktopState>().handle.clone(),
-                );
+                updater.start(app.handle().clone());
             }
             if args.iter().any(|a| a == "--minimum-size")
                 && let Some(window) = app.get_webview_window("main")

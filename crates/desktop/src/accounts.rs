@@ -5,7 +5,7 @@ use crate::{
     process::{LaunchPlan, OwnedProcess},
 };
 use anyhow::{Result, bail};
-use anywork_remote::{AccountVerifier, Gateway, GatewayConfig, JwtVerifier};
+use anywork_remote::{AccountVerifier, Gateway, GatewayConfig, JwtVerifier, RemoteClient};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -216,6 +216,8 @@ pub struct Snapshot {
     pub grid_device_id: Option<String>,
     pub installation_id: Option<String>,
     pub public_key: Option<String>,
+    pub remote_clients: Vec<RemoteClient>,
+    pub account_portal_url: String,
 }
 #[derive(Clone)]
 struct Grant {
@@ -533,6 +535,11 @@ impl Handle {
     pub async fn snapshot(&self) -> Snapshot {
         let state = self.0.state.lock().await;
         let mut snapshot = state.snapshot.clone();
+        snapshot.account_portal_url = self.portal_url();
+        snapshot.remote_clients = match &state.remote {
+            Some(remote) => remote.gateway.remote_clients(),
+            None => vec![],
+        };
         snapshot.transaction_id = state.transaction.as_ref().map(|tx| tx.id.clone());
         if let Some(owner) = &state.owner {
             let grant = owner.state.lock().await;
@@ -1592,6 +1599,167 @@ mod tests {
             false,
         )
         .unwrap()
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_ipc_requires_current_account_then_prepares_without_browser_ticket() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let port = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        // A real child process and HTTP boundary, confined to this fixture's
+        // directory. It does not load Agent integrations or a user workspace.
+        let executable = dir.path().join("fixture-service.py");
+        std::fs::write(&executable, r#"#!/usr/bin/env python3
+import argparse,json,pathlib
+from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+p=argparse.ArgumentParser();p.add_argument('--bind');p.add_argument('--data-dir');p.add_argument('--workspace');a,_=p.parse_known_args()
+data=pathlib.Path(a.data_dir)
+class Handler(BaseHTTPRequestHandler):
+ def log_message(self,*args): pass
+ def do_GET(self):
+  if self.path!='/api/health' and self.headers.get('Authorization')!='Bearer '+(data/'access-token').read_text().strip():
+   self.send_response(401);self.end_headers();return
+  body={'status':'ok'} if self.path=='/api/health' else {'product':'AnyWork','hostname':'fixture','workspace':a.workspace,'local_browser_session':True} if self.path=='/api/info' else {'clients':[]}
+  raw=json.dumps(body).encode();self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
+ def do_POST(self):
+  (data/'unexpected-ticket').write_text('issued');self.send_response(500);self.end_headers()
+host,port=a.bind.rsplit(':',1);ThreadingHTTPServer((host,int(port)),Handler).serve_forever()
+"#).unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let config = config::Config {
+            workspace: dir.path().display().to_string(),
+            data_directory: dir.path().join("data").display().to_string(),
+            server_binary: executable.display().to_string(),
+            port,
+            ..Default::default()
+        };
+        config::save(&dir.path().join("manager.json"), &config).unwrap();
+        let cloud = PublicConfig {
+            frontend_origin: "https://portal.example.test".into(),
+            ..Default::default()
+        };
+        std::fs::write(
+            dir.path().join("account-cloud.json"),
+            serde_json::to_vec(&cloud).unwrap(),
+        )
+        .unwrap();
+        let manager = manager::start(manager::Options {
+            support: dir.path().into(),
+            resources: dir.path().into(),
+        })
+        .unwrap();
+        let account = Handle::new(dir.path().into(), manager.clone(), false).unwrap();
+        let app = tauri::test::mock_builder()
+            .manage(account.clone())
+            .manage(crate::bridge::DesktopState {
+                handle: manager.clone(),
+                preview: None,
+            })
+            .manage(crate::updates::Handle::new(dir.path(), false))
+            .invoke_handler(tauri::generate_handler![
+                crate::bridge::desktop_start,
+                crate::bridge::desktop_open,
+                account_snapshot
+            ])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        let invoke = |cmd: &str| {
+            tauri::test::get_ipc_response(
+                &webview,
+                tauri::webview::InvokeRequest {
+                    cmd: cmd.into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: "tauri://localhost".parse().unwrap(),
+                    body: tauri::ipc::InvokeBody::default(),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+            )
+        };
+        for status in [
+            AuthorizationStatus::SignedOut,
+            AuthorizationStatus::Authorizing,
+            AuthorizationStatus::LoginInterrupted,
+            AuthorizationStatus::ReauthRequired,
+        ] {
+            account.0.state.lock().await.snapshot.authorization_status = status;
+            for command in ["desktop_start", "desktop_open"] {
+                assert_eq!(
+                    invoke(command).err(),
+                    Some(json!("DESKTOP_SIGN_IN_REQUIRED"))
+                );
+            }
+        }
+        assert!(
+            tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .is_err()
+        );
+        assert!(!dir.path().join("data/access-token").exists());
+        let owner = Arc::new(
+            GrantOwner::new(Grant {
+                config: cloud,
+                refresh: "synthetic-unused-grant".into(),
+                subject: "fixture-owner".into(),
+            })
+            .unwrap(),
+        );
+        account.0.state.lock().await.owner = Some(owner.clone());
+        let initial = invoke("account_snapshot")
+            .unwrap()
+            .deserialize::<Value>()
+            .unwrap();
+        assert_eq!(
+            initial["accountPortalUrl"],
+            "https://portal.example.test/app/"
+        );
+        assert_eq!(initial["remoteClients"], json!([]));
+        assert!(initial["signedIn"].as_bool().unwrap());
+        assert!(
+            invoke("desktop_start")
+                .unwrap()
+                .deserialize::<Value>()
+                .unwrap()
+                .is_null()
+        );
+        assert!(manager.snapshot().owned && manager.snapshot().authorized);
+        assert!(!manager.snapshot().external);
+        assert!(!dir.path().join("data/unexpected-ticket").exists());
+        // Reauthorization fences both new commands; an accepted local service
+        // remains alive and unchanged. No browser is opened by this test.
+        owner.state.lock().await.invalid = true;
+        for command in ["desktop_start", "desktop_open"] {
+            assert_eq!(
+                invoke(command).err(),
+                Some(json!("DESKTOP_SIGN_IN_REQUIRED"))
+            );
+        }
+        assert!(
+            tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .is_ok()
+        );
+        assert!(!dir.path().join("data/unexpected-ticket").exists());
+        let token = config::read_token(&config);
+        account.0.state.lock().await.owner = None;
+        assert_eq!(
+            invoke("desktop_start").err(),
+            Some(json!("DESKTOP_SIGN_IN_REQUIRED"))
+        );
+        assert_eq!(config::read_token(&config), token);
+        assert!(manager.snapshot().owned);
+        manager.shutdown().await;
+        assert!(
+            tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .is_err()
+        );
     }
     fn transaction() -> Arc<Transaction> {
         Arc::new(Transaction {

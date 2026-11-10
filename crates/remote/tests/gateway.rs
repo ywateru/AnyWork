@@ -97,18 +97,34 @@ async fn start(ttl: u64) -> (Gateway, Vec<u8>, Arc<AtomicUsize>) {
     (gateway, key.public, calls)
 }
 async fn socket(port: u16, origin: &str) -> Result<Socket, tokio_tungstenite::tungstenite::Error> {
+    socket_with_kind(port, origin, None).await
+}
+async fn socket_with_kind(
+    port: u16,
+    origin: &str,
+    user_agent: Option<&str>,
+) -> Result<Socket, tokio_tungstenite::tungstenite::Error> {
     let mut request = format!("ws://127.0.0.1:{port}/remote/v1/ws")
         .into_client_request()
         .unwrap();
     request
         .headers_mut()
         .insert("origin", origin.parse().unwrap());
+    if let Some(user_agent) = user_agent {
+        request
+            .headers_mut()
+            .insert("user-agent", user_agent.parse().unwrap());
+    }
     // Match browser WebSocket clients: do not add Nagle/delayed-ACK waits to
     // each pair of small request/end frames in the throughput regression.
     Ok(connect_async_with_config(request, None, true).await?.0)
 }
 async fn connect(port: u16, key: &[u8], token: &str) -> (Socket, snow::TransportState) {
     let mut socket = socket(port, "https://test.example").await.unwrap();
+    let noise = authenticate(&mut socket, key, token).await;
+    (socket, noise)
+}
+async fn authenticate(socket: &mut Socket, key: &[u8], token: &str) -> snow::TransportState {
     let mut hs = initiator(key);
     let mut b = vec![0; 65535];
     let n = hs
@@ -130,7 +146,7 @@ async fn connect(port: u16, key: &[u8], token: &str) -> (Socket, snow::Transport
         serde_json::from_slice::<Value>(&b[..n]).unwrap()["type"],
         "ready"
     );
-    (socket, hs.into_transport_mode().unwrap())
+    hs.into_transport_mode().unwrap()
 }
 fn initiator(key: &[u8]) -> snow::HandshakeState {
     let local = snow::Builder::new(NOISE_SUITE.parse().unwrap())
@@ -205,6 +221,7 @@ async fn rejects_unknown_origins_plaintext_and_bad_account() {
         .await
         .unwrap();
     assert_closed(&mut ws, 1).await;
+    assert!(gateway.remote_clients().is_empty());
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
 }
@@ -235,9 +252,13 @@ async fn replay_and_tampering_fail_before_second_local_request() {
 }
 #[tokio::test]
 async fn authorization_expiry_closes_without_fallback() {
-    let (mut gateway, key, calls) = start(1).await;
+    // Unix-second expiry must leave at least one complete second to handshake,
+    // even when the fixture is created just before a wall-clock boundary.
+    let (mut gateway, key, calls) = start(2).await;
     let (mut ws, _noise) = connect(gateway.port, &key, "allowed-test-access").await;
-    assert_closed(&mut ws, 2).await;
+    wait_for_clients(&gateway, 1).await;
+    assert_closed(&mut ws, 3).await;
+    wait_for_clients(&gateway, 0).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
 }
@@ -245,6 +266,8 @@ async fn authorization_expiry_closes_without_fallback() {
 async fn encrypted_renewal_keeps_same_connection_past_old_expiry_and_1024_requests() {
     let (mut gateway, key, calls) = start(2).await;
     let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
+    wait_for_clients(&gateway, 1).await;
+    let original_clients = gateway.remote_clients();
     ws.send(Message::Binary(
         encrypt(
             &mut noise,
@@ -287,7 +310,13 @@ async fn encrypted_renewal_keeps_same_connection_past_old_expiry_and_1024_reques
     .await
     .unwrap();
     assert_eq!(receive(&mut ws, &mut noise).await["id"], 2);
+    assert_eq!(
+        gateway.remote_clients(),
+        original_clients,
+        "renewal retains connection id and start time"
+    );
     gateway.close().await;
+    assert!(gateway.remote_clients().is_empty());
     assert_closed(&mut ws, 1).await;
 }
 #[tokio::test]
@@ -311,13 +340,14 @@ async fn bad_renewals_close_before_business_work_or_another_lease() {
         .await
         .unwrap();
         assert_closed(&mut ws, 1).await;
+        wait_for_clients(&gateway, 0).await;
     }
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
 }
 #[tokio::test]
 async fn renewal_verification_cannot_outlive_the_previous_lease_or_local_disable() {
-    let (mut gateway, key, calls) = start(1).await;
+    let (mut gateway, key, calls) = start(2).await;
     let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
     ws.send(Message::Binary(
         encrypt(
@@ -328,7 +358,8 @@ async fn renewal_verification_cannot_outlive_the_previous_lease_or_local_disable
     ))
     .await
     .unwrap();
-    assert_closed(&mut ws, 2).await;
+    assert_closed(&mut ws, 3).await;
+    wait_for_clients(&gateway, 0).await;
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     gateway.close().await;
     let (mut gateway, key, _) = start(30).await;
@@ -344,4 +375,60 @@ async fn renewal_verification_cannot_outlive_the_previous_lease_or_local_disable
     .unwrap();
     gateway.close().await;
     assert_closed(&mut ws, 1).await;
+    assert!(gateway.remote_clients().is_empty());
+}
+
+async fn wait_for_clients(gateway: &Gateway, count: usize) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while gateway.remote_clients().len() != count {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("active encrypted connection registry did not converge");
+}
+
+#[tokio::test]
+async fn only_authenticated_connections_project_bounded_device_hints_and_disconnect_cleanup() {
+    let (mut gateway, key, _) = start(60).await;
+    let mut sockets = Vec::new();
+    let started = now();
+    for (ua, expected) in [
+        (Some("fixture iPhone private-ua"), "ios"),
+        (Some("fixture Linux Android private-ua"), "android"),
+        (Some("fixture X11 Linux private-ua"), "desktop"),
+        (None, "unknown"),
+    ] {
+        let count = sockets.len();
+        let mut ws = socket_with_kind(gateway.port, "https://test.example", ua)
+            .await
+            .unwrap();
+        // An upgraded, unverified socket must not appear as a connected device.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert_eq!(gateway.remote_clients().len(), count);
+        authenticate(&mut ws, &key, "allowed-test-access").await;
+        wait_for_clients(&gateway, count + 1).await;
+        let json = serde_json::to_value(gateway.remote_clients()).unwrap();
+        let record = &json[count];
+        assert_eq!(record.as_object().unwrap().len(), 3);
+        assert_eq!(record["kind"], expected);
+        assert!(record["id"].as_str().unwrap().starts_with("connection-"));
+        assert!(record["connectedAt"].as_u64().unwrap() >= started);
+        assert!(!json.to_string().contains("private-ua"));
+        sockets.push(ws);
+    }
+    assert!(
+        socket(gateway.port, "https://test.example").await.is_err(),
+        "the existing four-socket bound remains enforced"
+    );
+    let mut ws = sockets.pop().unwrap();
+    ws.close(None).await.unwrap();
+    wait_for_clients(&gateway, 3).await;
+    drop(sockets.pop());
+    wait_for_clients(&gateway, 2).await;
+    gateway.close().await;
+    assert!(gateway.remote_clients().is_empty());
+    for mut ws in sockets {
+        assert_closed(&mut ws, 1).await;
+    }
 }
