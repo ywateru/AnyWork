@@ -324,7 +324,8 @@ class DesktopHostHTTP(unittest.TestCase):
         data = self.base / 'data'
         data.mkdir()
         (data / 'desktop-host.json').write_text(json.dumps({'version': 1, 'socket': str(self.base / 'host.sock')}))
-        env.update(HOME=str(self.base), CODEX_HOME=str(self.home), CODEX_BIN=str(cli),
+        env.update(ANYWORK_CODEX_DATA_DIR=str(self.home), CODEX_BIN=str(cli),
+                   FAKE_AGENT_STATE_DIR=str(self.base / 'fake-agent-state'),
                    FAKE_AGENT_MODEL_GATE=str(self.base / 'model-gate'),
                    FAKE_CODEX_CATALOG=str(catalog), FAKE_AGENT_CALLS=str(self.calls))
         self.process = subprocess.Popen([
