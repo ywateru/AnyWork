@@ -1,4 +1,3 @@
-export type Kind = "quick" | "named" | "relay";
 export type Phase =
   | "off"
   | "checking"
@@ -21,32 +20,18 @@ export type Config = {
   forceRelay: boolean;
   welcomed: boolean;
 };
-export type Route = {
-  phase: Phase;
-  url: string;
-  error: string;
-  restart_attempts?: number;
-  retry_in_seconds?: number;
-  address_changed?: boolean;
-};
-export type Client = {
-  id: string;
-  address: string;
-  user_agent: string;
-  last_seen: number;
-};
 export type Snapshot = {
   config: Config;
-  token: string;
-  secrets: string[];
-  secrets_loaded: boolean;
   service: Phase;
   owned: boolean;
   external: boolean;
   authorized: boolean;
-  info?: { local_service_control?: boolean } | null;
-  clients: Client[];
-  routes: Route[];
+  info?: {
+    workspace: string;
+    local_service_control?: boolean;
+    local_browser_session?: boolean;
+  } | null;
+  clients: { id: string }[];
   error: string;
   notice: string;
 };

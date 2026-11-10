@@ -300,7 +300,7 @@ export function UpdatePage({ controller }: { controller: Controller }) {
         <h2 id="update-confirm-title">更新到 {confirm}？</h2>
         <p>
           AnyWork
-          将安装已下载的更新并重启。本应用开启的服务与远程连接会短暂断开，重启后自动恢复；匿名隧道地址可能变化。
+          将安装已下载的更新并重启。本应用启动的本地服务可以恢复；账号授权只留在内存，远程访问需重新登录并明确开启。
         </p>
         <p className="hint">
           请在任务空闲时更新。仍有本应用管理的会话执行或等待确认时，会保留更新包，待任务结束后再试。工作目录、会话和访问密钥会保留。

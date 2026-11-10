@@ -348,35 +348,6 @@ function AccountActions({ controller }: { controller: AccountController }) {
       return null;
   }
 }
-export function AccountEntry({
-  controller,
-  open,
-}: {
-  controller: AccountController;
-  open: () => void;
-}) {
-  return (
-    <section className="account-entry" aria-label="AnyWork 账号入口">
-      <div>
-        <strong>AnyWork 账号</strong>
-        <p role="status">
-          {controller.state
-            ? accountStatusText(controller.state)
-            : "正在读取账号状态"}
-        </p>
-      </div>
-      <div className="account-entry-actions">
-        <AccountActions controller={controller} />
-        <button onClick={open}>账号与远程访问</button>
-      </div>
-      {controller.error && (
-        <p className="error" role="alert">
-          {controller.error}
-        </p>
-      )}
-    </section>
-  );
-}
 export function AccountPage({
   localReady,
   controller,
@@ -386,16 +357,18 @@ export function AccountPage({
 }) {
   const { state, pending, error, action } = controller;
   return (
-    <>
+    <section
+      className="workspace-panel account-panel"
+      aria-label="AnyWork 账号入口"
+    >
       <header>
         <div>
-          <h1>账号与远程访问</h1>
+          <h2>从其他设备继续</h2>
           <p>登录同一账号后，从手机或浏览器找到这台电脑。</p>
         </div>
         <ShieldCheck size={28} aria-hidden="true" />
       </header>
       <section className="settings-section">
-        <h2>AnyWork 账号</h2>
         <p className="hint">
           注册和密码输入在登录服务中完成。账号凭据和设备私钥只留在内存；退出客户端后需要重新登录并开启远程访问。
         </p>
@@ -407,7 +380,7 @@ export function AccountPage({
         </div>
       </section>
       <section className="settings-section">
-        <h2>允许我的其他设备访问</h2>
+        <h3>允许我的其他设备访问</h3>
         <p className="hint">
           会话、文件和终端内容保留在这台电脑。远程连接在设备两端解密。
         </p>
@@ -426,9 +399,12 @@ export function AccountPage({
         >
           {state?.enabled ? "关闭远程访问" : "开启远程访问"}
         </button>
-        {!localReady && <p className="hint">先在总览启动并连接本地服务。</p>}
+        {!localReady && (
+          <p className="hint">先打开本地工作区，再开启远程访问。</p>
+        )}
         {state?.enabled && state.installationId && state.publicKey ? (
-          <div aria-label="本机身份核对">
+          <details aria-label="本机身份核对">
+            <summary>身份核对</summary>
             <p className="hint">
               首次从浏览器连接时，请核对以下设备身份和公钥。
             </p>
@@ -455,16 +431,21 @@ export function AccountPage({
             >
               复制设备身份与公钥
             </button>
-          </div>
+          </details>
         ) : (
           <p className="hint">开启远程访问后，可在此核对本机身份与公钥。</p>
         )}
       </section>
+      <button
+        onClick={() => void action(() => invoke("desktop_account_portal"))}
+      >
+        查看我的设备
+      </button>
       {(error || state?.error) && (
         <div role="alert" className="error">
           {error || state?.error}
         </div>
       )}
-    </>
+    </section>
   );
 }

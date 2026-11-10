@@ -2,7 +2,7 @@
 
 ## Current contract: account secrets stay in memory
 
-The native account path keeps refresh/access tokens, Noise private keys and CyberGrid registration material only in process memory. It does not call OS Keychain/Secret Service, read old account credential records, or write secrets to ordinary files. Closing the client loses this authorization: the next process starts signed out and remote access disabled. Existing manual connection credential settings remain separate and unchanged.
+The native account path keeps refresh/access tokens, Noise private keys and CyberGrid registration material only in process memory. It does not call OS Keychain/Secret Service, read old account credential records, or write secrets to ordinary files. Closing the client loses this authorization: the next process starts signed out and remote access disabled. Standalone manual routes are retired: no legacy route startup, recovery, credential loading, pairing or token export remains. Old configuration files are preserved; cloudflared remains internal to the account gateway. See [local browser handoff](local-browser-session.md).
 
 The desktop manager owns one serialized refresh lifecycle. Initial authorization uses the official Logto JavaScript client with an in-memory adapter; Rust brokers pinned issuer requests and the fixed loopback callback `http://127.0.0.1:17897/callback`. Rust retains each returned rotation in RAM before returning it across IPC. JavaScript requests the opaque Account API token and the Grid resource JWT serially. The `OwnedInMemory` handoff ACK transfers exclusive refresh ownership to Rust; JavaScript clears its tokens and stops refreshing. Rust then serves both token classes under one mutex. No refresh owner is restored after restart.
 
@@ -23,20 +23,18 @@ The browser's old pin is never silently accepted after a key change: the user mu
 ## Client entry and state
 
 ```text
-┌ AnyWork 账号 ──────────────────────────────────────────────┐
-│ 尚未登录                  [注册] [登录] [账号与远程访问] │
-└────────────────────────────────────────────────────────────┘
-  Existing overview / local service / advanced connections
-
-┌ 账号与远程访问 ────────────────────────────────────────────┐
-│ 已登录 · account email/username                 [退出账号]│
-│ 凭据和设备私钥仅存内存，退出客户端后需重新登录             │
-│ 允许我的其他设备访问                         [开启/关闭] │
-│ 已开启：设备身份、公钥、复制控件                           │
-└────────────────────────────────────────────────────────────┘
+AnyWork                                      [Settings] [Updates]
+This computer
+  Local workspace     Ready / Preparing / Off    [Open workspace]
+  Working directory   …
+Continue from another device
+  Signed out                              [Register] [Sign in]
+  or: account label                       [Sign out]
+  Allow my other devices                  [Enable / Disable]
+  [Identity verification ▾]               [My devices]
 ```
 
-The overview and welcome screen expose independent registration and login actions. One controller and official adapter use `firstScreen:register` or `firstScreen:signIn`. The account label comes from the existing Account API response (email, username or name; otherwise a short subject); no additional management request or scope is added. The black/white UI never displays tokens, private keys, sensitive paths or public tunnel URLs.
+A single workspace screen exposes independent registration/login and explicit remote enable. One controller and official adapter use `firstScreen:register` or `firstScreen:signIn`. Account labels come from the existing Account API response without additional management requests or scopes. The local browser receives only a bounded public snapshot; a subject-derived Native label is omitted. Neither interface displays service tokens, private keys or provider URLs. Settings select the workspace, selected service data directory, local port and server program without a token form. The one-action workspace open starts an owned local service or reuses an authenticated existing service and obtains a one-use browser ticket. External services and their data are never replaced or stopped by this action.
 
 Native `authorizationStatus` controls actions: signedOut offers registration/login; authorizing/loginInterrupted retain cancellation; signedIn offers logout; reauthRequired offers ending this authorization before relogin; unsupported explains platform limits. Generic network errors never imply a signed-in account. After failures the UI re-reads native state. Native transaction IDs survive renderer remounts, and a stale JS adapter keeps an explicit cancellation control until cleaned. There are no checkpoint, saved-grant recovery or Keychain actions in the current account UI.
 

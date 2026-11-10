@@ -28,18 +28,17 @@ else
   resources="$app/resources"
 fi
 mkdir -p "$(dirname "$executable")" "$resources/bin" "$resources/artifacts" "$resources/plugins"
-install -m 755 "target/$profile/anywork-desktop$suffix" "$executable"
-server="target/$profile/anywork$suffix"
+build_target="${CARGO_TARGET_DIR:-target}"
+install -m 755 "$build_target/$profile/anywork-desktop$suffix" "$executable"
+server="$build_target/$profile/anywork$suffix"
 # SKIP_SERVER_BUILD can reuse the already built release server for UI iterations.
-if [[ ! -f "$server" && "${ANYWORK_DESKTOP_SKIP_SERVER_BUILD:-0}" == 1 ]]; then server="target/release/anywork$suffix"; fi
+if [[ ! -f "$server" && "${ANYWORK_DESKTOP_SKIP_SERVER_BUILD:-0}" == 1 ]]; then server="$build_target/release/anywork$suffix"; fi
 install -m 755 "$server" "$resources/bin/anywork$suffix"
 cloudflared="${ANYWORK_CLOUDFLARED_BIN:-$(command -v cloudflared || true)}"
 if [[ -n "$cloudflared" ]]; then install -m 755 "$cloudflared" "$resources/bin/cloudflared$suffix"; fi
-tunwg="${ANYWORK_TUNWG_BIN:-}"
-if [[ -z "$tunwg" && "$platform" == Darwin ]]; then
-  if [[ "$(uname -m)" == arm64 ]]; then tunwg=artifacts/tools/tunwg-darwin-arm64; else tunwg=artifacts/tools/tunwg-darwin; fi
-fi
-if [[ -n "$tunwg" && -f "$tunwg" ]]; then install -m 755 "$tunwg" "$resources/bin/tunwg$suffix"; fi
+# Retired standalone routes are never bundled in fresh packages. Account transport
+# resolves its own pinned cloudflared provider; preserve existing user config.
+rm -f "$resources/bin/tunwg$suffix"
 cp -R licenses "$resources/"
 cp NOTICE LICENSE "$resources/"
 rm -rf "$resources/web"

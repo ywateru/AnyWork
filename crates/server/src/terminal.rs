@@ -198,3 +198,201 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod local_tests {
+    use super::*;
+    use axum::{Router, routing::get};
+    use std::{
+        path::Path,
+        pin::Pin,
+        task::{Context, Poll},
+        time::Duration,
+    };
+    use tokio_tungstenite::tungstenite::{Message as WireMessage, client::IntoClientRequest};
+    fn fixture(workspace: &Path, port: u16) -> Arc<App> {
+        let app = Arc::new(App {
+            catalog: Default::default(),
+            harness: None,
+            harness_history_root: None,
+            harness_sync: Default::default(),
+            workbuddy: crate::workbuddy::Config::configured(None).unwrap(),
+            workbuddy_sync: Default::default(),
+            codex_discovery: false,
+            codex_scope: crate::CodexScope::Workspace,
+            agent_scope: crate::CodexScope::Workspace,
+            #[cfg(unix)]
+            desktop_ipc_socket: None,
+            #[cfg(unix)]
+            desktop_statuses: Default::default(),
+            store: crate::store::Store::open(Path::new(":memory:")).unwrap(),
+            workspace: workspace.into(),
+            data_dir: workspace.into(),
+            token: "isolated-terminal-test-bearer".into(),
+            local_browser: crate::local_session::BrowserSessions::new(port),
+            clients: Default::default(),
+            trust_local_proxy: false,
+            plugins: Default::default(),
+            runtimes: Default::default(),
+            gates: Default::default(),
+            changed: Default::default(),
+            origins: vec![],
+            stopping: Default::default(),
+            shutdown: Default::default(),
+            stop_requested: Default::default(),
+        });
+        app.store
+            .save(&crate::store::Session {
+                id: "local-pty".into(),
+                thread_id: None,
+                title: "Fixture".into(),
+                cwd: workspace.display().to_string(),
+                agent: "fixture".into(),
+                model: None,
+                policy: "manual".into(),
+                status: "idle".into(),
+                archived: false,
+                created_at: 0,
+                updated_at: 0,
+                external: false,
+                auxiliary: false,
+            })
+            .unwrap();
+        app
+    }
+    async fn authorized(app: Arc<App>, base: &str) -> String {
+        let client = reqwest::Client::new();
+        let ticket: Value = client
+            .post(format!("{base}/api/service/browser-ticket"))
+            .bearer_auth(&app.token)
+            .header("x-anywork-service-control", "desktop")
+            .json(&json!({}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let response = client
+            .post(format!("{base}/api/local/session"))
+            .header("origin", base)
+            .json(&json!({"ticket":ticket["ticket"]}))
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        response.headers()["set-cookie"]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .into()
+    }
+    #[tokio::test]
+    async fn real_pty_expires_without_any_followup_http_request() {
+        for absolute in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let app = fixture(dir.path(), port);
+            let base = format!("http://127.0.0.1:{port}");
+            let router = Router::new()
+                .route(
+                    "/api/service/browser-ticket",
+                    axum::routing::post(crate::local_session::ticket).layer(
+                        axum::middleware::from_fn_with_state(app.clone(), crate::auth),
+                    ),
+                )
+                .route(
+                    "/api/local/session",
+                    axum::routing::post(crate::local_session::create),
+                )
+                .route("/ws/terminal/{id}", get(upgrade))
+                .with_state(app.clone());
+            let server = tokio::spawn(async move {
+                axum::serve(
+                    listener,
+                    router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                )
+                .await
+                .unwrap();
+            });
+            let cookie = authorized(app.clone(), &base).await;
+            let mut request = format!("ws://127.0.0.1:{port}/ws/terminal/local-pty")
+                .into_client_request()
+                .unwrap();
+            request
+                .headers_mut()
+                .insert("origin", base.parse().unwrap());
+            request
+                .headers_mut()
+                .insert("cookie", cookie.parse().unwrap());
+            let (mut ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+            ws.send(WireMessage::Text(crate::local_session::PTY_MARKER.into()))
+                .await
+                .unwrap();
+            let ack = tokio::time::timeout(Duration::from_secs(3), ws.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                ack.into_text().unwrap(),
+                "{\"type\":\"local.session.ready\"}"
+            );
+            app.local_browser.expire_for_test(absolute);
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while let Some(Ok(message)) = ws.next().await {
+                    if message.is_close() {
+                        break;
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            server.abort();
+        }
+    }
+    struct BlockedSink;
+    impl futures_util::Sink<Message> for BlockedSink {
+        type Error = std::io::Error;
+        fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+        fn start_send(self: Pin<&mut Self>, _: Message) -> Result<(), Self::Error> {
+            unreachable!()
+        }
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+        fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+    #[tokio::test]
+    async fn blocked_socket_send_cannot_hide_service_shutdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), 3210);
+        let signal = app.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            signal
+                .stopping
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+        assert!(
+            !tokio::time::timeout(
+                Duration::from_millis(500),
+                send_authorized(
+                    &mut BlockedSink,
+                    Message::Text("fixture".into()),
+                    &app,
+                    None
+                )
+            )
+            .await
+            .unwrap()
+        );
+    }
+}

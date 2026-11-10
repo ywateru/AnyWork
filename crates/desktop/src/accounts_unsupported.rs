@@ -1,5 +1,5 @@
 //! Upstream CyberGrid's current Unix-only credential module cannot be compiled
-//! on Windows. Preserve the existing manager/manual transports and fail clearly.
+//! on Windows. Local workspace remains available; remote access fails clearly.
 use serde_json::{Value, json};
 #[derive(Clone)]
 pub struct Handle;
@@ -8,9 +8,12 @@ impl Handle {
         Ok(Self)
     }
     pub async fn disable(&self) {}
+    pub fn portal_url(&self) -> String {
+        "https://anywork-tau.vercel.app/app/".into()
+    }
 }
 fn unsupported() -> String {
-    "当前平台尚未提供账号远程访问，请使用已有的高级连接方式。".into()
+    "当前平台尚未提供账号远程访问，请使用本地工作区。".into()
 }
 #[tauri::command]
 pub async fn account_snapshot() -> Result<Value, String> {

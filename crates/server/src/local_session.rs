@@ -93,6 +93,17 @@ impl BrowserSessions {
             records: Mutex::new(Records::default()),
         }
     }
+    #[cfg(test)]
+    pub(crate) fn expire_for_test(&self, absolute: bool) {
+        let mut records = self.records.lock().unwrap();
+        for session in records.sessions.values_mut() {
+            if absolute {
+                session.created = Instant::now() - ABSOLUTE_TTL;
+            } else {
+                session.touched = Instant::now() - IDLE_TTL;
+            }
+        }
+    }
     fn cookie_name(&self) -> String {
         format!("anywork_local_{}", self.port)
     }

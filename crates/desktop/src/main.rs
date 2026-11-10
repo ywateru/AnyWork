@@ -66,7 +66,6 @@ fn run() -> anyhow::Result<()> {
         s.service = Phase::Running;
         s.authorized = true;
         s.external = true;
-        s.secrets_loaded = true;
         manager::Handle::preview(s)
     } else {
         manager::start(options)?
@@ -98,16 +97,10 @@ fn run() -> anyhow::Result<()> {
             accounts::account_disable,
             accounts::account_logout,
             bridge::desktop_preview,
-            bridge::desktop_cloudflared_status,
-            bridge::desktop_install_cloudflared,
             bridge::desktop_action,
-            bridge::desktop_copy,
             bridge::desktop_pick,
-            bridge::desktop_read_key,
-            bridge::desktop_generate_token,
-            bridge::desktop_lan,
             bridge::desktop_open,
-            bridge::desktop_pairing,
+            bridge::desktop_account_portal,
             updates::desktop_update_snapshot,
             updates::desktop_update_check,
             updates::desktop_update_preferences,

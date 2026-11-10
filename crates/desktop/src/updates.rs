@@ -1,6 +1,6 @@
 //! Background downloads never install or restart without a local confirmation.
 //! Tauri verifies a version-bound signature both on download and on installation.
-use crate::{config, config::RouteKind, manager};
+use crate::{config, manager};
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -366,48 +366,33 @@ fn read_package(directory: &Path) -> Result<Vec<u8>> {
 #[derive(Debug, Serialize, Deserialize)]
 struct ResumePlan {
     owned: bool,
-    routes: Vec<RouteKind>,
     created: u64,
 }
 impl ResumePlan {
     fn capture(snapshot: &manager::Snapshot) -> Self {
         Self {
             owned: snapshot.owned,
-            routes: RouteKind::ALL
-                .into_iter()
-                .filter(|kind| snapshot.routes[kind.index()].phase.enabled())
-                .collect(),
             created: now(),
         }
     }
     async fn resume(&self, service: &manager::Handle) {
-        if !self.owned && self.routes.is_empty() {
-            return;
-        }
         if self.owned {
             let state = service.snapshot();
             service.send(manager::Command::StartServer(state.config, state.token));
-        }
-        for _ in 0..120 {
-            let state = service.snapshot();
-            if state.authorized && state.secrets_loaded {
-                for kind in &self.routes {
-                    service.send(manager::Command::StartRoute(
-                        *kind,
-                        state.config.clone(),
-                        state.secrets[kind.index()].clone(),
-                    ));
-                }
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(500)).await;
         }
     }
 }
 async fn resume_saved(directory: &Path, service: &manager::Handle) {
     let path = directory.join("resume.json");
     if let Ok(bytes) = std::fs::read(&path) {
-        // Consume once, including after an unsuccessful restart into the previous version.
+        // Legacy route recovery plans stay untouched and are never executed.
+        if serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .is_some_and(|v| v.get("routes").is_some())
+        {
+            return;
+        }
+        // Consume modern local-service plans once.
         let _ = std::fs::remove_file(path);
         if let Ok(plan) = serde_json::from_slice::<ResumePlan>(&bytes)
             && now().saturating_sub(plan.created) < 60 * 60
@@ -570,15 +555,6 @@ mod tests {
     async fn published_update_installs_into_isolated_app() {
         use sha2::{Digest, Sha256};
         use std::process::Command;
-        struct EmptySecrets;
-        impl config::Secrets for EmptySecrets {
-            fn read(&self, _: &str) -> Result<String> {
-                Ok(String::new())
-            }
-            fn write(&self, _: &str, _: &str) -> Result<()> {
-                Ok(())
-            }
-        }
         fn plist(app: &Path, key: &str) -> String {
             let result = Command::new("/usr/bin/plutil")
                 .args(["-extract", key, "raw", "-o", "-"])
@@ -681,7 +657,6 @@ mod tests {
         let service = manager::start(manager::Options {
             support: support.clone(),
             resources: installed.join("Contents/Resources"),
-            secrets: Arc::new(EmptySecrets),
         })
         .unwrap();
         assert!(
@@ -877,10 +852,8 @@ mod tests {
     fn resume_plan_never_contains_credentials_or_external_service_ownership() {
         let mut snapshot = manager::Snapshot::new(config::Config::default(), "secret-token".into());
         snapshot.external = true;
-        snapshot.routes[0].phase = manager::Phase::Running;
         let plan = ResumePlan::capture(&snapshot);
         assert!(!plan.owned);
-        assert_eq!(plan.routes, vec![RouteKind::Quick]);
         assert!(!serde_json::to_string(&plan).unwrap().contains("secret"));
     }
 }
