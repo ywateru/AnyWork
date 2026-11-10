@@ -1,7 +1,7 @@
 ---
 id: release-slider-touch-synchronization
 scope: mobile-slider-browser-test
-status: in-progress
+status: done
 depends-on: [release-ownership-release]
 ---
 
@@ -16,3 +16,7 @@ The test reads a slider bounding box, then sends a raw absolute-coordinate touch
 ## implementation and verification
 
 The UI author owns only the corresponding Android branch in `e2e/model-picker.spec.ts` and its author report. Use the slider locator's real touch action with element-relative positioning and Playwright actionability checks instead of the stale raw page coordinate. Preserve rapid-change serialization, wheel, desktop drag, touch, high-effort persistence, focus, dismissal, timeouts and skips. Do not change product code. Targeted actual mobile/browser regressions and exact-commit independent review must pass. Reused Web/server fixtures must state their source scope accurately; new exact-source CI remains the final platform gate. Root merges accepted source for a fresh v0.1.21 publisher operation, leaving previous tags and failure evidence unchanged. No account, production service or local application changes are authorized by this test correction.
+
+## delivery
+
+One-line fix `854afb7` passed [independent exact-source acceptance](../reviews/slider-touch-synchronization-independent.md), including four actual Chrome runs across desktop and mobile. The author ran the original mobile case three times and all 36 model-picker cases successfully. All assertions, deadlines, skips and production code are unchanged. Root merged the accepted source and review for a fresh v0.1.21; full exact-source CI, release assets and website verification remain required.
