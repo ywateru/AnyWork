@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 async function fixture(
   page: Page,
@@ -19,13 +19,6 @@ async function fixture(
   const a = await create("通知验收 A");
   const b = await create("通知验收 B");
   await page.addInitScript((initialPermission) => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "browser-integration-test-token",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
     const w = window as any;
     w.__notices = [];

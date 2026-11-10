@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import {
   expectPromptText,
   fillPromptText,
@@ -19,13 +19,6 @@ async function fixture(page: Page, entries: unknown[] = []) {
   ).json();
   await page.addInitScript(
     ({ id, entries }) => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({
-          url: location.origin,
-          token: "browser-integration-test-token",
-        }),
-      );
       localStorage.setItem("ra.sidebar-pinned", "false");
       const key = `anywork.prompt-history.${location.origin}`;
       if (!localStorage.getItem(key))

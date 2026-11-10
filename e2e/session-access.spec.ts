@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import { fillPromptText, expectPromptText } from "./prompt-editor-helpers";
 
 async function fixture(page: Page, desktopHistory = false) {
@@ -76,6 +76,8 @@ async function fixture(page: Page, desktopHistory = false) {
     },
   ];
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url()),
       path = url.pathname.slice(4);
     let data: unknown;
@@ -250,15 +252,6 @@ async function fixture(page: Page, desktopHistory = false) {
     else throw new Error(`Unexpected isolated session request: ${path}`);
     await route.fulfill({ json: data });
   });
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: "https://isolated-history.trycloudflare.com",
-        token: "isolated-history-token",
-      }),
-    ),
-  );
   await page.goto(`/#${session.id}`);
   await expect(page.locator(".message.assistant .markdown")).toContainText(
     "已保存的回答 0",

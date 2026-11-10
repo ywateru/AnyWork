@@ -4,7 +4,7 @@ import {
   pastePromptText,
   selectPromptText,
 } from "./prompt-editor-helpers";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 
 async function fixture(page: Page) {
@@ -32,13 +32,6 @@ async function fixture(page: Page) {
     ).toBe(true);
   }
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "browser-integration-test-token",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   return {

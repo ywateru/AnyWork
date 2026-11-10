@@ -1,5 +1,5 @@
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import type { AgentEvent } from "../web/src/types";
 
 test.use({ timezoneId: "Asia/Shanghai" });
@@ -74,6 +74,8 @@ async function fixture(page: Page, history = false, displayText?: string) {
     updated_at: now,
   }));
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url()),
       path = url.pathname.slice(4),
       id = path.split("/")[2];
@@ -113,13 +115,6 @@ async function fixture(page: Page, history = false, displayText?: string) {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: "https://user-message-fixture.trycloudflare.com",
-        token: "user-message-fixture",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
     (window as any).userCopy = {
       fail: false,

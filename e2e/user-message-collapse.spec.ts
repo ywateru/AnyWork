@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 
 async function fixture(page: Page, text: string) {
   const session = {
@@ -24,6 +24,8 @@ async function fixture(page: Page, text: string) {
     },
   ];
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const path = new URL(route.request().url()).pathname.slice(4);
     let data: unknown = {};
     if (path === "/info")
@@ -47,13 +49,6 @@ async function fixture(page: Page, text: string) {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: "https://user-collapse-fixture.trycloudflare.com",
-        token: "collapse-fixture",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   await page.goto(

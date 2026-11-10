@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./local-fixture";
 import type { AgentEvent } from "../web/src/types";
 
 async function fixture(page: Page, older = false) {
@@ -50,6 +50,8 @@ async function fixture(page: Page, older = false) {
       ] as AgentEvent[];
     }).flat();
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url()),
       path = url.pathname.slice(4),
       id = path.split("/")[2];
@@ -92,13 +94,6 @@ async function fixture(page: Page, older = false) {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "history-fixture-key-00000",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   await page.goto("/#history-a");

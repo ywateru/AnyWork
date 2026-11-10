@@ -4,7 +4,7 @@ import {
   type CDPSession,
   type Locator,
   type Page,
-} from "@playwright/test";
+} from "./local-fixture";
 
 import {
   touchStroke,
@@ -30,6 +30,8 @@ async function sidebarFixture(page: Page, mobile: boolean, empty = false) {
     policy: "manual",
   }));
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const path = new URL(route.request().url()).pathname.split("/api")[1];
     let data: unknown = {};
     if (path === "/sessions") data = { sessions };
@@ -69,10 +71,6 @@ async function sidebarFixture(page: Page, mobile: boolean, empty = false) {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({ url: location.origin, token: "scroll-fixture" }),
-    );
     localStorage.setItem("ra.group-mode-v2", "directory");
   });
   await page.goto(empty ? "/" : "/#scroll-chat-0");

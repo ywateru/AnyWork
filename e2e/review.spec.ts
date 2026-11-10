@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 
 const id = "review-session";
@@ -45,6 +45,8 @@ async function fixture(
     updated_at: 1,
   };
   await context.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url()),
       path = url.pathname.slice(4);
     if (route.request().method() !== "GET") state.posts.push(path);
@@ -109,13 +111,6 @@ async function fixture(
   });
   await context.addInitScript(
     ({ source }) => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({
-          url: "https://review-fixture.trycloudflare.com",
-          token: "fixture-only",
-        }),
-      );
       localStorage.setItem("ra.sidebar-pinned", "false");
       localStorage.setItem("ra.theme", "system");
       if (source) localStorage.setItem("anywork.review.source", source);
@@ -616,13 +611,6 @@ test("real Git commit submenu and HTTP review agree while local modifications re
   const sid = created.session.id;
   try {
     await page.addInitScript(() => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({
-          url: location.origin,
-          token: "browser-integration-test-token",
-        }),
-      );
       localStorage.setItem("ra.sidebar-pinned", "false");
       localStorage.setItem("anywork.review.source", "branch");
     });

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 
 const token = "browser-integration-test-token";
@@ -38,10 +38,6 @@ async function createConversation(
   }
   await page.addInitScript(
     ({ token }) => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({ url: location.origin, token }),
-      );
       localStorage.setItem("ra.sidebar-pinned", "false");
     },
     { token },

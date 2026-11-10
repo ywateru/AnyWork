@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "./local-fixture";
 import type { Session } from "../web/src/types";
 import {
   expectPromptText,
@@ -45,6 +45,8 @@ async function fixture(
     hold: null as Promise<void> | null,
   };
   await context.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url()),
       path = url.pathname.slice(4);
     if (route.request().method() !== "GET") state.posts.push(path);
@@ -131,13 +133,6 @@ async function fixture(
     await route.fulfill({ json: data });
   });
   await context.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: "https://thread-link-fixture.trycloudflare.com",
-        token: "fixture-only",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   await page.goto(`/#${initial}`);

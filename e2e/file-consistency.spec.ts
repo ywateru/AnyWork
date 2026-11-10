@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from "@playwright/test";
+import { test, expect, type Page, type Route } from "./local-fixture";
 
 const token = "browser-integration-test-token";
 const headers = { Authorization: `Bearer ${token}` };
@@ -38,10 +38,6 @@ async function setup(page: Page, suffix: string) {
   }
   await page.addInitScript(
     ({ token }) => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({ url: location.origin, token }),
-      );
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,
         value: {

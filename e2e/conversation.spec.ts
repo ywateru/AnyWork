@@ -1,5 +1,6 @@
+import { authorizeLocalContext } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./local-fixture";
 async function files(page: Page) {
   await page.getByLabel("打开子窗口", { exact: true }).click();
   await page.getByRole("button", { name: "文件", exact: true }).click();
@@ -63,14 +64,6 @@ test("conversation restores draft, previews authenticated PDF and remembers keyb
       })
     ).ok(),
   ).toBe(true);
-  await page.addInitScript(
-    ({ token }) =>
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({ url: location.origin, token }),
-      ),
-    { token },
-  );
   await page.goto(`/#${session.id}`);
   const input = page.getByLabel("消息", { exact: true });
   await fillPromptText(input, "跨刷新保留的草稿\n第二行");
@@ -164,12 +157,9 @@ test("reference viewport shows conversation and document in one header row", asy
     viewport: { width: 1102, height: 896 },
     deviceScaleFactor: 2,
   });
+  await authorizeLocalContext(context, new URL(infoResponse.url()).origin);
   await context.addInitScript(
     ({ token }) => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({ url: location.origin, token }),
-      );
       localStorage.setItem("ra.sidebar-pinned", "false");
     },
     { token },

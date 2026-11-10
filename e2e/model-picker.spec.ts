@@ -1,5 +1,5 @@
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 async function fixture(page: Page) {
@@ -17,13 +17,6 @@ async function fixture(page: Page) {
     })
   ).json();
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "browser-integration-test-token",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
     localStorage.setItem("ra.theme", "system");
   });

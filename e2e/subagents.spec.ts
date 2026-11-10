@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 
 async function fixture(page: Page) {
@@ -114,6 +114,8 @@ async function fixture(page: Page) {
     state.pushLive = resolve;
   });
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const req = route.request(),
       url = new URL(req.url()),
       path = url.pathname.slice(4);
@@ -176,13 +178,6 @@ async function fixture(page: Page) {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "isolated-subagents-fixture",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   await page.goto("/#" + parentId);

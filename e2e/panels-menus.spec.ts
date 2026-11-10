@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 
 const headers = { Authorization: "Bearer browser-integration-test-token" };
@@ -14,15 +14,6 @@ async function setup(page: Page, suffix: string) {
     });
     sessions.push((await result.json()).session);
   }
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "browser-integration-test-token",
-      }),
-    ),
-  );
   await page.goto(`/#${sessions[0].id}`);
   await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
   return sessions;

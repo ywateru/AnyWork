@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 const reason =
@@ -43,13 +43,6 @@ async function fixture(page: Page, existing = false, draftMode = false) {
   });
   await page.addInitScript(
     ({ id, mode }) => {
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({
-          url: location.origin,
-          token: "browser-integration-test-token",
-        }),
-      );
       localStorage.setItem("ra.sidebar-pinned", "false");
       if (mode)
         sessionStorage.setItem(

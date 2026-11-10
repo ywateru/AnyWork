@@ -1,10 +1,7 @@
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./local-fixture";
 async function login(page: Page) {
   await page.goto("/");
-  await page.getByLabel("服务器地址").fill(new URL(page.url()).origin);
-  await page.getByLabel("访问令牌").fill("browser-integration-test-token");
-  await page.getByRole("button", { name: "连接工作空间" }).click();
   await expect(
     page.getByRole("heading", { name: "从哪里开始？" }),
   ).toBeVisible();
@@ -233,12 +230,17 @@ test("session-derived workspace grouping, expansion, search and directory creati
   );
 });
 
-test("invalid token is rejected", async ({ page }) => {
+test("missing local cookie returns to desktop handoff without manual credentials", async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies();
   await page.goto("/");
-  await page.getByLabel("服务器地址").fill(new URL(page.url()).origin);
-  await page.getByLabel("访问令牌").fill("bad-token");
-  await page.getByRole("button", { name: "连接工作空间" }).click();
-  await expect(page.getByRole("alert")).toContainText("Invalid access token");
+  await expect(
+    page.getByRole("heading", { name: "这台电脑的工作区" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("服务器地址")).toHaveCount(0);
+  await expect(page.getByLabel("访问令牌")).toHaveCount(0);
 });
 
 test("PWA keeps the shell available offline without caching API data", async ({

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 
 async function fixture(page: Page, text: string) {
   const state = { fileReads: [] as string[] };
@@ -39,6 +39,8 @@ async function fixture(page: Page, text: string) {
     },
   ];
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const url = new URL(route.request().url()),
       path = url.pathname.slice(4);
     let data: unknown = {};
@@ -66,13 +68,6 @@ async function fixture(page: Page, text: string) {
     await route.fulfill({ json: data });
   });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: "https://library-links-fixture.trycloudflare.com",
-        token: "link-fixture",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,

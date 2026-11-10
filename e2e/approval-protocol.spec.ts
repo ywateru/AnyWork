@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 async function fixture(page: Page, text: string) {
@@ -12,13 +12,6 @@ async function fixture(page: Page, text: string) {
     })
   ).json();
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "ra.connection",
-      JSON.stringify({
-        url: location.origin,
-        token: "browser-integration-test-token",
-      }),
-    );
     localStorage.setItem("ra.sidebar-pinned", "false");
   });
   await page.goto(`/#${session.id}`);

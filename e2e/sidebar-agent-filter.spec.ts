@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./local-fixture";
 import { fillPromptText } from "./prompt-editor-helpers";
 
 async function fixture(
@@ -78,6 +78,8 @@ async function fixture(
   let streamed = false;
   const writes: string[] = [];
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/local/session")
+      return route.fallback();
     const path = new URL(route.request().url()).pathname.split("/api")[1];
     const id = decodeURIComponent(path.split("/")[2] || "");
     if (route.request().method() !== "GET") writes.push(path);
@@ -186,11 +188,6 @@ async function fixture(
     await route.fulfill({ json: data });
   });
   await page.addInitScript(({ saved }) => {
-    if (!localStorage.getItem("ra.connection"))
-      localStorage.setItem(
-        "ra.connection",
-        JSON.stringify({ url: location.origin, token: "sidebar-fixture" }),
-      );
     if (saved && !localStorage.getItem("sidebar-fixture-initialized"))
       localStorage.setItem(
         `anywork.sidebar-agent.${JSON.stringify(location.origin)}`,
@@ -366,27 +363,18 @@ test("saved unavailable Agent respects loading, explicit empty states, grouping 
   await expect(page.locator(".sidebar-agent-filter summary")).toContainText(
     "DeepSeek Harness",
   );
-  async function connect(suffix: string) {
-    await page.evaluate(
-      (suffix) =>
-        localStorage.setItem(
-          "ra.connection",
-          JSON.stringify({
-            url: location.origin + suffix,
-            token: "sidebar-fixture",
-          }),
-        ),
-      suffix,
-    );
-    await page.reload();
-    await openSidebar(page, info.project.name === "android-web");
-  }
-  await connect("/alternate-server");
-  await expect(page.locator(".sidebar-agent-filter summary")).toContainText(
-    "所有 Agent",
+  // Retired saved remote URLs cannot switch a local cookie-authenticated workspace.
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "ra.connection",
+      JSON.stringify({
+        url: "https://retired.invalid",
+        token: "obsolete-fixture",
+      }),
+    ),
   );
-  await choose(page, "Codex");
-  await connect("");
+  await page.reload();
+  await openSidebar(page, info.project.name === "android-web");
   await expect(page.locator(".sidebar-agent-filter summary")).toContainText(
     "DeepSeek Harness",
   );

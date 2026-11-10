@@ -24,9 +24,9 @@ function tabs(selector, attr, panelPrefix, onChange) {
   }
 }
 tabs('[data-preview]', 'preview', 'panel-');
-tabs('[data-route]', 'route', 'route-panel-', route => {
-  document.querySelector('.connection-figure').dataset.current = route;
-  document.querySelector('.network-route-label').textContent = {lan:'LAN',tunnel:'HTTPS',vpn:'WireGuard'}[route];
+tabs('[data-step]', 'step', 'step-panel-', step => {
+  document.querySelector('.connection-figure').dataset.current = step;
+  document.querySelector('.network-route-label').textContent = document.querySelector(`[data-step="${step}"]`).textContent;
 });
 document.querySelector('#demo-approve').addEventListener('click', event => {
   event.target.textContent = event.target.dataset.approved;

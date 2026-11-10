@@ -22,6 +22,8 @@ import {
   X,
 } from "lucide-react";
 import App from "./App";
+import LocalApp from "./LocalApp";
+import { isLocalEntry } from "./localBootstrap";
 import type { Connection } from "./types";
 import {
   AccountError,
@@ -109,7 +111,6 @@ const initialLocale = () => {
 const zh = {
   devices: "我的设备",
   guide: "使用指南",
-  advanced: "高级连接",
   title: "工作，随你继续。",
   intro: "在自己的电脑上运行 Agent，从另一块屏幕继续对话和工作。",
   signIn: "登录",
@@ -167,12 +168,10 @@ const zh = {
   loginError: "登录未完成，请重新登录。",
   connectError: "无法建立安全连接。请确认电脑在线、远程访问已开启，然后重试。",
   sessionExpired: "连接授权已过期，请返回设备页重新连接。",
-  manualBack: "返回账号入口",
 };
 const en: typeof zh = {
   devices: "My devices",
   guide: "Getting started",
-  advanced: "Advanced connection",
   title: "Pick up where you left off.",
   intro:
     "Run your agents on your own computer. Continue the conversation and the work from another screen.",
@@ -213,7 +212,7 @@ const en: typeof zh = {
   close: "Close",
   addTitle: "Add a computer",
   step1:
-    "Install and open AnyWork on your Mac. Account remote access initially supports macOS; other platforms retain advanced manual connections.",
+    "Install and open AnyWork on your Mac. Account remote access currently supports macOS.",
   step2: "Sign in with the same account you use here.",
   step3: "Enable “Allow my other devices to access”.",
   addFoot:
@@ -240,10 +239,9 @@ const en: typeof zh = {
     "A secure connection could not be established. Check that the computer is online with remote access enabled, then try again.",
   sessionExpired:
     "Connection authorization has expired. Return to devices to reconnect.",
-  manualBack: "Back to account entry",
 };
 export default function AccountApp() {
-  if (!location.pathname.startsWith("/app")) return <App />;
+  if (isLocalEntry()) return <LocalApp />;
   let config: AccountConfig | null;
   try {
     config = resolveAccountConfig(import.meta.env);
@@ -254,8 +252,7 @@ export default function AccountApp() {
       </div>
     );
   }
-  if (!config) return <App />;
-  if ((window as any).RemoteAgentAndroid?.getConnection?.()) return <App />;
+  if (!config) return <div role="alert">账号服务配置无效</div>;
   return (
     <AccountProvider config={config}>
       {location.pathname.replace(/\/$/, "").endsWith("/callback") ? (
@@ -342,7 +339,8 @@ function AccountHome({ config }: { config: AccountConfig }) {
   } = useAccountAuth();
   const [locale, setLocale] = useState<"zh-CN" | "en">(initialLocale),
     t = locale === "zh-CN" ? zh : en;
-  const [manual, setManual] = useState(false),
+  const [accountLabel, setAccountLabel] = useState(""),
+    [deviceLabel, setDeviceLabel] = useState(""),
     [subject, setSubject] = useState<string>(),
     [profile, setProfile] = useState<AccountProfile>(),
     [devices, setDevices] = useState<Device[]>([]),
@@ -426,7 +424,16 @@ function AccountHome({ config }: { config: AccountConfig }) {
     if (isAuthenticated)
       void getIdTokenClaims()
         .then((claims) => {
-          if (!controller.signal.aborted && claims?.sub) setSubject(claims.sub);
+          if (!controller.signal.aborted && claims?.sub) {
+            setSubject(claims.sub);
+            setAccountLabel(
+              String(
+                claims.name ||
+                  claims.email ||
+                  (locale === "zh-CN" ? "当前账号" : "Current account"),
+              ),
+            );
+          }
         })
         .catch(() => {
           if (!controller.signal.aborted) setError(t.loginError);
@@ -662,6 +669,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
       } catch {
         /* keep in-memory trust for current session */
       }
+      setDeviceLabel(device.label);
       setConnection(c);
     } catch {
       if (!controller.signal.aborted) setError(t.connectError);
@@ -696,29 +704,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
       setSaving(false);
     }
   };
-  if (manual)
-    return (
-      <div className="account-root">
-        <header className="account-header">
-          <Brand />
-          <button onClick={() => setManual(false)}>{t.manualBack}</button>
-        </header>
-        <main className="account-main">
-          <h1>{t.advanced}</h1>
-          <p>
-            {locale === "zh-CN"
-              ? "高级手动连接请在桌面端或你自己的 AnyWork 本地 Web 界面中使用。这个托管账号入口只连接经过端到端加密的设备。"
-              : "Use advanced manual connections in the desktop app or your own local AnyWork Web interface. This hosted account entry connects only through end-to-end encrypted device sessions."}
-          </p>
-          <a
-            className="account-primary"
-            href={locale === "zh-CN" ? "/zh/#download" : "/en/#download"}
-          >
-            {t.download}
-          </a>
-        </main>
-      </div>
-    );
   if (connection)
     return (
       <App
@@ -726,6 +711,9 @@ function AccountHome({ config }: { config: AccountConfig }) {
         initial={connection}
         onDisconnect={closeConnection}
         onDevices={closeConnection}
+        onSignOut={() => void logout()}
+        contextLabel={`${deviceLabel} · ${accountLabel}`}
+        disconnectLabel="返回我的设备"
       />
     );
   const records = profile?.anywork.devices ?? {};
@@ -740,6 +728,9 @@ function AccountHome({ config }: { config: AccountConfig }) {
       <header className="account-header">
         <Brand />
         <div>
+          {isAuthenticated && (
+            <span className="account-current-user">{accountLabel}</span>
+          )}
           <button
             className="account-language"
             onClick={() => setLocale(locale === "zh-CN" ? "en" : "zh-CN")}
@@ -965,7 +956,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
       )}
       <footer className="account-footer">
         <span>AnyWork</span>
-        <button onClick={() => setManual(true)}>{t.advanced}</button>
         <a href="/source">{locale === "zh-CN" ? "对应源码" : "Source"}</a>
         <a href="https://github.com/ywateru/AnyWork">GitHub</a>
       </footer>

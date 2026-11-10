@@ -1,114 +1,43 @@
-# Account entry and device UI
+# Web、手机与本机入口
 
-The existing AnyWork white/black design is the source of visual identity. This implementation uses white `#FFFFFF`, navigation `#FAFAFA`, light surfaces `#F4F4F4`, text/action `#171717`, secondary `#737373`, borders `#E7E7E7`; online success `#208454` and error red express state only. The system UI stack and existing bundled Chinese font remain. Headings are 24–26px in account screens, body 14–15px; homepage headline is larger. Keep the canonical AnyWork logo.
+本轮以[统一体验](account-unified-experience.md)为契约。画布`#f7f8fa`、面板`#fff`、正文`#202630`、辅助信息`#697482`、主操作`#2457d6`、边界`#dce2e9`；系统UI字体，标题24–30px、正文14–16px。沿用AnyWork标志；左对齐的真实设备列表是主体，不用线路拓扑充当操作界面。
 
-The design borrows the quiet, application-like account entry and narrow navigation from DeepSeek Harness, with device rows as its central interaction. The homepage shows how local work continues on another device. Download links remain exact immutable GitHub release assets. Avoid decorative gradients, blue accents, invented statistics, and a dashboard of unrelated cards.
-
-## Homepage
+## 页面与布局
 
 ```text
-┌────────────────────────────────────────────────────────────────┐
-│ AnyWork       工作界面  安全与连接  下载       English  [登录]   │
-├────────────────────────────────────────────────────────────────┤
-│ 工作，随你继续。                  ┌── 我的设备 · 示意界面 ──┐  │
-│ 在自己的电脑上运行 Agent。        │ 工作电脑  在线          │  │
-│ 从另一块屏幕继续对话和工作。      │      加密连接后打开工作区│  │
-│ [注册并查看设备] [下载桌面端]      │ 家中电脑  离线          │  │
-│                                  └─────────────────────────┘  │
-│ 真实工作界面预览 / 设备访问流程 / 数据边界 / 平台下载 / FAQ     │
-└────────────────────────────────────────────────────────────────┘
+本机 /（仅HTTP loopback）
+AnyWork                                      [注册 / 登录]
+  这台电脑的工作区
+  在桌面端点击“打开工作区”
+  [重新检查] [登录查看设备] [注册账号]
+       ↓ RAM一次性ticket → 同源HttpOnly cookie
+  这台电脑 · 由〈名称〉在本机打开       [注册 / 登录]
+  原有会话、文件、终端                  [退出本机网页会话]
+
+正式 /app/
+AnyWork                            账号名称 [语言] [退出]
+我的设备      我的设备                 [刷新] [添加设备]
+使用指南      工作电脑   在线                [打开工作区]
+              家中电脑   离线
+       ↓ 首次/换钥明确确认 → 端到端加密
+  电脑名称 · 账号名称                [我的设备] [退出账号]
+  原有会话、文件、终端
 ```
 
-The site is bilingual `/en/` and `/zh/`; `/` negotiates language while explicit language links remain stable. `/app/` opens the account application, `/app/?signup=1` requests Logto signup, `/app/callback` handles the official SDK callback. Passwords are entered only on the Logto hosted page.
+390px使用单列，设备动作放在名称/状态下方，触控操作至少44px。1440px设备主体控制阅读宽度，账号与设备上下文持续可见。忙、空、离线、状态未知、无可用安全端口、取消、错误与授权到期各自显示文字。对话框支持Escape、焦点管理及关闭后返回触发位置。键盘焦点可见，减少动态效果设置生效。
 
-## Account and devices
+本机ticket在React初始化前同步取出并立即清除fragment，只保留模块RAM。严格同源POST兑换；刷新通过GET读取现有cookie。未知/失效cookie、401回到本机入口；不显示手动地址/令牌。桌面传来的名称是打开时快照，呈现为“由〈名称〉在本机打开”，不能宣称网页独立登录、桌面当前账号或远程授权实时状态。退出本机网页会话只关闭cookie及其PTY；本地工作和账号远程授权继续保留。
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│ AnyWork                                       [账号 / 退出]  │
-├─────────────┬────────────────────────────────────────────────┤
-│ 我的设备    │ 我的设备                    [刷新] [添加设备]   │
-│ 使用指南    │ 在工作电脑上登录同一账号并允许远程访问。        │
-│             │                                                │
-│             │ 电脑图标  工作电脑     在线  [打开工作区]       │
-│             │          macOS          [设备名称 / 移除显示]  │
-│             │ 电脑图标  家中电脑     离线                    │
-│             │                                                │
-│ 高级连接    │ 协调服务不可用时显示“暂时无法确认设备状态”。    │
-└─────────────┴────────────────────────────────────────────────┘
-```
+正式网页与手机只走账号设备入口，无高级连接、手动地址、配对链接、`ra.connection`恢复或Android桥接。旧存储不读取、不迁移、不删除。账号进入工作区后可明确返回设备或退出；退出、切号、取消和授权到期关闭原通道，不重放业务写入。初次设备公钥和换钥确认保持原严格契约。
 
-On 390px screens the side navigation becomes an inline header; device actions wrap below the label and state. Focus rings remain visible; actions have text labels and do not rely on hover. Add-device opens a dialog with download/local authorization instructions. Escape and close return focus to the trigger. Loading, empty, unknown, offline, unavailable secure endpoint, connecting, cancellation, and errors are distinct states. Device removal only hides the non-security directory entry; explain it does not revoke the computer's access.
+## 账号与数据
 
-## Data and lifecycle
+官方Logto SPA SDK持有其授权；全部resource/opaque token请求共享序列化刷新所有者。页面配置必须完整，issuer/client独立存储命名空间；不复制旧授权。业务连接与本机bearer不写WebStorage。Logto只存账号和公开设备目录，目录数据不作为访问授权；CyberGrid只交换连接信息；工作内容在设备间加密。协议、安全界限和续期以[加密协议](account-remote-protocol.md)为准。
 
-Only public Vite configuration enters static bundles: `VITE_LOGTO_ENDPOINT`, `VITE_LOGTO_APP_ID`, `VITE_LOGTO_RESOURCE`, `VITE_CYBERGRID_URL`, `VITE_CYBERGRID_NATIVE_APP_ID`. Logto official browser SPA SDK owns authorization. A small React context uses that same client directly so SDK errors are handled with fixed UI messages rather than the React hook’s raw console logger. Account API uses its opaque no-resource access token; CyberGrid uses resource JWT. The fixed Native app ID selects this product's devices.
+## 官网及Android
 
-`customData.anywork` has schemaVersion 1, optional locale/appearance preferences and at most 32 device records. Device fields are installation ID, label, platform, base64url 32-byte public key and positive keyVersion. The public `gridDeviceId` maps the installation to live CyberGrid directory entries and is never authorization. Limit labels to 80 characters and complete customData to 32KiB. Writes read the complete object, preserve other namespaces, serialize on this client and verify after patch. Concurrent clients can still lose updates because the API has no CAS; report verification conflict explicitly and never use this object as an authorization or revocation database.
+官网保留双语、工作界面预览、下载与隐私说明，指导顺序统一为登录、找到电脑、继续工作。线路标签不再作为产品选择。Android新版本是固定正式HTTPS `/app/` Custom Tab入口，注册添加固定`?signup=1`；无provider时使用同一URL的系统浏览器，无浏览器明确报错。无WebView、Native桥接、VPN、deep link或旧凭据恢复。详见[Android入口](android-account-entry.md)。
 
-The account root owns current user and device connection. Logout/account changes abort directory/account reads and requests, close encrypted sessions and unmount the workspace. Business connections never persist in `ra.connection`. Storage scopes use issuer/sub/installation ID, independent of tunnel URL. Existing advanced/manual connection remains available in local/native workspace entry `/`. The hosted `/app/` entry explains where to use it and keeps its restrictive CSP; it does not submit legacy plaintext business HTTP to arbitrary hosts. Account mode must not silently restore a previous manual connection.
+## 验证界限
 
-The browser pins the currently selected public device key; a changed key requires explicit confirmation before connection. Browser E2EE follows [local protocol](account-remote-protocol.md) once finalized. Device URLs from CyberGrid are only connection addresses; no business HTTP fallback is permitted. All API, binary, event polling, preview and PTY traffic passes the encrypted adapter. User business data and keys are not cached by the service worker.
-
-## Supported account endpoint
-
-The first account-enabled endpoint target is macOS. The upstream native SDK currently relies on Unix credential storage and its bundled provider is qualified only on supported targets. Windows download availability describes existing manual connections; it does not imply account remote support. The add-device dialog names macOS explicitly until additional platform acceptance is recorded.
-
-## Validation recorded on 2026-11-09
-
-- TypeScript compilation passes. AccountStore boundary tests cover complete configuration, schema/size/public-key/prototype validation, preserved namespaces, serialized writes, detectable replacement conflicts and cancelled token resolution.
-- The actual browser clatterjs client interoperates with the Rust snow gateway example: 22 assertions cover handshake, real local API response, chunked140k and20MiB upload/response, >22MiB rejection, connection-wide22MiB assembly budget,8concurrent requests, multipart encoding,100k binary download, PTY, cancellation, ciphertext at the relay boundary, replay closure, wrong token/key and plaintext URL rejection. Review regressions also exercise native browser fetch, late authentic ACK after cancellation/timeout, rejection of unknown/malformed ACKs and session expiry notification. `web/scripts/remote-interop.mjs` explicitly requires an isolated native checkout and test fixture; the product has no plaintext test endpoint. The fixture account verifier is a test verifier, so this does not prove production Logto JWT verification.
-- Bilingual website browser checks pass at1440/1024/768/390/320px, including tabs, keyboard, download versions and language negotiation. Screenshots are local `artifacts/anywork-site-{en,zh}-{width}.png`.
-- Production account service remains gated by Logto production resource/role plan availability. Real hosted OAuth/AccountAPI/registered device lifecycle tests are separate integration gates. Windows account endpoints remain unsupported. Native-device/cellular testing, permission grant, service behavior and release gate are not inferred from these Web checks.
-
-Dependency coordination exception: this task updates only `desktop/ui/package.json` dependency declarations for pinned `@logto/browser3.1.2`, `@logto/client3.2.2`, `jose5.10.0` plus root `package-lock.json`, coordinated with the desktop lane.
-
-HTTP request timeout is240seconds capped by the remaining authenticated session lifetime (at most300seconds); chunk acknowledgements time out after15seconds. This allows supported20MiB uploads across mobile round trips without silently reducing the business API limit. A session expiration still closes all requests and terminals.
-
-## Independent review corrections
-
-The first independent review (`account-web-01`) reproduced a browser-only native fetch receiver failure, an authentic late chunk ACK closing the whole connection after request cancellation, and a closed transport retaining the workspace view. The corrective implementation wraps the default browser fetch, retires only the exact expected ACK for a cancelled/timed-out request (bounded by the session's1024 never-reused IDs), and delivers one transport-ended notification. Account UI consumes that notification only for the current transport and account lifecycle, clears the connection and returns to the device page without replaying writes.
-
-Actual isolated DEV hosted Logto email/password sign-in and callback succeeded. After the fetch correction, at2026-11-09 19:42+08:00 the browser recorded Account API GET200, CyberGrid trusted config200, console exchange200 and devices200, with zero UI alerts and a real empty device list. This verifies that Web account/discovery session against the DEV services; it is not production readiness or proof of an enrolled native device. Private browser state remains outside Git with0600permissions. Healthy DEV screenshots are `artifacts/anywork-account-devices-dev-{1440,390}.png`; logged-out account screenshots are `artifacts/anywork-account-login-{1440,390}.png`.
-
-At19:48+08:00 a subsequent run using the saved isolated browser state returned Account API401 twice and displayed the fixed account error/retry UI. That repeat is a failed acceptance run; its cause (expired/rotated grant versus Account token renewal) was not established and must not be reported as a repeated OAuth or discovery success. The script `web/scripts/account-cloud-check.mjs` requires a valid, independently owned DEV browser grant; do not reuse another reviewer's refresh grant. Native enrollment/registration/discovery/full remote interaction remains a separate unaccepted integration gate.
-
-The second independent review accepted W1/W2/W3 and independently completed fresh DEV login and immediate owned-state Account/Grid200 checks. Its W4 correction is limited to verification credentials: `account-cloud-check.mjs` now requires an absolute normalized path outside every Git worktree, a regular current-user file with0600or stricter permissions, a directory without group/other write access and no symlinks in the traversal. It acquires an exclusive sidecar lease before loading; Playwright receives the parsed state object rather than a path. Checkpoints verify file and ancestor identities, write and sync a private0600temporary file, then atomically replace the destination. The same context checkpoints in `finally`, including after post-refresh UI assertions fail; the check still exits nonzero. Changed paths are refused and parsing/browser/file failures produce fixed errors without tokens, paths or raw page content. A leftover lease after process termination requires the owner to inspect the stopped process and private state before recovering; the tool never guesses that a lease is stale.
-
-W4 uses only synthetic credentials in isolated temporary directories: `npm run test:private-state -w web` checks rejected repository/public/symlink paths, owner exclusivity, private temporary/final permissions, atomic replacement, changed identity/traversal refusal, checkpoint after simulated rotation plus assertion failure, and redacted CLI errors. The file is named `private-browser-state.check.mjs` so Vitest does not collect Node test API checks. Root `npm test` runs the existing Vitest suite and then these Node checks explicitly; test paths are resolved from the script's location so both root and workspace npm entry points work. It does not load the reviewer's browser state or `oauth-spa` grant. No additional real OAuth success is inferred from these safety regressions.
-
-The initial W4 Node test filename was also collected by Vitest, causing root `npm test` to fail with “No test suite found” despite its323existing checks passing. After the runner correction, at2026-11-09 20:11+08:00 complete root `npm test` passed323Vitest tests plus8Node checks. Typecheck, format check, production build, standalone root `node --test web/scripts/private-browser-state.check.mjs` and diff whitespace checks passed. This correction changes only runner wiring, test path resolution and documentation; it does not exercise real credentials or change the encrypted transport.
-
-Independent full-suite re-verification then found W5: the temporary-file permission assertion could miss a short-lived file because it relied on `fs.watch` followed by asynchronous path lookup. Its replacement instruments the actual `fs.promises.open` call in an isolated child process, calls `fstat` on the real temporary file handle before returning it to the helper, and asserts creation permissions0600, empty contents and exclusive-create flags. The test retains final contents, inode replacement, final0600permissions, owner exclusion and cleanup assertions. It uses no sleeps, larger payload or retry-until-pass logic. The application and credential helper are unchanged.
-
-At20:16+08:00 the corrected candidate passed complete root `npm test` (323Vitest plus8Node), typecheck, format check, production build, standalone root Node8checks and diff whitespace checks. These are author results; independent exact-source re-verification remains required before merging.
-
-## Current client entry — authorized follow-up
-
-The 2026-11-09 follow-up uses the existing Development Logto tenant for this phase; a paid production Cloud tenant is no longer a prerequisite. Existing workspace UI must expose a persistent account entry on desktop and mobile. Signed-out users can reach registration and sign-in; account users can return to their devices. Password entry remains on Logto. The entry follows the existing narrow navigation and black/white tokens.
-
-```text
-┌─ 当前工作区 ────────────────────────────────┐
-│ AnyWork                   [注册 / 登录]    │
-│ 会话/Agent导航     当前会话                  │
-│                  保留当前工作与高级连接     │
-└────────────────────────────────────────────┘
-                  ↓ 官方账号流程
-┌─ 我的设备 ─────────────────────────────────┐
-│ AnyWork                      [账号 / 退出] │
-│ 我的设备          当前账号设备与连接状态    │
-└────────────────────────────────────────────┘
-```
-
-Local/manual workspace navigation does not log out, replace credentials, or enable remote access. Account navigation must not auto-restore a manual connection into account mode. Complete public build configuration selects the Logto deployment; a changed issuer/client is a separate auth namespace and requires a fresh authorization. No Cloud-only admin endpoint belongs in the client runtime.
-
-
-### Existing workspace entry implementation
-
-The workspace tab bar includes “注册 / 登录” on desktop and mobile, including when the sidebar is closed. The disconnected screen offers account entry and signup before advanced manual connection. Local/manual clients open `VITE_ACCOUNT_PORTAL_URL` in a new tab with `noopener noreferrer`, preserving the original connection and workspace; its default is `https://anywork-tau.vercel.app/app/`. The portal override must be an HTTPS URL with exact `/app/` path and no query, fragment or credentials. This avoids using an arbitrary local server port as an unregistered OAuth callback. Signing into the portal does not enable access to the local computer; that remains an explicit action in the native client.
-
-In an authenticated encrypted workspace the same tab-bar position reads “我的设备”; it closes the current transport/terminals through the existing connection cleanup and returns to the current account directory. The account entry never loads `ra.connection` into account mode.
-
-With no explicit account environment fields, Web uses the complete `ueg42e` Development deployment. Supplying any of the five account fields requires all five valid fields; values are never filled from Development defaults into a partial custom deployment. `VITE_ACCOUNT_PORTAL_URL` is independently optional. Self-hosting changes complete public configuration, Grid's trust/CORS, portal URL and exact Logto callbacks. The browser retains the official Logto adapter and replaces only its supported `BrowserStorage` namespace with issuer plus SPA ID, before any lazy persisted-token read. A different issuer or SPA ID requires fresh sign-in; old unnamespaced grants are not copied or silently refreshed. Same-deployment reloads retain their namespace. Storage-event account-change detection uses the same namespace.
-
-Local verification command: `node web/scripts/client-account-check.mjs` after a root-base Web build. It uses only local static files and intercepted isolated UI responses, never real cloud credentials. At1440/390px it verifies signup/login new-tab navigation, keyboard activation, visible persistent entry, preserved manual connection, account-mode isolation from that connection, no workspace horizontal overflow and failed-callback recovery. Screenshots in `/tmp/anywork-client-account-{1440,390}.png` were visually inspected. This is entry/layout evidence, not an actual OAuth or enrolled-device acceptance.
+局部UI mock只证明布局与错误态。真实本机ticket/cookie/刷新/PTY由独立临时服务与浏览器验证；官方账号OAuth和远程加密端点必须另行端到端验证，不能以UI fixture代替。授权续期的实际Chrome/Rust加密互通脚本仍独立保留。
