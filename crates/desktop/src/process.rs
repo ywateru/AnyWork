@@ -290,7 +290,7 @@ mod tests {
         let c = Config {
             workspace: dir.path().display().to_string(),
             data_directory: dir.path().join("data").display().to_string(),
-            server_binary: "/usr/bin/true".into(),
+            server_binary: std::env::current_exe().unwrap().display().to_string(),
             ..Default::default()
         };
         let p = LaunchPlan::server(&c, dir.path()).unwrap();

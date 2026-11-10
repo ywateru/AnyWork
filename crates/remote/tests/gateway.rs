@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, connect_async,
+    MaybeTlsStream, WebSocketStream, connect_async_with_config,
     tungstenite::{Message, client::IntoClientRequest},
 };
 struct Fixture {
@@ -28,8 +28,8 @@ impl AccountVerifier for Fixture {
                 "allowed-test-access" | "same-expiry-access" => 0,
                 "renewed-test-access" => 4,
                 "another-renewal-access" => 8,
-                "long-renewal-access" => 60,
-                "another-long-renewal-access" => 120,
+                "long-renewal-access" => 240,
+                "another-long-renewal-access" => 480,
                 "other-owner-access" => 4,
                 "slow-renewal-access" => {
                     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -103,7 +103,9 @@ async fn socket(port: u16, origin: &str) -> Result<Socket, tokio_tungstenite::tu
     request
         .headers_mut()
         .insert("origin", origin.parse().unwrap());
-    Ok(connect_async(request).await?.0)
+    // Match browser WebSocket clients: do not add Nagle/delayed-ACK waits to
+    // each pair of small request/end frames in the throughput regression.
+    Ok(connect_async_with_config(request, None, true).await?.0)
 }
 async fn connect(port: u16, key: &[u8], token: &str) -> (Socket, snow::TransportState) {
     let mut socket = socket(port, "https://test.example").await.unwrap();
