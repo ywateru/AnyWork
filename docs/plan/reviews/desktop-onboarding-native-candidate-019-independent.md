@@ -6,6 +6,10 @@ Accepted artifact and update script for fresh private operation `aab58841-9ac0-4
 
 Actual adoption remains gated on successful exact-source CI, fresh operator computer-use confirmation of signed-out/remote-off state, operator exit of Native only, and a new expiring approval bound to all evidence. No approval or apply action was issued by this reviewer. Opening Native and verifying the real introduction must follow separately; script success alone is not GUI acceptance.
 
+## Exact-source CI result
+
+Independently watched [Checks run 42831979308](https://github.com/ywateru/AnyWork/actions/runs/42831979308) read-only to completion, then made a fresh API read confirming its head SHA exactly equals `a738372dc1536847972f8dc3ea602bb18abb723b`, status `completed`, conclusion `success`. Android, container, Windows Native and server-web all succeeded. Server-web completed at `2026-11-10T14:43:32Z`; its complete check script, formatting and final website checks passed. The watcher exited zero. No CI rerun, cancellation or other mutation occurred. This satisfies the candidate's Checks gate; fresh local approval, adoption and GUI acceptance remain separate.
+
 ## Frozen bindings
 
 | Evidence | SHA-256 |
