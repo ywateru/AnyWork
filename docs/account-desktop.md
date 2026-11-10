@@ -89,6 +89,7 @@ An enable failure returns one fixed typed stage code through the native boundary
 | `PROVIDER` | Resolve/start/configure public tunnel or await its URL |
 | `GRID_CLIENT` | Construct the RAM-only coordination client |
 | `GRID_CONFIG` | Fetch and verify pinned coordination auth configuration |
+| `GRID_CONFIG_UNAVAILABLE` | Public coordination configuration GET remained temporarily unavailable after bounded retries |
 | `RESOURCE_TOKEN` | Refresh Grid authorization through the sole RAM owner |
 | `GRID_REGISTER` | Register and install the new coordination session |
 | `GRID_EXPOSE` | Publish the encrypted gateway port |
@@ -98,7 +99,9 @@ An enable failure returns one fixed typed stage code through the native boundary
 | `INDEX_WRITE` | Write the merged public index |
 | `INDEX_READBACK` | Read and compare the result after writing |
 
-The actual first memory-only native acceptance connected through a public Noise gateway and disable disconnected the browser. The subsequent same-manager restart correctly started signed out, but re-enabling after another login failed before updating the existing version-1 public record. This remains an integration blocker pending a targeted run with these diagnostics; it is not recorded as successful restart acceptance.
+An early historical memory-only native acceptance connected through a public Noise gateway and disable disconnected the browser. The subsequent same-manager restart correctly started signed out, but re-enabling after another login failed before updating the existing version-1 public record. That failed run does not establish its cause or a successful restart; later accepted restart and formal-origin evidence are recorded in the current cutover report.
+
+The public Native configuration GET now has at most three attempts, each bounded to eight seconds, with 250ms/750ms delays (25 seconds total). Only transport failures, timeouts and HTTP 408/429/500/502/503/504 are retried. Schema/protocol errors, rejected requests and mismatched issuer/resource/client fail immediately with `GRID_CONFIG`; exhausted temporary failures use `GRID_CONFIG_UNAVAILABLE`. No response body, URL or credential is surfaced. This retry applies only to the initial unauthenticated GET, not OAuth exchanges, registration, publication or account writes; the pinned SDK may independently fetch configuration again inside registration. Login without successful explicit enable does not publish the Logto device index, so the browser correctly cannot open that device yet; after successful publication the browser's next 20-second refresh discovers it.
 
 Diagnostics author validation: desktop library 47 passed/four existing external tests ignored; the additional tests exercise all 13 fixed codes, discard a synthetic secret/URL cause, and call the real index-publication path against isolated token/read/schema/write/readback failures while counting requests. UI build and rendered regression verify stage visibility, one request per click, and generic fallback for arbitrary URL-bearing errors. These checks do not establish the real restart failure's cause.
 

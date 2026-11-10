@@ -55,7 +55,10 @@ const enableMessages: Record<string, string> = {
   REMOTE_ENABLE_GATEWAY: "本机加密入口启动失败。",
   REMOTE_ENABLE_PROVIDER: "公网连接入口未就绪，请检查网络。",
   REMOTE_ENABLE_GRID_CLIENT: "设备协调客户端启动失败。",
-  REMOTE_ENABLE_GRID_CONFIG: "设备协调服务配置校验未完成。",
+  REMOTE_ENABLE_GRID_CONFIG:
+    "设备协调服务配置校验未通过，请核对客户端与服务配置。",
+  REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE:
+    "暂时无法读取设备协调服务配置，已完成有限重试。",
   REMOTE_ENABLE_RESOURCE_TOKEN: "远程访问授权更新未完成，请查看账号状态。",
   REMOTE_ENABLE_GRID_REGISTER: "设备协调注册未完成。",
   REMOTE_ENABLE_GRID_EXPOSE: "加密入口发布未完成。",

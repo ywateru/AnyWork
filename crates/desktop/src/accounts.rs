@@ -27,6 +27,7 @@ enum EnableStage {
     Provider,
     GridClient,
     GridConfig,
+    GridConfigUnavailable,
     ResourceToken,
     GridRegister,
     GridExpose,
@@ -44,6 +45,7 @@ impl EnableStage {
             Self::Provider => "REMOTE_ENABLE_PROVIDER",
             Self::GridClient => "REMOTE_ENABLE_GRID_CLIENT",
             Self::GridConfig => "REMOTE_ENABLE_GRID_CONFIG",
+            Self::GridConfigUnavailable => "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
             Self::ResourceToken => "REMOTE_ENABLE_RESOURCE_TOKEN",
             Self::GridRegister => "REMOTE_ENABLE_GRID_REGISTER",
             Self::GridExpose => "REMOTE_ENABLE_GRID_EXPOSE",
@@ -64,6 +66,51 @@ impl std::fmt::Display for EnableStage {
     }
 }
 impl std::error::Error for EnableStage {}
+
+fn retryable_grid_config_error(error: &cybergrid_sdk::Error) -> bool {
+    match error {
+        cybergrid_sdk::Error::Http(error) => {
+            !error.is_builder() && !error.is_decode() && !error.is_redirect()
+        }
+        cybergrid_sdk::Error::Api { status, .. } => {
+            matches!(status, 408 | 429 | 500 | 502 | 503 | 504)
+        }
+        cybergrid_sdk::Error::Timeout(_) | cybergrid_sdk::Error::Transport(_) => true,
+        _ => false,
+    }
+}
+
+async fn verified_grid_config(
+    grid: &cybergrid_sdk::Client,
+    expected: &PublicConfig,
+    attempt_timeout: Duration,
+    retry_delays: [Duration; 2],
+) -> Result<cybergrid_sdk::AuthConfig> {
+    // Only the public, unauthenticated, idempotent configuration GET is retried.
+    // Never repeat OAuth exchanges, device registration or directory writes.
+    for attempt in 0..=retry_delays.len() {
+        let retryable = match tokio::time::timeout(attempt_timeout, grid.auth_config()).await {
+            Ok(Ok(auth)) => {
+                if auth.issuer != expected.issuer
+                    || auth.resource != expected.resource
+                    || auth.client_id != expected.native_client_id
+                {
+                    return Err(EnableStage::GridConfig.into());
+                }
+                return Ok(auth);
+            }
+            Ok(Err(error)) => retryable_grid_config_error(&error),
+            Err(_) => true,
+        };
+        if !retryable {
+            return Err(EnableStage::GridConfig.into());
+        }
+        if let Some(delay) = retry_delays.get(attempt) {
+            tokio::time::sleep(*delay).await;
+        }
+    }
+    Err(EnableStage::GridConfigUnavailable.into())
+}
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -904,13 +951,13 @@ impl Handle {
         // SDK browser login/import, or credential loading on the account path.
         grid.set_auth_provider(owner.clone()).await;
         let result = async {
-            let auth = EnableStage::GridConfig.at(grid.auth_config().await)?;
-            if auth.issuer != self.0.config.issuer
-                || auth.resource != self.0.config.resource
-                || auth.client_id != self.0.config.native_client_id
-            {
-                return Err(EnableStage::GridConfig.into());
-            }
+            verified_grid_config(
+                &grid,
+                &self.0.config,
+                Duration::from_secs(8),
+                [Duration::from_millis(250), Duration::from_millis(750)],
+            )
+            .await?;
             let token = EnableStage::ResourceToken.at(owner.token(true).await)?;
             let session = EnableStage::GridRegister.at(grid
                 .login_with_access_token(&token, "AnyWork desktop")
@@ -1223,6 +1270,189 @@ pub async fn account_logout(state: tauri::State<'_, Handle>) -> Result<(), Strin
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn auth_config_fixture(config: &PublicConfig) -> Value {
+        json!({
+            "provider":"logto", "clientId":config.native_client_id,
+            "issuer":config.issuer, "resource":config.resource,
+            "scope":"openid offline_access connect",
+            "deviceAuthorizationEndpoint":format!("{}/device/auth",config.issuer),
+            "tokenEndpoint":format!("{}/token",config.issuer),
+        })
+    }
+
+    #[tokio::test]
+    async fn grid_config_retries_only_temporary_public_get_failures() {
+        for (statuses, expected_calls, expected_code, malformed, wrong_field) in [
+            (vec![503, 200], 2, None, false, None),
+            (vec![429, 502, 200], 3, None, false, None),
+            (
+                vec![504],
+                3,
+                Some("REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE"),
+                false,
+                None,
+            ),
+            (vec![401], 1, Some("REMOTE_ENABLE_GRID_CONFIG"), false, None),
+            (vec![403], 1, Some("REMOTE_ENABLE_GRID_CONFIG"), false, None),
+            (vec![404], 1, Some("REMOTE_ENABLE_GRID_CONFIG"), false, None),
+            (vec![200], 1, Some("REMOTE_ENABLE_GRID_CONFIG"), true, None),
+            (
+                vec![200],
+                1,
+                Some("REMOTE_ENABLE_GRID_CONFIG"),
+                false,
+                Some("issuer"),
+            ),
+            (
+                vec![200],
+                1,
+                Some("REMOTE_ENABLE_GRID_CONFIG"),
+                false,
+                Some("resource"),
+            ),
+            (
+                vec![200],
+                1,
+                Some("REMOTE_ENABLE_GRID_CONFIG"),
+                false,
+                Some("clientId"),
+            ),
+        ] {
+            let config = PublicConfig::default();
+            let mut body = auth_config_fixture(&config);
+            if let Some(field) = wrong_field {
+                body[field] = if field == "clientId" {
+                    json!("other-native")
+                } else {
+                    json!("https://other.invalid")
+                };
+            }
+            let body = if malformed {
+                "private invalid JSON response".into()
+            } else {
+                body.to_string()
+            };
+            let requests = Arc::new(AtomicUsize::new(0));
+            let unexpected = Arc::new(AtomicUsize::new(0));
+            let (calls, other) = (requests.clone(), unexpected.clone());
+            let app = axum::Router::new()
+                .route(
+                    "/api/v1/auth/config",
+                    axum::routing::get(move |request: axum::extract::Request| {
+                        let (statuses, body, calls) =
+                            (statuses.clone(), body.clone(), calls.clone());
+                        async move {
+                            assert!(request.uri().query().unwrap().starts_with("appId="));
+                            assert!(!request.headers().contains_key("authorization"));
+                            let index = calls.fetch_add(1, Ordering::SeqCst);
+                            (
+                                axum::http::StatusCode::from_u16(
+                                    statuses[index.min(statuses.len() - 1)],
+                                )
+                                .unwrap(),
+                                body,
+                            )
+                        }
+                    }),
+                )
+                .fallback(move || {
+                    let other = other.clone();
+                    async move {
+                        other.fetch_add(1, Ordering::SeqCst);
+                        axum::http::StatusCode::NOT_FOUND
+                    }
+                });
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
+                base_url: format!("http://{address}"),
+                app_id: config.native_client_id.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+            let result =
+                verified_grid_config(&grid, &config, Duration::from_secs(2), [Duration::ZERO; 2])
+                    .await;
+            match expected_code {
+                Some(code) => assert_eq!(safe_error(result.unwrap_err()), code),
+                None => assert_eq!(result.unwrap().issuer, config.issuer),
+            }
+            assert_eq!(requests.load(Ordering::SeqCst), expected_calls);
+            assert_eq!(unexpected.load(Ordering::SeqCst), 0);
+            grid.close().await.unwrap();
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn grid_config_stalled_response_is_bounded_and_keeps_safe_diagnostics() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let requests = calls.clone();
+        let app = axum::Router::new().route(
+            "/api/v1/auth/config",
+            axum::routing::get(move || {
+                let requests = requests.clone();
+                async move {
+                    requests.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    "private response must never become a diagnostic"
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
+            base_url: format!("http://{address}"),
+            app_id: "native-fixture".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            verified_grid_config(
+                &grid,
+                &PublicConfig::default(),
+                Duration::from_millis(30),
+                [Duration::ZERO; 2],
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            safe_error(result.unwrap_err()),
+            "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        grid.close().await.unwrap();
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn grid_config_connection_failure_is_retryable_and_never_exposes_url() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
+            base_url: format!("http://{address}"),
+            app_id: "native-fixture".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        let error = verified_grid_config(
+            &grid,
+            &PublicConfig::default(),
+            Duration::from_secs(1),
+            [Duration::ZERO; 2],
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.chain().count(), 1);
+        assert_eq!(safe_error(error), "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE");
+        grid.close().await.unwrap();
+    }
     #[test]
     fn enable_stage_codes_discard_underlying_errors_before_ipc() {
         for (stage, code) in [
@@ -1231,6 +1461,10 @@ mod tests {
             (EnableStage::Provider, "REMOTE_ENABLE_PROVIDER"),
             (EnableStage::GridClient, "REMOTE_ENABLE_GRID_CLIENT"),
             (EnableStage::GridConfig, "REMOTE_ENABLE_GRID_CONFIG"),
+            (
+                EnableStage::GridConfigUnavailable,
+                "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
+            ),
             (EnableStage::ResourceToken, "REMOTE_ENABLE_RESOURCE_TOKEN"),
             (EnableStage::GridRegister, "REMOTE_ENABLE_GRID_REGISTER"),
             (EnableStage::GridExpose, "REMOTE_ENABLE_GRID_EXPOSE"),

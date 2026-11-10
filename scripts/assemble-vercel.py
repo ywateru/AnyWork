@@ -24,6 +24,12 @@ def main():
     if app.exists():
         shutil.rmtree(app)
     shutil.copytree(ROOT / 'web/dist', app)
+    # The account app resolves its images under /app/. Keep the original public
+    # /agents/ links usable too, with exactly the same bundled static bytes.
+    agents = DIST / 'agents'
+    if agents.exists():
+        shutil.rmtree(agents)
+    shutil.copytree(ROOT / 'web/dist/agents', agents)
     version = json.loads((ROOT / 'package.json').read_text())['version']
     (DIST / 'build.json').write_text(json.dumps({'source': source, 'version': version}, separators=(',', ':')) + '\n')
     subprocess.run(['python3', 'scripts/source-archive.py', '--revision', source], cwd=ROOT, check=True)

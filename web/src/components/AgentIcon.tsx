@@ -4,7 +4,7 @@ export default function AgentIcon({ agent }: { agent: string }) {
   if (agent === "workbuddy")
     return (
       <span className="agent-mark" aria-hidden="true" data-agent-icon={agent}>
-        <img src="/agents/workbuddy.svg" alt="" />
+        <img src={`${import.meta.env.BASE_URL}agents/workbuddy.svg`} alt="" />
       </span>
     );
   const basename =
@@ -20,12 +20,12 @@ export default function AgentIcon({ agent }: { agent: string }) {
     <span className="agent-mark" aria-hidden="true" data-agent-icon={agent}>
       <img
         className="agent-mark-light"
-        src={`/agents/${basename}-light.${extension}`}
+        src={`${import.meta.env.BASE_URL}agents/${basename}-light.${extension}`}
         alt=""
       />
       <img
         className="agent-mark-dark"
-        src={`/agents/${basename}-dark.${extension}`}
+        src={`${import.meta.env.BASE_URL}agents/${basename}-dark.${extension}`}
         alt=""
       />
     </span>

@@ -115,6 +115,8 @@ vercel deploy --prebuilt --prod
 
 ## 自部署 default 租户切换（当前实施契约）
 
+静态账号应用部署在`/app/`。Agent图像的运行地址跟随Vite的`BASE_URL`（本机为`/`，正式应用为`/app/`），组装器同时把相同公开图像字节提供到根`/agents/`，兼容已公开的图片直链。构建验证同时检查两个目录中的实际图像字节，不依赖Vercel把缺失资源重写为应用HTML，也不放宽CSP。
+
 用户随后授权以 `https://auth.x.aixgg.com` 的自部署 default 业务租户代替本轮 Cloud Development 配置。issuer 为 `https://auth.x.aixgg.com/oidc`，管理 API 地址为 `https://auth.x.aixgg.com/api`，管理 resource **单独固定**为 `https://default.logto.app/api`；禁止从自定义域名推导该 audience。管理凭据与恢复状态只存仓库外0600文件，不进入公开客户端配置、日志或上传产物。Cloud Development 资源保留。
 
 配置仅创建/更新 AnyWork 拥有的 SPA、Native、独立远控 resource/connect 和默认用户 role，并启用 Account API 所需 customData Edit、name/avatar/email ReadOnly；不修改用户提供的管理 M2M、不整体覆盖共享 sign-in experience。当前租户只有用户名与密码注册/登录且没有邮件连接器，因此保持现状，不能宣称邮箱验证或邮件投递可用。

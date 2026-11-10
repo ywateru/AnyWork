@@ -1,6 +1,33 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import AgentIcon from "./components/AgentIcon";
+
+afterEach(() => vi.unstubAllEnvs());
+
+describe("Agent images under the actual Web deployment base", () => {
+  for (const base of ["/", "/app/"])
+    it(`renders existing bundled images at ${base}`, () => {
+      vi.stubEnv("BASE_URL", base);
+      for (const agent of ["codex", "deepseek-harness", "workbuddy"]) {
+        const html = renderToStaticMarkup(createElement(AgentIcon, { agent }));
+        const sources = [...html.matchAll(/<img[^>]+src="([^"]+)"/g)].map(
+          (match) => match[1],
+        );
+        expect(sources).toHaveLength(agent === "workbuddy" ? 1 : 2);
+        for (const src of sources) {
+          expect(src.startsWith(`${base}agents/`)).toBe(true);
+          const relative = src.slice(base.length);
+          expect(
+            readFileSync(new URL(`../public/${relative}`, import.meta.url))
+              .length,
+          ).toBeGreaterThan(0);
+        }
+      }
+    });
+});
 
 describe("bundled WorkBuddy identification", () => {
   it("retains the original official SVG with only local static references", () => {
