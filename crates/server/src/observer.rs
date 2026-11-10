@@ -14,9 +14,22 @@ use tokio::{net::UnixStream, time::timeout};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
 pub fn codex_home() -> Result<std::path::PathBuf> {
-    std::env::var_os("CODEX_HOME")
+    resolve_codex_home(
+        std::env::var_os("ANYWORK_CODEX_DATA_DIR"),
+        std::env::var_os("CODEX_HOME"),
+        std::env::var_os("HOME"),
+    )
+}
+
+fn resolve_codex_home(
+    anywork_dir: Option<std::ffi::OsString>,
+    codex_dir: Option<std::ffi::OsString>,
+    user_home: Option<std::ffi::OsString>,
+) -> Result<std::path::PathBuf> {
+    anywork_dir
+        .or(codex_dir)
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|p| std::path::PathBuf::from(p).join(".codex")))
+        .or_else(|| user_home.map(|p| std::path::PathBuf::from(p).join(".codex")))
         .context("Codex home unavailable")
 }
 pub fn socket_path() -> Result<std::path::PathBuf> {
@@ -126,6 +139,36 @@ async fn query(
         }
     }
     bail!("Codex observer disconnected")
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::resolve_codex_home;
+    use std::path::PathBuf;
+
+    #[test]
+    fn codex_data_directory_override_preserves_existing_fallback_order() {
+        let anywork = Some("a".into());
+        let codex = Some("configured-codex".into());
+        let home = Some("user-home".into());
+        assert_eq!(
+            resolve_codex_home(anywork.clone(), codex.clone(), home.clone()).unwrap(),
+            PathBuf::from("a")
+        );
+        assert_eq!(
+            resolve_codex_home(anywork, None, None).unwrap(),
+            PathBuf::from("a")
+        );
+        assert_eq!(
+            resolve_codex_home(None, codex, home.clone()).unwrap(),
+            PathBuf::from("configured-codex")
+        );
+        assert_eq!(
+            resolve_codex_home(None, None, home).unwrap(),
+            PathBuf::from("user-home").join(".codex")
+        );
+        assert!(resolve_codex_home(None, None, None).is_err());
+    }
 }
 
 #[cfg(all(test, unix))]
