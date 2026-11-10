@@ -70,6 +70,29 @@ jobs:
         env:
           ANYWORK_TEST_PYTHON: ${{ steps.qualified-python.outputs.python-path }}
         run: cargo test --locked --release -p anywork -p anywork-desktop -p remote-agent-sdk
+  macos-native:
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-macos-x86_64-desktop
+          cache-on-failure: true
+      - run: npm ci
+      - run: npm run build
+      - run: npm run build:desktop-ui
+      - name: Build native applications
+        run: cargo build --locked --release -p anywork -p anywork-desktop
+      - name: Test native applications
+        run: cargo test --locked --release -p anywork -p anywork-desktop
   android:
     runs-on: ubuntu-latest
     steps:
