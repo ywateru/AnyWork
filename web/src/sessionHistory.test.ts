@@ -265,6 +265,100 @@ describe("session history lifecycle", () => {
     expect(cache.get("a").events.map((e) => e.seq)).toEqual([1, 8, 12]);
     expect(cache.get("a").cursor).toBe(null);
   });
+  it("retains loaded older pages when delayed reset is covered by the accepted snapshot", async () => {
+    const { cache, api, histories, streams } = fixture();
+    histories.set("a", {
+      ...page([event("a", 15)], "older"),
+      latest_seq: 16,
+      source: "catalog",
+    } as ReturnType<typeof page>);
+    cache.start();
+    cache.reconcile([session("a")], "a");
+    await flush();
+    histories.set("a", page([event("a", 1)], null));
+    await cache.loadOlder("a");
+    const before = api.request.mock.calls.length;
+    streams[0].receive(event("a", 12, "thread/reverted"));
+    await flush();
+    expect(cache.get("a").events.map((e) => e.seq)).toEqual([1, 15]);
+    expect(cache.get("a").cursor).toBeNull();
+    expect(api.request).toHaveBeenCalledTimes(before);
+  });
+  it("invalidates an unreflected reset even after a newer ordinary event advanced the live cursor", async () => {
+    const { cache, histories, streams } = fixture();
+    histories.set("a", {
+      ...page([event("a", 1)]),
+      latest_seq: 10,
+    } as ReturnType<typeof page>);
+    cache.start();
+    cache.reconcile([session("a")], "a");
+    await flush();
+    streams[0].receive(event("a", 30));
+    histories.set("a", {
+      ...page([event("a", 31)]),
+      latest_seq: 31,
+    } as ReturnType<typeof page>);
+    cache.refresh("a");
+    await flush();
+    histories.set("a", {
+      ...page([event("a", 32)]),
+      latest_seq: 32,
+    } as ReturnType<typeof page>);
+    // Use the legacy per-entry receiver to exercise an out-of-order reset;
+    // the shared stream independently rejects old global sequence numbers.
+    (cache as any).receive(
+      (cache as any).entries.get("a"),
+      event("a", 20, "history/reset"),
+    );
+    await flush();
+    expect(cache.get("a").events.map((e) => e.seq)).toEqual([32]);
+  });
+  it("does not cover a reset when live rows were merged during the first snapshot read", async () => {
+    const { cache, api, histories, streams } = fixture();
+    const pending = deferred<any>();
+    api.request.mockImplementation(async (path) =>
+      path === "/events/poll" ? { events: [], cursor: 10 } : pending.promise,
+    );
+    cache.start();
+    cache.reconcile([session("a")], "a");
+    await flush();
+    streams[0].receive(event("a", 11));
+    pending.resolve({ ...page([event("a", 20)]), latest_seq: 20 });
+    await flush();
+    api.request.mockResolvedValue({
+      ...page([event("a", 21)]),
+      latest_seq: 21,
+    });
+    streams[0].receive(event("a", 15, "history/reset"));
+    await flush();
+    expect(cache.get("a").events.map((e) => e.seq)).toEqual([21]);
+  });
+  it("replaces snapshot coverage when the history source changes", async () => {
+    const { cache, histories, streams } = fixture();
+    histories.set("a", {
+      ...page([event("a", 90)]),
+      latest_seq: 100,
+      source: "catalog",
+    } as ReturnType<typeof page>);
+    cache.start();
+    cache.reconcile([session("a")], "a");
+    await flush();
+    histories.set("a", {
+      ...page([event("a", 5)]),
+      latest_seq: 10,
+      source: "desktop",
+    } as ReturnType<typeof page>);
+    cache.refresh("a");
+    await flush();
+    histories.set("a", {
+      ...page([event("a", 51)]),
+      latest_seq: 51,
+      source: "desktop",
+    } as ReturnType<typeof page>);
+    streams[0].receive(event("a", 50, "history/reset"));
+    await flush();
+    expect(cache.get("a").events.map((e) => e.seq)).toEqual([51]);
+  });
   it("discards stale in-flight reads and pagination after a history reset", async () => {
     vi.useFakeTimers();
     const { cache, api, histories, streams } = fixture();

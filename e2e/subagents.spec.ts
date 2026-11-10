@@ -158,11 +158,10 @@ async function fixture(page: Page) {
           "base64",
         ),
       });
-    else if (path === "/events") {
+    else if (path === "/events/poll" && url.searchParams.has("after")) {
       const update = await nextLive;
       return route.fulfill({
-        contentType: "text/event-stream",
-        body: `id: ${update.seq}\ndata: ${JSON.stringify(update)}\n\n`,
+        json: { events: [update], cursor: update.seq },
       });
     } else if (path === "/events/poll") data = { events: [], cursor: 100 };
     else if (path.endsWith("/events"))

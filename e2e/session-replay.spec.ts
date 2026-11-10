@@ -1,6 +1,6 @@
 import { expect, test } from "./local-fixture";
 
-// Reproduce the real compact-history/SSE ordering from release CI without racing
+// Reproduce the real compact-history/live-event ordering from release CI without racing
 // a fast local process or sending a prompt to an existing engine.
 test("compacted completed history and delayed live replay retain one canonical answer", async ({
   page,
@@ -70,12 +70,15 @@ test("compacted completed history and delayed live replay retain one canonical a
         ],
       };
     else if (path === "/workspaces") data = { workspaces: [] };
-    else if (path === "/events/poll") data = { events: [], cursor: 10 };
-    else if (path === "/events") {
+    else if (
+      path === "/events/poll" &&
+      !new URL(route.request().url()).searchParams.has("after")
+    )
+      data = { events: [], cursor: 10 };
+    else if (path === "/events/poll") {
       if (delivered) {
         await route.fulfill({
-          contentType: "text/event-stream",
-          body: ": heartbeat\n\n",
+          json: { events: [], cursor: 17 },
         });
         return;
       }
@@ -106,10 +109,7 @@ test("compacted completed history and delayed live replay retain one canonical a
         }),
       ];
       await route.fulfill({
-        contentType: "text/event-stream",
-        body: replay
-          .map((value) => `data: ${JSON.stringify(value)}\n\n`)
-          .join(""),
+        json: { events: replay, cursor: 17 },
       });
       return;
     } else if (path.endsWith("/history"))

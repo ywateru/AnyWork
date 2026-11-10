@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./local-fixture";
+import { expect, test, type Page, type Request } from "./local-fixture";
 import { expectPromptText, fillPromptText } from "./prompt-editor-helpers";
 
 const headers = { Authorization: "Bearer browser-integration-test-token" };
@@ -366,7 +366,7 @@ test("directory groups follow their newest visible chat and reorder after activi
   ]);
 });
 
-test("running chats share one stream, update offscreen and switch from cache without repeated history loads", async ({
+test("running chats share one global polling channel, update offscreen and switch from cache without repeated history loads", async ({
   page,
 }, info) => {
   const chats = await setup(page, `cache ${info.project.name} ${Date.now()}`);
@@ -379,11 +379,19 @@ test("running chats share one stream, update offscreen and switch from cache wit
   }
   const historyRequests: string[] = [],
     streamRequests: string[] = [];
+  const activePolls = new Set<Request>();
+  let maxParallelPolls = 0;
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.pathname.endsWith("/history")) historyRequests.push(url.pathname);
-    if (url.pathname.endsWith("/events")) streamRequests.push(url.pathname);
+    if (url.pathname.endsWith("/events/poll")) {
+      streamRequests.push(url.pathname);
+      activePolls.add(request);
+      maxParallelPolls = Math.max(maxParallelPolls, activePolls.size);
+    }
   });
+  page.on("requestfinished", (request) => activePolls.delete(request));
+  page.on("requestfailed", (request) => activePolls.delete(request));
   await page.reload();
   await expect(
     page.getByText(`slow ${chats[0].title}`, { exact: true }),
@@ -393,8 +401,8 @@ test("running chats share one stream, update offscreen and switch from cache wit
       historyRequests.includes(`/api/sessions/${chats[1].id}/history`),
     )
     .toBe(true);
-  await expect.poll(() => streamRequests.length).toBe(1);
-  expect(streamRequests).toEqual(["/api/events"]);
+  await expect.poll(() => streamRequests.length).toBeGreaterThan(0);
+  expect([...new Set(streamRequests)]).toEqual(["/api/events/poll"]);
   const update = `后台更新 ${Date.now()}`;
   expect(
     (
@@ -415,6 +423,7 @@ test("running chats share one stream, update offscreen and switch from cache wit
   await switchTo(page, chats[1]);
   await expect(page.getByText(update, { exact: true })).toBeVisible();
   expect(historyRequests).toHaveLength(before);
-  expect(streamRequests).toHaveLength(1);
+  expect([...new Set(streamRequests)]).toEqual(["/api/events/poll"]);
+  expect(maxParallelPolls).toBe(1);
   await expect(page.locator(".history-loading")).toHaveCount(0);
 });

@@ -1133,10 +1133,10 @@ export default function App({
       fail(e);
     }
   }
-  const resetEditedHistory = useCallback(
-    () => setRefresh((value) => value + 1),
-    [],
-  );
+  const resetEditedHistory = useCallback(() => {
+    if (selected) historyCache?.refresh(selected, true);
+    setRefresh((value) => value + 1);
+  }, [selected, historyCache]);
   const messageEditing = useMessageEditing({
     api,
     session,

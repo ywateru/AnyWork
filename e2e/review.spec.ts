@@ -1013,7 +1013,7 @@ test("large diffs retain every row while native threshold disables word emphasis
   await expect(code.locator("[data-line]").last()).toBeInViewport();
 });
 
-test("syntax assets cache only after use and stay available on the next offline visit", async ({
+test("syntax assets cache only after use and stay available when asset network is unavailable", async ({
   context,
   page,
 }) => {
@@ -1074,11 +1074,13 @@ test("syntax assets cache only after use and stay available on the next offline 
   ).toBeVisible();
   await expect.poll(() => cached(asset)).toBe(true);
   expect(await cached(unvisited)).toBe(false);
-  await context.setOffline(true);
+  // Keep local cookie validation online; only static asset retrieval fails.
+  // Offline local authentication intentionally returns to the desktop entry.
+  await context.route("**/assets/**", (route) => route.abort());
   await page.reload();
   await expect(
     code.locator("[data-line]").filter({ hasText: 'let greeting = "after"' }),
   ).toBeVisible();
   await expect(code.getByRole("status")).toHaveCount(0);
-  await context.setOffline(false);
+  await context.unroute("**/assets/**");
 });
