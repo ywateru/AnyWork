@@ -345,6 +345,7 @@ test("directory groups follow their newest visible chat and reorder after activi
     }),
   );
   await page.reload();
+  await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
   await sidebar(page);
   const groups = page.locator(".workspace-group");
   await expect(groups.locator(".workspace-name")).toHaveText([
@@ -358,6 +359,7 @@ test("directory groups follow their newest visible chat and reorder after activi
   ]);
   alphaTime = 80;
   await page.reload();
+  await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
   await sidebar(page);
   await expect(groups.locator(".workspace-name")).toHaveText([
     "alpha",
