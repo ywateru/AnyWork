@@ -30,6 +30,8 @@ try {
       gridDeviceId: null,
       installationId: null,
       publicKey: null,
+      accountPortalUrl: "https://devices.fixture.invalid/app/",
+      remoteClients: [],
     });
     window.fixtureAccount = signedOut();
     window.fixtureMode = "fail";
@@ -71,6 +73,12 @@ try {
               error: "",
               notice: "",
             };
+          if (command === "desktop_start") {
+            if (!window.fixtureAccount.signedIn)
+              throw new Error("DESKTOP_SIGN_IN_REQUIRED");
+            window.fixtureLocalReady = true;
+            return;
+          }
           if (command === "desktop_preview") return null;
           if (command === "desktop_update_snapshot")
             return {
@@ -157,20 +165,23 @@ try {
     };
   });
   await page.goto(origin);
+  await page.getByRole("button", { name: "开始使用", exact: true }).click();
   const entry = page.getByRole("region", { name: "AnyWork 账号入口" });
   await expect(
-    entry.getByRole("button", { name: "注册", exact: true }),
+    entry.getByRole("button", { name: "创建账号", exact: true }),
   ).toBeVisible();
   await expect(
-    entry.getByRole("button", { name: "登录", exact: true }),
+    entry.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeVisible();
-  await entry.getByRole("button", { name: "登录", exact: true }).click();
+  await entry
+    .getByRole("button", { name: "登录已有账号", exact: true })
+    .click();
   await expect(entry.getByRole("alert")).toBeVisible();
   await expect(
-    entry.getByRole("button", { name: "登录", exact: true }),
+    entry.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeEnabled();
   await expect(
-    entry.getByRole("button", { name: "注册", exact: true }),
+    entry.getByRole("button", { name: "创建账号", exact: true }),
   ).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "退出账号", exact: true }),
@@ -180,15 +191,15 @@ try {
   ).toBeVisible();
   await page.screenshot({ path: "/tmp/anywork-desktop-account-entry.png" });
   for (const [button, screen] of [
-    ["注册", "register"],
-    ["登录", "signIn"],
+    ["创建账号", "register"],
+    ["登录已有账号", "signIn"],
   ]) {
     await page.evaluate(() => {
       window.fixtureMode = "capture";
     });
     await entry.getByRole("button", { name: button, exact: true }).click();
     await expect(
-      entry.getByRole("button", { name: "登录", exact: true }),
+      entry.getByRole("button", { name: "登录已有账号", exact: true }),
     ).toBeEnabled();
     const raw = await page.evaluate(() => window.fixtureUrls.at(-1));
     const url = new URL(raw);
@@ -203,7 +214,9 @@ try {
   await page.evaluate(() => {
     window.fixtureMode = "cleanupReadFailure";
   });
-  await entry.getByRole("button", { name: "登录", exact: true }).click();
+  await entry
+    .getByRole("button", { name: "登录已有账号", exact: true })
+    .click();
   await expect(
     entry.getByRole("button", { name: "取消登录", exact: true }),
   ).toBeVisible();
@@ -212,38 +225,43 @@ try {
   ).toHaveCount(0);
   await entry.getByRole("button", { name: "取消登录", exact: true }).click();
   await expect(
-    entry.getByRole("button", { name: "登录", exact: true }),
+    entry.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeEnabled();
   // Cancel while the original login promise is pending, then retry: the stale
   // JS adapter must not survive an already completed native cancellation.
   await page.evaluate(() => {
     window.fixtureMode = "wait";
   });
-  await entry.getByRole("button", { name: "登录", exact: true }).click();
+  await entry
+    .getByRole("button", { name: "登录已有账号", exact: true })
+    .click();
   await expect(
     entry.getByRole("button", { name: "取消登录", exact: true }),
   ).toBeVisible();
   await entry.getByRole("button", { name: "取消登录", exact: true }).click();
   await expect(
-    entry.getByRole("button", { name: "登录", exact: true }),
+    entry.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeEnabled();
   await page.evaluate(() => {
     window.fixtureMode = "capture";
   });
   const before = await page.evaluate(() => window.fixtureUrls.length);
-  await entry.getByRole("button", { name: "登录", exact: true }).click();
+  await entry
+    .getByRole("button", { name: "登录已有账号", exact: true })
+    .click();
   await expect
     .poll(() => page.evaluate(() => window.fixtureUrls.length))
     .toBe(before + 1);
   await expect(
-    entry.getByRole("button", { name: "登录", exact: true }),
+    entry.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeEnabled();
   await expect(
-    page.getByRole("heading", { name: "这台电脑", exact: true }),
+    page.getByRole("heading", {
+      name: "登录，让其他设备找到这台电脑",
+      exact: true,
+    }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "从其他设备继续", exact: true }),
-  ).toBeVisible();
+
   for (const retired of [
     "匿名隧道",
     "固定隧道",
@@ -328,7 +346,7 @@ try {
     .getByRole("button", { name: "结束本次授权后重新登录", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "登录", exact: true }),
+    page.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeEnabled();
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await expect(
@@ -338,8 +356,8 @@ try {
   await expect(
     page.getByRole("textbox", { name: "访问密钥", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "返回工作区", exact: true }).click();
-  await entry.getByRole("button", { name: "注册", exact: true }).focus();
+  await page.getByRole("button", { name: "返回", exact: true }).click();
+  await entry.getByRole("button", { name: "创建账号", exact: true }).focus();
   const keyboardBefore = await page.evaluate(() => window.fixtureUrls.length);
   await page.keyboard.press("Enter");
   await expect

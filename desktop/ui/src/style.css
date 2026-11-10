@@ -11,14 +11,14 @@
     -apple-system, BlinkMacSystemFont, "Segoe UI", "AnyWork Sans", sans-serif;
   color-scheme: light;
   font-size: 14px;
-  color: #202630;
-  background: #f7f8fa;
+  color: #14253d;
+  background: #f5f7fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --accent: #2457d6;
-  --muted: #697482;
-  --line: #dce2e9;
+  --accent: #155ce8;
+  --muted: #61728a;
+  --line: #d7e2ef;
 }
 * {
   box-sizing: border-box;
@@ -113,7 +113,7 @@ summary:focus-visible {
   background: #edf2ff;
 }
 .workspace-surface {
-  max-width: 1120px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 28px 28px 40px;
 }
@@ -194,7 +194,7 @@ summary:focus-visible {
   vertical-align: 1px;
 }
 .status-dot.ready {
-  background: #208454;
+  background: #157654;
 }
 .local-address-block {
   margin: 23px 0 6px;
@@ -620,11 +620,11 @@ details summary {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 26px;
-  color: #202630;
-  box-shadow: 0 15px 60px #20263026;
+  color: #14253d;
+  box-shadow: 0 15px 60px #14253d26;
 }
 .install-dialog::backdrop {
-  background: #20263050;
+  background: #14253d50;
   backdrop-filter: blur(3px);
 }
 .install-symbol {
@@ -753,5 +753,574 @@ details summary {
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+}
+/* Account-first introduction and the prepared computer console. */
+.onboarding-steps {
+  display: flex;
+  gap: 0;
+  align-items: center;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 44px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.onboarding-steps li {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.onboarding-steps li:not(:last-child)::after {
+  content: "";
+  width: 40px;
+  height: 1px;
+  background: var(--line);
+  margin: 0 18px 0 9px;
+}
+.onboarding-steps [aria-current="step"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.step-index {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 11px;
+}
+[aria-current="step"] .step-index {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.onboarding-steps .complete .step-index {
+  color: var(--accent);
+  border-color: #bbcef8;
+  background: #edf3ff;
+}
+.intro-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 52px;
+  align-items: center;
+  padding: 18px 0 32px;
+}
+.intro-copy h1 {
+  font-size: 36px;
+  font-weight: 650;
+  letter-spacing: -0.8px;
+  line-height: 1.45;
+}
+.intro-description {
+  max-width: 400px;
+  font-size: 15px;
+  color: var(--muted);
+  margin-top: 20px;
+  line-height: 1.9;
+}
+.intro-capabilities {
+  display: grid;
+  gap: 13px;
+  margin-top: 28px;
+}
+.intro-capabilities p {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  font-size: 14px;
+}
+.intro-capabilities svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.intro-start {
+  min-height: 44px;
+  padding: 11px 20px;
+  gap: 28px;
+  margin-top: 32px;
+}
+.intro-start + .hint {
+  margin-top: 13px;
+  font-size: 12px;
+}
+.device-diagram {
+  margin: 0;
+  padding: 31px 22px 22px;
+  background: #edf3ff;
+  border: 1px solid #dce7ff;
+  border-radius: 18px;
+}
+.diagram-computer {
+  text-align: center;
+}
+.computer-screen {
+  display: grid;
+  place-items: center;
+  margin: 0 auto 12px;
+  width: 90px;
+  height: 80px;
+  background: #fff;
+  border: 1px solid #cad9f5;
+  border-radius: 12px;
+  color: var(--accent);
+}
+.diagram-computer strong {
+  font-size: 16px;
+}
+.device-diagram p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.diagram-branches {
+  display: flex;
+  justify-content: center;
+  height: 39px;
+  margin: 10px 22% 0;
+  border-top: 1px solid #b7caed;
+  position: relative;
+}
+.diagram-branches::before {
+  content: "";
+  height: 12px;
+  width: 1px;
+  background: #b7caed;
+  position: absolute;
+  left: 50%;
+  top: -12px;
+}
+.diagram-branches span {
+  width: 50%;
+  height: 28px;
+}
+.diagram-branches span:first-child {
+  border-left: 1px solid #b7caed;
+}
+.diagram-branches span:last-child {
+  border-right: 1px solid #b7caed;
+}
+.diagram-endpoints {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  text-align: center;
+}
+.diagram-endpoints > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.diagram-endpoints svg {
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.endpoint-icons {
+  display: flex;
+  gap: 7px;
+}
+.device-diagram figcaption {
+  font-size: 11px;
+  line-height: 1.8;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #d4e0f7;
+  color: var(--muted);
+}
+.account-stage,
+.preparation-stage {
+  max-width: 680px;
+  padding: 12px 0 40px;
+}
+.stage-symbol {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  background: #e7efff;
+  color: var(--accent);
+  border-radius: 15px;
+  margin-bottom: 25px;
+}
+.account-stage h1,
+.preparation-stage h1,
+.console-heading h1 {
+  font-size: 26px;
+  letter-spacing: -0.4px;
+}
+.account-stage header {
+  margin-bottom: 0;
+}
+.signin-content > .hint:first-child {
+  margin-top: 18px;
+  font-size: 14px;
+}
+.signin-content .account-status {
+  margin-top: 27px;
+  font-size: 15px;
+}
+.signin-content .account-entry-actions {
+  margin-top: 16px;
+  gap: 12px;
+}
+.signin-content .account-entry-actions button {
+  min-height: 44px;
+  padding: 10px 18px;
+}
+.memory-notice {
+  max-width: 540px;
+  border-top: 1px solid var(--line);
+  padding-top: 21px;
+  margin-top: 32px;
+}
+.notice {
+  background: #edf3ff;
+  border: 1px solid #d8e3fb;
+  padding: 12px 15px;
+  margin-top: 18px;
+  font-size: 13px;
+  line-height: 1.8;
+  border-radius: 7px;
+}
+.stage-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+}
+.preparation-account {
+  color: var(--muted);
+  margin-top: 16px;
+}
+.preparation-account-actions {
+  margin-top: 30px;
+}
+.spin {
+  animation: turn 1.5s linear infinite;
+}
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.console-heading {
+  gap: 24px;
+}
+.console-account {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 12px;
+  min-width: 0;
+  max-width: 340px;
+}
+.console-account p {
+  overflow-wrap: anywhere;
+}
+.workspace-surface .console-account p {
+  margin-top: 0;
+  font-size: 12px;
+}
+.console-access-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.2fr);
+  gap: 28px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 25px;
+}
+.console-access-layout > .local-panel {
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  padding-right: 28px;
+}
+.console-access-layout .local-address-block {
+  margin-top: 26px;
+}
+.console-access-layout .local-session-help {
+  font-size: 12px;
+}
+.remote-panel {
+  min-width: 0;
+}
+.remote-panel > .hint {
+  margin-top: 9px;
+}
+.remote-steps {
+  list-style: none;
+  counter-reset: remote;
+  margin: 21px 0;
+  padding: 0;
+}
+.remote-steps > li {
+  counter-increment: remote;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+.remote-steps > li + li {
+  margin-top: 20px;
+}
+.remote-steps > li::before {
+  content: counter(remote);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #edf3ff;
+  color: var(--accent);
+  font-size: 11px;
+  margin-top: 0;
+}
+.remote-step-content {
+  flex: 1;
+  min-width: 0;
+}
+.remote-step-content > h3 {
+  font-size: 13px;
+}
+.remote-step-content .remote-status-row {
+  margin-top: 8px;
+}
+.remote-step-content > .hint {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.remote-status-row {
+  gap: 9px;
+}
+.remote-status-row button {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.portal-address {
+  display: block;
+  font:
+    12px/1.75 ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+  user-select: text;
+  color: var(--muted);
+  margin-top: 7px;
+}
+.portal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.portal-actions button {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.remote-panel .copy-feedback {
+  min-height: 0;
+  font-size: 11px;
+  margin-top: 5px;
+}
+.identity-details {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  font-size: 12px;
+}
+.connected-section {
+  margin-top: 28px;
+}
+.section-heading {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.connected-section h2 {
+  font-size: 16px;
+}
+.connection-count {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.connection-empty {
+  padding: 22px 0;
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+.connected-list {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  border-top: 1px solid var(--line);
+}
+.connected-list li {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.connected-list > li > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.connected-list strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+.connected-list p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.connected-state {
+  color: #157654;
+  font-size: 12px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.connected-section > .hint {
+  margin-top: 11px;
+  font-size: 11px;
+}
+.console-privacy {
+  display: flex;
+  gap: 12px;
+  margin-top: 25px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.console-privacy svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.console-privacy p + p {
+  margin-top: 4px;
+}
+@media (max-width: 1000px) {
+  .intro-layout {
+    gap: 30px;
+    padding-top: 0;
+  }
+  .intro-copy h1 {
+    font-size: 32px;
+  }
+  .device-diagram {
+    padding: 26px 18px 20px;
+  }
+  .console-access-layout {
+    padding: 20px;
+    gap: 22px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+  .console-access-layout > .local-panel {
+    padding-right: 22px;
+  }
+  .console-access-layout .address-value {
+    flex-wrap: wrap;
+  }
+  .console-access-layout .address-value code {
+    font-size: 18px;
+  }
+  .console-access-layout .copy-address {
+    margin-left: 0;
+  }
+}
+@media (max-width: 759px) {
+  .intro-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+  .intro-description {
+    max-width: 100%;
+  }
+  .device-diagram {
+    max-width: 460px;
+    width: 100%;
+  }
+  .onboarding-steps {
+    margin-bottom: 30px;
+    font-size: 12px;
+  }
+  .onboarding-steps li {
+    gap: 6px;
+  }
+  .onboarding-steps li:not(:last-child)::after {
+    width: 20px;
+    margin: 0 9px 0 3px;
+  }
+  .workspace-surface .console-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .console-account {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+  .console-access-layout {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 20px;
+    gap: 24px;
+  }
+  .console-access-layout > .local-panel {
+    padding-right: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 24px;
+  }
+  .console-access-layout .address-value {
+    flex-wrap: nowrap;
+  }
+  .console-access-layout .copy-address {
+    margin-left: auto;
+  }
+  .remote-step-content .remote-status-row {
+    align-items: center;
+    flex-direction: row;
+  }
+}
+@media (max-width: 420px) {
+  .intro-copy h1 {
+    font-size: 30px;
+  }
+  .account-stage h1,
+  .preparation-stage h1,
+  .console-heading h1 {
+    font-size: 25px;
+  }
+  .step-index {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+  .onboarding-steps li:not(:last-child)::after {
+    width: 12px;
+    margin: 0 7px 0 2px;
+  }
+  .remote-step-content .remote-status-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
   }
 }

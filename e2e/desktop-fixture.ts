@@ -2,26 +2,29 @@ import { expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-// Shipped UI with strict synthetic IPC. No cloud, user service or credentials.
-export async function manager(
-  page: Page,
-  options: {
-    owned?: boolean;
-    off?: boolean;
-    failSave?: boolean;
-    failOpen?: boolean;
-    holdOpen?: boolean;
-    signedIn?: boolean;
-    enabled?: boolean;
-    unsupported?: boolean;
-    authorizing?: boolean;
-    reauth?: boolean;
-    failEnable?: boolean;
-    port?: number;
-    unauthorized?: boolean;
-    snapshotUnavailable?: boolean;
-  } = {},
-) {
+type Options = {
+  stage?: "intro" | "account" | "prepare" | "console";
+  owned?: boolean;
+  off?: boolean;
+  failSave?: boolean;
+  failOpen?: boolean;
+  holdOpen?: boolean;
+  signedIn?: boolean;
+  enabled?: boolean;
+  unsupported?: boolean;
+  authorizing?: boolean;
+  reauth?: boolean;
+  failEnable?: boolean;
+  failStart?: boolean;
+  holdStart?: boolean;
+  port?: number;
+  unauthorized?: boolean;
+  snapshotUnavailable?: boolean;
+  portal?: string;
+  remoteClients?: { id: string; kind: string; connectedAt: number }[];
+};
+// Production files, strict synthetic native boundary. No real service/account.
+export async function manager(page: Page, options: Options = {}) {
   await page.route("http://anywork-desktop.test/**", async (route) => {
     const name = new URL(route.request().url()).pathname;
     const root = path.resolve("desktop/ui/dist");
@@ -45,9 +48,20 @@ export async function manager(
       desktopFixture: unknown;
       accountFixture: unknown;
       finishOpen?: () => void;
+      pendingStarts: (() => void)[];
+      failStart: boolean;
+      accountSnapshotFailure: boolean;
+      desktopSnapshotFailure: boolean;
+      holdNextAccountSnapshot: boolean;
+      releaseAccountSnapshot?: () => void;
     };
     const calls: string[] = [];
     scope.desktopCalls = calls;
+    scope.pendingStarts = [];
+    scope.failStart = !!opts.failStart;
+    scope.accountSnapshotFailure = false;
+    scope.desktopSnapshotFailure = !!opts.snapshotUnavailable;
+    scope.holdNextAccountSnapshot = false;
     const config = {
       workspace: "/workspace",
       dataDirectory: "/workspace/data",
@@ -68,10 +82,13 @@ export async function manager(
       external: !opts.off && !opts.owned,
       authorized: !opts.off && !opts.unauthorized,
       info: { local_service_control: true, local_browser_session: true },
-      clients: [],
+      clients: [{ id: "historical-local-client-not-remote" }],
       error: "",
       notice: "",
     };
+    const signedIn =
+      opts.signedIn ??
+      (!opts.stage || opts.stage === "console" || opts.stage === "prepare");
     const account = {
       authorizationStatus: opts.unsupported
         ? "unsupported"
@@ -79,19 +96,22 @@ export async function manager(
           ? "authorizing"
           : opts.reauth
             ? "reauthRequired"
-            : opts.signedIn
+            : signedIn
               ? "signedIn"
               : "signedOut",
       transactionId: opts.authorizing ? "test-transaction" : null,
-      signedIn: !!opts.signedIn,
-      accountLabel: opts.signedIn ? "Test Account" : null,
-      subject: null,
+      signedIn:
+        signedIn && !opts.unsupported && !opts.reauth && !opts.authorizing,
+      subject: signedIn ? "synthetic-owner" : null,
+      accountLabel: signedIn ? "Test Account" : null,
       enabled: !!opts.enabled,
       busy: false,
       error: null,
       gridDeviceId: null,
       installationId: opts.enabled ? "public-installation" : null,
       publicKey: opts.enabled ? "public-key" : null,
+      accountPortalUrl: opts.portal ?? "https://devices.fixture.invalid/app/",
+      remoteClients: opts.remoteClients ?? [],
     };
     scope.desktopFixture = snapshot;
     scope.accountFixture = account;
@@ -102,14 +122,25 @@ export async function manager(
           args?: { action?: { type: string; config?: typeof config } },
         ) => {
           if (command === "desktop_snapshot") {
-            if (opts.snapshotUnavailable)
+            if (scope.desktopSnapshotFailure)
               throw new Error("Fixture status unavailable");
             return structuredClone(snapshot);
           }
-          if (command === "account_snapshot") return structuredClone(account);
+          if (command === "account_snapshot") {
+            const result = structuredClone(account);
+            if (scope.holdNextAccountSnapshot) {
+              scope.holdNextAccountSnapshot = false;
+              await new Promise<void>(
+                (resolve) => (scope.releaseAccountSnapshot = resolve),
+              );
+            }
+            if (scope.accountSnapshotFailure)
+              throw new Error("Fixture account unavailable");
+            return result;
+          }
           if (command === "desktop_update_snapshot")
             return {
-              currentVersion: "0.1.13",
+              currentVersion: "0.1.16",
               version: "",
               phase: "idle",
               enabled: false,
@@ -126,13 +157,25 @@ export async function manager(
               ? `desktop_action:${args?.action?.type}`
               : command,
           );
-          if (command === "desktop_open") {
-            if (opts.holdOpen)
-              await new Promise<void>((resolve) => {
-                scope.finishOpen = resolve;
-              });
-            if (opts.failOpen) throw "无法建立本机浏览器会话，请重试。";
+          if (command === "desktop_start") {
+            if (account.authorizationStatus !== "signedIn" || !account.signedIn)
+              throw "DESKTOP_SIGN_IN_REQUIRED";
+            if (opts.holdStart)
+              await new Promise<void>((resolve) =>
+                scope.pendingStarts.push(resolve),
+              );
+            if (scope.failStart) throw "Fixture preparation failed";
             Object.assign(snapshot, { service: "running", authorized: true });
+            return;
+          }
+          if (command === "desktop_open") {
+            if (account.authorizationStatus !== "signedIn" || !account.signedIn)
+              throw "DESKTOP_SIGN_IN_REQUIRED";
+            if (opts.holdOpen)
+              await new Promise<void>(
+                (resolve) => (scope.finishOpen = resolve),
+              );
+            if (opts.failOpen) throw "无法建立本机浏览器会话，请重试。";
             return;
           }
           if (command === "desktop_account_portal") return;
@@ -164,6 +207,7 @@ export async function manager(
               installationId: "public-installation",
               publicKey: "public-key",
             });
+            if (command === "account_disable") account.remoteClients = [];
             return;
           }
           if (command === "account_logout" || command === "account_cancel") {
@@ -173,6 +217,8 @@ export async function manager(
               signedIn: false,
               enabled: false,
               accountLabel: null,
+              subject: null,
+              remoteClients: [],
             });
             return;
           }
@@ -184,11 +230,32 @@ export async function manager(
   }, options);
   await page.goto("http://anywork-desktop.test/");
   await expect(
-    page.getByRole("heading", { name: "这台电脑", exact: true }),
+    page.getByRole("region", { name: "AnyWork 功能介绍", exact: true }),
   ).toBeVisible();
+  if (options.stage !== "intro")
+    await page.getByRole("button", { name: "开始使用", exact: true }).click();
+  if (!options.stage || options.stage === "console")
+    await expect(
+      page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+    ).toBeVisible();
 }
-
 export const calls = (page: Page) =>
   page.evaluate(
     () => (window as unknown as { desktopCalls: string[] }).desktopCalls,
   );
+export async function signInFixture(page: Page, subject = "synthetic-owner") {
+  await page.evaluate(
+    (owner) =>
+      Object.assign(
+        (window as unknown as { accountFixture: object }).accountFixture,
+        {
+          authorizationStatus: "signedIn",
+          signedIn: true,
+          subject: owner,
+          accountLabel: "Test Account",
+          transactionId: null,
+        },
+      ),
+    subject,
+  );
+}

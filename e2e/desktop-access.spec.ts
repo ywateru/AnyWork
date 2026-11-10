@@ -45,7 +45,7 @@ test("local address follows saved snapshots, preserves drafts and opens through 
   await page
     .getByRole("spinbutton", { name: "本机端口", exact: true })
     .fill("8531");
-  await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+  await page.getByRole("button", { name: "返回", exact: true }).click();
   await expect(address(page)).toHaveText("http://127.0.0.1:9472/");
   await page.evaluate(() => {
     (
@@ -58,35 +58,32 @@ test("local address follows saved snapshots, preserves drafts and opens through 
   await expect(page.getByText("本地地址已复制", { exact: true })).toBeVisible();
   await page.waitForTimeout(1200);
   await expect(page.getByText("本地地址已复制", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "打开工作区", exact: true }).click();
-  expect(await calls(page)).toEqual(["desktop_open"]);
+  await page
+    .getByRole("button", { name: "打开本地工作区", exact: true })
+    .click();
+  expect(await calls(page)).toEqual(["desktop_start", "desktop_open"]);
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await expect(
     page.getByRole("spinbutton", { name: "本机端口", exact: true }),
   ).toHaveValue("8531");
 });
 
-for (const options of [
-  { off: true },
-  { unauthorized: true },
-  { snapshotUnavailable: true },
-]) {
-  test(`copy requires an authorized running snapshot ${JSON.stringify(options)}`, async ({
-    page,
-  }) => {
-    await clipboard(page);
-    await manager(page, options);
-    await expect(copyButton(page)).toBeDisabled();
-    if (options.snapshotUnavailable)
-      await expect(address(page)).toHaveText("地址暂不可用");
-    else
-      await expect(
-        page.getByText("已配置，服务就绪后可使用。", { exact: true }),
-      ).toBeVisible();
-    expect(await copied(page)).toEqual([]);
-    expect(await calls(page)).toEqual([]);
-  });
-}
+test("missing service snapshot suspends readiness without another start", async ({
+  page,
+}) => {
+  await manager(page);
+  await page.evaluate(
+    () =>
+      ((
+        window as unknown as { desktopSnapshotFailure: boolean }
+      ).desktopSnapshotFailure = true),
+  );
+  await expect(page.getByText(/本机状态暂不可用/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "打开本地工作区", exact: true }),
+  ).toHaveCount(0);
+  expect(await calls(page)).toEqual(["desktop_start"]);
+});
 
 for (const port of [1023, 65536, 9000.5]) {
   test(`invalid snapshot port ${port} has no guessed local address`, async ({
@@ -114,7 +111,7 @@ test("clipboard failure gives fixed feedback without navigating or exposing cred
     page.getByText("未能复制，请选中上方地址手动复制。", { exact: true }),
   ).toBeVisible();
   expect(await copied(page)).toEqual(["http://127.0.0.1:65535/"]);
-  expect(await calls(page)).toEqual([]);
+  expect(await calls(page)).toEqual(["desktop_start"]);
 });
 
 test("an asynchronous copy cannot claim success for a changed address", async ({
@@ -148,64 +145,45 @@ test("an asynchronous copy cannot claim success for a changed address", async ({
   ]);
 });
 
-for (const [width, height, options, state] of [
-  [1440, 1000, {}, "ready-signed-out"],
-  [960, 720, { signedIn: true, enabled: true }, "remote-enabled"],
-  [800, 620, { authorizing: true }, "login-pending"],
-  [390, 844, { off: true, reauth: true }, "local-off-reauth"],
-] as const) {
-  test(`access guide ${state} at ${width}×${height}`, async ({
+test("remote portal comes from the public snapshot and copies only its bare HTTPS address", async ({
+  page,
+}) => {
+  await clipboard(page);
+  await manager(page, { portal: "https://selfhost.fixture.invalid/app/" });
+  await expect(page.getByTestId("account-portal")).toHaveText(
+    "https://selfhost.fixture.invalid/app/",
+  );
+  await page.getByRole("button", { name: "复制账号入口", exact: true }).click();
+  expect(await copied(page)).toEqual(["https://selfhost.fixture.invalid/app/"]);
+  await expect(page.getByText("账号入口已复制", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "打开账号入口", exact: true }).click();
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "desktop_account_portal",
+  ]);
+});
+for (const portal of [
+  "",
+  "http://localhost:3000/app/",
+  "https://u:p@fixture.invalid/app/",
+  "https://fixture.invalid/app/?token=fixture",
+  "https://fixture.invalid/app/#ticket=fixture",
+  "not a URL",
+]) {
+  test(`unsafe or missing portal is unavailable ${portal}`, async ({
     page,
-  }, info) => {
-    await page.setViewportSize({ width, height });
-    await manager(page, options);
+  }) => {
+    await clipboard(page);
+    await manager(page, { portal });
+    await expect(page.getByTestId("account-portal")).toHaveText(
+      "账号入口暂不可用",
+    );
     await expect(
-      page.getByRole("heading", { name: "工作原理", exact: true }),
-    ).toBeVisible();
+      page.getByRole("button", { name: "复制账号入口", exact: true }),
+    ).toBeDisabled();
     await expect(
-      page.getByText(/首次使用、切换浏览器或本机会话过期/),
-    ).toBeVisible();
-    await expect(
-      page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
-    ).toBeVisible();
-    await expect(page.getByText(/会处理账号与必要连接元数据/)).toBeVisible();
-    if (width >= 800) {
-      await expect(address(page)).toBeInViewport();
-      await expect(
-        page.getByRole("button", { name: "打开工作区", exact: true }),
-      ).toBeInViewport();
-      await expect(
-        page.getByRole("region", { name: "远程访问设置", exact: true }),
-      ).toBeInViewport();
-      const left = await page
-        .getByRole("region", { name: "本地工作区", exact: true })
-        .boundingBox();
-      const right = await page
-        .getByRole("region", { name: "AnyWork 账号入口", exact: true })
-        .boundingBox();
-      expect(left!.y).toBe(right!.y);
-      expect(left!.x + left!.width).toBeLessThan(right!.x);
-    }
-    await page.evaluate(() => document.fonts.ready);
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth > innerWidth,
-      ),
-    ).toBe(false);
-    await page.screenshot({
-      path: info.outputPath(`access-${state}-${width}.png`),
-      fullPage: true,
-    });
-    if (options.enabled) {
-      await page.getByText("身份核对", { exact: true }).click();
-      await expect(
-        page.getByRole("textbox", { name: "设备公钥", exact: true }),
-      ).toBeVisible();
-      await page.screenshot({
-        path: info.outputPath(`identity-${width}.png`),
-        fullPage: true,
-      });
-    }
-    expect(await calls(page)).toEqual([]);
+      page.getByRole("button", { name: "打开账号入口", exact: true }),
+    ).toBeDisabled();
+    expect(await copied(page)).toEqual([]);
   });
 }

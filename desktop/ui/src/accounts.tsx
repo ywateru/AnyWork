@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LogtoClient, {
   type ClientAdapter,
   type PersistKey,
@@ -10,7 +10,7 @@ import {
   generateCodeVerifier,
   generateState,
 } from "@logto/browser";
-import { ShieldCheck } from "lucide-react";
+import { Copy, ExternalLink, ShieldCheck } from "lucide-react";
 import { createLocalJWKSet, jwtVerify, type JSONWebKeySet } from "jose";
 
 type AuthorizationStatus =
@@ -32,6 +32,12 @@ export type AccountSnapshot = {
   gridDeviceId: string | null;
   installationId: string | null;
   publicKey: string | null;
+  accountPortalUrl: string;
+  remoteClients: {
+    id: string;
+    kind: "ios" | "android" | "desktop" | "unknown";
+    connectedAt: number;
+  }[];
 };
 type Begin = {
   transactionId: string;
@@ -238,35 +244,53 @@ export function useAccountController() {
   const [operations, setOperations] = useState(0);
   const pending = operations > 0;
   const [error, setError] = useState("");
+  const [available, setAvailable] = useState(false);
+  const generation = useRef(0);
   useEffect(() => {
     let active = true;
+    let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
+      const owner = generation.current;
       try {
         const next = await invoke<AccountSnapshot>("account_snapshot");
-        if (active) setState(next);
+        if (active && owner === generation.current) {
+          setState(next);
+          setAvailable(true);
+        }
       } catch {
-        if (active) setError(message);
+        if (active && owner === generation.current) setAvailable(false);
       }
+      if (active) timer = setTimeout(() => void refresh(), 1000);
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), 1000);
     return () => {
       active = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
   }, []);
   async function action(fn: () => Promise<unknown>) {
+    const owner = ++generation.current;
     setOperations((count) => count + 1);
     setError("");
     try {
       await fn();
     } catch (error) {
-      setError(actionError(error));
+      if (owner === generation.current) setError(actionError(error));
     } finally {
-      try {
-        setState(await invoke<AccountSnapshot>("account_snapshot"));
-      } catch {
-        setError(message);
+      if (owner === generation.current) {
+        const finalOwner = ++generation.current;
+        try {
+          const next = await invoke<AccountSnapshot>("account_snapshot");
+          if (finalOwner === generation.current) {
+            setState(next);
+            setAvailable(true);
+          }
+        } catch {
+          if (finalOwner === generation.current) {
+            setAvailable(false);
+            setError(message);
+          }
+        }
       }
       setOperations((count) => count - 1);
     }
@@ -284,6 +308,7 @@ export function useAccountController() {
       : state;
   return {
     state: visibleState,
+    available,
     pending,
     error,
     action,
@@ -296,7 +321,7 @@ export function useAccountController() {
       }),
   };
 }
-type AccountController = ReturnType<typeof useAccountController>;
+export type AccountController = ReturnType<typeof useAccountController>;
 const statusLabels: Record<AuthorizationStatus, string> = {
   signedOut: "尚未登录",
   authorizing: "等待浏览器完成登录",
@@ -305,27 +330,32 @@ const statusLabels: Record<AuthorizationStatus, string> = {
   reauthRequired: "本机授权需要重新登录",
   unsupported: "当前平台暂不支持账号远程访问",
 };
-function accountStatusText(state: AccountSnapshot): string {
+export function accountStatusText(state: AccountSnapshot): string {
   return state.authorizationStatus === "signedIn" && state.accountLabel
     ? `已登录 · ${state.accountLabel}`
     : statusLabels[state.authorizationStatus];
 }
-function AccountActions({ controller }: { controller: AccountController }) {
-  const { state, pending, signIn, cancel, logout } = controller;
+export function AccountActions({
+  controller,
+}: {
+  controller: AccountController;
+}) {
+  const { state, available, pending, signIn, cancel, logout } = controller;
+  if (!available) return <span role="status">正在核验账号状态</span>;
   if (!state) return <span role="status">正在读取账号状态</span>;
   switch (state.authorizationStatus) {
     case "signedOut":
       return (
         <>
           <button disabled={pending} onClick={() => void signIn("register")}>
-            注册
+            创建账号
           </button>
           <button
             className="primary"
             disabled={pending}
             onClick={() => void signIn("signIn")}
           >
-            登录
+            登录已有账号
           </button>
         </>
       );
@@ -348,6 +378,58 @@ function AccountActions({ controller }: { controller: AccountController }) {
       return null;
   }
 }
+export function AccountEntry({
+  controller,
+}: {
+  controller: AccountController;
+}) {
+  const { state, available, error } = controller;
+  return (
+    <section className="signin-content" aria-label="AnyWork 账号入口">
+      <p className="hint">注册和登录在系统浏览器中完成，密码由登录服务处理。</p>
+      <p className="account-status" role="status">
+        {available && state ? accountStatusText(state) : "正在核验账号状态"}
+      </p>
+      <div className="account-entry-actions">
+        <AccountActions controller={controller} />
+      </div>
+      {state?.authorizationStatus === "unsupported" && (
+        <p className="notice">
+          当前平台暂不支持桌面账号登录，因此无法从这里准备或打开工作区。可以使用独立的命令行入口；本应用不会跳过账号验证。
+        </p>
+      )}
+      <p className="hint memory-notice">
+        本客户端的账号凭据和设备私钥只留在内存；退出客户端后需要重新登录并开启远程访问。
+      </p>
+      {(error || state?.error) && (
+        <p role="alert" className="error">
+          {error || state?.error}
+        </p>
+      )}
+    </section>
+  );
+}
+export function publicPortal(
+  state: AccountSnapshot | null,
+  available: boolean,
+): string | null {
+  if (!available || typeof state?.accountPortalUrl !== "string") return null;
+  try {
+    const url = new URL(state.accountPortalUrl);
+    return url.protocol === "https:" &&
+      !url.username &&
+      !url.href
+        .slice(url.protocol.length + 2)
+        .split("/")[0]
+        .includes("@") &&
+      !url.search &&
+      !url.hash
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
 export function AccountPage({
   localReady,
   controller,
@@ -355,112 +437,158 @@ export function AccountPage({
   localReady: boolean;
   controller: AccountController;
 }) {
-  const { state, pending, error, action } = controller;
+  const { state, available, pending, error, action } = controller;
+  const portal = publicPortal(state, available);
+  const [copied, setCopied] = useState<{ url: string; message: string } | null>(
+    null,
+  );
   return (
-    <section
-      className="workspace-panel account-panel"
-      aria-label="AnyWork 账号入口"
-    >
+    <section className="remote-panel" aria-label="远程使用">
       <div className="panel-heading">
         <ShieldCheck size={20} aria-hidden="true" />
-        <h2>从其他设备继续</h2>
+        <h2>远程使用</h2>
       </div>
-      <p className="hint account-intro">
-        手机或网页登录同一账号，选择这台电脑。
-        {(!state ||
-          ["signedOut", "authorizing", "loginInterrupted"].includes(
-            state.authorizationStatus,
-          )) &&
-          "注册和登录会在系统浏览器中完成。"}
+      <p className="hint">
+        登录不会自动发布设备。准备好后，在这台电脑允许远程访问。
       </p>
-      <section className="account-identity" aria-label="账号状态">
-        <p className="account-status" role="status">
-          {state ? accountStatusText(state) : "正在读取账号状态"}
-        </p>
-        <div className="account-entry-actions">
-          <AccountActions controller={controller} />
-        </div>
-      </section>
-      <section className="remote-control" aria-label="远程访问设置">
-        <h3>允许我的其他设备访问</h3>
-        <p className="hint">登录后仍需在这台电脑开启远程访问。</p>
-        <div className="remote-status-row">
-          <p role="status">
-            <span
-              className={state?.enabled ? "status-dot ready" : "status-dot"}
-            />
-            {state?.enabled ? "远程访问已开启" : "远程访问未开启"}
-          </p>
-          <button
-            disabled={
-              pending || (!state?.enabled && (!state?.signedIn || !localReady))
-            }
-            onClick={() =>
-              void action(() =>
-                invoke(state?.enabled ? "account_disable" : "account_enable"),
-              )
-            }
-          >
-            {state?.enabled ? "关闭远程访问" : "开启远程访问"}
-          </button>
-        </div>
-        {!localReady && (
-          <p className="hint remote-next-step">
-            先打开本地工作区，再开启远程访问。
-          </p>
-        )}
-        {pending && (
-          <p className="hint" role="status">
-            正在处理账号操作，请稍候。
-          </p>
-        )}
-      </section>
-      <div className="device-actions">
-        <button
-          onClick={() => void action(() => invoke("desktop_account_portal"))}
-        >
-          查看我的设备
-        </button>
-        {state?.enabled && state.installationId && state.publicKey ? (
-          <details aria-label="本机身份核对">
-            <summary>身份核对</summary>
-            <div className="identity-content">
-              <p className="hint">
-                首次从浏览器连接或身份变更时，请核对以下设备身份和公钥。
-              </p>
-              <label>
-                设备身份
-                <input
-                  aria-label="设备身份"
-                  readOnly
-                  value={state.installationId}
+      <ol className="remote-steps">
+        <li>
+          <div className="remote-step-content">
+            <h3>在这台电脑开启远程访问</h3>
+            <div className="remote-status-row">
+              <p role="status">
+                <span
+                  className={
+                    available && state?.enabled
+                      ? "status-dot ready"
+                      : "status-dot"
+                  }
                 />
-              </label>
-              <label>
-                设备公钥
-                <input aria-label="设备公钥" readOnly value={state.publicKey} />
-              </label>
+                {!available
+                  ? "远程状态暂不可用"
+                  : state?.enabled
+                    ? "远程访问已开启"
+                    : "远程访问未开启"}
+              </p>
               <button
+                disabled={
+                  !available ||
+                  pending ||
+                  (!state?.enabled && (!state?.signedIn || !localReady))
+                }
                 onClick={() =>
-                  void action(async () => {
-                    await navigator.clipboard.writeText(
-                      `${state.installationId}\n${state.publicKey}`,
-                    );
-                  })
+                  void action(() =>
+                    invoke(
+                      state?.enabled ? "account_disable" : "account_enable",
+                    ),
+                  )
                 }
               >
-                复制设备身份与公钥
+                {state?.enabled ? "关闭远程访问" : "开启远程访问"}
               </button>
             </div>
-          </details>
-        ) : (
-          <p className="hint">开启远程后可核对本机身份。</p>
-        )}
-      </div>
+            {!localReady && (
+              <p className="hint">先准备本地工作区，再开启远程访问。</p>
+            )}
+            {pending && (
+              <p className="hint" role="status">
+                正在处理账号操作，请稍候。
+              </p>
+            )}
+          </div>
+        </li>
+        <li>
+          <div className="remote-step-content">
+            <h3>手机或网页打开账号入口</h3>
+            <code className="portal-address" data-testid="account-portal">
+              {portal ?? "账号入口暂不可用"}
+            </code>
+            <div className="portal-actions">
+              <button
+                aria-label="复制账号入口"
+                disabled={!portal}
+                onClick={() => {
+                  void (async () => {
+                    if (!portal) return;
+                    try {
+                      await navigator.clipboard.writeText(portal);
+                      setCopied({ url: portal, message: "账号入口已复制" });
+                    } catch {
+                      setCopied({
+                        url: portal,
+                        message: "未能复制，请选中账号入口手动复制。",
+                      });
+                    }
+                  })();
+                }}
+              >
+                <Copy size={15} aria-hidden="true" />
+                复制
+              </button>
+              <button
+                aria-label="打开账号入口"
+                disabled={!portal || pending}
+                onClick={() =>
+                  void action(() => invoke("desktop_account_portal"))
+                }
+              >
+                <ExternalLink size={15} aria-hidden="true" />
+                打开
+              </button>
+            </div>
+            <p className="copy-feedback" role="status">
+              {portal && copied?.url === portal ? copied.message : ""}
+            </p>
+          </div>
+        </li>
+        <li>
+          <div className="remote-step-content">
+            <h3>登录同一账号，选择这台电脑</h3>
+            <p className="hint">
+              首次连接或身份变更时，在下方核对设备身份和公钥。手机不能使用这台电脑的本地地址。
+            </p>
+          </div>
+        </li>
+      </ol>
+      {available &&
+      state?.enabled &&
+      state.installationId &&
+      state.publicKey ? (
+        <details className="identity-details" aria-label="本机身份核对">
+          <summary>本机身份核对</summary>
+          <div className="identity-content">
+            <label>
+              设备身份
+              <input
+                aria-label="设备身份"
+                readOnly
+                value={state.installationId}
+              />
+            </label>
+            <label>
+              设备公钥
+              <input aria-label="设备公钥" readOnly value={state.publicKey} />
+            </label>
+            <button
+              onClick={() =>
+                void action(async () => {
+                  await navigator.clipboard.writeText(
+                    `${state.installationId}\n${state.publicKey}`,
+                  );
+                })
+              }
+            >
+              复制设备身份与公钥
+            </button>
+          </div>
+        </details>
+      ) : (
+        <p className="hint">开启远程后，可在此核对本机身份。</p>
+      )}
       {(error || state?.error) && (
-        <div role="alert" className="error">
+        <p role="alert" className="error">
           {error || state?.error}
-        </div>
+        </p>
       )}
     </section>
   );
