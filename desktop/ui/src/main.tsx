@@ -10,9 +10,18 @@ import {
   Monitor,
   Smartphone,
   LockKeyhole,
-  Network,
+  LoaderCircle,
+  ArrowRight,
 } from "lucide-react";
-import { AccountPage, useAccountController } from "./accounts";
+import {
+  AccountPage,
+  AccountEntry,
+  AccountActions,
+  accountStatusText,
+  useAccountController,
+} from "./accounts";
+import { Introduction, Stepper, RemoteClients } from "./onboarding";
+import { useWorkspacePreparation } from "./startup";
 import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
 import { anyworkLogo } from "./brand";
 import type { Config, Snapshot } from "./types";
@@ -45,10 +54,13 @@ function App() {
     [error, setError] = useState(""),
     [opening, setOpening] = useState(false),
     [saving, setSaving] = useState(false),
+    [introduced, setIntroduced] = useState(false),
+    [snapshotAvailable, setSnapshotAvailable] = useState(false),
     [copyFeedback, setCopyFeedback] = useState<{
       address: string;
       message: string;
     } | null>(null);
+  const startup = useWorkspacePreparation(account, introduced);
   const initialized = useRef(false);
   useEffect(() => {
     let live = true;
@@ -58,12 +70,13 @@ function App() {
         const next = await invoke<Snapshot>("desktop_snapshot");
         if (!live) return;
         setState(next);
+        setSnapshotAvailable(true);
         if (!initialized.current) {
           initialized.current = true;
           setConfig(next.config);
         }
       } catch {
-        if (live) setError("无法读取本机状态，请稍后重试。");
+        if (live) setSnapshotAvailable(false);
       }
       if (live) timer = setTimeout(poll, 1000);
     }
@@ -74,7 +87,15 @@ function App() {
     };
   }, []);
   async function openWorkspace() {
-    if (opening) return;
+    if (
+      opening ||
+      !startup.canSubmit ||
+      startup.phase !== "prepared" ||
+      !snapshotAvailable ||
+      state?.service !== "running" ||
+      !state.authorized
+    )
+      return;
     setOpening(true);
     setError("");
     try {
@@ -107,7 +128,15 @@ function App() {
     });
     if (path) setConfig((c) => (c ? { ...c, [key]: path } : c));
   }
-  const ready = state?.authorized && state.service === "running";
+  const ready =
+    snapshotAvailable && state?.authorized && state.service === "running";
+  const stage = !introduced
+    ? "intro"
+    : !startup.active
+      ? "account"
+      : startup.phase === "prepared" && ready
+        ? "console"
+        : "prepare";
   const port = state?.config.port;
   const localAddress =
     typeof port === "number" &&
@@ -117,7 +146,7 @@ function App() {
       ? `http://127.0.0.1:${port}/`
       : null;
   async function copyLocalAddress() {
-    if (!ready || !localAddress) return;
+    if (!ready || !startup.canSubmit || !localAddress) return;
     try {
       await navigator.clipboard.writeText(localAddress);
       setCopyFeedback({ address: localAddress, message: "本地地址已复制" });
@@ -168,27 +197,120 @@ function App() {
         {page !== "workspace" && (
           <button className="back" onClick={() => setPage("workspace")}>
             <ArrowLeft size={16} />
-            返回工作区
+            返回
           </button>
         )}
-        {page === "workspace" && (
+        {page === "workspace" && stage === "intro" && (
           <>
-            <header className="page-heading">
-              <div>
-                <h1>这台电脑</h1>
-                <p>
-                  这是工作区的控制台。在本机浏览器工作，也能从其他设备继续。
+            <Stepper stage="intro" />
+            <Introduction next={() => setIntroduced(true)} />
+          </>
+        )}
+        {page === "workspace" && stage === "account" && (
+          <>
+            <Stepper stage="account" />
+            <div className="account-stage">
+              <div className="stage-symbol">
+                <LockKeyhole size={28} aria-hidden="true" />
+              </div>
+              <header>
+                <div>
+                  <h1>登录，让其他设备找到这台电脑</h1>
+                  <p>一个账号，连接你自己的工作设备。</p>
+                </div>
+              </header>
+              <AccountEntry controller={account} />
+            </div>
+          </>
+        )}
+        {page === "workspace" && stage === "prepare" && (
+          <>
+            <Stepper stage="prepare" />
+            <section className="preparation-stage" aria-label="准备工作区">
+              <div className="stage-symbol">
+                {startup.phase === "failed" || state?.service === "error" ? (
+                  <Settings size={28} aria-hidden="true" />
+                ) : (
+                  <LoaderCircle size={28} className="spin" aria-hidden="true" />
+                )}
+              </div>
+              <header>
+                <div>
+                  <h1>
+                    {startup.phase === "failed" || state?.service === "error"
+                      ? "工作区还没有就绪"
+                      : "正在准备你的工作区"}
+                  </h1>
+                  <p role="status">
+                    {!account.available
+                      ? "账号状态暂不可用，正在核验。"
+                      : startup.phase === "failed"
+                        ? "服务准备未完成，请检查后手动重试。"
+                        : "正在启动或核验本地服务，不会自动打开浏览器或开启远程。"}
+                  </p>
+                </div>
+              </header>
+              {account.state && (
+                <p className="preparation-account">
+                  {accountStatusText(account.state)}
                 </p>
+              )}
+              {(startup.error || state?.service === "error") && (
+                <p role="alert" className="error">
+                  {startup.error || "本地服务需要检查，请调整设置后重试。"}
+                </p>
+              )}
+              {(startup.phase === "failed" ||
+                (startup.phase === "prepared" && !ready)) && (
+                <div className="stage-actions">
+                  <button
+                    className="primary"
+                    disabled={!startup.canSubmit}
+                    onClick={() => void startup.retry()}
+                  >
+                    重试准备
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </button>
+                  <button onClick={() => setPage("settings")}>打开设置</button>
+                </div>
+              )}
+              {!snapshotAvailable && (
+                <p className="hint" role="status">
+                  本机状态暂不可用。恢复读取后会核验服务，不会重复自动提交启动。
+                </p>
+              )}
+              <div className="preparation-account-actions">
+                <AccountActions controller={account} />
+              </div>
+            </section>
+          </>
+        )}
+        {page === "workspace" && stage === "console" && (
+          <>
+            <header className="console-heading">
+              <div>
+                <h1>这台电脑的工作区</h1>
+                <p>在本机浏览器工作，也能从其他设备继续。</p>
+              </div>
+              <div className="console-account">
+                <p role="status">
+                  {account.state
+                    ? accountStatusText(account.state)
+                    : "正在核验账号状态"}
+                </p>
+                <AccountActions controller={account} />
               </div>
             </header>
-            <div className="access-layout">
-              <section
-                className="workspace-panel local-panel"
-                aria-label="本地工作区"
-              >
+            {!account.available && (
+              <p className="notice" role="status">
+                账号状态暂不可用，正在核验。恢复前无法提交新的访问操作。
+              </p>
+            )}
+            <div className="console-access-layout">
+              <section className="local-panel" aria-label="本地工作区">
                 <div className="panel-heading">
                   <Monitor size={20} aria-hidden="true" />
-                  <h2>本地工作区</h2>
+                  <h2>本地使用</h2>
                 </div>
                 <p className="service-status" role="status">
                   <span className={ready ? "status-dot ready" : "status-dot"} />
@@ -206,7 +328,7 @@ function App() {
                     <button
                       className="copy-address"
                       aria-label="复制本地地址"
-                      disabled={!ready || !localAddress}
+                      disabled={!ready || !startup.canSubmit || !localAddress}
                       onClick={() => void copyLocalAddress()}
                     >
                       <Copy size={16} aria-hidden="true" />
@@ -227,12 +349,15 @@ function App() {
                 <button
                   className="primary open-workspace"
                   disabled={
-                    opening || !state || updates.state?.phase === "installing"
+                    opening ||
+                    !startup.canSubmit ||
+                    !ready ||
+                    updates.state?.phase === "installing"
                   }
                   onClick={() => void openWorkspace()}
                 >
                   <ExternalLink size={17} aria-hidden="true" />
-                  {opening ? "正在打开…" : "打开工作区"}
+                  {opening ? "正在打开…" : "打开本地工作区"}
                 </button>
                 <p className="hint local-session-help">
                   首次使用、切换浏览器或本机会话过期时，请用上方按钮建立访问会话。已授权的同一浏览器可通过本地地址再次进入。
@@ -251,55 +376,26 @@ function App() {
                   </p>
                 )}
               </section>
-              <AccountPage localReady={Boolean(ready)} controller={account} />
+              <AccountPage
+                localReady={Boolean(ready && startup.canSubmit)}
+                controller={account}
+              />
             </div>
-            <section className="principles" aria-labelledby="principle-title">
-              <div className="principle-heading">
-                <Network size={19} aria-hidden="true" />
-                <h2 id="principle-title">工作原理</h2>
+            <RemoteClients controller={account} />
+            <footer className="console-privacy">
+              <LockKeyhole size={17} aria-hidden="true" />
+              <div>
+                <p>
+                  工作内容留在设备，远程连接端到端加密。云端处理账号与必要连接元数据。
+                </p>
+                <p>
+                  远程需要这台电脑开机联网。关闭远程不影响已运行的本地服务。
+                </p>
+                <p>
+                  本客户端的账号凭据和设备私钥只留在内存；退出客户端后需要重新登录并开启远程访问。
+                </p>
               </div>
-              <p className="principle-intro">
-                这台电脑运行 Agent，处理会话、文件和终端内容。
-              </p>
-              <div className="connection-paths">
-                <div className="connection-path">
-                  <Monitor size={20} aria-hidden="true" />
-                  <div>
-                    <h3>
-                      本地浏览器 <span aria-hidden="true">→</span> 这台电脑
-                    </h3>
-                    <p>
-                      通过本机地址访问，无需云账号。地址只在这台电脑有效，不能用于手机访问。
-                    </p>
-                  </div>
-                </div>
-                <div className="connection-path">
-                  <Smartphone size={20} aria-hidden="true" />
-                  <div>
-                    <h3>
-                      手机或远程网页 <span aria-hidden="true">→</span> 这台电脑
-                    </h3>
-                    <p>
-                      登录同一账号发现设备，首次连接或身份变更时核对设备身份，通过端到端加密通道继续工作。
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="privacy-note">
-                <LockKeyhole size={17} aria-hidden="true" />
-                <div>
-                  <p>
-                    云端负责登录、设备发现和连接协调，会处理账号与必要连接元数据。会话、文件和终端内容留在你的设备，远程连接在设备两端解密。
-                  </p>
-                  <p>
-                    远程需要这台电脑开机、联网且已开启远程访问。关闭远程不影响本地工作。
-                  </p>
-                  <p>
-                    本客户端的账号凭据和设备私钥只留在内存；退出客户端后需要重新登录并开启远程访问。
-                  </p>
-                </div>
-              </div>
-            </section>
+            </footer>
           </>
         )}
         {page === "settings" && config && (
@@ -406,7 +502,7 @@ function App() {
           </>
         )}
         {page === "updates" && <UpdatePage controller={updates} />}
-        {(error || state?.error) && (
+        {(error || (page === "settings" && state?.error)) && (
           <p className="error" role="alert">
             {error || state?.error}
           </p>

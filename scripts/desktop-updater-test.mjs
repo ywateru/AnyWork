@@ -128,7 +128,9 @@ try {
   });
   const { expect } = await import("@playwright/test");
   await page.goto(origin + "/");
-  await expect(page.getByRole("region", { name: "本地工作区" })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "AnyWork 功能介绍" }),
+  ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.evaluate(() =>
     Object.assign(window.updateFixture, {
@@ -154,7 +156,7 @@ try {
     }),
   );
   await expect(page.getByRole("alert")).toHaveText("Offline fixture");
-  await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+  await page.getByRole("button", { name: "返回", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.evaluate(() =>
