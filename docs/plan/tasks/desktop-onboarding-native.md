@@ -1,7 +1,7 @@
 ---
 id: desktop-onboarding-native
 scope: native-start-authorization-and-active-remote-connections
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -22,3 +22,7 @@ depends-on: []
 ## verification
 
 定向 Rust/IPC/真实隔离 manager、真实 Noise gateway 边界验证：未登录不启动/打开，登录后只准备服务，显式打开仍交接，现有服务不停止/修改；只有已验证握手计入远程，续期保持、断线/到期/关闭消失、类别投影有限。保持现有远程过期/反重放/本地退出测试。交付提交与作者报告，不操作真实安装、用户登录、远程或公开发布。
+
+## delivery
+
+Native `87102db` 与测试夹具修正 `88fea9b` 已通过[独立审查](../reviews/desktop-onboarding-independent.md)并合入。合并后[完整检查](../reviews/desktop-onboarding-merged.md)通过；正式发行和本机候选采用单独跟进，不把源码验收当成真实账号或实体手机验收。

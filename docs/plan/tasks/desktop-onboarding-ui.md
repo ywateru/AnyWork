@@ -1,7 +1,7 @@
 ---
 id: desktop-onboarding-ui
 scope: introductory-signin-preparation-and-workspace-ui
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -22,3 +22,7 @@ depends-on: []
 ## verification
 
 生产构建/TypeScript、账号与更新定向回归、真实生产 UI 配合严格合成 IPC 的阶段与竞态检查、四尺寸截图视觉复核。覆盖无启动、自动准备只一次、失败需手动重试、登录变化不采纳迟到结果、裸地址复制、远程指引、真实连接数据与不可用状态。旧桌面测试按新契约更新，不通过跳过合理检查来消除失败。提交实现和作者报告，不更新真实应用、不使用用户账号、不发布。
+
+## delivery
+
+UI `aefd304` 与测试、文案补充 `adaea57` 已通过[独立审查](../reviews/desktop-onboarding-independent.md)并合入；发布器标题兼容修正为 `0cba889`。合并后[完整检查](../reviews/desktop-onboarding-merged.md)通过。四尺寸图片属于生产 UI 配合合成 IPC，不代表真实账号或实体手机连接。
