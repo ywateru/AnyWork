@@ -10,13 +10,13 @@ AnyWork 从 0.1.1 起提供签名自动更新。**0.1.0 没有更新器，需要
 - Verified downloads produce an inline notice and version indicator. No automatic dialogs, OS notifications or forced restarts. “Remind me later” defers that version for 24 hours; its download stays cached.
 - Choose **Update and restart**, then confirm. Only confirmation installs. The confirmed version is bound to the request, preventing background discoveries from silently substituting another version.
 - Before stopping an owned service, the manager checks for executing, starting or approval-waiting local chats. Busy or unavailable task state leaves the verified package ready for a later attempt. Update while your workspace is idle.
-- Manager-owned local services can be restored after restart; independently launched services stay running. Native account credentials and keys are RAM-only: remote access requires a new login, explicit enable and changed-key confirmation. Retired standalone tunnel switches are not restored.
+- After restart, the new desktop onboarding requires login before preparing manager-owned local services; a disk resume hint cannot start a service before login. Independently launched services stay running. A failed installation in the same process may restore only the local service already owned and admitted before installation. Native account credentials and keys are RAM-only: remote access requires a new login, explicit enable and changed-key confirmation. Retired standalone tunnel switches are not restored.
 - Check/download failures remain in the update page and retry after 5 minutes, 15 minutes, 1 hour, then every 6 hours. Installation failures report the error and attempt to restore services.
 - Verified complete downloads survive restarts and can be installed offline. Interrupted downloads restart from the beginning; HTTP Range resume is not implemented.
 
 管理器启动 30 秒后检查正式发行版，此后每 6 小时检查一次，默认静默下载。点击侧栏底部版本号可查看进度、手动检查或关闭自动检查下载。下载并校验完成后只显示轻量提醒和版本提示点，不自动弹窗、不发送系统通知、不强制重启。
 
-“稍后提醒”对当前版本延后 24 小时，下载包保留。点击“更新并重启”并确认后才安装。安装前检查本应用管理的会话是否空闲；执行中、启动中或等待确认的任务会阻止安装，无法确认状态时也保留更新包供稍后重试。请在工作空闲时更新。本应用管理的本地服务可在重启后恢复，独立启动的服务保持运行。账号凭据和私钥仅存内存，因此远程访问需要重新登录、明确开启并确认新公钥；旧独立隧道开关不恢复。网络错误静默退避重试，安装失败显示具体原因并尝试恢复本地服务。完整下载可跨重启保留和离线安装，未完成的下载下次重新下载。
+“稍后提醒”对当前版本延后 24 小时，下载包保留。点击“更新并重启”并确认后才安装。安装前检查本应用管理的会话是否空闲；执行中、启动中或等待确认的任务会阻止安装，无法确认状态时也保留更新包供稍后重试。请在工作空闲时更新。按当前新启动引导，重启后需先登录再准备本应用管理的本地服务，磁盘恢复提示不能在登录前启动服务；独立启动的服务保持运行。账号凭据和私钥仅存内存，远程访问需重新登录、明确开启并确认新公钥；旧独立隧道开关不恢复。网络错误静默退避重试；若安装失败且原进程仍在，只能恢复安装前已经由 manager 管理并获准运行的同一本地服务，不启动外部服务或远程。完整下载可跨重启保留和离线安装，未完成的下载下次重新下载。
 
 ## Supported packages / 支持的安装方式
 

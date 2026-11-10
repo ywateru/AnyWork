@@ -1,7 +1,7 @@
 ---
 id: desktop-onboarding-ui
 scope: introductory-signin-preparation-and-workspace-ui
-status: ready
+status: in-progress
 depends-on: []
 ---
 
@@ -17,7 +17,7 @@ depends-on: []
 
 拥有 `desktop/ui/`、`e2e/desktop-*`、相关 UI 定向验证脚本和本任务作者报告；不编辑 Rust、业务 Web 或云配置。Native 并行作者交付 `desktop_start`（仅准备服务，成功 `void`，失败固定安全错误）、account snapshot 的 `remoteClients: {id:string,kind:'ios'|'android'|'desktop'|'unknown',connectedAt:number}[]`。使用真实对应接口，不制造永远就绪的空实现。
 
-首屏介绍与设备关系图→注册/登录→成功后一次自动准备服务→控制台。失败显式重试；登录取消/退出/迟到响应有状态隔离。已有外部服务只核验复用。连接列表来源 account_snapshot.remoteClients，不用 manager.clients 旧心跳代替。未知快照状态不能显示0连接。提供本地裸地址与远程裸账号入口的复制/打开、远程三步说明和身份核对。四种尺寸的可用新视觉；设置/更新一致。supported 未登录不得发 desktop_start/desktop_open；unsupported 清楚解释现有限制，不偷偷跳过账号流程启动。
+首屏介绍与设备关系图→注册/登录→成功后一次自动准备服务→控制台。失败显式重试；登录取消/退出/迟到响应有状态隔离。已有外部服务只核验复用。连接列表来源 account_snapshot.remoteClients，不用 manager.clients 旧心跳代替。未知快照状态不能显示0连接。提供本地裸地址与远程裸账号入口的复制/打开、远程三步说明和身份核对；入口读取 Native 新增公开 `accountPortalUrl:string`，不硬编码域名，缺失/非法不使用伪默认。四种尺寸的可用新视觉；设置/更新一致。supported 未登录不得发 desktop_start/desktop_open；unsupported 清楚解释现有限制，不偷偷跳过账号流程启动。
 
 ## verification
 
