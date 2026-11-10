@@ -111,6 +111,15 @@ class FrontendDeployment(unittest.TestCase):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('<html>fixture</html>')
+            images = {}
+            for name in ('codex-light.png', 'codex-dark.png', 'deepseek-harness-light.svg',
+                         'deepseek-harness-dark.svg', 'workbuddy.svg'):
+                image = root / 'web/dist/agents' / name
+                image.parent.mkdir(parents=True, exist_ok=True)
+                images[name] = (frontend.ROOT / 'web/public/agents' / name).read_bytes()
+                image.write_bytes(images[name])
+            (root / 'site/dist/agents').mkdir(parents=True)
+            (root / 'site/dist/agents/stale.png').write_bytes(b'stale previous deployment')
             env = {k: v for k, v in os.environ.items() if not k.startswith('VITE_')}
             env.update(self.values)
             env['SOURCE_COMMIT'] = revision
@@ -123,6 +132,10 @@ class FrontendDeployment(unittest.TestCase):
             self.assertIn(self.values['VITE_LOGTO_ENDPOINT'], (root / 'vercel.json').read_text())
             identity = json.loads((root / 'site/dist/build.json').read_text())
             self.assertEqual(identity['source'], revision)
+            self.assertFalse((root / 'site/dist/agents/stale.png').exists())
+            for name, expected in images.items():
+                for prefix in ('agents', 'app/agents'):
+                    self.assertEqual((root / 'site/dist' / prefix / name).read_bytes(), expected)
             with tarfile.open(root / 'site/dist/anywork-source.tar.gz') as archive:
                 self.assertNotIn('anywork/.env', archive.getnames())
                 for member in archive:
