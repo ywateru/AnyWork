@@ -1,6 +1,6 @@
 # 自部署 TLS Redis 切换：独立审查
 
-日期：2026-11-11。状态：PASS（精确源码与具体候选，执行前独立验收）。本报告不代替根代理的新鲜执行 GO；正式部署和存储初始化尚未执行。
+日期：2026-11-11。状态：PASS（精确源码/候选与上线后独立只读验收）。执行前证据及其边界保留如下；实际切换由根代理另行签发 GO 执行，本审查未执行外部变更。
 
 审查工作树 `codex/cybergrid-redis-review`，基线 `6cb1bc61da63fe3408a4b88f45a3605b6e99d518`。按 `cybergrid-selfhost-redis` 任务执行独立 verify；仅写此报告，不修改产品代码、main、现有应用/服务或真实 Logto 账号。本次只读探测使用本任务明确授权的 Redis 用户；没有触碰旧 Upstash、扫描其他 namespace、读取业务正文或执行初始化/写入。
 
@@ -58,3 +58,30 @@ Logto 账号/设备目录、客户端内存凭据策略、Noise 端到端授权�
 作者更广范围71项 Python +5项 Node 通过；上述为独立执行的针对性结果，两者不混记。日志分别为 `/tmp/anywork-redis-independent-python.log`、`/tmp/anywork-redis-independent-ready.log`、`/tmp/anywork-redis-independent-node.log`。
 
 未发现阻塞问题。精确 source/candidate 可交根代理按已授权范围发 fresh internal GO；没有新增付费授权要求。AUTH/PING/TYPE 成功尚不证明协调 Lua/全部写命令兼容，实际 ready 是必要执行门槛。部署后仍需独立核对新 READY/alias 身份、公开 health/Native+SPA OAuth 绑定/CORS/同一新 epoch 和专用 metadata；这些不是本次执行前 PASS 已完成的证据。没有进行真实用户恢复、账号登录、远程开启或本机 runtime 变更。
+
+## 上线后独立只读验收：PASS
+
+实测时间：2026-11-11 13:30–13:33（Asia/Shanghai，UTC05:30–05:33）；最后一次 provider 证据完成于13:33:27。根代理已执行被审候选，本审查仅作 GET/OPTIONS、Vercel 只读 API 和新 Redis 专用 metadata 只读检查，未调用 apply/rollback、部署或 namespace 初始化，未修改 main/产品源码/本机运行应用或账号。
+
+独立重新验证 operation/material binding 后，确认 operation 为 ready，candidate 仍为前文 `ede458…ca5`。Vercel 直接 API 证据：
+
+- 新 deployment `dpl_7Xvjo9kSsDNoWycj57W4zLyP4Xz4` 为 READY，project 仍为 `prj_QEkGqB1XuC8AbtRGZaNSsMD1otvX`；正式 alias `anywork-cybergrid-selfhost.vercel.app` 指向该 ID。
+- deployment metadata 中 operation `baa4abc0-b698-4e81-98be-f443812549fa`、adapted source `c923cc232e74e4aff78fa3c82916ce9fb9a283b5`、upstream/patch、artifact `aa53c54c…cd10`、configuration `5eeaeee0…7189` 全部与精确候选一致。
+- 生产环境逐项只读 readback 与候选 desiredEnvironment 完全一致，原8项设置保持，TCP/rediss 新变量已生效，旧 Upstash REST 两项变量已删除。只比较内存值/布尔结果，不输出秘密或带凭据 URL。
+
+| 正式 alias 实测 | 结果 |
+| --- | --- |
+| GET `/healthz` | HTTP200（纯文本响应） |
+| GET `/api/v1/auth/config?appId=x7lzj58abb1sdp16lkd34` | HTTP200；Native clientId、固定 issuer/resource 与候选一致 |
+| GET `/api/v1/console/auth/config`，Origin `https://anywork-tau.vercel.app` | HTTP200；SPA clientId `5ere2kbu9mugfu3xd8e90`、固定 issuer/resource 与候选一致；ACAO 精确为该来源 |
+| 可信 Origin 的 console/devices OPTIONS（GET + authorization,x-cybergrid-epoch） | HTTP204，正确 ACAO |
+| 不可信 `https://untrusted.invalid` 的 config GET 与 devices OPTIONS | 均 HTTP403，无 ACAO |
+| console/devices 无 Authorization 与合成无效 Bearer | 均 HTTP401 / INVALID_SESSION，没有返回设备目录 |
+
+两份配置都保持 issuer `https://auth.x.aixgg.com/oidc` 和 resource `https://anywork-cybergrid-selfhost.vercel.app/api`；body coordination.epoch 与 `X-CyberGrid-Epoch` 都等于新 ready epoch `8bc766fc-e282-437c-9f4c-f36e7c14aa8a`。这里只证明公开配置/会话拒绝边界，不把合成无效 Bearer 当作真实 Logto 授权验证。
+
+实际新 Redis 用同一个 deployed Node redis6.3.1 package、原 strict rediss/domain 配置独立 AUTH/PING 成功。仅4个专用 metadata TYPE：meta=hash、initialized=string、revision=string、sequence=none（尚无信号序列时允许不存在），GET initialized='1'。先审查实际 `redis-script.js`：meta hash 的 state 字段是带 epoch/seed/startedAt/limits 的 JSON。为避免 seed 离开 Redis，独立执行 `EVAL_RO`，脚本只 HGET 此确切字段，在 Redis 内 cjson.decode 后只返回 epoch 字符串；没有使用生产 op/meta（该脚本包含其他写操作），没有返回 meta.state 全文或 seed。返回 epoch 与公开配置/namespace-ready 一致；客户端 finally destroy 且有总时间界限。
+
+脱敏独立证据位于 `/tmp/anywork-redis-independent-provider.json`、`/tmp/anywork-redis-independent-live.json`、`/tmp/anywork-redis-independent-metadata.json`（0600）。第一次公开批量因 health 纯文本被误按 JSON 解析而退出，修正验证器后成功；另一次 provider 直连在 TLS handshake 本机超时，随后完整只读核验成功。未把这些本地探测错误误记为服务503或重放外部变更。
+
+结论：正式 alias 已按精确受检配置使用新的 TLS Redis，公开配置与专用存储的新 epoch 一致，健康/CORS/未授权拒绝检查通过。旧 Upstash 未被扫描、复制、reset 或改套餐。未读 Redis 用户会话/设备/业务记录、未读取 Logto 真实用户、未做真实登录或远程启用，未验证已有用户的实际业务恢复；已有 SDK epoch 失效/重新注册是前文源码机制证据，不能改称完成真实账号端到端实验。本机进程和用户数据未因本次审查变更。
