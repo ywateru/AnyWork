@@ -25,3 +25,7 @@ depends-on: []
 ## verification
 
 真实调用链须涵盖 UI preparation→Native default command→verified CyberGrid config→enable；保持严格配置绑定和内存凭据。Native 测试覆盖一次默认尝试、重复命令、失败、手动关闭、注销和迟到操作。公开接口探测必须区分 shell 代理与 Native 默认传输，报告证据边界。UI 测试覆盖登录/注册自动开启、手动关闭保持、失败后的本地访问、展开/收起与设置返回，四尺寸截图检查。独立审查通过后合并，执行合并检查及精确源码发布；不操作现有应用、服务或真实账户。
+
+## investigation status
+
+Native 作者已观察到正式 CyberGrid `/api/v1/auth/config` 在直连路径返回 HTTP503 / `COORDINATOR_UNAVAILABLE`，提示协调存储不可用。独立审查正在核实 Upstash 与部署配置原因。这是服务端当前失败证据，不是用户每次历史故障的完整归因；shell 代理另有 TLS reset，不能与真实服务503混为一谈。基础设施如需恢复，应保留现有 namespace/epoch、账号与设备数据，不通过清空 Redis 或变更信任绑定绕过故障，不静默升级付费套餐。
