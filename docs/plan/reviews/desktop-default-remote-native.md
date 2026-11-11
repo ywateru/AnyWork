@@ -34,8 +34,8 @@
 
 检查结果：
 
-- Native lib 完整回归：54 passed，3 ignored（两项既有联网/安装 opt-in，新增一项公开探测 opt-in）。
-- 最后 snapshot 锁边界及轮询回归变更后，accounts 定向：26 passed，1 ignored。
+- 最终精确产品源码 Native lib 完整回归（31.34 秒）：54 passed，3 ignored（两项既有联网/安装 opt-in，新增一项公开探测 opt-in）。
+- 最后 snapshot 锁边界及轮询回归变更后的 accounts 定向另为 26 passed，1 ignored；随后完整回归同样通过。
 - `cargo clippy -p anywork-desktop --all-targets -- -D warnings`、`cargo fmt --all -- --check`、`git diff --check` 通过。生成 handler 检查使用 UI 作者当前生产 dist 的只读副本；不是正式发布包构建。
 - Python bridge 6、IPC 11 通过。host HTTP 脚本尝试因本工作树没有 `target/debug/anywork`，20 项均在启动前报同一 FileNotFoundError；未因此重编/替换任何已有 server binary，该脚本不计为通过，由合并检查提供新源码 server 验证。
 
