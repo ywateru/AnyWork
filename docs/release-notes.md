@@ -4,21 +4,21 @@ AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android
 
 **New in 0.1.24 / 本次更新**
 
-The desktop client now starts with a feature introduction and device diagram, then asks you to register or sign in through the system browser. Only after successful native authorization does it prepare or verify the local service. Preparation does not open a browser or enable remote access; a failed attempt needs an explicit retry. Restarting the client or installing an update begins the introduction and sign-in flow again.
+After signing in and preparing the local service, the desktop client now attempts to enable remote access automatically. You can turn it off at any time; it stays off for the current login session, including when the interface refreshes or you return from Settings. A remote error leaves the local workspace available and offers an explicit retry. Each new sign-in starts with the default-on policy again.
 
-桌面客户端先展示功能介绍与设备关系图，再引导你在系统浏览器中注册或登录。原生授权成功后才准备或核验本地服务；准备过程不会打开浏览器或自动开启远程，失败后需手动重试。重新启动客户端或安装更新后，重新进入介绍与登录流程。
+登录并准备好本地服务后，桌面客户端默认尝试开启远程访问。你可以随时关闭；在本次登录期间，即使界面刷新或从设置返回，也会保持关闭。远程失败不会阻塞本地工作区，可以手动重试。重新登录后恢复默认开启策略。
 
-The prepared console shows the saved bare local address and a separate browser-open action that establishes a one-time handoff and HttpOnly session cookie. First use, a different browser or an expired local session requires that action. Desktop startup and new browser-open actions require sign-in; an already authorized local browser session and the standalone CLI remain separate access paths. Signing out closes remote authorization but does not stop an already running local service.
+The console keeps the local address and remote controls in view. Active connections, identity checks and connection instructions expand when needed; privacy and credential-lifetime details are available in Settings. Errors show a short explanation, with diagnostic codes in expandable details. Unknown connection status remains distinct from zero active connections.
 
-准备完成后，控制台显示已保存的本地裸地址，并提供通过一次性交接与 HttpOnly Cookie 建立会话的打开按钮。首次使用、更换浏览器或本机会话过期时需点击该按钮。桌面客户端准备服务和提交新的浏览器打开操作需要先登录；已授权的本机浏览器会话与独立 CLI 仍是各自独立的访问入口。退出账号会关闭远程授权，但不会停止已经运行的本地服务。
+控制台保留本地地址和远程开关，活动连接、身份核对与连接指引按需展开；隐私和凭据有效期说明移至设置。错误只显示简短提示，诊断代码放在可展开详情中。连接状态不可用与真实没有活动连接仍分别显示。
 
-Remote access remains an explicit choice. The console explains how to enable it, copy or open the configured HTTPS account page on another device, sign in to the same account and verify the computer's identity. It lists active authenticated encrypted connections, with client-reported phone/browser categories and connection start times. Unavailable status is distinct from an empty list, and separate connections from the same device may appear separately. The previous anonymous/fixed tunnel and WireGuard controls remain retired. Desktop account support is qualified on macOS; unsupported platforms explain the limit and do not bypass sign-in to start services.
+Local browser access continues to use a one-time handoff and HttpOnly session cookie. Signing out closes remote authorization without stopping an already running local service. Credentials and device private keys stay in memory, with no Keychain storage; restarting requires sign-in again. Cloud services handle identity and necessary connection metadata. Workspace content remains on user devices and is transferred through the encrypted connection.
 
-远程访问仍由你明确开启。控制台说明如何开启远程、在另一设备复制或打开配置中的 HTTPS 账号入口、登录同一账号并核对本机身份。连接区显示已经通过认证的活动加密连接，以及客户端提示的手机／浏览器类别和连接开始时间；状态不可用与真实空列表分别显示，同一设备的不同连接可以分别显示。原有匿名／固定隧道和 WireGuard 控件继续退役。桌面账号当前已验证 macOS；不支持的平台会说明限制，不会绕过登录启动服务。
+本地浏览器继续通过一次性交接和 HttpOnly Cookie 获得访问权限。退出账号会关闭远程授权，不会停止已经运行的本地服务。账号凭据和设备私钥只保留在内存，不写入钥匙串；重启后需要重新登录。云端处理账号与必要连接元数据，工作内容留在用户设备，经加密连接传输。
 
-Native account credentials and device private keys remain in memory, with no Keychain storage; restarting requires signing in and explicitly enabling remote access again. Cloud services handle identity and necessary connection metadata; workspace files, conversations and terminal content stay on user devices and travel through the encrypted connection. Existing compatible external services are verified and reused without changing their workspace or credentials. Settings and updates share the new responsive layout, and installation still needs confirmation.
+Desktop account support is qualified on macOS. Other platforms retain their stated account-support limits. Release checks do not establish physical phone, cellular-network or installed-upgrade acceptance. macOS apps remain ad-hoc signed and are not notarized.
 
-Native 账号凭据与设备私钥只保留在内存，不写入钥匙串；重启后需重新登录并明确开启远程。云端处理身份与必要连接元数据，工作区文件、会话和终端内容保留在用户设备，经加密连接传输。兼容的已有外部服务会在核验后复用，不更换其工作目录或凭据。设置和更新沿用新布局并适配窄窗口，安装仍需确认。
+桌面账号当前已验证 macOS，其他平台仍遵循已有账号支持限制。发布检查不代表物理手机、蜂窝网络或实装升级验收。macOS 应用仍为临时签名，尚未公证。
 
 Releases database ownership explicitly after closing the store, so a concurrently spawned child cannot retain an inherited lock and briefly block reopening. Active services still hold exclusive ownership; this change does not retry or bypass a contested lock.
 
