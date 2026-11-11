@@ -54,5 +54,6 @@ Web 不重做消息、输入框、审批与工具面板；必要外层属性可�
 - 设计 v2：独立核验通过，见 `docs/design/desktop-refactor/review.md`。
 - 实施：Web `81a97709e37d3a1df5cd6b592caad1d65bbdb654`、Desktop `4be6ef378074487d8c2736f2f63a01eb4a36b899` 已分别独立 pass 并顺序合并。见 [Web 独立审查](../reviews/ui-v2-web-independent.md) 与 [桌面独立审查](../reviews/ui-v2-desktop-independent.md)。
 - 托管品牌：一次窄范围 PATCH 已提交且独立验收 pass，见 `docs/plan/reviews/ui-v2-hosted-branding.md`。正式页 1440/390 图标加载与黑色主按钮通过；Logto 原有背景和页脚保留。
-- 合并后的 Web typecheck、353 unit + 8 private-state、build，以及两端格式检查通过；桌面 build、根目录 account-entry 与 updater 脚本通过。初次 updater 调用未指定本机 Chrome 而缺少 Playwright 自带浏览器，改用 `PLAYWRIGHT_CHANNEL=chrome` 后通过，不是产品失败。574 项 Web 与 96 项桌面 E2E 正在隔离运行。
-- 发行、线上检查：待完成，发布预检为下一版 `0.1.26`。
+- 合并后的 Web typecheck、353 unit + 8 private-state、build，以及两端格式检查通过；桌面 build、根目录 account-entry 与 updater 脚本、96 E2E 通过。初次 updater 调用未指定本机 Chrome 而缺少 Playwright 自带浏览器，改用 `PLAYWRIGHT_CHANNEL=chrome` 后通过，不是产品失败。
+- 完整 Web 574 E2E：572 pass、1 条件 skip、1 blocking（390×480 侧栏列表只剩 67px，真实触摸长列表超时）。按门禁已在 main 撤回 Web merge，并在 `codex/ui-v2-web-fix` 重应用候选后修复；不得以加大超时、跳过或削弱真实触摸断言放行。见[合并记录](../reviews/ui-v2-merged-release.md)。
+- 发行、线上检查：待短高度修复验收后进行，发布预检为下一版 `0.1.26`；尚未更新应用网站。
