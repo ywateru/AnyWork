@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { manager, calls, signInFixture } from "./desktop-fixture";
+import {
+  manager,
+  calls,
+  signInFixture,
+  desktopNavigate,
+  desktopLogout,
+} from "./desktop-fixture";
 for (const [width, height] of [
   [1440, 1000],
   [960, 720],
@@ -38,6 +44,9 @@ for (const [width, height] of [
     await expect(
       page.getByRole("heading", { name: "正在准备你的工作区", exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "远程访问", exact: true }),
+    ).toHaveCount(0);
     await page.screenshot({
       path: info.outputPath(`preparing-${width}.png`),
       fullPage: true,
@@ -70,7 +79,7 @@ for (const [width, height] of [
       ).pendingStarts[1](),
     );
     await expect(
-      page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+      page.getByRole("heading", { name: "这台电脑", exact: true }),
     ).toBeVisible();
     await expect
       .poll(() => calls(page))
@@ -106,7 +115,7 @@ for (const [width, height] of [
         },
       ),
     );
-    await expect(page.getByText("2 个活动连接", { exact: true })).toBeVisible();
+    await expect(page.getByText(/已开启 · 2 个活动连接/)).toBeVisible();
     await expect(
       page.getByText("iPhone / iPad 浏览器", { exact: true }),
     ).not.toBeVisible();
@@ -115,17 +124,15 @@ for (const [width, height] of [
         page.getByRole("button", { name: "打开本地工作区", exact: true }),
       ).toBeInViewport();
       await expect(
-        page.getByRole("button", { name: "关闭远程访问", exact: true }),
+        page.getByRole("button", { name: "管理远程访问", exact: true }),
       ).toBeInViewport();
-      await expect(
-        page.getByText("2 个活动连接", { exact: true }),
-      ).toBeInViewport();
+      await expect(page.getByText(/已开启 · 2 个活动连接/)).toBeInViewport();
     }
     await page.screenshot({
       path: info.outputPath(`console-${width}.png`),
       fullPage: true,
     });
-    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await desktopNavigate(page, "设置");
     await expect(
       page.getByRole("textbox", { name: "工作目录", exact: true }),
     ).toBeVisible();
@@ -147,7 +154,7 @@ for (const [width, height] of [
     });
     await page.getByRole("button", { name: "返回", exact: true }).click();
     await expect(
-      page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+      page.getByRole("heading", { name: "这台电脑", exact: true }),
     ).toBeVisible();
   });
 }
@@ -167,7 +174,7 @@ test("introduction precedes account and preparation even for an existing ready s
   ).toHaveCount(0);
   await signInFixture(page);
   await expect(
-    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
   await page.waitForTimeout(1200);
   expect(await calls(page)).toEqual([
@@ -194,7 +201,7 @@ test("preparation failure needs explicit retry and never opens the browser", asy
   );
   await page.getByRole("button", { name: "重试准备", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
   await expect
     .poll(() => calls(page))
@@ -210,7 +217,7 @@ test("late preparation from logout cannot ready the next same-account login", as
     off: true,
   });
   await expect.poll(() => calls(page)).toEqual(["desktop_start"]);
-  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await desktopLogout(page);
   await expect(
     page.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeVisible();
@@ -229,7 +236,7 @@ test("late preparation from logout cannot ready the next same-account login", as
     (window as unknown as { pendingStarts: (() => void)[] }).pendingStarts[1](),
   );
   await expect(
-    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
 });
 test("a poll begun before logout cannot resurrect signed-in state", async ({
@@ -252,7 +259,7 @@ test("a poll begun before logout cannot resurrect signed-in state", async ({
       ),
     )
     .toBe(true);
-  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await desktopLogout(page);
   await expect(
     page.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeVisible();
@@ -287,7 +294,7 @@ test("open uses only the browser handoff and supports explicit retry", async ({
 });
 test("settings preserve drafts and service ownership", async ({ page }) => {
   await manager(page);
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await desktopNavigate(page, "设置");
   const field = page.getByRole("textbox", { name: "工作目录", exact: true });
   await field.fill("/workspace/next");
   await page.waitForTimeout(1200);
@@ -306,11 +313,16 @@ test("owned service settings keep stop and running-directory constraints", async
   page,
 }) => {
   await manager(page, { owned: true });
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await desktopNavigate(page, "设置");
   await expect(
     page.getByRole("button", { name: "保存本机设置", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "停止本地服务", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "取消", exact: true }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "确认停止", exact: true }).click();
+  await expect.poll(() => calls(page)).toContain("desktop_action:stop_server");
   expect(await calls(page)).toEqual([
     "desktop_start",
     "account_enable_default",
@@ -332,7 +344,7 @@ test("a new UI runtime always introduces itself even with a retained native gran
   expect(await calls(page)).toEqual([]);
   await page.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
   await expect
     .poll(() => calls(page))
@@ -364,12 +376,12 @@ test("settings failures are visible without losing the current phase", async ({
   page,
 }) => {
   await manager(page, { failSave: true });
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await desktopNavigate(page, "设置");
   await page.getByRole("button", { name: "保存本机设置", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("保存失败");
   await page.getByRole("button", { name: "返回", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
   expect(await calls(page)).toEqual([
     "desktop_start",

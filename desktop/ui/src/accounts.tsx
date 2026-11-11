@@ -10,8 +10,10 @@ import {
   generateCodeVerifier,
   generateState,
 } from "@logto/browser";
-import { Copy, ExternalLink, ShieldCheck } from "lucide-react";
+import { Copy, ExternalLink } from "lucide-react";
 import { createLocalJWKSet, jwtVerify, type JSONWebKeySet } from "jose";
+
+import { ConfirmDialog } from "./confirm";
 
 type AuthorizationStatus =
   | "signedOut"
@@ -395,8 +397,10 @@ export function accountStatusText(state: AccountSnapshot): string {
 }
 export function AccountActions({
   controller,
+  onLogout,
 }: {
   controller: AccountController;
+  onLogout?: () => void;
 }) {
   const { state, available, pending, signIn, cancel, logout } = controller;
   if (!available) return <span role="status">正在核验账号状态</span>;
@@ -422,7 +426,10 @@ export function AccountActions({
       return <button onClick={() => void cancel()}>取消登录</button>;
     case "signedIn":
       return (
-        <button disabled={pending} onClick={() => void logout()}>
+        <button
+          disabled={pending}
+          onClick={() => (onLogout ? onLogout() : void logout())}
+        >
           退出账号
         </button>
       );
@@ -508,6 +515,36 @@ export function AccountError({
     </div>
   );
 }
+export function remoteConnectionCount(
+  state: AccountSnapshot | null,
+): number | null {
+  const list = state?.remoteClients;
+  return Array.isArray(list) &&
+    list.length <= 4 &&
+    list.every(
+      (client) =>
+        client &&
+        typeof client.id === "string" &&
+        client.id.length > 0 &&
+        ["ios", "android", "desktop", "unknown"].includes(client.kind) &&
+        Number.isFinite(client.connectedAt) &&
+        client.connectedAt > 0 &&
+        client.connectedAt <= 8640000000000,
+    )
+    ? list.length
+    : null;
+}
+export function remoteStatusText(controller: AccountController): string {
+  const { state, available, remotePending, error } = controller;
+  if (!available || !state) return "状态暂不可用";
+  if (remotePending || state.busy) return "正在准备远程访问…";
+  if (!state.enabled)
+    return error || state.error ? "未能开启 · 重试" : "已关闭";
+  const count = remoteConnectionCount(state);
+  return count === null
+    ? "已开启 · 连接状态暂不可用"
+    : `已开启 · ${count} 个活动连接`;
+}
 export function AccountPage({
   localReady,
   controller,
@@ -519,15 +556,38 @@ export function AccountPage({
     controller;
   const portal = publicPortal(state, available);
   const busy = remotePending || Boolean(available && state?.busy);
+  const [disableConfirmation, setDisableConfirmation] = useState<string | null>(
+    null,
+  );
+  const [intent, setIntent] = useState<"enable" | "disable" | null>(null);
+  const owner = state?.subject ?? state?.accountLabel ?? null;
+  const count = remoteConnectionCount(state);
+  async function toggleRemote(disable: boolean) {
+    if (
+      !available ||
+      !state?.signedIn ||
+      busy ||
+      pending ||
+      (!disable && !localReady)
+    )
+      return;
+    if (disable && !state.enabled) return;
+    setDisableConfirmation(null);
+    setIntent(disable ? "disable" : "enable");
+    try {
+      await remoteAction(() =>
+        invoke(disable ? "account_disable" : "account_enable"),
+      );
+    } finally {
+      setIntent(null);
+    }
+  }
   const [copied, setCopied] = useState<{ url: string; message: string } | null>(
     null,
   );
   return (
     <section className="remote-panel" aria-label="远程使用">
-      <div className="panel-heading">
-        <ShieldCheck size={20} aria-hidden="true" />
-        <h2>远程访问</h2>
-      </div>
+      <p className="page-description">让同一账号的其他设备连接这台电脑。</p>
       <div className="remote-status-row">
         <p role="status">
           <span
@@ -535,34 +595,59 @@ export function AccountPage({
               available && state?.enabled ? "status-dot ready" : "status-dot"
             }
           />
-          {!available
+          {!available || !state
             ? "远程状态暂不可用"
             : busy
-              ? "正在准备远程访问…"
+              ? intent === "disable"
+                ? "正在关闭远程访问…"
+                : "正在准备远程访问…"
               : state?.enabled
                 ? "远程访问已开启"
                 : "远程访问未开启"}
         </p>
-        <button
-          disabled={
-            !available ||
-            pending ||
-            busy ||
-            (!state?.enabled && (!state?.signedIn || !localReady))
-          }
-          onClick={() =>
-            void remoteAction(() =>
-              invoke(state?.enabled ? "account_disable" : "account_enable"),
-            )
-          }
-        >
-          {state?.enabled
-            ? "关闭远程访问"
-            : controller.error
-              ? "重试开启远程"
-              : "开启远程访问"}
-        </button>
+        {!available || !state ? (
+          <span className="hint">状态未知</span>
+        ) : (
+          <button
+            role="switch"
+            aria-label={
+              state.enabled
+                ? "关闭远程访问"
+                : controller.error
+                  ? "重试开启远程"
+                  : "开启远程访问"
+            }
+            aria-checked={state.enabled}
+            disabled={
+              pending ||
+              busy ||
+              (!state.enabled && (!state.signedIn || !localReady))
+            }
+            onClick={() => {
+              if (state.enabled && count !== 0 && owner)
+                setDisableConfirmation(owner);
+              else void toggleRemote(state.enabled);
+            }}
+          >
+            {busy
+              ? intent === "disable"
+                ? "正在关闭…"
+                : "正在开启…"
+              : state.enabled
+                ? "关闭远程访问"
+                : controller.error
+                  ? "重试开启远程"
+                  : "开启远程访问"}
+          </button>
+        )}
       </div>
+      <p className="hint remote-impact">
+        {!available || !state
+          ? "恢复状态前无法更改远程访问。"
+          : state.enabled
+            ? "关闭会中断当前远程连接，本地工作区继续可用。"
+            : "本次登录手动关闭后保持关闭，可随时重新开启。"}
+      </p>
       <AccountError controller={controller} />
       <div className="remote-portal-block">
         <span className="address-heading">其他设备的账号入口</span>
@@ -645,6 +730,30 @@ export function AccountPage({
         </details>
       ) : (
         <p className="hint identity-unavailable">开启远程后可核对本机身份。</p>
+      )}
+      {disableConfirmation && (
+        <ConfirmDialog
+          title="关闭远程访问？"
+          confirmLabel="确认关闭远程"
+          disabled={
+            !available ||
+            !state?.enabled ||
+            owner !== disableConfirmation ||
+            pending ||
+            busy
+          }
+          onClose={() => setDisableConfirmation(null)}
+          onConfirm={() => {
+            if (owner === disableConfirmation) void toggleRemote(true);
+          }}
+        >
+          <p>
+            {count === null
+              ? "将断开当前远程连接。"
+              : `将断开当前 ${count} 个活动连接。`}
+            本地工作区继续可用。本次登录期间会保持关闭，直到你手动开启。
+          </p>
+        </ConfirmDialog>
       )}
     </section>
   );

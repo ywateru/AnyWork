@@ -1,5 +1,7 @@
 // Local UI regression: synthetic Tauri bridge only; no OAuth/cloud/Keychain calls.
 import assert from "node:assert/strict";
+import { readFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 import { chromium, expect } from "@playwright/test";
 const origin = process.argv[2] ?? "http://127.0.0.1:3229";
 const browser = await chromium.launch({
@@ -14,9 +16,27 @@ try {
   });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("**/*", (route) =>
-    route.request().url().startsWith(origin) ? route.continue() : route.abort(),
-  );
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    const root = path.resolve("desktop/ui/dist");
+    const file = path.resolve(
+      root,
+      `.${url.pathname === "/" ? "/index.html" : url.pathname}`,
+    );
+    if (!file.startsWith(root + path.sep)) return route.abort();
+    return route.fulfill({
+      contentType: file.endsWith(".html")
+        ? "text/html"
+        : file.endsWith(".js")
+          ? "application/javascript"
+          : file.endsWith(".css")
+            ? "text/css"
+            : "application/octet-stream",
+      body: await readFile(file),
+    });
+  });
+  await mkdir("artifacts", { recursive: true });
   await page.addInitScript(() => {
     const signedOut = () => ({
       authorizationStatus: "signedOut",
@@ -190,7 +210,7 @@ try {
   await expect(
     entry.getByRole("status").filter({ hasText: "尚未登录" }),
   ).toBeVisible();
-  await page.screenshot({ path: "/tmp/anywork-desktop-account-entry.png" });
+  await page.screenshot({ path: "artifacts/ui-v2-desktop-account-entry.png" });
   for (const [button, screen] of [
     ["创建账号", "register"],
     ["登录已有账号", "signIn"],
@@ -290,15 +310,20 @@ try {
     };
   });
   await expect(
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
+  ).toBeVisible();
+  await page.locator(".sidebar-account button").click();
+  await expect(
     page.getByRole("status").filter({ hasText: "已登录 · person@example.org" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "远程访问", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "重试保存账号", exact: true }),
   ).toHaveCount(0);
   await page.evaluate(() => {
     window.fixtureLocalReady = true;
   });
-  const enable = page.getByRole("button", {
+  const enable = page.getByRole("switch", {
     name: /^(开启远程访问|重试开启远程)$/,
   });
   await expect(enable).toBeEnabled();
@@ -375,7 +400,7 @@ try {
     .poll(() => page.evaluate(() => window.fixtureUrls.length))
     .toBe(keyboardBefore + 1);
   await page.screenshot({
-    path: "/tmp/anywork-desktop-unified-account-entry.png",
+    path: "artifacts/ui-v2-desktop-unified-account-entry.png",
     fullPage: true,
   });
   assert.deepEqual(errors, []);

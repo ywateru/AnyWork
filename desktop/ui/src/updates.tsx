@@ -37,15 +37,20 @@ export function useDesktopUpdates() {
   const [state, setState] = useState<UpdateSnapshot | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [available, setAvailable] = useState(false);
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
         const next = await invoke<UpdateSnapshot>("desktop_update_snapshot");
-        if (live) setState(next);
+        if (!next) throw new Error("更新状态暂不可用");
+        if (live) {
+          setState(next);
+          setAvailable(true);
+        }
       } catch {
-        /* The manager and its controls remain usable if updater IPC fails. */
+        if (live) setAvailable(false);
       }
       if (live) timer = setTimeout(poll, 1000);
     }
@@ -61,14 +66,22 @@ export function useDesktopUpdates() {
     setError("");
     try {
       const next = await invoke<UpdateSnapshot | null>(command, args);
-      if (next) setState(next);
+      if (next) {
+        setState(next);
+        setAvailable(true);
+      } else if (command === "desktop_update_install")
+        setState((previous) =>
+          previous
+            ? { ...previous, phase: "installing", showNotice: false }
+            : previous,
+        );
     } catch (e) {
       setError(String(e));
     } finally {
       setPending(false);
     }
   }
-  return { state, error, pending, action };
+  return { state, error, pending, available, action };
 }
 type Controller = ReturnType<typeof useDesktopUpdates>;
 export function UpdateNotice({
@@ -78,7 +91,7 @@ export function UpdateNotice({
   controller: Controller;
   open: () => void;
 }) {
-  if (!controller.state?.showNotice) return null;
+  if (!controller.available || !controller.state?.showNotice) return null;
   return (
     <div className="update-notice" role="status">
       <Download size={17} />
@@ -99,12 +112,13 @@ export function UpdateNotice({
   );
 }
 export function UpdatePage({ controller }: { controller: Controller }) {
-  const { state, error, pending, action } = controller;
+  const { state, error, pending, available, action } = controller;
   const [confirm, setConfirm] = useState<string | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const installing = state?.phase === "installing";
   const busy =
+    !available ||
     pending ||
     installing ||
     state?.phase === "checking" ||
@@ -118,8 +132,9 @@ export function UpdatePage({ controller }: { controller: Controller }) {
     setConfirm(null);
     confirmButton.current?.focus();
   }
-  const title =
-    state?.phase === "ready"
+  const title = !available
+    ? "更新状态暂不可用"
+    : state?.phase === "ready"
       ? `版本 ${state.version} 已准备好`
       : state?.phase === "downloading"
         ? `正在后台下载 ${state.version}`
@@ -136,23 +151,17 @@ export function UpdatePage({ controller }: { controller: Controller }) {
                   : "让 AnyWork 保持更新";
   return (
     <>
-      <header>
-        <div>
-          <h1>软件更新</h1>
-          <p>下载在后台完成，由你决定何时安装。</p>
-        </div>
-      </header>
+      <p className="page-description">下载在后台完成，由你决定何时安装。</p>
       <section className="update-overview" aria-label="更新状态">
         <div className="update-product">
           <img
             src={anyworkLogo}
             className="update-mark"
-            width="48"
-            height="48"
+            width="30"
+            height="30"
             alt=""
           />
           <div>
-            <h2>AnyWork</h2>
             <p>当前版本 {state?.currentVersion || appVersion}</p>
           </div>
         </div>
@@ -167,17 +176,19 @@ export function UpdatePage({ controller }: { controller: Controller }) {
           <div>
             <h3>{title}</h3>
             <p>
-              {state?.phase === "ready"
-                ? "更新包已下载并通过签名校验。稍后安装也可以继续工作。"
-                : state?.phase === "downloading"
-                  ? "你可以继续使用 AnyWork，下载完成后会显示轻量提醒。"
-                  : installing
-                    ? "正在安装并重新启动，请稍候。"
-                    : state?.phase === "unsupported"
-                      ? "请使用 macOS 应用、Windows 安装版或 Linux AppImage。开发构建和便携目录不自动替换文件。"
-                      : state?.phase === "error"
-                        ? "当前版本可以继续使用。启用自动更新时会在后台重试。"
-                        : "自动检查正式发行版。安装前会请你确认，不会自行重启。"}
+              {!available
+                ? "正在重新核验更新状态，恢复前不能安装或更改更新设置。"
+                : state?.phase === "ready"
+                  ? "更新包已下载并通过签名校验。稍后安装也可以继续工作。"
+                  : state?.phase === "downloading"
+                    ? "你可以继续使用 AnyWork，下载完成后会显示轻量提醒。"
+                    : installing
+                      ? "正在安装并重新启动，请稍候。"
+                      : state?.phase === "unsupported"
+                        ? "请使用 macOS 应用、Windows 安装版或 Linux AppImage。开发构建和便携目录不自动替换文件。"
+                        : state?.phase === "error"
+                          ? "当前版本可以继续使用。启用自动更新时会在后台重试。"
+                          : "自动检查正式发行版。安装前会请你确认，不会自行重启。"}
             </p>
           </div>
         </div>
@@ -257,7 +268,7 @@ export function UpdatePage({ controller }: { controller: Controller }) {
           aria-label="自动检查并后台下载"
           aria-checked={state?.enabled ?? true}
           className={`switch ${state?.enabled ? "on" : ""}`}
-          disabled={pending || !state?.supported || installing}
+          disabled={!available || pending || !state?.supported || installing}
           onClick={() =>
             void action("desktop_update_preferences", {
               enabled: !state?.enabled,
@@ -294,16 +305,13 @@ export function UpdatePage({ controller }: { controller: Controller }) {
           }
         }}
       >
-        <div className="install-symbol">
-          <RefreshCw size={24} />
-        </div>
         <h2 id="update-confirm-title">更新到 {confirm}？</h2>
         <p>
           AnyWork
-          将安装已下载的更新并重启。更新后先查看介绍并登录，再准备本地工作区；账号授权只留在内存，远程访问仍需明确开启。
+          将安装已下载的更新并重启。更新后先查看介绍并登录，再准备本地工作区；账号授权只留在内存。新登录和本地服务就绪后，默认尝试开启远程一次，可以随时关闭。
         </p>
         <p className="hint">
-          请在任务空闲时更新。仍有本应用管理的会话执行或等待确认时，会保留更新包，待任务结束后再试。工作目录、会话和访问密钥会保留。
+          请在任务空闲时更新。仍有本应用管理的会话执行、等待确认或无法核验任务状态时，会保留更新包，待任务结束后再试。工作目录、会话和访问密钥会保留。
         </p>
         {(error || state?.error) && (
           <p role="alert" className="error">
@@ -317,6 +325,7 @@ export function UpdatePage({ controller }: { controller: Controller }) {
           <button
             className="primary"
             disabled={
+              !available ||
               pending ||
               installing ||
               state?.phase !== "ready" ||

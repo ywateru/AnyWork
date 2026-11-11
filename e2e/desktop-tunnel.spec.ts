@@ -1,5 +1,16 @@
 import { test, expect } from "@playwright/test";
-import { manager, calls, signInFixture } from "./desktop-fixture";
+import {
+  manager as prepareManager,
+  calls,
+  signInFixture,
+  desktopNavigate,
+  desktopLogout,
+} from "./desktop-fixture";
+const manager: typeof prepareManager = async (page, options = {}) => {
+  await prepareManager(page, options);
+  if (!options.stage || options.stage === "console")
+    await desktopNavigate(page, "远程访问");
+};
 test("login prepares remote by default and identity remains verifiable", async ({
   page,
 }) => {
@@ -16,10 +27,10 @@ test("login prepares remote by default and identity remains verifiable", async (
   await expect(
     page.getByRole("textbox", { name: "设备公钥", exact: true }),
   ).toHaveAttribute("readonly", "");
-  await page.getByRole("button", { name: "关闭远程访问", exact: true }).click();
+  await page.getByRole("switch", { name: "关闭远程访问", exact: true }).click();
   await expect(page.getByText("远程访问未开启", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "返回", exact: true }).click();
+  await desktopNavigate(page, "设置");
+  await desktopNavigate(page, "远程访问");
   await page.waitForTimeout(1200);
   expect(await calls(page)).toEqual([
     "desktop_start",
@@ -28,11 +39,12 @@ test("login prepares remote by default and identity remains verifiable", async (
   ]);
   await page.reload();
   await page.getByRole("button", { name: "开始使用", exact: true }).click();
+  await desktopNavigate(page, "远程访问");
   await expect(page.getByText("远程访问未开启", { exact: true })).toBeVisible();
   await expect
     .poll(() => calls(page))
     .toEqual(["desktop_start", "account_enable_default"]);
-  await page.getByRole("button", { name: "开启远程访问", exact: true }).click();
+  await page.getByRole("switch", { name: "开启远程访问", exact: true }).click();
   await expect(page.getByText("远程访问已开启", { exact: true })).toBeVisible();
   expect(await calls(page)).toEqual([
     "desktop_start",
@@ -54,6 +66,7 @@ test("default failure leaves local access usable and details and retries require
   await expect(
     page.getByText("REMOTE_ENABLE_GRID_CONFIG", { exact: true }),
   ).toBeVisible();
+  await desktopNavigate(page, "工作区");
   await page
     .getByRole("button", { name: "打开本地工作区", exact: true })
     .click();
@@ -63,7 +76,8 @@ test("default failure leaves local access usable and details and retries require
     "account_enable_default",
     "desktop_open",
   ]);
-  await page.getByRole("button", { name: "重试开启远程", exact: true }).click();
+  await desktopNavigate(page, "远程访问");
+  await page.getByRole("switch", { name: "重试开启远程", exact: true }).click();
   expect(await calls(page)).toEqual([
     "desktop_start",
     "account_enable_default",
@@ -93,7 +107,7 @@ test("same-account portal actions preserve a pending or visible remote failure",
     "设备协调服务配置校验未通过",
   );
   await expect(
-    page.getByRole("button", { name: "重试开启远程", exact: true }),
+    page.getByRole("switch", { name: "重试开启远程", exact: true }),
   ).toBeEnabled();
   await page.getByText("诊断详情", { exact: true }).click();
   await expect(
@@ -107,7 +121,7 @@ test("same-account portal actions preserve a pending or visible remote failure",
   await expect(
     page.getByText("REMOTE_ENABLE_GRID_CONFIG", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await desktopLogout(page);
   await expect(
     page.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeVisible();
@@ -120,13 +134,14 @@ test("pending default remote does not block local open, settings or logout", asy
   await expect(
     page.getByText("正在准备远程访问…", { exact: true }),
   ).toBeVisible();
+  await desktopNavigate(page, "工作区");
   await page
     .getByRole("button", { name: "打开本地工作区", exact: true })
     .click();
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await desktopNavigate(page, "设置");
   await expect(page.getByText("连接与隐私说明", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "返回", exact: true }).click();
-  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await desktopLogout(page);
   await expect(
     page.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeVisible();
@@ -151,7 +166,7 @@ test("logout returns to account, preserving the running local service", async ({
   page,
 }) => {
   await manager(page, { enabled: true });
-  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await desktopLogout(page);
   await expect(
     page.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeVisible();
@@ -172,7 +187,7 @@ test("logout returns to account, preserving the running local service", async ({
   ]);
   await signInFixture(page);
   await expect(
-    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
   await expect
     .poll(() => calls(page))
@@ -268,7 +283,7 @@ test("active remote clients are live account data, not historical manager heartb
   await expect(
     region.getByText("还没有远程设备连接", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "关闭远程访问", exact: true }).click();
+  await page.getByRole("switch", { name: "关闭远程访问", exact: true }).click();
   await expect(region.getByText(/远程访问已关闭/)).toBeVisible();
 });
 test("unavailable account snapshot never invents zero clients or permits new open", async ({
@@ -299,9 +314,8 @@ test("unavailable account snapshot never invents zero clients or permits new ope
   await expect(
     region.getByText("还没有远程设备连接", { exact: true }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "打开本地工作区", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByText("状态未知", { exact: true })).toBeVisible();
+  await expect(page.getByRole("switch", { name: /远程/ })).toHaveCount(0);
   expect(await calls(page)).toEqual([
     "desktop_start",
     "account_enable_default",
@@ -383,14 +397,14 @@ test("disclosures support the keyboard and settings privacy does not fill the co
   await expect(
     page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await desktopNavigate(page, "设置");
   const privacy = page.getByText("连接与隐私说明", { exact: true });
   await privacy.focus();
   await privacy.press("Enter");
   await expect(
     page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
   ).toBeVisible();
-  await page.getByRole("button", { name: "返回", exact: true }).click();
+  await desktopNavigate(page, "远程访问");
   await expect(
     clients.getByText("1 个活动连接", { exact: true }),
   ).toBeVisible();
@@ -421,7 +435,7 @@ test("default remote waits for fresh account status after preparation completes"
     (window as unknown as { pendingStarts: (() => void)[] }).pendingStarts[0](),
   );
   await expect(
-    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+    page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
   expect(await calls(page)).toEqual(["desktop_start"]);
   await page.evaluate(
@@ -433,5 +447,7 @@ test("default remote waits for fresh account status after preparation completes"
   await expect
     .poll(() => calls(page))
     .toEqual(["desktop_start", "account_enable_default"]);
-  await expect(page.getByText("远程访问已开启", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "管理远程访问" }),
+  ).toContainText("已开启");
 });

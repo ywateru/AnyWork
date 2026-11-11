@@ -7,6 +7,7 @@ type Options = {
   owned?: boolean;
   off?: boolean;
   failSave?: boolean;
+  failStop?: boolean;
   failOpen?: boolean;
   holdOpen?: boolean;
   signedIn?: boolean;
@@ -200,6 +201,9 @@ export async function manager(page: Page, options: Options = {}) {
           if (command === "desktop_account_portal") return;
           if (command === "desktop_action") {
             if (args?.action?.type === "stop_server") {
+              if (!snapshot.owned) throw "外部服务不属于本应用。";
+              if (opts.failStop)
+                throw "任务正在执行或状态无法核验，请空闲后重试。";
               Object.assign(snapshot, {
                 service: "off",
                 authorized: false,
@@ -275,7 +279,7 @@ export async function manager(page: Page, options: Options = {}) {
     await page.getByRole("button", { name: "开始使用", exact: true }).click();
   if (!options.stage || options.stage === "console") {
     await expect(
-      page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+      page.getByRole("heading", { name: "这台电脑", exact: true }),
     ).toBeVisible();
     await expect.poll(() => calls(page)).toContain("account_enable_default");
   }
@@ -299,4 +303,30 @@ export async function signInFixture(page: Page, subject = "synthetic-owner") {
       ),
     subject,
   );
+}
+
+export async function desktopNavigate(
+  page: Page,
+  name: "工作区" | "远程访问" | "设置" | "更新" | "账号",
+) {
+  const sidebar = page.getByRole("complementary", { name: "应用侧栏" });
+  const target =
+    name === "账号"
+      ? sidebar.locator(".sidebar-account button")
+      : sidebar.getByRole("button", { name, exact: true });
+  if (!(await target.isVisible()))
+    await page
+      .getByRole("button", { name: "展开或收起导航", exact: true })
+      .click();
+  await target.click();
+}
+export async function desktopLogout(page: Page) {
+  if (
+    !(await page
+      .getByRole("button", { name: "退出账号", exact: true })
+      .isVisible())
+  )
+    await desktopNavigate(page, "账号");
+  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await page.getByRole("button", { name: "确认退出账号", exact: true }).click();
 }
