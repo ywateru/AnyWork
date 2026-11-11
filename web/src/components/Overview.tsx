@@ -1,10 +1,4 @@
-import {
-  ArrowUpRight,
-  Layers,
-  LoaderCircle,
-  MessageSquare,
-  Plus,
-} from "lucide-react";
+import { ArrowUpRight, LoaderCircle, MessageSquare, Plus } from "lucide-react";
 import type { Session } from "../types";
 import { Button } from "./ui/button";
 export default function Overview({
@@ -30,7 +24,12 @@ export default function Overview({
     <div className="welcome overview-page">
       <div className="overview-intro">
         <div className="overview-mark">
-          <Layers size={25} />
+          <img
+            src={import.meta.env.BASE_URL + "icon.svg"}
+            width="28"
+            height="28"
+            alt=""
+          />
         </div>
         <div className="eyebrow">AnyWork</div>
         <h1>从哪里开始？</h1>
