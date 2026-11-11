@@ -35,3 +35,5 @@ Native 作者已观察到正式 CyberGrid `/api/v1/auth/config` 在直连路径�
 额度周期已核实为月度，供应商统计 `total_monthly_requests=521193`（read499266/write21927）。[已核验的官方价格页](https://upstash.com/pricing/redis)明确Free每月500K；PAYG每100K命令0.20美元；供应商请求错误与月度统计共同确认本次耗尽的是月度上限。统计口径/时点与单个拒绝错误中的500030分别记录，不假称实时计数相同。可选等待额度重置或经使用者明确授权改按量并设置预算；当前未变更套餐。
 
 待使用者决策的具体恢复选项：保留原数据库与namespace，先核对/设置月预算5美元，再调用官方 [change-plan](https://upstash.com/docs/devops/developer-api/redis/change_plan) 切换 `payg`（`auto_upgrade=false`、`prod_pack_enabled=false`），并复核原namespace epoch和公开配置恢复。预算接口见 [update-budget](https://upstash.com/docs/devops/developer-api/redis/update_budget)。该预算是供应商的月度节流机制，不能描述为无延迟硬性支出上限；若服务商要求绑定付款方式，由使用者在官方控制台完成。此选项尚未执行，不含付费授权。
+
+恢复方案重要补充（官方当前说明）：[Upgrade Your Database](https://upstash.com/docs/redis/howto/upgrade-database)明确新增付款方式会将账号内所有免费资源转为按量，不能保证仅升级这一数据库。因此未获账号层面付费授权前不执行上述 change-plan；若需要绑定付款方式，必须由使用者操作。已通过检索核对官方 change-plan/update-budget 请求字段与[预算FAQ](https://upstash.com/docs/common/account/faq)，但仍须变更前读取当前套餐和预算，不能仅据历史文档假定允许单库升级。
