@@ -52,6 +52,7 @@ Web 不重做消息、输入框、审批与工具面板；必要外层属性可�
 托管登录品牌实施范围：实际 Logto 仅支持 third-party 的应用级体验，而当前库存仅 AnyWork SPA、Native 与协调 M2M。独立只读核验允许本轮在已授权登录重设计内，仅 PATCH 共享 `/sign-in-exp` 的 `branding` 与 `color`：正式 canonical 图标用于明暗 logo/favicon，主色 `#171717`/`#FFFFFF`，保持禁用暗色。账号方法、注册规则、授权、连接器、terms 等其余字段必须深度相等。私有保留 before/payload/readback，提交前重读并拒绝并发差异；响应未知只读对账。现有配置工具仍不改共享体验，不为品牌把应用改成 third-party。品牌与中性色配置不代表重写 Logto 托管布局。
 
 - 设计 v2：独立核验通过，见 `docs/design/desktop-refactor/review.md`。
-- 实施：`codex/ui-v2-desktop` 与 `codex/ui-v2-web` 隔离工作树已完成首轮实现，作者行为与布局检查通过，准备提交独立候选。
+- 实施：Web `81a97709e37d3a1df5cd6b592caad1d65bbdb654`、Desktop `4be6ef378074487d8c2736f2f63a01eb4a36b899` 已分别独立 pass 并顺序合并。见 [Web 独立审查](../reviews/ui-v2-web-independent.md) 与 [桌面独立审查](../reviews/ui-v2-desktop-independent.md)。
 - 托管品牌：一次窄范围 PATCH 已提交且独立验收 pass，见 `docs/plan/reviews/ui-v2-hosted-branding.md`。正式页 1440/390 图标加载与黑色主按钮通过；Logto 原有背景和页脚保留。
-- 独立实现验收、合并、发行、线上检查：待完成。
+- 合并后的 Web typecheck、353 unit + 8 private-state、build，以及两端格式检查通过；桌面 build、根目录 account-entry 与 updater 脚本通过。初次 updater 调用未指定本机 Chrome 而缺少 Playwright 自带浏览器，改用 `PLAYWRIGHT_CHANNEL=chrome` 后通过，不是产品失败。574 项 Web 与 96 项桌面 E2E 正在隔离运行。
+- 发行、线上检查：待完成，发布预检为下一版 `0.1.26`。
