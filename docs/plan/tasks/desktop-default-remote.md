@@ -34,8 +34,8 @@ Native 作者已观察到正式 CyberGrid `/api/v1/auth/config` 在直连路径�
 
 额度周期已核实为月度，供应商统计 `total_monthly_requests=521193`（read499266/write21927）。[已核验的官方价格页](https://upstash.com/pricing/redis)明确Free每月500K；PAYG每100K命令0.20美元；供应商请求错误与月度统计共同确认本次耗尽的是月度上限。统计口径/时点与单个拒绝错误中的500030分别记录，不假称实时计数相同。可选等待额度重置或经使用者明确授权改按量并设置预算；当前未变更套餐。
 
-待使用者决策的具体恢复选项：保留原数据库与namespace，切换按量计费，并尝试设置月预算5美元。官方已核验价格为每100K命令0.20美元；套餐/预算API的当前请求schema、预算生效方式及账号其他免费资源是否受影响尚需在实际变更前核实。此次官方相关操作文档读取返回HTTP错误，不将暂存的change-plan/update-budget字段当作已核验事实，也不承诺仅此单库计费或硬性支出上限。若服务商要求绑定付款方式，由使用者在官方控制台完成；未获付费授权前不执行变更。
+此前评估的恢复选项为保留原数据库与namespace后改按量计费。2026-11-11使用者已明确改用自部署 TLS Redis，此方向被[自部署切换任务](cybergrid-selfhost-redis.md)取代；未调用付费或预算接口、未升级 Upstash 套餐。
 
 ## delivery status
 
-Native/UI及审查发现修正已合并，独立源码结论PASS；[合并检查](../reviews/desktop-default-remote-merged.md)记录54项Native、20项HTTP、84项桌面浏览器回归通过。新版本按精确源码检查发布，云端恢复仍等待使用者的付费决策或月度额度重置，因此本任务保留进行中，不将协调服务错误标记为已恢复。
+Native/UI及审查发现修正已合并，独立源码结论PASS；[合并检查](../reviews/desktop-default-remote-merged.md)记录54项Native、20项HTTP、84项桌面浏览器回归通过。[v0.1.25](https://github.com/ywateru/AnyWork/releases/tag/v0.1.25)已从精确源码 `4d0290f4079757f30ac65b05f831f19432e7a441` 发布，GitHub Checks、安装包发布和官网部署均成功。自部署 Redis 新部署已 READY，真实协调恢复范围由独立上线报告补齐；此次存储配置更新不移动已发布tag、不另发客户端版本、不替换本机运行中的应用或服务。

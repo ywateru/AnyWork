@@ -1,10 +1,20 @@
-> 2026-11-11 当前故障：正式 CyberGrid 配置接口返回 HTTP503，已通过真实 Rust SDK 重现；Upstash 免费月度命令额度耗尽（供应商固定错误 `max requests limit exceeded`、上限500000）。Vercel部署READY与Redis管理状态active不表示协调请求可用。客户端本轮默认远程与精简UI改进不重置云额度；恢复选项与未授权的按量计费方案见[当前任务](plan/tasks/desktop-default-remote.md)。此前下述成功证据均保留原验收时点。
+> 2026-11-11 存储切换：此前正式 CyberGrid 配置接口的 HTTP503 已确认由 Upstash 免费月度命令额度耗尽引起（供应商固定错误 `max requests limit exceeded`、上限500000）。现按使用者授权改用 `redis.x.aixgg.com:6379` 自部署 TLS Redis，严格校验可信证书链与域名，不使用 IP 或明文回退。新 deployment `dpl_7Xvjo9kSsDNoWycj57W4zLyP4Xz4` 已 READY，正式 alias 与新环境读回一致，原版 RedisStore.ready 初始化通过；独立上线验收见[切换报告](plan/reviews/cybergrid-selfhost-redis-independent.md)。旧 Upstash 与旧不可变 deployment 保留，没有套餐升级或业务数据迁移。此前下述证据均保留原验收时点。
 
 > 最新用户修订：本轮切换到自部署Logto default业务租户（公开endpoint https://auth.x.aixgg.com，Console https://logto.x.aixgg.com/）。新应用/权限已独立核验，专用CyberGrid和[正式主页](https://anywork-tau.vercel.app/)均READY；真实Native/Web公网加密链、重启换钥、正式域名与390/1440视口通过，本机更新结果见[当前集成状态](plan/reviews/account-selfhost-cutover-01.md)。下方Cloud Development配置保留为此前证据，不作为最终部署默认值。不迁移秘密或用户业务数据。
 
 # AnyWork 云服务配置与验收
 
-日期：2026-11-09（Asia/Shanghai）。本阶段按最新用户要求使用自部署 Logto default 业务租户；此前 Cloud Development 资源保留，不需要购买 Cloud 生产套餐。本页记录实际资源、公开客户端配置与交付限制。云端只有 Logto 账号/配置、CyberGrid 协调服务及其 Upstash Redis；没有 AnyWork 业务数据库或业务代理。业务内容与端到端私钥留用户设备。账号与本机安全流程以[方案](account-device-cloud-review.md)为准。
+日期：2026-11-09（Asia/Shanghai），当前存储更新于2026-11-11。本阶段按最新用户要求使用自部署 Logto default 业务租户；此前 Cloud Development 资源保留，不需要购买 Cloud 生产套餐。本页记录实际资源、公开客户端配置与交付限制。当前正式云端只有 Logto 账号/配置、CyberGrid 协调服务及其自部署 TLS Redis；没有 AnyWork 业务数据库或业务代理。业务内容与端到端私钥留用户设备。账号与本机安全流程以[方案](account-device-cloud-review.md)为准。
+
+## 当前正式 Redis（2026-11-11）
+
+CyberGrid 使用 `rediss://` 连接 `redis.x.aixgg.com:6379`、DB0、专用 ACL 用户；默认可信链与证书域名验证均开启，Let's Encrypt 证书已实际核验。密码和完整连接 URL 仅存仓库外0600操作材料与 Vercel encrypted production env，不进入源码、客户端、日志或上传产物。公网 IP 不用于连接 URL，不设置 `NODE_TLS_REJECT_UNAUTHORIZED=0`，不回退到明文。
+
+运行环境新增 `REDIS_URL` 与 `CYBERGRID_REDIS_TRANSPORT=tcp`，删除 `UPSTASH_REDIS_REST_URL`、`UPSTASH_REDIS_REST_TOKEN`；其余8项公开身份、目录与来源配置保持原值。固定 CyberGrid 适配源码 `c923cc232e74e4aff78fa3c82916ce9fb9a283b5` 和产物 `aa53c54c1306560a12bdb7c35f2a71e91c31aff42474647f1cbe7fd3edb5cd10` 沿用，未引入运行期 Management M2M。正式域名、Logto 应用和客户端配置无需随存储切换改动。
+
+独立 operation `baa4abc0-b698-4e81-98be-f443812549fa` 已执行原版 `RedisStore.ready()`，通过专用 namespace 的实际 Lua 初始化后才变更 Vercel 环境和提交一次部署。新 READY deployment 为 `dpl_7Xvjo9kSsDNoWycj57W4zLyP4Xz4`，config SHA256 为 `5eeaeee0f93cad5e869deae2c150c56ff732b9378f2d1662887573bfffb67189`。namespace 名称仍为 `anywork:selfhost:v1`，新 epoch 为 `8bc766fc-e282-437c-9f4c-f36e7c14aa8a`；没有迁移旧会话、seed或业务数据，已有远程连接可能需要重新连接。
+
+旧 Upstash、旧不可变 deployment 与私有完整环境快照保留。`scripts/cloud/redis-cutover.py` 用精确候选、helper/CLI/artifact哈希和新鲜内部操作凭据约束 apply/rollback；未知提交只读 inspect，不重放部署。回退需独立操作凭据且检查 alias/环境仍属于本次操作；旧 Upstash 额度仍耗尽，恢复旧配置不保证服务健康。执行前及上线后的证据与范围见[独立报告](plan/reviews/cybergrid-selfhost-redis-independent.md)。以下旧资源和部署记录保留为历史证据。
 
 ## 已创建的资源
 
@@ -123,7 +133,7 @@ vercel deploy --prebuilt --prod
 
 配置仅创建/更新 AnyWork 拥有的 SPA、Native、独立远控 resource/connect 和默认用户 role，并启用 Account API 所需 customData Edit、name/avatar/email ReadOnly；不修改用户提供的管理 M2M、不整体覆盖共享 sign-in experience。当前租户只有用户名与密码注册/登录且没有邮件连接器，因此保持现状，不能宣称邮箱验证或邮件投递可用。
 
-协调服务使用独立项目 `anywork-cybergrid-selfhost` 与专用 Upstash 内独立 namespace `anywork:selfhost:v1`，不得重置 Development 数据。固定上游目录硬编码 `origin/api` 与 `all`，而此自部署系统 Management resource 仅提供 `all`；本轮采用显式公开应用目录适配，运行期仅接收已核验的 SPA/Native ID/type，完全不配置 Management M2M ID/secret，也不伪造只读管理 scope。固定 issuer/audience/client/connect 校验保持不变。最终精确源码与真实链路审查通过后，前端已发布，见[正式主页证据](plan/reviews/account-homepage-selfhost-live.md)。
+协调服务使用独立项目 `anywork-cybergrid-selfhost` 与 namespace `anywork:selfhost:v1`；2026-11-11已从专用 Upstash 切至自部署 TLS Redis 并初始化新协调 epoch，不重置旧存储或 Development 数据。固定上游目录硬编码 `origin/api` 与 `all`，而此自部署系统 Management resource 仅提供 `all`；本轮采用显式公开应用目录适配，运行期仅接收已核验的 SPA/Native ID/type，完全不配置 Management M2M ID/secret，也不伪造只读管理 scope。固定 issuer/audience/client/connect 校验保持不变。最终精确源码与真实链路审查通过后，前端已发布，见[正式主页证据](plan/reviews/account-homepage-selfhost-live.md)。
 
 ### 自部署配置与协调发布恢复
 

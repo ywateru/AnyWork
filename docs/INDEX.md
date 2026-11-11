@@ -1,6 +1,7 @@
 # Documentation index
 
 - [登录后默认远程与精简控制台](plan/tasks/desktop-default-remote.md)：当前用户修订，修正协调配置读取失败，支持会话内手动关闭。
+- [自部署 TLS Redis 切换](plan/tasks/cybergrid-selfhost-redis.md) · [独立验收](plan/reviews/cybergrid-selfhost-redis-independent.md)：替代已耗尽免费月额度的 Upstash，保持账号与端到端授权绑定。
 
 - [桌面启动介绍、登录与连接控制台](desktop-onboarding-layout.md) · [Native 任务](plan/tasks/desktop-onboarding-native.md) · [UI 任务](plan/tasks/desktop-onboarding-ui.md)：当前新一轮用户要求，先介绍和登录，随后准备服务并显示真实连接。
 - [给 CyberGrid 开发组的使用反馈与改进要求（2026-11-10）](cybergrid-product-feedback.md)：统一账号连接前的能力、分工与验收讨论稿。
