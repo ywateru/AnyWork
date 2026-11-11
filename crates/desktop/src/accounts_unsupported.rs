@@ -55,6 +55,10 @@ pub async fn account_enable() -> Result<(), String> {
     Err(unsupported())
 }
 #[tauri::command]
+pub async fn account_enable_default() -> Result<(), String> {
+    Err(unsupported())
+}
+#[tauri::command]
 pub async fn account_disable() -> Result<(), String> {
     Ok(())
 }
@@ -74,5 +78,6 @@ mod tests {
         assert_eq!(snapshot["accountPortalUrl"], Handle.portal_url());
         assert!(account_begin().await.is_err());
         assert!(account_enable().await.is_err());
+        assert!(account_enable_default().await.is_err());
     }
 }
