@@ -71,10 +71,52 @@ test("default failure leaves local access usable and details and retries require
     "account_enable",
   ]);
 });
+test("same-account portal actions preserve a pending or visible remote failure", async ({
+  page,
+}) => {
+  await manager(page, { holdEnable: true, failEnable: true });
+  await expect(
+    page.getByText("正在准备远程访问…", { exact: true }),
+  ).toBeVisible();
+  const portal = page.getByRole("button", {
+    name: "打开账号入口",
+    exact: true,
+  });
+  await portal.click();
+  await expect(portal).toBeEnabled();
+  await page.evaluate(() =>
+    (
+      window as unknown as { pendingEnables: (() => void)[] }
+    ).pendingEnables[0](),
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "设备协调服务配置校验未通过",
+  );
+  await expect(
+    page.getByRole("button", { name: "重试开启远程", exact: true }),
+  ).toBeEnabled();
+  await page.getByText("诊断详情", { exact: true }).click();
+  await expect(
+    page.getByText("REMOTE_ENABLE_GRID_CONFIG", { exact: true }),
+  ).toBeVisible();
+  await portal.click();
+  await expect(portal).toBeEnabled();
+  await expect(page.getByRole("alert")).toContainText(
+    "设备协调服务配置校验未通过",
+  );
+  await expect(
+    page.getByText("REMOTE_ENABLE_GRID_CONFIG", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "登录已有账号", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
 test("pending default remote does not block local open, settings or logout", async ({
   page,
 }) => {
-  await manager(page, { holdEnable: true });
+  await manager(page, { holdEnable: true, failEnable: true });
   await expect(
     page.getByText("正在准备远程访问…", { exact: true }),
   ).toBeVisible();
@@ -97,6 +139,7 @@ test("pending default remote does not block local open, settings or logout", asy
   await expect(
     page.getByRole("button", { name: "打开本地工作区", exact: true }),
   ).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
   expect(await calls(page)).toEqual([
     "desktop_start",
     "account_enable_default",

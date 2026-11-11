@@ -245,8 +245,28 @@ export function useAccountController() {
   const pending = operations > 0;
   const [error, setError] = useState("");
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [remoteIssue, setRemoteIssue] = useState<ReturnType<
+    typeof actionError
+  > | null>(null);
+  const remoteGeneration = useRef(0);
+  const authorizationGeneration = useRef(0);
   const [available, setAvailable] = useState(false);
   const generation = useRef(0);
+  const authorizationIdentity = useRef<string | null | undefined>(undefined);
+  function acceptSnapshot(next: AccountSnapshot) {
+    const identity =
+      next.authorizationStatus === "signedIn" && next.signedIn
+        ? (next.subject ?? next.accountLabel)
+        : null;
+    if (authorizationIdentity.current !== identity) {
+      authorizationIdentity.current = identity;
+      ++authorizationGeneration.current;
+      ++remoteGeneration.current;
+      setRemoteIssue(null);
+    }
+    setState(next);
+    setAvailable(true);
+  }
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -255,8 +275,7 @@ export function useAccountController() {
       try {
         const next = await invoke<AccountSnapshot>("account_snapshot");
         if (active && owner === generation.current) {
-          setState(next);
-          setAvailable(true);
+          acceptSnapshot(next);
         }
       } catch {
         if (active && owner === generation.current) setAvailable(false);
@@ -275,29 +294,46 @@ export function useAccountController() {
     valid = () => true,
   ) {
     const owner = ++generation.current;
+    const remoteOwner = remote ? ++remoteGeneration.current : 0;
+    const authorizationOwner = authorizationGeneration.current;
+    // Portal/copy actions order snapshots but do not own a remote failure.
+    // Authorization actions synchronously revoke remote ownership below.
+    const isCurrent = () =>
+      valid() &&
+      (remote
+        ? remoteOwner === remoteGeneration.current &&
+          authorizationOwner === authorizationGeneration.current
+        : owner === generation.current);
+    const isCurrentAuthorization = () =>
+      valid() &&
+      authorizationOwner === authorizationGeneration.current &&
+      (!remote || remoteOwner === remoteGeneration.current);
     const setCount = remote ? setRemoteOperations : setOperations;
     setCount((count) => count + 1);
     setError("");
     setErrorCode(null);
+    if (remote) setRemoteIssue(null);
     try {
       await fn();
     } catch (error) {
-      if (owner === generation.current && valid()) {
+      if (isCurrent()) {
         const issue = actionError(error);
-        setError(issue.message);
-        setErrorCode(issue.code);
+        if (remote) setRemoteIssue(issue);
+        else {
+          setError(issue.message);
+          setErrorCode(issue.code);
+        }
       }
     } finally {
-      if (owner === generation.current && valid()) {
+      if (isCurrent()) {
         const finalOwner = ++generation.current;
         try {
           const next = await invoke<AccountSnapshot>("account_snapshot");
-          if (finalOwner === generation.current) {
-            setState(next);
-            setAvailable(true);
+          if (finalOwner === generation.current && isCurrentAuthorization()) {
+            acceptSnapshot(next);
           }
         } catch {
-          if (finalOwner === generation.current) {
+          if (finalOwner === generation.current && isCurrentAuthorization()) {
             setAvailable(false);
             setError(message);
           }
@@ -305,6 +341,12 @@ export function useAccountController() {
       }
       setCount((count) => count - 1);
     }
+  }
+  function authorizationAction(fn: () => Promise<unknown>) {
+    ++authorizationGeneration.current;
+    ++remoteGeneration.current;
+    setRemoteIssue(null);
+    return action(fn);
   }
   // If IPC failed during cleanup, retain an explicit cancellation action for
   // the matching memory adapter even when a later native snapshot is signed out.
@@ -322,15 +364,16 @@ export function useAccountController() {
     available,
     pending,
     remotePending: remoteOperations > 0,
-    error,
-    errorCode,
+    error: remoteIssue?.message ?? error,
+    errorCode: remoteIssue ? remoteIssue.code : errorCode,
     action,
     remoteAction: (fn: () => Promise<unknown>, valid?: () => boolean) =>
       action(fn, true, valid),
-    signIn: (mode: "register" | "signIn") => action(() => login(mode)),
-    cancel: () => action(() => clearLogin()),
+    signIn: (mode: "register" | "signIn") =>
+      authorizationAction(() => login(mode)),
+    cancel: () => authorizationAction(() => clearLogin()),
     logout: () =>
-      action(async () => {
+      authorizationAction(async () => {
         await invoke("account_logout");
         await clearLogin();
       }),
