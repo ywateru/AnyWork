@@ -32,4 +32,4 @@ Native 作者已观察到正式 CyberGrid `/api/v1/auth/config` 在直连路径�
 
 独立复核进一步确认：Upstash 管理信息为 active/free，`db_request_limit=500000`；协调 namespace 的只读操作得到供应商固定错误 `max requests limit exceeded`，计数 `500030/500000`。PING/TYPE 能成功不表示协调所需的 EVAL 可用。当前服务故障有直接额度证据，不需要修改客户端绑定或绕过校验。付费方案与费用另行确认；在未授权前不改套餐、不清空/迁移 namespace。
 
-额度周期已核实为月度，供应商统计 `total_monthly_requests=521193`（read499266/write21927）。[官方故障说明](https://upstash.com/docs/redis/troubleshooting/max_requests_limit)明确对应 max monthly requests。[官方价格](https://upstash.com/pricing/redis)：Free每月500K；PAYG每100K命令0.20美元。统计口径/时点与单个拒绝错误中的500030分别记录，不假称实时计数相同。可选等待额度重置或经使用者明确授权改按量并设置预算；当前未变更套餐。
+额度周期已核实为月度，供应商统计 `total_monthly_requests=521193`（read499266/write21927）。[已核验的官方价格页](https://upstash.com/pricing/redis)明确Free每月500K；PAYG每100K命令0.20美元；供应商请求错误与月度统计共同确认本次耗尽的是月度上限。统计口径/时点与单个拒绝错误中的500030分别记录，不假称实时计数相同。可选等待额度重置或经使用者明确授权改按量并设置预算；当前未变更套餐。
