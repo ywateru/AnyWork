@@ -1,7 +1,6 @@
 import {
   Globe2,
   Laptop,
-  LockKeyhole,
   Monitor,
   Smartphone,
   Check,
@@ -45,20 +44,6 @@ export function Introduction({ next }: { next: () => void }) {
         <p className="intro-description">
           会话、文件与终端由这台电脑处理。本地在浏览器工作；在外登录同一账号，选择这台电脑继续。
         </p>
-        <div className="intro-capabilities">
-          <p>
-            <Monitor size={18} aria-hidden="true" />
-            本机浏览器里的完整工作区
-          </p>
-          <p>
-            <Smartphone size={18} aria-hidden="true" />
-            手机或网页继续同一份工作
-          </p>
-          <p>
-            <LockKeyhole size={18} aria-hidden="true" />
-            远程连接端到端加密
-          </p>
-        </div>
         <button className="primary intro-start" onClick={next}>
           开始使用
           <ArrowRight size={17} aria-hidden="true" />

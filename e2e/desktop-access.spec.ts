@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { manager, calls } from "./desktop-fixture";
+import { manager, calls, desktopNavigate } from "./desktop-fixture";
 
 // Production UI and synthetic IPC. Clipboard captures only this test's writes.
 async function clipboard(
@@ -41,11 +41,15 @@ test("local address follows saved snapshots, preserves drafts and opens through 
   await clipboard(page);
   await manager(page, { port: 9472 });
   await expect(address(page)).toHaveText("http://127.0.0.1:9472/");
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await desktopNavigate(page, "设置");
   await page
     .getByRole("spinbutton", { name: "本机端口", exact: true })
     .fill("8531");
   await page.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "放弃未保存的更改？" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "放弃更改", exact: true }).click();
   await expect(address(page)).toHaveText("http://127.0.0.1:9472/");
   await page.evaluate(() => {
     (
@@ -66,10 +70,10 @@ test("local address follows saved snapshots, preserves drafts and opens through 
     "account_enable_default",
     "desktop_open",
   ]);
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await desktopNavigate(page, "设置");
   await expect(
     page.getByRole("spinbutton", { name: "本机端口", exact: true }),
-  ).toHaveValue("8531");
+  ).toHaveValue("9473");
 });
 
 test("missing service snapshot suspends readiness without another start", async ({
@@ -85,7 +89,7 @@ test("missing service snapshot suspends readiness without another start", async 
   await expect(page.getByText(/本机状态暂不可用/)).toBeVisible();
   await expect(
     page.getByRole("button", { name: "打开本地工作区", exact: true }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
   expect(await calls(page)).toEqual([
     "desktop_start",
     "account_enable_default",
@@ -160,6 +164,7 @@ test("remote portal comes from the public snapshot and copies only its bare HTTP
 }) => {
   await clipboard(page);
   await manager(page, { portal: "https://selfhost.fixture.invalid/app/" });
+  await desktopNavigate(page, "远程访问");
   await expect(page.getByTestId("account-portal")).toHaveText(
     "https://selfhost.fixture.invalid/app/",
   );
@@ -186,6 +191,7 @@ for (const portal of [
   }) => {
     await clipboard(page);
     await manager(page, { portal });
+    await desktopNavigate(page, "远程访问");
     await expect(page.getByTestId("account-portal")).toHaveText(
       "账号入口暂不可用",
     );

@@ -70,7 +70,11 @@ try {
           )
             window.updateCalls.push({ command, args });
           const s = window.updateFixture;
-          if (command === "desktop_update_snapshot") return { ...s };
+          if (command === "desktop_update_snapshot") {
+            if (window.updateFixtureUnavailable)
+              throw new Error("Fixture updater unavailable");
+            return { ...s };
+          }
           if (command === "desktop_update_preferences") {
             s.enabled = args.enabled;
             return { ...s };
@@ -84,6 +88,8 @@ try {
             return { ...s };
           }
           if (command === "desktop_update_install") {
+            if (window.updateInstallBlocked)
+              throw "任务仍在执行或状态未知，暂不能更新。";
             if (args.version !== s.version) throw new Error("Version changed");
             s.phase = "installing";
             s.showNotice = false;
@@ -177,6 +183,24 @@ try {
   await expect(
     page.getByRole("button", { name: "更新并重启", exact: true }),
   ).toBeVisible();
+  await page.evaluate(() => {
+    window.updateFixtureUnavailable = true;
+  });
+  await expect(
+    page.getByText("更新状态暂不可用", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "更新并重启", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("switch", { name: "自动检查并后台下载" }),
+  ).toBeDisabled();
+  await page.evaluate(() => {
+    window.updateFixtureUnavailable = false;
+  });
+  await expect(
+    page.getByRole("button", { name: "更新并重启", exact: true }),
+  ).toBeEnabled();
   await page.getByRole("switch", { name: "自动检查并后台下载" }).click();
   await expect(page.getByRole("switch")).toHaveAttribute(
     "aria-checked",
@@ -213,6 +237,22 @@ try {
   await expect(
     page.getByRole("dialog", { name: "更新到 0.1.3？" }),
   ).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("默认尝试开启远程一次");
+  await page.evaluate(() => {
+    window.updateInstallBlocked = true;
+  });
+  await page.getByRole("button", { name: "确认更新", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toHaveText(
+    "任务仍在执行或状态未知，暂不能更新。",
+  );
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("button", { name: "确认更新", exact: true }),
+  ).toBeEnabled();
+  await page.evaluate(() => {
+    window.updateInstallBlocked = false;
+  });
   await page.getByRole("button", { name: "确认更新", exact: true }).click();
   await expect(
     page.getByText("正在更新 AnyWork", { exact: true }),
@@ -221,6 +261,7 @@ try {
     window.updateCalls.filter((c) => c.command === "desktop_update_install"),
   );
   assert.deepEqual(installs, [
+    { command: "desktop_update_install", args: { version: "0.1.3" } },
     { command: "desktop_update_install", args: { version: "0.1.3" } },
   ]);
   assert.deepEqual(errors, []);
@@ -248,7 +289,7 @@ try {
     false,
   );
   console.log(
-    "Desktop updater UI passed: quiet download/failure, deferral, preferences, confirmation, stale-version rejection, and explicit install.",
+    "Desktop updater UI passed: quiet download/failure, deferral, preferences, confirmation, stale-version rejection, unknown-state suspension, native busy refusal and explicit install.",
   );
 } finally {
   await browser.close();
