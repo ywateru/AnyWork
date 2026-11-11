@@ -1,5 +1,9 @@
 # DeepSeek Harness delivery
 
+## Current UI v2 delivery
+
+[统一界面 v2](tasks/ui-refactor-v2.md) 正在按已核验设计实施：精简桌面控制台与 Web 登录、连接、设备入口，统一六角标志。Web 对话内部冻结。两端隔离开发、独立验收与合并检查通过后，按既有发行流程更新正式网站。
+
 ## Current desktop follow-up
 
 [Default remote access and compact console](tasks/desktop-default-remote.md) is in progress against released v0.1.24. Login and verified local readiness trigger one Native-owned default remote attempt; manual disable holds for that login session. Native transport diagnosis, UI implementation and independent verification precede the next immutable release. Existing installed services remain untouched.
