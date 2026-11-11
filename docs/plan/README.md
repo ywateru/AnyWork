@@ -1,5 +1,9 @@
 # DeepSeek Harness delivery
 
+## Current desktop follow-up
+
+[Default remote access and compact console](tasks/desktop-default-remote.md) is in progress against released v0.1.24. Login and verified local readiness trigger one Native-owned default remote attempt; manual disable holds for that login session. Native transport diagnosis, UI implementation and independent verification precede the next immutable release. Existing installed services remain untouched.
+
 ## Unified account and workspace experience
 
 Current user revision: [desktop introduction, account-first startup and live connected clients](../desktop-onboarding-layout.md) is implemented through disjoint [Native](tasks/desktop-onboarding-native.md) and [UI](tasks/desktop-onboarding-ui.md) tasks. It passed [independent review](reviews/desktop-onboarding-independent.md) and [merged-system checks](reviews/desktop-onboarding-merged.md). The pending 0.1.16 publisher was interrupted before tagging; a fresh release will include this new flow. Publication and local artifact adoption remain separate from source acceptance. Existing runtime services were untouched during isolated implementation and verification.

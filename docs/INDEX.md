@@ -1,5 +1,7 @@
 # Documentation index
 
+- [登录后默认远程与精简控制台](plan/tasks/desktop-default-remote.md)：当前用户修订，修正协调配置读取失败，支持会话内手动关闭。
+
 - [桌面启动介绍、登录与连接控制台](desktop-onboarding-layout.md) · [Native 任务](plan/tasks/desktop-onboarding-native.md) · [UI 任务](plan/tasks/desktop-onboarding-ui.md)：当前新一轮用户要求，先介绍和登录，随后准备服务并显示真实连接。
 - [给 CyberGrid 开发组的使用反馈与改进要求（2026-11-10）](cybergrid-product-feedback.md)：统一账号连接前的能力、分工与验收讨论稿。
 - [统一账号与工作区体验](account-unified-experience.md) · [实施与验收任务](plan/tasks/account-unified-experience.md)
