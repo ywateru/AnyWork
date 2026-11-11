@@ -94,6 +94,7 @@ fn run() -> anyhow::Result<()> {
             accounts::account_commit,
             accounts::account_cancel,
             accounts::account_enable,
+            accounts::account_enable_default,
             accounts::account_disable,
             accounts::account_logout,
             bridge::desktop_preview,

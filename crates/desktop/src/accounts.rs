@@ -239,13 +239,55 @@ struct GrantState {
     // A provider exchange may have rotated the grant, but its outcome is unknown.
     uncertain: bool,
 }
+// Independent of the refresh mutex: closing access must fence an enable even
+// while its sole OAuth exchange is awaiting a response. Never cancel that exchange.
+#[derive(Default)]
+struct RemotePolicy {
+    consumed: bool,
+    manual_off: bool,
+    logged_out: bool,
+    generation: Arc<()>,
+    stop: CancellationToken,
+}
+impl RemotePolicy {
+    fn invalidate(&mut self, logout: bool) {
+        self.consumed = true;
+        self.manual_off = true;
+        self.logged_out |= logout;
+        self.stop.cancel();
+        self.stop = CancellationToken::new();
+        self.generation = Arc::new(());
+    }
+    fn check(&self, generation: &Arc<()>) -> Result<()> {
+        if self.logged_out || !Arc::ptr_eq(&self.generation, generation) {
+            bail!("REMOTE_OPERATION_CANCELLED")
+        }
+        Ok(())
+    }
+    fn claim(&mut self, generation: &Arc<()>, default: bool, enabled: bool) -> Result<bool> {
+        self.check(generation)?;
+        if default && (self.consumed || self.manual_off || enabled) {
+            return Ok(false);
+        }
+        if enabled {
+            bail!("REMOTE_ALREADY_ENABLED")
+        }
+        self.consumed = true;
+        if !default {
+            self.manual_off = false;
+        }
+        Ok(true)
+    }
+}
 struct GrantOwner {
+    remote_policy: std::sync::Mutex<RemotePolicy>,
     state: Mutex<GrantState>,
     http: reqwest::Client,
 }
 impl GrantOwner {
     fn new(grant: Grant) -> Result<Self> {
         Ok(Self {
+            remote_policy: std::sync::Mutex::new(RemotePolicy::default()),
             state: Mutex::new(GrantState {
                 grant,
                 invalid: false,
@@ -253,6 +295,9 @@ impl GrantOwner {
             }),
             http: client()?,
         })
+    }
+    fn policy(&self) -> std::sync::MutexGuard<'_, RemotePolicy> {
+        self.remote_policy.lock().unwrap_or_else(|e| e.into_inner())
     }
     async fn token(&self, resource: bool) -> Result<String> {
         let mut state = self.state.lock().await;
@@ -533,35 +578,54 @@ impl Handle {
         format!("{}/app/", self.0.config.frontend_origin)
     }
     pub async fn snapshot(&self) -> Snapshot {
-        let state = self.0.state.lock().await;
-        let mut snapshot = state.snapshot.clone();
-        snapshot.account_portal_url = self.portal_url();
-        snapshot.remote_clients = match &state.remote {
-            Some(remote) => remote.gateway.remote_clients(),
-            None => vec![],
-        };
-        snapshot.transaction_id = state.transaction.as_ref().map(|tx| tx.id.clone());
-        if let Some(owner) = &state.owner {
-            let grant = owner.state.lock().await;
-            snapshot.signed_in = !grant.invalid && !grant.uncertain;
-            snapshot.authorization_status = if grant.invalid || grant.uncertain {
-                snapshot.error = Some("本次授权已中断，不能重试旧令牌。结束本次授权后重新登录；未知的新授权可能还需在登录服务中撤销。".into());
-                AuthorizationStatus::ReauthRequired
+        loop {
+            // A renderer poll must not delay disable/logout while a rotating
+            // grant is in flight. Re-read public state after waiting for it.
+            let owner = self.0.state.lock().await.owner.clone();
+            let reauth = if let Some(owner) = &owner {
+                let grant = owner.state.lock().await;
+                grant.invalid || grant.uncertain
             } else {
-                AuthorizationStatus::SignedIn
+                false
             };
-        } else if let Some(tx) = &state.transaction {
-            let interrupted = tx.stop.is_cancelled()
-                || (tx.uncertain.load(std::sync::atomic::Ordering::SeqCst)
-                    && tx.operation.try_lock().is_ok());
-            snapshot.busy = !interrupted;
-            snapshot.authorization_status = if interrupted {
-                AuthorizationStatus::LoginInterrupted
-            } else {
-                AuthorizationStatus::Authorizing
+            let state = self.0.state.lock().await;
+            let same_owner = match (&owner, &state.owner) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
             };
+            if !same_owner {
+                continue;
+            }
+            let mut snapshot = state.snapshot.clone();
+            snapshot.account_portal_url = self.portal_url();
+            snapshot.remote_clients = match &state.remote {
+                Some(remote) => remote.gateway.remote_clients(),
+                None => vec![],
+            };
+            snapshot.transaction_id = state.transaction.as_ref().map(|tx| tx.id.clone());
+            if let Some(owner) = &owner {
+                let logged_out = owner.policy().logged_out;
+                snapshot.signed_in = !reauth && !logged_out;
+                snapshot.authorization_status = if reauth || logged_out {
+                    snapshot.error = Some("本次授权已中断，不能重试旧令牌。结束本次授权后重新登录；未知的新授权可能还需在登录服务中撤销。".into());
+                    AuthorizationStatus::ReauthRequired
+                } else {
+                    AuthorizationStatus::SignedIn
+                };
+            } else if let Some(tx) = &state.transaction {
+                let interrupted = tx.stop.is_cancelled()
+                    || (tx.uncertain.load(std::sync::atomic::Ordering::SeqCst)
+                        && tx.operation.try_lock().is_ok());
+                snapshot.busy = !interrupted;
+                snapshot.authorization_status = if interrupted {
+                    AuthorizationStatus::LoginInterrupted
+                } else {
+                    AuthorizationStatus::Authorizing
+                };
+            }
+            return snapshot;
         }
-        snapshot
     }
     async fn transaction(&self, id: &str) -> Result<Arc<Transaction>> {
         if self.0.read_only {
@@ -844,8 +908,20 @@ impl Handle {
         i: &Installation,
         grid_id: &str,
     ) -> Result<()> {
+        let generation = owner.policy().generation.clone();
+        let check = || {
+            let policy = owner.policy();
+            policy.check(&generation)?;
+            if policy.manual_off {
+                bail!("REMOTE_OPERATION_CANCELLED")
+            }
+            Ok::<_, anyhow::Error>(())
+        };
+        check()?;
         let _write = self.0.account_write.lock().await;
+        check()?;
         let token = EnableStage::IndexToken.at(owner.token(false).await)?;
+        check()?;
         let mut account = EnableStage::IndexRead.at(self
             .account_request(&token, reqwest::Method::GET, None)
             .await)?;
@@ -857,6 +933,7 @@ impl Handle {
             data = json!({})
         };
         EnableStage::IndexSchema.at(update_device_index(&mut data, i, grid_id))?;
+        check()?;
         EnableStage::IndexWrite.at(self
             .account_request(
                 &token,
@@ -864,6 +941,7 @@ impl Handle {
                 Some(json!({"customData":data.clone()})),
             )
             .await)?;
+        check()?;
         let after = EnableStage::IndexReadback.at(self
             .account_request(&token, reqwest::Method::GET, None)
             .await)?;
@@ -873,24 +951,62 @@ impl Handle {
         Ok(())
     }
     pub async fn enable(&self) -> Result<()> {
+        self.enable_mode(false).await
+    }
+    pub async fn enable_default(&self) -> Result<()> {
+        self.enable_mode(true).await
+    }
+    async fn enable_mode(&self, default: bool) -> Result<()> {
         if self.0.read_only {
             bail!("ACCOUNT_PREVIEW_READ_ONLY")
         }
+        // Capture intent before queueing: disable/logout also invalidate queued
+        // callers, and a queued old-account call must never adopt a new owner.
+        let owner = self
+            .0
+            .state
+            .lock()
+            .await
+            .owner
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("ACCOUNT_SIGN_IN_REQUIRED"))?;
+        let generation = owner.policy().generation.clone();
         let _op = self.0.operation.lock().await;
+        let enabled = {
+            let state = self.0.state.lock().await;
+            if !state.owner.as_ref().is_some_and(|o| Arc::ptr_eq(o, &owner)) {
+                bail!("REMOTE_OPERATION_CANCELLED")
+            }
+            state.remote.is_some()
+        };
+        owner.policy().check(&generation)?;
+        {
+            let grant = owner.state.lock().await;
+            if grant.invalid || grant.uncertain {
+                bail!("ACCOUNT_REAUTH_REQUIRED")
+            }
+        }
+        {
+            let policy = owner.policy();
+            policy.check(&generation)?;
+            // No-op default requests do not depend on service readiness.
+            if default && (policy.consumed || policy.manual_off || enabled) {
+                return Ok(());
+            }
+        }
         let snapshot = self.0.manager.snapshot();
         if !snapshot.authorized || snapshot.service != manager::Phase::Running {
             bail!("LOCAL_SERVICE_NOT_READY")
         }
-        let owner = {
+        let (run, stop) = {
             let state = self.0.state.lock().await;
-            if state.remote.is_some() {
-                bail!("REMOTE_ALREADY_ENABLED")
-            };
-            state
-                .owner
-                .clone()
-                .ok_or_else(|| anyhow::anyhow!("ACCOUNT_SIGN_IN_REQUIRED"))?
+            let mut policy = owner.policy();
+            let run = policy.claim(&generation, default, state.remote.is_some())?;
+            (run, policy.stop.clone())
         };
+        if !run {
+            return Ok(());
+        }
         let subject = owner.state.lock().await.grant.subject.clone();
         let i = EnableStage::Identity.at(self.installation(&subject).await)?;
         let verifier = EnableStage::Gateway.at(JwtVerifier::new(
@@ -914,33 +1030,47 @@ impl Handle {
             verifier: Arc::new(verifier),
         })
         .await)?;
-        let binary = EnableStage::Provider.at(crate::cloudflared::resolve(
-            &snapshot.config.cloudflared_binary,
-            &self.0.support,
-            &config::resources_dir(),
-        ))?;
-        let path = self.0.support.join("account-tunnel.yml");
-        EnableStage::Provider.at(config::atomic_private(&path, b"{}\n"))?;
-        let plan = LaunchPlan {
-            program: binary,
-            args: vec![
-                "tunnel".into(),
-                "--config".into(),
-                path.display().to_string(),
-                "--no-autoupdate".into(),
-                "--protocol".into(),
-                "http2".into(),
-                "--url".into(),
-                format!("http://127.0.0.1:{}", gateway.port),
-            ],
-            env: BTreeMap::new(),
-            cwd: self.0.support.clone(),
-        };
         let (tx, mut rx) = mpsc::channel(8);
-        let mut provider =
-            EnableStage::Provider.at(OwnedProcess::spawn_account_provider(&plan, tx))?;
-        let url = match tokio::time::timeout(Duration::from_secs(45), rx.recv()).await {
-            Ok(Some(url)) => url,
+        let prepared_provider = (|| {
+            owner.policy().check(&generation)?;
+            let binary = EnableStage::Provider.at(crate::cloudflared::resolve(
+                &snapshot.config.cloudflared_binary,
+                &self.0.support,
+                &config::resources_dir(),
+            ))?;
+            let path = self.0.support.join("account-tunnel.yml");
+            EnableStage::Provider.at(config::atomic_private(&path, b"{}\n"))?;
+            let plan = LaunchPlan {
+                program: binary,
+                args: vec![
+                    "tunnel".into(),
+                    "--config".into(),
+                    path.display().to_string(),
+                    "--no-autoupdate".into(),
+                    "--protocol".into(),
+                    "http2".into(),
+                    "--url".into(),
+                    format!("http://127.0.0.1:{}", gateway.port),
+                ],
+                env: BTreeMap::new(),
+                cwd: self.0.support.clone(),
+            };
+            EnableStage::Provider.at(OwnedProcess::spawn_account_provider(&plan, tx))
+        })();
+        let mut provider = match prepared_provider {
+            Ok(provider) => provider,
+            Err(error) => {
+                gateway.close().await;
+                return Err(error);
+            }
+        };
+        let received = tokio::select! {
+            biased;
+            _ = stop.cancelled() => None,
+            received = tokio::time::timeout(Duration::from_secs(45), rx.recv()) => received.ok().flatten(),
+        };
+        let url = match received {
+            Some(url) => url,
             _ => {
                 gateway.close().await;
                 provider.stop().await;
@@ -948,33 +1078,49 @@ impl Handle {
             }
         };
         let grid =
-            EnableStage::GridClient.at(cybergrid_sdk::Client::new(cybergrid_sdk::Config {
+            match EnableStage::GridClient.at(cybergrid_sdk::Client::new(cybergrid_sdk::Config {
                 base_url: self.0.config.cybergrid_url.clone(),
                 app_id: self.0.config.native_client_id.clone(),
                 cloudflared: None,
                 ..Default::default()
-            }))?;
+            })) {
+                Ok(grid) => grid,
+                Err(error) => {
+                    gateway.close().await;
+                    provider.stop().await;
+                    return Err(error);
+                }
+            };
         // Client::new leaves grant_store=None in the pinned official SDK. Only
         // this RAM AuthProvider is installed: never call use_credential_store,
         // SDK browser login/import, or credential loading on the account path.
         grid.set_auth_provider(owner.clone()).await;
         let result = async {
-            verified_grid_config(
+            owner.policy().check(&generation)?;
+            tokio::select! {
+                biased;
+                _ = stop.cancelled() => bail!("REMOTE_OPERATION_CANCELLED"),
+                result = verified_grid_config(
                 &grid,
                 &self.0.config,
                 Duration::from_secs(8),
                 [Duration::from_millis(250), Duration::from_millis(750)],
-            )
-            .await?;
+                ) => { result?; }
+            }
+            owner.policy().check(&generation)?;
             let token = EnableStage::ResourceToken.at(owner.token(true).await)?;
+            owner.policy().check(&generation)?;
             let session = EnableStage::GridRegister.at(grid
                 .login_with_access_token(&token, "AnyWork desktop")
                 .await)?;
+            owner.policy().check(&generation)?;
             let mut port =
                 cybergrid_sdk::Port::tcp("anywork-remote", gateway.port, "anywork-noise-v1");
             port.tunnel_url = Some(url);
             EnableStage::GridExpose.at(grid.expose(port).await)?;
+            owner.policy().check(&generation)?;
             self.publish_index(&owner, &i, &session.device_id).await?;
+            owner.policy().check(&generation)?;
             Ok::<_, anyhow::Error>(session.device_id)
         }
         .await;
@@ -990,6 +1136,8 @@ impl Handle {
         // Provider URL changes invalidate the advertised path; close rather than
         // silently advertise an old URL or send business traffic in plaintext.
         let inner = Arc::downgrade(&self.0);
+        let watched_owner = Arc::downgrade(&owner);
+        let watched_generation = generation.clone();
         let watched_port = snapshot.config.port;
         let watcher = tokio::spawn(async move {
             loop {
@@ -997,8 +1145,8 @@ impl Handle {
                 let Some(inner) = inner.upgrade() else { break };
                 let local = inner.manager.snapshot();
                 let invalid_owner = {
-                    let state = inner.state.lock().await;
-                    if let Some(owner) = &state.owner {
+                    let owner = inner.state.lock().await.owner.clone();
+                    if let Some(owner) = &owner {
                         let grant = owner.state.lock().await;
                         grant.invalid || grant.uncertain
                     } else {
@@ -1020,28 +1168,62 @@ impl Handle {
                     || local.token != watched_token
                 {
                     tokio::spawn(async move {
-                        Handle(inner).disable().await;
+                        if let Some(owner) = watched_owner.upgrade() {
+                            Handle(inner)
+                                .disable_current(&owner, &watched_generation)
+                                .await;
+                        }
                     });
                     break;
                 }
             }
         });
-        let mut state = self.0.state.lock().await;
-        state.remote = Some(Remote {
+        let mut pending = Some(Remote {
             gateway,
             provider,
             grid,
             watcher,
         });
-        state.snapshot.enabled = true;
-        state.snapshot.grid_device_id = Some(device);
-        state.snapshot.installation_id = Some(i.id.clone());
-        state.snapshot.public_key = Some(i.public_key.clone());
-        state.snapshot.error = None;
+        let installed = {
+            let mut state = self.0.state.lock().await;
+            let policy = owner.policy();
+            if policy.check(&generation).is_ok() {
+                state.remote = pending.take();
+                state.snapshot.enabled = true;
+                state.snapshot.grid_device_id = Some(device);
+                state.snapshot.installation_id = Some(i.id.clone());
+                state.snapshot.public_key = Some(i.public_key.clone());
+                state.snapshot.error = None;
+                true
+            } else {
+                false
+            }
+        };
+        if !installed {
+            pending.as_mut().unwrap().close().await;
+            bail!("REMOTE_OPERATION_CANCELLED")
+        }
         Ok(())
     }
     pub async fn disable(&self) {
+        self.invalidate_remote(false).await;
         let _op = self.0.operation.lock().await;
+        self.close_remote().await;
+    }
+    async fn invalidate_remote(&self, logout: bool) {
+        if let Some(owner) = &self.0.state.lock().await.owner {
+            owner.policy().invalidate(logout);
+        }
+    }
+    async fn disable_current(&self, owner: &Arc<GrantOwner>, generation: &Arc<()>) {
+        let _op = self.0.operation.lock().await;
+        if owner.policy().check(generation).is_err() {
+            return;
+        }
+        self.close_remote().await;
+    }
+    // Caller holds operation; no public action can interleave with cleanup.
+    async fn close_remote(&self) {
         let remote = self.0.state.lock().await.remote.take();
         if let Some(mut remote) = remote {
             remote.close().await
@@ -1080,10 +1262,13 @@ impl Handle {
         Ok(())
     }
     async fn revoke(&self, refresh: &str) -> Result<()> {
+        Self::revoke_owned(&self.0.config, refresh).await
+    }
+    async fn revoke_owned(config: &PublicConfig, refresh: &str) -> Result<()> {
         let response = client()?
-            .post(format!("{}/token/revocation", self.0.config.issuer))
+            .post(format!("{}/token/revocation", config.issuer))
             .form(&[
-                ("client_id", self.0.config.native_client_id.as_str()),
+                ("client_id", config.native_client_id.as_str()),
                 ("token", refresh),
                 ("token_type_hint", "refresh_token"),
             ])
@@ -1098,8 +1283,9 @@ impl Handle {
         if self.0.read_only {
             bail!("ACCOUNT_PREVIEW_READ_ONLY")
         }
-        self.disable().await;
+        self.invalidate_remote(true).await;
         let _op = self.0.operation.lock().await;
+        self.close_remote().await;
         let (owner, transaction) = {
             let state = self.0.state.lock().await;
             (state.owner.clone(), state.transaction.clone())
@@ -1114,7 +1300,7 @@ impl Handle {
         };
         if let Some(owner) = owner {
             let state = owner.state.lock().await;
-            self.revoke(&state.grant.refresh).await?;
+            Self::revoke_owned(&state.grant.config, &state.grant.refresh).await?;
         } else if let Some(refresh) = match &transaction {
             Some(tx) => tx.latest.lock().await.clone(),
             None => None,
@@ -1266,6 +1452,10 @@ pub async fn account_enable(state: tauri::State<'_, Handle>) -> Result<(), Strin
     state.enable().await.map_err(safe_error)
 }
 #[tauri::command]
+pub async fn account_enable_default(state: tauri::State<'_, Handle>) -> Result<(), String> {
+    state.enable_default().await.map_err(safe_error)
+}
+#[tauri::command]
 pub async fn account_disable(state: tauri::State<'_, Handle>) -> Result<(), String> {
     state.disable().await;
     Ok(())
@@ -1275,11 +1465,60 @@ pub async fn account_logout(state: tauri::State<'_, Handle>) -> Result<(), Strin
     state.logout().await.map_err(safe_error)
 }
 #[cfg(test)]
+#[path = "accounts_default_tests.rs"]
+mod default_tests;
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn auth_config_fixture(config: &PublicConfig) -> Value {
+    #[tokio::test]
+    #[ignore = "explicit public-network diagnostic, no account or credentials"]
+    async fn public_grid_configuration_transport_probe() {
+        let config = PublicConfig::default();
+        let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
+            base_url: config.cybergrid_url.clone(),
+            app_id: config.native_client_id.clone(),
+            ..Default::default()
+        })
+        .unwrap();
+        let sdk = match tokio::time::timeout(Duration::from_secs(8), grid.auth_config()).await {
+            Ok(Ok(auth)) => format!(
+                "ok binding={}",
+                auth.issuer == config.issuer
+                    && auth.resource == config.resource
+                    && auth.client_id == config.native_client_id
+            ),
+            Ok(Err(cybergrid_sdk::Error::Api { status, .. })) => format!("http_{status}"),
+            Ok(Err(cybergrid_sdk::Error::Http(error))) => format!(
+                "http_transport connect={} timeout={}",
+                error.is_connect(),
+                error.is_timeout()
+            ),
+            Ok(Err(_)) => "other_fixed_class".into(),
+            Err(_) => "deadline".into(),
+        };
+        let mut url =
+            url::Url::parse(&format!("{}/api/v1/auth/config", config.cybergrid_url)).unwrap();
+        url.query_pairs_mut()
+            .append_pair("appId", &config.native_client_id);
+        let native =
+            match tokio::time::timeout(Duration::from_secs(8), client().unwrap().get(url).send())
+                .await
+            {
+                Ok(Ok(response)) => format!("http_{}", response.status().as_u16()),
+                Ok(Err(error)) => format!(
+                    "http_transport connect={} timeout={}",
+                    error.is_connect(),
+                    error.is_timeout()
+                ),
+                Err(_) => "deadline".into(),
+            };
+        println!("PUBLIC_CONFIG_PROBE sdk={sdk} native={native}");
+        grid.close().await.unwrap();
+    }
+
+    pub(super) fn auth_config_fixture(config: &PublicConfig) -> Value {
         json!({
             "provider":"logto", "clientId":config.native_client_id,
             "issuer":config.issuer, "resource":config.resource,
