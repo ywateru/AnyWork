@@ -1,6 +1,6 @@
 # Documentation index
 
-- [桌面与 Web 统一 UI / 交互框线设计稿（2026-11-11，v2 讨论稿）](design/desktop-refactor/README.md)：采用现有六角标志，精简桌面信息与 Web 登录、连接、设备入口；Web 对话部分暂保留，尚未修改产品实现。
+- [桌面与 Web 统一 UI / 交互框线设计稿（2026-11-11，v2）](design/desktop-refactor/README.md)：采用现有六角标志，精简桌面信息与 Web 登录、连接、设备入口；Web 对话部分暂保留，设计核验与产品验收分别记录。
 
 - [统一界面 v2 实施与发布](plan/tasks/ui-refactor-v2.md)：隔离实施桌面及 Web 入口，独立验收后按既有流程发布。
 

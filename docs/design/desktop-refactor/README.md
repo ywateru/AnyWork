@@ -1,6 +1,6 @@
 # AnyWork 桌面与 Web 统一界面设计稿
 
-状态：设计讨论稿 v2，2026-11-11。当前修订范围为桌面控制台、Web 登录、连接与设备入口，以及品牌标志和设备切换入口。Web 对话内容、输入框、审批与工具区域保留 v1 原型，本轮暂不调整。以 Codex 的信息层级和工作方式为参考。本目录仅包含设计文档和使用合成数据的框线原型，尚未修改产品界面或连接逻辑。
+状态：设计稿 v2，2026-11-11，设计独立核验通过。当前修订范围为桌面控制台、Web 登录、连接与设备入口，以及品牌标志和设备切换入口。Web 对话内容、输入框、审批与工具区域保留 v1 原型，本轮暂不调整。以 Codex 的信息层级和工作方式为参考。本目录仅包含设计文档和使用合成数据的框线原型；产品实现、独立验收与发布进度见[实施任务](../../plan/tasks/ui-refactor-v2.md)。
 
 ## v2 修订
 
@@ -73,7 +73,7 @@ Web 本机：桌面打开 → 一次性交接 → 同一工作区外壳（本机
 
 当前启动与默认远程以 [desktop-onboarding-layout.md](../../desktop-onboarding-layout.md) 的 2026-11-11 修订为准；本地浏览器交接以该文及 [desktop-workspace-layout.md](../../desktop-workspace-layout.md) 为准。远程账号与首次身份核对沿用 [account-remote-protocol.md](../../account-remote-protocol.md)。会话、子窗口与编辑沿用 [ui-design.md](../../ui-design.md) 和 [conversation-panels.md](../../conversation-panels.md)。本稿中的新增布局、确认弹窗和导航组织均为待评审设计。
 
-阅读时发现的文档/文案不一致：`desktop-manager.md` 的远程步骤、`account-web-layout.md` 关联的旧引导、Web 添加设备文案及 `updates.tsx` 安装确认仍有“需手动开启”描述；最新约定和 `startup.ts` 已采用默认尝试远程。本稿采用后者。正式实施时应统一这些文案，避免再次产生不同理解；本轮保留历史和产品代码。
+调研时发现的旧文档和文案仍有“需手动开启”描述；最新约定和 `startup.ts` 已采用默认尝试远程。本稿采用后者，实施任务同步对齐相关当前说明；历史图示保留并标明其被取代的范围。
 
 ## 后续实施与评审重点
 
