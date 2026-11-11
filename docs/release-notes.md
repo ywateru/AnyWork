@@ -2,7 +2,7 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.24 / 本次更新**
+**New in 0.1.25 / 本次更新**
 
 After signing in and preparing the local service, the desktop client now attempts to enable remote access automatically. You can turn it off at any time; it stays off for the current login session, including when the interface refreshes or you return from Settings. A remote error leaves the local workspace available and offers an explicit retry. Each new sign-in starts with the default-on policy again.
 
