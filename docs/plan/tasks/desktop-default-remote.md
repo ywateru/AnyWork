@@ -1,7 +1,7 @@
 ---
 id: desktop-default-remote
 scope: Native login grant, CyberGrid configuration transport and desktop console
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -38,4 +38,4 @@ Native 作者已观察到正式 CyberGrid `/api/v1/auth/config` 在直连路径�
 
 ## delivery status
 
-Native/UI及审查发现修正已合并，独立源码结论PASS；[合并检查](../reviews/desktop-default-remote-merged.md)记录54项Native、20项HTTP、84项桌面浏览器回归通过。[v0.1.25](https://github.com/ywateru/AnyWork/releases/tag/v0.1.25)已从精确源码 `4d0290f4079757f30ac65b05f831f19432e7a441` 发布，GitHub Checks、安装包发布和官网部署均成功。自部署 Redis 新部署已 READY，真实协调恢复范围由独立上线报告补齐；此次存储配置更新不移动已发布tag、不另发客户端版本、不替换本机运行中的应用或服务。
+Native/UI及审查发现修正已合并，独立源码结论PASS；[合并检查](../reviews/desktop-default-remote-merged.md)记录54项Native、20项HTTP、84项桌面浏览器回归通过。[v0.1.25](https://github.com/ywateru/AnyWork/releases/tag/v0.1.25)已从精确源码 `4d0290f4079757f30ac65b05f831f19432e7a441` 发布，GitHub Checks、安装包发布和官网部署均成功。自部署Redis新部署已READY，独立核验health及Native/SPA配置恢复200、固定绑定和新epoch一致，CORS/未授权拒绝通过，详见[上线报告](../reviews/cybergrid-selfhost-redis-independent.md)。此次存储配置更新不移动已发布tag、不另发客户端版本、不替换本机运行中的应用或服务；没有复测真实用户或物理手机业务链。
