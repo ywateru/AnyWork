@@ -4,6 +4,8 @@
 
 # AnyWork 云服务配置与验收
 
+2026-11-11 统一界面 v2 的托管登录品牌调整：在实际库存只有 AnyWork SPA、Native 和协调 M2M 的前提下，本轮按登录重设计范围对共享 `/sign-in-exp` 做一次仅含 `branding`、`color` 的局部 PATCH。Logo 和 favicon 均指向正式 `/app/icon.svg`（与仓库 canonical 字节一致），主色为 `#171717` / `#FFFFFF`，仍不启用暗色。提交前重读排除并发差异，提交后逐字段确认其余配置完全一致；用户名/密码、注册、连接器、授权与 terms 未变。不改变 first-party 属性、不引入应用级定制绕过，也不改变既有配置工具保持共享体验的默认规则。实际托管页与配置独立核验见 `plan/reviews/ui-v2-hosted-branding.md`；该变更仅证明品牌与颜色生效，不代表重写 Logto 的托管布局。
+
 日期：2026-11-09（Asia/Shanghai），当前存储更新于2026-11-11。本阶段按最新用户要求使用自部署 Logto default 业务租户；此前 Cloud Development 资源保留，不需要购买 Cloud 生产套餐。本页记录实际资源、公开客户端配置与交付限制。当前正式云端只有 Logto 账号/配置、CyberGrid 协调服务及其自部署 TLS Redis；没有 AnyWork 业务数据库或业务代理。业务内容与端到端私钥留用户设备。账号与本机安全流程以[方案](account-device-cloud-review.md)为准。
 
 ## 当前正式 Redis（2026-11-11）

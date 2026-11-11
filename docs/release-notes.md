@@ -4,6 +4,24 @@ AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android
 
 **New in 0.1.25 / 本次更新**
 
+The desktop console and Web account entry share a quieter, neutral interface and the existing hexagonal AnyWork logo. Desktop navigation separates the local workspace, remote access, settings and updates. The local panel keeps its open action, saved loopback address, copy action, first-visit explanation and working directory together.
+
+桌面控制台与 Web 账号入口采用统一的中性视觉和现有六角 AnyWork 标志。桌面导航区分本地工作区、远程访问、设置和更新；打开操作、已保存的本机地址、复制、首次访问说明与工作目录集中在本地工作区面板中。
+
+Web sign-in uses a focused single-column layout. Devices appear as compact rows with contextual connection progress and cancellation. After connecting, the device switcher is a single borderless navigation row aligned with the workspace sidebar. Conversation messages, composer, approvals and tool panels retain their existing interactions.
+
+Web 登录改为聚焦的单列布局，设备列表使用紧凑行，连接进度和取消操作在对应设备处显示。连接后，设备切换入口为与工作区侧栏对齐的无框单行。对话消息、输入框、审批与工具面板保留原有交互。
+
+The hosted account page also uses the AnyWork logo and neutral primary color. Its existing username/password, registration and authorization settings remain in place.
+
+托管账号页同步采用 AnyWork 标志与中性主色，保留现有用户名/密码、注册及授权设置。
+
+Local browser handoff, OAuth ownership, first-use or changed-key identity confirmation, connection cancellation, and service/update ownership checks retain their security boundaries. A visual refresh does not change account permissions or automatically replay workspace writes.
+
+本机浏览器交接、OAuth 授权所有权、首次及换钥身份核对、连接取消、服务与更新所有权检查继续遵循原有安全边界。界面改版不改变账号权限，也不会自动重放工作区写入。
+
+**Previous release 0.1.25 / 上一版本**
+
 After signing in and preparing the local service, the desktop client now attempts to enable remote access automatically. You can turn it off at any time; it stays off for the current login session, including when the interface refreshes or you return from Settings. A remote error leaves the local workspace available and offers an explicit retry. Each new sign-in starts with the default-on policy again.
 
 登录并准备好本地服务后，桌面客户端默认尝试开启远程访问。你可以随时关闭；在本次登录期间，即使界面刷新或从设置返回，也会保持关闭。远程失败不会阻塞本地工作区，可以手动重试。重新登录后恢复默认开启策略。
