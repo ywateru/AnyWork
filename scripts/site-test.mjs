@@ -41,7 +41,8 @@ try {
     const updateNote = await page.locator('.download-update-note').innerText();
     assert(updateNote.includes(locale === 'zh' ? '最新桌面版' : 'latest desktop version'));
     assert(updateNote.includes(locale === 'zh' ? '登录并准备工作区' : 'sign in and prepare the workspace'));
-    assert(updateNote.includes(locale === 'zh' ? '明确开启远程访问' : 'explicitly enable remote access'));
+    assert(updateNote.includes(locale === 'zh' ? '默认开启远程访问' : 'remote access turns on by default'));
+    assert(updateNote.includes(locale === 'zh' ? '可随时关闭' : 'can be turned off anytime'));
     assert(updateNote.includes(locale === 'zh' ? '活动加密连接' : 'active encrypted connections'));
     assert(updateNote.includes(locale === 'zh' ? '同一账号' : 'same account'));
     assert.equal(await page.locator('.download-update-note a').getAttribute('href'), '/app/');

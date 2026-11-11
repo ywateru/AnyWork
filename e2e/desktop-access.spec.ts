@@ -61,7 +61,11 @@ test("local address follows saved snapshots, preserves drafts and opens through 
   await page
     .getByRole("button", { name: "打开本地工作区", exact: true })
     .click();
-  expect(await calls(page)).toEqual(["desktop_start", "desktop_open"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+    "desktop_open",
+  ]);
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await expect(
     page.getByRole("spinbutton", { name: "本机端口", exact: true }),
@@ -82,7 +86,10 @@ test("missing service snapshot suspends readiness without another start", async 
   await expect(
     page.getByRole("button", { name: "打开本地工作区", exact: true }),
   ).toHaveCount(0);
-  expect(await calls(page)).toEqual(["desktop_start"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+  ]);
 });
 
 for (const port of [1023, 65536, 9000.5]) {
@@ -111,7 +118,10 @@ test("clipboard failure gives fixed feedback without navigating or exposing cred
     page.getByText("未能复制，请选中上方地址手动复制。", { exact: true }),
   ).toBeVisible();
   expect(await copied(page)).toEqual(["http://127.0.0.1:65535/"]);
-  expect(await calls(page)).toEqual(["desktop_start"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+  ]);
 });
 
 test("an asynchronous copy cannot claim success for a changed address", async ({
@@ -159,6 +169,7 @@ test("remote portal comes from the public snapshot and copies only its bare HTTP
   await page.getByRole("button", { name: "打开账号入口", exact: true }).click();
   expect(await calls(page)).toEqual([
     "desktop_start",
+    "account_enable_default",
     "desktop_account_portal",
   ]);
 });

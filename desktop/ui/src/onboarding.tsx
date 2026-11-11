@@ -63,7 +63,9 @@ export function Introduction({ next }: { next: () => void }) {
           开始使用
           <ArrowRight size={17} aria-hidden="true" />
         </button>
-        <p className="hint">接下来登录账号，再准备这台电脑的工作区。</p>
+        <p className="hint default-remote-disclosure">
+          登录并准备工作区后默认开启远程访问，可随时关闭。
+        </p>
       </div>
       <figure
         className="device-diagram"
@@ -130,58 +132,68 @@ export function RemoteClients({
     );
   return (
     <section className="connected-section" aria-label="正在连接这台电脑的设备">
-      <div className="section-heading">
-        <h2>正在连接这台电脑的设备</h2>
-        {available && state?.enabled && valid && (
-          <span className="connection-count">{list.length} 个活动连接</span>
+      <details className="connected-disclosure">
+        <summary>
+          <span>已连接设备</span>
+          <span className="connection-count" role="status">
+            {!available || !state
+              ? "连接状态暂不可用"
+              : !state.enabled
+                ? "远程访问已关闭"
+                : !valid
+                  ? "连接状态暂不可用"
+                  : `${list.length} 个活动连接`}
+          </span>
+        </summary>
+        {!available || !state || !valid ? (
+          <p className="connection-empty" role="status">
+            恢复账号状态后可查看活动连接。
+          </p>
+        ) : !state.enabled ? (
+          <p className="connection-empty" role="status">
+            开启远程后，可在这里看到活动连接。
+          </p>
+        ) : list.length === 0 ? (
+          <p className="connection-empty" role="status">
+            还没有远程设备连接
+          </p>
+        ) : (
+          <ul className="connected-list">
+            {list.map((client) => (
+              <li key={client.id}>
+                {client.kind === "ios" || client.kind === "android" ? (
+                  <Smartphone size={21} aria-hidden="true" />
+                ) : (
+                  <Monitor size={21} aria-hidden="true" />
+                )}
+                <div>
+                  <strong>{kinds[client.kind]}</strong>
+                  <p>
+                    开始于{" "}
+                    <time
+                      dateTime={new Date(
+                        client.connectedAt * 1000,
+                      ).toISOString()}
+                    >
+                      {new Date(client.connectedAt * 1000).toLocaleTimeString(
+                        [],
+                        { hour: "2-digit", minute: "2-digit" },
+                      )}
+                    </time>
+                  </p>
+                </div>
+                <span className="connected-state">
+                  <span className="status-dot ready" />
+                  已连接
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
-      {!available || !state || !valid ? (
-        <p className="connection-empty" role="status">
-          连接状态暂不可用
+        <p className="hint">
+          每行代表一个活动加密连接。设备类型由客户端提示，仅用于显示，同一设备可以建立多个连接。
         </p>
-      ) : !state.enabled ? (
-        <p className="connection-empty" role="status">
-          远程访问已关闭。开启后，可在这里看到活动连接。
-        </p>
-      ) : list.length === 0 ? (
-        <p className="connection-empty" role="status">
-          还没有远程设备连接
-        </p>
-      ) : (
-        <ul className="connected-list">
-          {list.map((client) => (
-            <li key={client.id}>
-              {client.kind === "ios" || client.kind === "android" ? (
-                <Smartphone size={21} aria-hidden="true" />
-              ) : (
-                <Monitor size={21} aria-hidden="true" />
-              )}
-              <div>
-                <strong>{kinds[client.kind]}</strong>
-                <p>
-                  开始于{" "}
-                  <time
-                    dateTime={new Date(client.connectedAt * 1000).toISOString()}
-                  >
-                    {new Date(client.connectedAt * 1000).toLocaleTimeString(
-                      [],
-                      { hour: "2-digit", minute: "2-digit" },
-                    )}
-                  </time>
-                </p>
-              </div>
-              <span className="connected-state">
-                <span className="status-dot ready" />
-                已连接
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="hint">
-        每行代表一个活动加密连接。设备类型由客户端提示，仅用于显示，同一设备可以建立多个连接。
-      </p>
+      </details>
     </section>
   );
 }

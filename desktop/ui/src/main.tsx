@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Copy,
   Monitor,
-  Smartphone,
   LockKeyhole,
   LoaderCircle,
   ArrowRight,
@@ -246,7 +245,7 @@ function App() {
                       ? "账号状态暂不可用，正在核验。"
                       : startup.phase === "failed"
                         ? "服务准备未完成，请检查后手动重试。"
-                        : "正在启动或核验本地服务，不会自动打开浏览器或开启远程。"}
+                        : "正在启动或核验本地服务，就绪后将准备远程访问。"}
                   </p>
                 </div>
               </header>
@@ -360,7 +359,7 @@ function App() {
                   {opening ? "正在打开…" : "打开本地工作区"}
                 </button>
                 <p className="hint local-session-help">
-                  首次使用、切换浏览器或本机会话过期时，请用上方按钮建立访问会话。已授权的同一浏览器可通过本地地址再次进入。
+                  首次使用、切换浏览器或会话过期时，请用上方按钮进入。
                 </p>
                 <div className="workspace-path">
                   <span>当前工作目录</span>
@@ -382,20 +381,6 @@ function App() {
               />
             </div>
             <RemoteClients controller={account} />
-            <footer className="console-privacy">
-              <LockKeyhole size={17} aria-hidden="true" />
-              <div>
-                <p>
-                  工作内容留在设备，远程连接端到端加密。云端处理账号与必要连接元数据。
-                </p>
-                <p>
-                  远程需要这台电脑开机联网。关闭远程不影响已运行的本地服务。
-                </p>
-                <p>
-                  本客户端的账号凭据和设备私钥只留在内存；退出客户端后需要重新登录并开启远程访问。
-                </p>
-              </div>
-            </footer>
           </>
         )}
         {page === "settings" && config && (
@@ -458,6 +443,21 @@ function App() {
                 <p className="hint">本应用的服务运行时不能修改目录和端口。</p>
               )}
             </section>
+            <details className="workspace-panel privacy-settings">
+              <summary>连接与隐私说明</summary>
+              <p>
+                工作内容留在设备，远程连接端到端加密。云端处理账号与必要连接元数据。
+              </p>
+              <p>
+                登录并准备本地工作区后默认开启远程，可以随时关闭。远程需要这台电脑开机联网；关闭远程不停止本地服务。
+              </p>
+              <p>
+                本客户端的账号凭据和设备私钥只留在内存；退出客户端后需要重新登录。新登录会再次采用默认开启远程的策略。
+              </p>
+              <p>
+                首次使用、切换浏览器或本机会话过期时，请点击“打开本地工作区”建立访问会话。
+              </p>
+            </details>
             <details className="workspace-panel settings-panel">
               <summary>服务程序</summary>
               <label>
