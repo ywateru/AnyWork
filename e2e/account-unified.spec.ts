@@ -42,9 +42,6 @@ test("local desktop ticket is consumed once, fragment clears, cookie refreshes a
     page.getByRole("heading", { name: "从哪里开始？" }),
   ).toBeVisible();
   expect(new URL(page.url()).hash).toBe("");
-  if ((page.viewportSize()?.width ?? 1440) <= 720)
-    await page.getByRole("button", { name: "会话列表", exact: true }).click();
-  await page.locator(".workspace-account-menu > summary").click();
   await expect(page.locator(".workspace-context")).toContainText(
     "由 Fixture 在本机打开",
   );
@@ -77,33 +74,9 @@ test("local desktop ticket is consumed once, fragment clears, cookie refreshes a
     ).status(),
   ).toBe(401);
   // Logout belongs only to this browser session, not the service or cloud account.
-  if ((page.viewportSize()?.width ?? 1440) <= 720)
-    await page.getByRole("button", { name: "会话列表", exact: true }).click();
-  await page.locator(".workspace-account-menu > summary").click();
-  await expect(page.locator(".workspace-source-hint")).toContainText(
-    "打开时的快照",
-  );
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "常规", exact: true }).click();
   await page
-    .getByRole("button", { name: "退出本机网页会话", exact: true })
-    .click();
-  const exit = page.getByRole("dialog", {
-    name: "退出本机网页会话？",
-    exact: true,
-  });
-  await expect(exit).toBeVisible();
-  await expect(
-    exit.getByRole("button", { name: "取消", exact: true }),
-  ).toBeFocused();
-  await exit.getByRole("button", { name: "取消", exact: true }).click();
-  await expect(page.locator(".workspace-account-menu > summary")).toBeFocused();
-  await expect(
-    page.getByRole("heading", { name: "从哪里开始？" }),
-  ).toBeVisible();
-  await page.locator(".workspace-account-menu > summary").click();
-  await page
-    .getByRole("button", { name: "退出本机网页会话", exact: true })
-    .click();
-  await exit
     .getByRole("button", { name: "退出本机网页会话", exact: true })
     .click();
   await expect(

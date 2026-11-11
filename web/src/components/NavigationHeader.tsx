@@ -8,6 +8,7 @@ import {
   Plus,
   Search,
   SquarePen,
+  TerminalSquare,
   X,
 } from "lucide-react";
 import type { Session } from "../types";
@@ -27,7 +28,6 @@ export default function NavigationHeader({
   onClose,
   onCollapse,
   agentFilter,
-  deviceNavigation,
 }: {
   sessions: Session[];
   filter: string;
@@ -42,7 +42,6 @@ export default function NavigationHeader({
   onClose: () => void;
   onCollapse: () => void;
   agentFilter?: ReactNode;
-  deviceNavigation?: ReactNode;
 }) {
   const paths = [
     ...new Set(
@@ -53,12 +52,7 @@ export default function NavigationHeader({
     <>
       <div className="navigation-heading">
         <div className="workspace-switcher">
-          <img
-            src={import.meta.env.BASE_URL + "icon.svg"}
-            width="22"
-            height="22"
-            alt=""
-          />
+          <TerminalSquare size={20} />
           <strong>AnyWork</strong>
         </div>
         <button
@@ -78,7 +72,6 @@ export default function NavigationHeader({
         </button>
       </div>
       <div className="navigation-actions">
-        {deviceNavigation}
         <button
           className="navigation-new"
           aria-label="新建会话"

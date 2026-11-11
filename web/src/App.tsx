@@ -1,9 +1,4 @@
 import AccountEntry from "./components/AccountEntry";
-import {
-  WorkspaceDevice,
-  WorkspaceAccount,
-} from "./components/WorkspaceContext";
-import "./workspace-context.css";
 import { RunningStatus } from "./components/harness/RunningStatus";
 import { version as appVersion } from "../package.json";
 import NotificationCenter from "./components/NotificationCenter";
@@ -67,6 +62,7 @@ import {
   FolderOpen,
   GitBranch,
   Flag,
+  Menu,
   ArrowUpRight,
   Sun,
   Moon,
@@ -141,8 +137,6 @@ export default function App({
   onDevices,
   onSignOut,
   contextLabel,
-  deviceLabel,
-  accountLabel,
   disconnectLabel = "返回连接入口",
 }: {
   initial?: Connection;
@@ -150,8 +144,6 @@ export default function App({
   onDevices?: () => void;
   onSignOut?: () => void;
   contextLabel?: string;
-  deviceLabel?: string;
-  accountLabel?: string;
   disconnectLabel?: string;
 } = {}) {
   const [connection, setConnection] = useState<Connection | null>(
@@ -1268,12 +1260,6 @@ export default function App({
           )}
           <aside className={sidebar ? "sidebar open" : "sidebar"}>
             <NavigationHeader
-              deviceNavigation={
-                <WorkspaceDevice
-                  deviceLabel={deviceLabel || info.hostname || "这台电脑"}
-                  onDevices={onDevices}
-                />
-              }
               agentFilter={
                 <SidebarAgentFilter
                   key={serverKey}
@@ -1349,44 +1335,68 @@ export default function App({
                 title="工作空间总览"
                 onClick={() => select("")}
               >
-                <FolderOpen size={16} />
-                <span>工作区首页</span>
-                <span className="sidebar-version">v{appVersion}</span>
+                <img
+                  src={import.meta.env.BASE_URL + "icon.svg"}
+                  width="18"
+                  height="18"
+                  alt=""
+                />
+                <span>AnyWork</span>
+                <span className="sidebar-version">v0.1</span>
               </button>
-              <WorkspaceAccount
-                accountLabel={accountLabel}
-                contextLabel={contextLabel}
-                onDevices={onDevices}
-                onSignOut={onSignOut}
-                onDisconnect={onDisconnect}
-              />
             </div>
           </aside>
           <main className={`main${session ? " has-session" : ""}`}>
-            {!session && (
-              <header className="topbar workspace-overview-header">
-                <button
-                  className="icon-button"
-                  aria-label="会话列表"
-                  onClick={() => {
-                    if (window.matchMedia("(max-width: 720px)").matches)
-                      setSidebar(true);
-                    else {
-                      setSidebarPinned(!sidebarPinned);
-                      localStorage.setItem(
-                        "ra.sidebar-pinned",
-                        String(!sidebarPinned),
-                      );
-                    }
-                  }}
-                >
-                  <PanelLeft size={17} />
+            <div className="window-tabbar">
+              <button
+                className="desktop-sidebar-toggle icon-button"
+                title="会话列表"
+                aria-label="会话列表"
+                aria-pressed={sidebarPinned}
+                onClick={() => {
+                  setSidebarPinned(!sidebarPinned);
+                  localStorage.setItem(
+                    "ra.sidebar-pinned",
+                    String(!sidebarPinned),
+                  );
+                }}
+              >
+                <PanelLeft size={17} />
+              </button>
+              <button
+                className="mobile-menu icon-button"
+                title="会话列表"
+                onClick={() => setSidebar(!sidebar)}
+              >
+                <Menu size={19} />
+              </button>
+              {!session && sessionTabs}
+              {!session && <NotificationCenter center={notifications} />}
+              <span className="workspace-context" title={contextLabel}>
+                {contextLabel}
+              </span>
+              <AccountEntry
+                onDevices={onDevices}
+                label={onDevices ? undefined : "账号与设备"}
+              />
+              {onSignOut && (
+                <button className="workspace-account-entry" onClick={onSignOut}>
+                  <LogOut size={15} />
+                  退出账号
                 </button>
-                <span className="overview-title">工作区</span>
-                <span className="workspace-connection-status">
-                  {onDevices ? "已连接" : "本机连接"}
+              )}
+            </div>
+            {!session && (
+              <header className="topbar">
+                <span className="overview-title">
+                  <img
+                    src={import.meta.env.BASE_URL + "icon.svg"}
+                    width="20"
+                    height="20"
+                    alt=""
+                  />{" "}
+                  AnyWork
                 </span>
-                <NotificationCenter center={notifications} />
                 <button
                   className="icon-button"
                   title="设置"
@@ -1538,9 +1548,6 @@ export default function App({
                         </div>
                       </details>
                     </div>
-                    <span className="workspace-connection-status">
-                      {onDevices ? "已连接" : "本机连接"}
-                    </span>
                     <NotificationCenter
                       center={notifications}
                       hasPendingRequest={pendingRequests.length > 0}

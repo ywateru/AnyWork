@@ -1,11 +1,9 @@
 import { createServer } from "node:http";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, expect } from "@playwright/test";
 // Render-only local fixtures. Real cookie/PTY integration is account-unified.spec.ts.
-const output = "artifacts/ui-v2-web";
-await mkdir(output, { recursive: true });
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const types = {
   ".js": "text/javascript",
@@ -123,16 +121,11 @@ try {
     await expect(
       page.getByRole("heading", { name: "从哪里开始？" }),
     ).toBeVisible();
-    if (width < 720)
-      await page.getByRole("button", { name: "会话列表", exact: true }).click();
-    await page.locator(".workspace-account-menu > summary").click();
     await expect(page.locator(".workspace-context")).toContainText(
       "由 Fixture 在本机打开",
     );
     await expect(
-      page
-        .locator(".workspace-account-menu")
-        .getByRole("link", { name: "账号与设备（在新标签页打开）" }),
+      page.getByRole("link", { name: "账号与设备（在新标签页打开）" }),
     ).toBeVisible();
     expect(
       await page.evaluate(
@@ -140,7 +133,7 @@ try {
       ),
     ).toBe(true);
     await page.screenshot({
-      path: `${output}/anywork-unified-workspace-${width}.png`,
+      path: `/tmp/anywork-unified-workspace-${width}.png`,
       fullPage: true,
     });
     expired = true;
@@ -154,7 +147,7 @@ try {
     await expect(page.getByText("高级连接", { exact: true })).toHaveCount(0);
     await expect(page.locator("input")).toHaveCount(0);
     await page.screenshot({
-      path: `${output}/anywork-unified-account-${width}.png`,
+      path: `/tmp/anywork-unified-account-${width}.png`,
       fullPage: true,
     });
     await page.goto(origin + "/app/callback");
