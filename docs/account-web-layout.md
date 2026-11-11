@@ -1,6 +1,6 @@
 # Web、手机与本机入口
 
-本轮以[统一体验](account-unified-experience.md)为契约。画布`#f7f8fa`、面板`#fff`、正文`#202630`、辅助信息`#697482`、主操作`#2457d6`、边界`#dce2e9`；系统UI字体，标题24–30px、正文14–16px。沿用AnyWork标志；左对齐的真实设备列表是主体，不用线路拓扑充当操作界面。
+本轮以[统一体验](account-unified-experience.md)为授权与业务契约。2026-11-11 的[Web 登录与设备 v2](design/desktop-refactor/web-entry.md)及[统一外壳](design/desktop-refactor/shell.md)取代旧蓝色门户视觉：居中登录、紧凑设备行、中性主按钮、真实六角标志；连接后设备入口为与导航对齐的无框单行。Web 对话、输入、工具和审批内部冻结。下述旧图保留入口关系，不能再实现重复的顶栏与主区“我的设备”标题。
 
 ## 页面与布局
 
