@@ -154,6 +154,7 @@ try {
             callbackReject?.(new Error("fixture cancelled"));
             return;
           }
+          if (command === "account_enable_default") return;
           if (command === "account_enable") throw window.fixtureEnableError;
           if (command === "account_logout") {
             window.fixtureAccount = signedOut();
@@ -271,8 +272,14 @@ try {
   ])
     await expect(page.getByText(retired, { exact: true })).toHaveCount(0);
   await expect(
+    page.getByText(/登录并准备工作区后，将默认开启远程访问/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByText("连接与隐私说明", { exact: true }).click();
+  await expect(
     page.getByText("账号凭据和设备私钥只留在内存", { exact: false }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "返回", exact: true }).click();
   await page.evaluate(() => {
     window.fixtureAccount = {
       ...window.fixtureAccount,
@@ -292,8 +299,7 @@ try {
     window.fixtureLocalReady = true;
   });
   const enable = page.getByRole("button", {
-    name: "开启远程访问",
-    exact: true,
+    name: /^(开启远程访问|重试开启远程)$/,
   });
   await expect(enable).toBeEnabled();
   for (const code of [
@@ -313,7 +319,12 @@ try {
       () => window.fixtureCalls.filter((v) => v === "account_enable").length,
     );
     await enable.click();
-    await expect(page.getByRole("alert")).toContainText(`（${code}）`);
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("alert")).not.toContainText(code);
+    const details = page.locator(".error-details");
+    if ((await details.getAttribute("open")) === null)
+      await details.locator("summary").click();
+    await expect(details.getByText(code, { exact: true })).toBeVisible();
     assert.equal(
       await page.evaluate(
         () => window.fixtureCalls.filter((v) => v === "account_enable").length,

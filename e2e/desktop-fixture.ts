@@ -17,6 +17,7 @@ type Options = {
   failEnable?: boolean;
   failStart?: boolean;
   holdStart?: boolean;
+  holdEnable?: boolean;
   port?: number;
   unauthorized?: boolean;
   snapshotUnavailable?: boolean;
@@ -41,6 +42,18 @@ export async function manager(page: Page, options: Options = {}) {
       body: await readFile(file),
     });
   });
+  let defaultConsumed = false;
+  await page.exposeFunction("consumeFixtureDefault", () => {
+    if (defaultConsumed) return false;
+    defaultConsumed = true;
+    return true;
+  });
+  await page.exposeFunction("closeFixtureRemote", () => {
+    defaultConsumed = true;
+  });
+  await page.exposeFunction("resetFixtureDefault", () => {
+    defaultConsumed = false;
+  });
   await page.addInitScript((opts) => {
     const scope = window as unknown as {
       __TAURI__: unknown;
@@ -50,6 +63,10 @@ export async function manager(page: Page, options: Options = {}) {
       finishOpen?: () => void;
       pendingStarts: (() => void)[];
       failStart: boolean;
+      pendingEnables: (() => void)[];
+      consumeFixtureDefault: () => Promise<boolean>;
+      closeFixtureRemote: () => Promise<void>;
+      resetFixtureDefault: () => Promise<void>;
       accountSnapshotFailure: boolean;
       desktopSnapshotFailure: boolean;
       holdNextAccountSnapshot: boolean;
@@ -58,6 +75,8 @@ export async function manager(page: Page, options: Options = {}) {
     const calls: string[] = [];
     scope.desktopCalls = calls;
     scope.pendingStarts = [];
+    scope.pendingEnables = [];
+    let grantEpoch = 0;
     scope.failStart = !!opts.failStart;
     scope.accountSnapshotFailure = false;
     scope.desktopSnapshotFailure = !!opts.snapshotUnavailable;
@@ -199,11 +218,29 @@ export async function manager(page: Page, options: Options = {}) {
               return;
             }
           }
-          if (command === "account_enable" || command === "account_disable") {
-            if (opts.failEnable && command === "account_enable")
+          if (
+            [
+              "account_enable_default",
+              "account_enable",
+              "account_disable",
+            ].includes(command)
+          ) {
+            if (
+              command === "account_enable_default" &&
+              !(await scope.consumeFixtureDefault())
+            )
+              return;
+            if (command === "account_disable") await scope.closeFixtureRemote();
+            const owner = grantEpoch;
+            if (opts.holdEnable && command !== "account_disable")
+              await new Promise<void>((resolve) =>
+                scope.pendingEnables.push(resolve),
+              );
+            if (owner !== grantEpoch) return;
+            if (opts.failEnable && command !== "account_disable")
               throw "REMOTE_ENABLE_GRID_CONFIG";
             Object.assign(account, {
-              enabled: command === "account_enable",
+              enabled: command !== "account_disable",
               installationId: "public-installation",
               publicKey: "public-key",
             });
@@ -211,6 +248,8 @@ export async function manager(page: Page, options: Options = {}) {
             return;
           }
           if (command === "account_logout" || command === "account_cancel") {
+            grantEpoch++;
+            await scope.resetFixtureDefault();
             Object.assign(account, {
               authorizationStatus: "signedOut",
               transactionId: null,
@@ -234,10 +273,12 @@ export async function manager(page: Page, options: Options = {}) {
   ).toBeVisible();
   if (options.stage !== "intro")
     await page.getByRole("button", { name: "开始使用", exact: true }).click();
-  if (!options.stage || options.stage === "console")
+  if (!options.stage || options.stage === "console") {
     await expect(
       page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
     ).toBeVisible();
+    await expect.poll(() => calls(page)).toContain("account_enable_default");
+  }
 }
 export const calls = (page: Page) =>
   page.evaluate(

@@ -48,6 +48,7 @@ export function useWorkspacePreparation(
   };
   const epoch = authorization.current.epoch;
   const attempted = useRef(-1);
+  const remoteAttempted = useRef(-1);
   const inFlight = useRef(new Set<number>());
   const [preparation, setPreparation] = useState<Preparation | null>(null);
   async function prepare() {
@@ -76,6 +77,21 @@ export function useWorkspacePreparation(
     if (introduced && current.current.canSubmit && attempted.current !== epoch)
       void prepare();
   }, [introduced, epoch, account.available, account.pending]);
+  useEffect(() => {
+    if (
+      introduced &&
+      current.current.canSubmit &&
+      preparation?.epoch === epoch &&
+      preparation.phase === "prepared" &&
+      remoteAttempted.current !== epoch
+    ) {
+      remoteAttempted.current = epoch;
+      void account.remoteAction(
+        () => window.__TAURI__!.core.invoke<void>("account_enable_default"),
+        () => current.current.active && current.current.epoch === epoch,
+      );
+    }
+  }, [introduced, epoch, preparation, account.available, account.pending]);
   return {
     active: authorization.current.active,
     canSubmit: introduced && current.current.canSubmit,

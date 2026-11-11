@@ -72,7 +72,9 @@ for (const [width, height] of [
     await expect(
       page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
     ).toBeVisible();
-    expect(await calls(page)).toEqual(["desktop_start", "desktop_start"]);
+    await expect
+      .poll(() => calls(page))
+      .toEqual(["desktop_start", "desktop_start", "account_enable_default"]);
     await expect(page.getByTestId("local-address")).toHaveText(
       "http://127.0.0.1:3210/",
     );
@@ -81,7 +83,7 @@ for (const [width, height] of [
     ).toBeVisible();
     await expect(
       page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       page.getByText(/匿名隧道|固定隧道|WireGuard|连接器令牌|配对二维码/),
     ).toHaveCount(0);
@@ -104,9 +106,21 @@ for (const [width, height] of [
         },
       ),
     );
+    await expect(page.getByText("2 个活动连接", { exact: true })).toBeVisible();
     await expect(
       page.getByText("iPhone / iPad 浏览器", { exact: true }),
-    ).toBeVisible();
+    ).not.toBeVisible();
+    if (width >= 800) {
+      await expect(
+        page.getByRole("button", { name: "打开本地工作区", exact: true }),
+      ).toBeInViewport();
+      await expect(
+        page.getByRole("button", { name: "关闭远程访问", exact: true }),
+      ).toBeInViewport();
+      await expect(
+        page.getByText("2 个活动连接", { exact: true }),
+      ).toBeInViewport();
+    }
     await page.screenshot({
       path: info.outputPath(`console-${width}.png`),
       fullPage: true,
@@ -123,6 +137,10 @@ for (const [width, height] of [
         () => document.documentElement.scrollWidth > innerWidth,
       ),
     ).toBe(false);
+    await page.getByText("连接与隐私说明", { exact: true }).click();
+    await expect(
+      page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
+    ).toBeVisible();
     await page.screenshot({
       path: info.outputPath(`settings-${width}.png`),
       fullPage: true,
@@ -152,7 +170,10 @@ test("introduction precedes account and preparation even for an existing ready s
     page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
   ).toBeVisible();
   await page.waitForTimeout(1200);
-  expect(await calls(page)).toEqual(["desktop_start"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+  ]);
 });
 test("preparation failure needs explicit retry and never opens the browser", async ({
   page,
@@ -175,7 +196,9 @@ test("preparation failure needs explicit retry and never opens the browser", asy
   await expect(
     page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
   ).toBeVisible();
-  expect(await calls(page)).toEqual(["desktop_start", "desktop_start"]);
+  await expect
+    .poll(() => calls(page))
+    .toEqual(["desktop_start", "desktop_start", "account_enable_default"]);
 });
 test("late preparation from logout cannot ready the next same-account login", async ({
   page,
@@ -242,7 +265,11 @@ test("a poll begun before logout cannot resurrect signed-in state", async ({
   await expect(
     page.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeVisible();
-  expect(await calls(page)).toEqual(["desktop_start", "account_logout"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+    "account_logout",
+  ]);
 });
 test("open uses only the browser handoff and supports explicit retry", async ({
   page,
@@ -255,7 +282,7 @@ test("open uses only the browser handoff and supports explicit retry", async ({
     await expect(page.getByRole("alert")).toContainText(
       "无法建立本机浏览器会话",
     );
-    expect(await calls(page)).toHaveLength(n + 1);
+    expect(await calls(page)).toHaveLength(n + 2);
   }
 });
 test("settings preserve drafts and service ownership", async ({ page }) => {
@@ -271,6 +298,7 @@ test("settings preserve drafts and service ownership", async ({ page }) => {
   await page.getByRole("button", { name: "保存本机设置", exact: true }).click();
   expect(await calls(page)).toEqual([
     "desktop_start",
+    "account_enable_default",
     "desktop_action:save_service",
   ]);
 });
@@ -285,6 +313,7 @@ test("owned service settings keep stop and running-directory constraints", async
   await page.getByRole("button", { name: "停止本地服务", exact: true }).click();
   expect(await calls(page)).toEqual([
     "desktop_start",
+    "account_enable_default",
     "desktop_action:stop_server",
   ]);
 });
@@ -305,7 +334,9 @@ test("a new UI runtime always introduces itself even with a retained native gran
   await expect(
     page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
   ).toBeVisible();
-  expect(await calls(page)).toEqual(["desktop_start"]);
+  await expect
+    .poll(() => calls(page))
+    .toEqual(["desktop_start", "account_enable_default"]);
 });
 test("a pending local browser handoff remains a single action", async ({
   page,
@@ -317,7 +348,11 @@ test("a pending local browser handoff remains a single action", async ({
   await expect(
     page.getByRole("button", { name: "正在打开…", exact: true }),
   ).toBeDisabled();
-  expect(await calls(page)).toEqual(["desktop_start", "desktop_open"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+    "desktop_open",
+  ]);
   await page.evaluate(() =>
     (window as unknown as { finishOpen: () => void }).finishOpen(),
   );
@@ -338,6 +373,7 @@ test("settings failures are visible without losing the current phase", async ({
   ).toBeVisible();
   expect(await calls(page)).toEqual([
     "desktop_start",
+    "account_enable_default",
     "desktop_action:save_service",
   ]);
 });

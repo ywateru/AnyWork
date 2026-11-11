@@ -1,13 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { manager, calls, signInFixture } from "./desktop-fixture";
-test("login leaves remote off until explicit enable and identity remains verifiable", async ({
+test("login prepares remote by default and identity remains verifiable", async ({
   page,
 }) => {
   await manager(page);
-  await expect(page.getByText("远程访问未开启", { exact: true })).toBeVisible();
-  expect(await calls(page)).toEqual(["desktop_start"]);
-  await page.getByRole("button", { name: "开启远程访问", exact: true }).click();
   await expect(page.getByText("远程访问已开启", { exact: true })).toBeVisible();
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+  ]);
   await page.getByText("本机身份核对", { exact: true }).click();
   await expect(
     page.getByRole("textbox", { name: "设备身份", exact: true }),
@@ -17,27 +18,133 @@ test("login leaves remote off until explicit enable and identity remains verifia
   ).toHaveAttribute("readonly", "");
   await page.getByRole("button", { name: "关闭远程访问", exact: true }).click();
   await expect(page.getByText("远程访问未开启", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "返回", exact: true }).click();
+  await page.waitForTimeout(1200);
   expect(await calls(page)).toEqual([
     "desktop_start",
-    "account_enable",
+    "account_enable_default",
     "account_disable",
   ]);
+  await page.reload();
+  await page.getByRole("button", { name: "开始使用", exact: true }).click();
+  await expect(page.getByText("远程访问未开启", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => calls(page))
+    .toEqual(["desktop_start", "account_enable_default"]);
+  await page.getByRole("button", { name: "开启远程访问", exact: true }).click();
+  await expect(page.getByText("远程访问已开启", { exact: true })).toBeVisible();
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+    "account_enable",
+  ]);
 });
-test("remote configuration failure is fixed, visible and retries only on click", async ({
+test("default failure leaves local access usable and details and retries require clicks", async ({
   page,
 }) => {
   await manager(page, { failEnable: true });
-  await page.getByRole("button", { name: "开启远程访问", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
-    "REMOTE_ENABLE_GRID_CONFIG",
+    "设备协调服务配置校验未通过",
   );
+  await expect(
+    page.getByText("REMOTE_ENABLE_GRID_CONFIG", { exact: true }),
+  ).not.toBeVisible();
+  await page.getByText("诊断详情", { exact: true }).click();
+  await expect(
+    page.getByText("REMOTE_ENABLE_GRID_CONFIG", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "打开本地工作区", exact: true })
+    .click();
   await page.waitForTimeout(1200);
-  expect(await calls(page)).toEqual(["desktop_start", "account_enable"]);
-  await page.getByRole("button", { name: "开启远程访问", exact: true }).click();
   expect(await calls(page)).toEqual([
     "desktop_start",
+    "account_enable_default",
+    "desktop_open",
+  ]);
+  await page.getByRole("button", { name: "重试开启远程", exact: true }).click();
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+    "desktop_open",
     "account_enable",
-    "account_enable",
+  ]);
+});
+test("same-account portal actions preserve a pending or visible remote failure", async ({
+  page,
+}) => {
+  await manager(page, { holdEnable: true, failEnable: true });
+  await expect(
+    page.getByText("正在准备远程访问…", { exact: true }),
+  ).toBeVisible();
+  const portal = page.getByRole("button", {
+    name: "打开账号入口",
+    exact: true,
+  });
+  await portal.click();
+  await expect(portal).toBeEnabled();
+  await page.evaluate(() =>
+    (
+      window as unknown as { pendingEnables: (() => void)[] }
+    ).pendingEnables[0](),
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "设备协调服务配置校验未通过",
+  );
+  await expect(
+    page.getByRole("button", { name: "重试开启远程", exact: true }),
+  ).toBeEnabled();
+  await page.getByText("诊断详情", { exact: true }).click();
+  await expect(
+    page.getByText("REMOTE_ENABLE_GRID_CONFIG", { exact: true }),
+  ).toBeVisible();
+  await portal.click();
+  await expect(portal).toBeEnabled();
+  await expect(page.getByRole("alert")).toContainText(
+    "设备协调服务配置校验未通过",
+  );
+  await expect(
+    page.getByText("REMOTE_ENABLE_GRID_CONFIG", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "登录已有账号", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+test("pending default remote does not block local open, settings or logout", async ({
+  page,
+}) => {
+  await manager(page, { holdEnable: true, failEnable: true });
+  await expect(
+    page.getByText("正在准备远程访问…", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "打开本地工作区", exact: true })
+    .click();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await expect(page.getByText("连接与隐私说明", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "返回", exact: true }).click();
+  await page.getByRole("button", { name: "退出账号", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "登录已有账号", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    (
+      window as unknown as { pendingEnables: (() => void)[] }
+    ).pendingEnables[0](),
+  );
+  await page.waitForTimeout(1200);
+  await expect(
+    page.getByRole("button", { name: "打开本地工作区", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+    "desktop_open",
+    "account_logout",
   ]);
 });
 test("logout returns to account, preserving the running local service", async ({
@@ -58,16 +165,24 @@ test("logout returns to account, preserving the running local service", async ({
           .desktopFixture.service,
     ),
   ).toBe("running");
-  expect(await calls(page)).toEqual(["desktop_start", "account_logout"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+    "account_logout",
+  ]);
   await signInFixture(page);
   await expect(
     page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
   ).toBeVisible();
-  expect(await calls(page)).toEqual([
-    "desktop_start",
-    "account_logout",
-    "desktop_start",
-  ]);
+  await expect
+    .poll(() => calls(page))
+    .toEqual([
+      "desktop_start",
+      "account_enable_default",
+      "account_logout",
+      "desktop_start",
+      "account_enable_default",
+    ]);
 });
 test("pending authorization can cancel without starting", async ({ page }) => {
   await manager(page, { stage: "account", authorizing: true });
@@ -129,6 +244,8 @@ test("active remote clients are live account data, not historical manager heartb
     name: "正在连接这台电脑的设备",
     exact: true,
   });
+  await expect(region.getByRole("listitem").first()).not.toBeVisible();
+  await region.locator("summary").click();
   await expect(region.getByRole("listitem")).toHaveCount(3);
   await expect(
     region.getByText("iPhone / iPad 浏览器", { exact: true }),
@@ -165,6 +282,7 @@ test("unavailable account snapshot never invents zero clients or permits new ope
     name: "正在连接这台电脑的设备",
     exact: true,
   });
+  await region.locator("summary").click();
   await expect(
     region.getByText("Android 浏览器", { exact: true }),
   ).toBeVisible();
@@ -184,7 +302,10 @@ test("unavailable account snapshot never invents zero clients or permits new ope
   await expect(
     page.getByRole("button", { name: "打开本地工作区", exact: true }),
   ).toBeDisabled();
-  expect(await calls(page)).toEqual(["desktop_start"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+  ]);
   await page.evaluate(
     () =>
       ((
@@ -194,7 +315,10 @@ test("unavailable account snapshot never invents zero clients or permits new ope
   await expect(
     region.getByText("Android 浏览器", { exact: true }),
   ).toBeVisible();
-  expect(await calls(page)).toEqual(["desktop_start"]);
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+  ]);
 });
 test("missing or malformed remote client data is unavailable rather than empty", async ({
   page,
@@ -221,4 +345,93 @@ test("missing or malformed remote client data is unavailable rather than empty",
     page.getByText("连接状态暂不可用", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("0 个活动连接", { exact: true })).toHaveCount(0);
+});
+
+test("disclosures support the keyboard and settings privacy does not fill the console", async ({
+  page,
+}) => {
+  await manager(page, {
+    remoteClients: [{ id: "phone", kind: "ios", connectedAt: 1794300000 }],
+  });
+  const clients = page.getByRole("region", {
+    name: "正在连接这台电脑的设备",
+    exact: true,
+  });
+  await expect(
+    clients.getByText("1 个活动连接", { exact: true }),
+  ).toBeVisible();
+  const summary = clients.locator("summary");
+  await summary.focus();
+  await summary.press("Enter");
+  await expect(
+    clients.getByText("iPhone / iPad 浏览器", { exact: true }),
+  ).toBeVisible();
+  await summary.press("Enter");
+  await expect(
+    clients.getByText("iPhone / iPad 浏览器", { exact: true }),
+  ).not.toBeVisible();
+  const help = page.getByText("如何连接其他设备", { exact: true });
+  await help.focus();
+  await help.press("Space");
+  await expect(page.getByText(/在手机或网页打开上方账号入口/)).toBeVisible();
+  const identity = page.getByText("本机身份核对", { exact: true });
+  await identity.focus();
+  await identity.press("Enter");
+  await expect(
+    page.getByRole("textbox", { name: "设备公钥", exact: true }),
+  ).toHaveAttribute("readonly", "");
+  await expect(
+    page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const privacy = page.getByText("连接与隐私说明", { exact: true });
+  await privacy.focus();
+  await privacy.press("Enter");
+  await expect(
+    page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(
+    clients.getByText("1 个活动连接", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    clients.getByText("iPhone / iPad 浏览器", { exact: true }),
+  ).not.toBeVisible();
+  expect(await calls(page)).toEqual([
+    "desktop_start",
+    "account_enable_default",
+  ]);
+});
+
+test("default remote waits for fresh account status after preparation completes", async ({
+  page,
+}) => {
+  await manager(page, { stage: "prepare", holdStart: true });
+  await expect.poll(() => calls(page)).toEqual(["desktop_start"]);
+  await page.evaluate(
+    () =>
+      ((
+        window as unknown as { accountSnapshotFailure: boolean }
+      ).accountSnapshotFailure = true),
+  );
+  await expect(
+    page.getByText("账号状态暂不可用，正在核验。", { exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    (window as unknown as { pendingStarts: (() => void)[] }).pendingStarts[0](),
+  );
+  await expect(
+    page.getByRole("heading", { name: "这台电脑的工作区", exact: true }),
+  ).toBeVisible();
+  expect(await calls(page)).toEqual(["desktop_start"]);
+  await page.evaluate(
+    () =>
+      ((
+        window as unknown as { accountSnapshotFailure: boolean }
+      ).accountSnapshotFailure = false),
+  );
+  await expect
+    .poll(() => calls(page))
+    .toEqual(["desktop_start", "account_enable_default"]);
+  await expect(page.getByText("远程访问已开启", { exact: true })).toBeVisible();
 });

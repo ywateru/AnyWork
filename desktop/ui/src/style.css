@@ -1324,3 +1324,138 @@ details summary {
     animation: none;
   }
 }
+
+/* The console keeps access controls visible and explanations one action away. */
+.remote-portal-block {
+  margin: 20px 0 12px;
+}
+.remote-panel > .remote-status-row {
+  margin-top: 18px;
+  min-height: 35px;
+}
+.connection-help,
+.remote-panel .identity-details {
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+  font-size: 12px;
+}
+.connection-help summary,
+.remote-panel .identity-details summary,
+.error-details summary,
+.privacy-settings summary {
+  cursor: pointer;
+}
+.connection-help p {
+  margin-top: 9px;
+}
+.remote-panel .identity-unavailable {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  font-size: 12px;
+}
+.account-error {
+  margin-top: 10px;
+}
+.account-error .error {
+  margin: 0;
+  padding: 9px 11px;
+  font-size: 12px;
+}
+.error-details {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.error-details code {
+  display: block;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.error-details p {
+  margin-top: 5px;
+}
+.connected-section {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.connected-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 550;
+  list-style: none;
+}
+.connected-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.connected-disclosure > summary::after {
+  content: "›";
+  font-size: 21px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: auto;
+  line-height: 1;
+}
+.connected-disclosure[open] > summary::after {
+  transform: rotate(90deg);
+}
+.connected-disclosure > summary .connection-count {
+  font-weight: 400;
+}
+.connected-disclosure > .connected-list {
+  margin: 0 20px;
+}
+.connected-disclosure > .connection-empty {
+  margin: 0 20px;
+  padding: 16px 0;
+}
+.connected-disclosure > .hint {
+  margin: 12px 20px 18px;
+  font-size: 11px;
+}
+.privacy-settings {
+  font-size: 13px;
+}
+.privacy-settings p {
+  margin-top: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.default-remote-disclosure {
+  max-width: 48ch;
+}
+@media (max-width: 420px) {
+  .connected-disclosure > summary {
+    padding: 15px;
+    gap: 9px;
+  }
+  .connected-disclosure > summary .connection-count {
+    font-size: 11px;
+    white-space: normal;
+  }
+  .console-access-layout .local-session-help {
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 760px) and (max-width: 900px) {
+  .workspace-surface .console-heading {
+    margin-bottom: 16px;
+  }
+  .console-access-layout {
+    padding-block: 18px;
+  }
+  .console-access-layout .local-address-block {
+    margin-top: 16px;
+  }
+  .console-access-layout .workspace-path {
+    margin-top: 14px;
+    padding-top: 12px;
+  }
+}
