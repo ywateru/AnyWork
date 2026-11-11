@@ -33,6 +33,8 @@ python3 scripts/cloud/test_frontend.py
 python3 scripts/cloud/test_deploy.py
 python3 scripts/cloud/test_prebuilt.py
 python3 scripts/cloud/test_materialize.py
+python3 -m unittest discover -s scripts/cloud -p 'test_redis_*.py'
+node --test scripts/cloud/test-redis-tls-probe.mjs
 python3 scripts/source-archive-test.py
 python3 scripts/release-version-test.py
 python3 scripts/publish-test.py
