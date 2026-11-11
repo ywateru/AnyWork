@@ -16,6 +16,10 @@ Local browser access continues to use a one-time handoff and HttpOnly session co
 
 本地浏览器继续通过一次性交接和 HttpOnly Cookie 获得访问权限。退出账号会关闭远程授权，不会停止已经运行的本地服务。账号凭据和设备私钥只保留在内存，不写入钥匙串；重启后需要重新登录。云端处理账号与必要连接元数据，工作内容留在用户设备，经加密连接传输。
 
+The reported coordinator-configuration failure was reproduced as an HTTP503 from CyberGrid, caused by the Upstash free command quota being exhausted. Updating the client does not reset that quota; coordinator availability requires a separate infrastructure resolution.
+
+本次协调配置读取错误已重现为 CyberGrid 返回 HTTP503，原因是 Upstash 免费命令额度耗尽。更新客户端不会重置该额度，协调服务恢复需要单独处理基础设施限制。
+
 Desktop account support is qualified on macOS. Other platforms retain their stated account-support limits. Release checks do not establish physical phone, cellular-network or installed-upgrade acceptance. macOS apps remain ad-hoc signed and are not notarized.
 
 桌面账号当前已验证 macOS，其他平台仍遵循已有账号支持限制。发布检查不代表物理手机、蜂窝网络或实装升级验收。macOS 应用仍为临时签名，尚未公证。
