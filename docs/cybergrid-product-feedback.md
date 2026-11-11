@@ -6,7 +6,7 @@
 
 ## 2026-11-11 补充：协调存储额度与可观测性
 
-正式集成的公开配置接口返回 HTTP503 / `COORDINATOR_UNAVAILABLE`；真实 Rust SDK 与 Native HTTP 路径均重现。Upstash 独立只读核查得到固定错误 `max requests limit exceeded`，计数500030，免费上限500000。管理信息仍显示 active，PING/TYPE可用，因此基础连通性不能替代业务协调操作就绪检查。这是本次观察到的供应商额度故障，不是对历史所有配置失败的归因。
+正式集成的公开配置接口返回 HTTP503 / `COORDINATOR_UNAVAILABLE`；真实 Rust SDK 与 Native HTTP 路径均重现。Upstash 独立只读核查得到固定错误 `max requests limit exceeded`，计数500030，免费月度上限500000。管理信息仍显示 active，PING/TYPE可用，因此基础连通性不能替代业务协调操作就绪检查。这是本次观察到的供应商额度故障，不是对历史所有配置失败的归因。
 
 建议补充以下要求用于开发组评审：
 
