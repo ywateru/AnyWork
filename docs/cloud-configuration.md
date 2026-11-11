@@ -1,3 +1,5 @@
+> 2026-11-11 当前故障：正式 CyberGrid 配置接口返回 HTTP503，已通过真实 Rust SDK 重现；Upstash 免费月度命令额度耗尽（供应商固定错误 `max requests limit exceeded`、上限500000）。Vercel部署READY与Redis管理状态active不表示协调请求可用。客户端本轮默认远程与精简UI改进不重置云额度；恢复选项与未授权的按量计费方案见[当前任务](plan/tasks/desktop-default-remote.md)。此前下述成功证据均保留原验收时点。
+
 > 最新用户修订：本轮切换到自部署Logto default业务租户（公开endpoint https://auth.x.aixgg.com，Console https://logto.x.aixgg.com/）。新应用/权限已独立核验，专用CyberGrid和[正式主页](https://anywork-tau.vercel.app/)均READY；真实Native/Web公网加密链、重启换钥、正式域名与390/1440视口通过，本机更新结果见[当前集成状态](plan/reviews/account-selfhost-cutover-01.md)。下方Cloud Development配置保留为此前证据，不作为最终部署默认值。不迁移秘密或用户业务数据。
 
 # AnyWork 云服务配置与验收
