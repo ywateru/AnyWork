@@ -42,3 +42,7 @@ depends-on: [ui-refactor-v2]
 ## verification
 
 作者提交后再交独立验收。UI 用独立端口 3341，Native 相关本机回调测试避免碰用户正在登录的 17897 端口，使用隔离 listener/测试配置。共享主树 Cargo target 仅在串行锁/无并发写冲突下复用，禁止再生成多份几十 GB 旧缓存。独立浏览器验收端口 3342/3343。覆盖 dialog 中心/滚动/手机高度、回调成功/取消/无效与内容安全、SSO URL/refresh 所有权、用户名来源、设备持久化和目录错误/保持其他数据、原生 macOS titlebar。真实 SSO 仅使用已授权隔离测试账号，不操作真实业务数据，不将合成 provider 当线上 SSO 验收。
+
+## delivery
+
+2026-11-12：五项修订已通过[独立审查](../reviews/ui-login-device-followup.md)、合并及[集成检查](../reviews/ui-login-cybergrid-merged.md)。真实原生按钮已有实窗证据；实际拖动位移因输入权限环境限制仍未实证通过。身份服务 SSO 与候选回调 listener 分别验证，不合称完整 Native 真实账户 runtime 验收。待与 CyberGrid SDK 更新统一完成 v0.1.27 发布及线上核验后关闭本任务。

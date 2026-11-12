@@ -1,10 +1,10 @@
 # DeepSeek Harness delivery
 
-- [CyberGrid v0.8.0](tasks/cybergrid-v080.md)：用户追加的上游更新检查与必要 SDK/宿主适配，纳入本次发行；登录设备修订及 Web SDK 已独立接受并合并，Native SDK 正在隔离实施。当前固定客户端配置下保留协调服务，服务端迁移另行验证。
+- [CyberGrid v0.8.0](tasks/cybergrid-v080.md)：用户追加的上游更新检查与必要 SDK/宿主适配，纳入本次发行；登录设备修订、Web 和 Native SDK 已独立接受、合并并通过集成检查，等待精确源码 CI 和 v0.1.27 发布验收。当前固定客户端配置下保留协调服务，服务端迁移另行验证。
 
 ## Current login and device follow-up
 
-[登录与设备体验修订](tasks/ui-login-device-followup.md) 对 v0.1.26 的实际截图反馈实施五项修正，分离 Native 和 UI 作者并独立验收，保留授权/服务边界。
+[登录与设备体验修订](tasks/ui-login-device-followup.md) 对 v0.1.26 的实际截图反馈实施五项修正，分离 Native 和 UI 作者并独立验收，保留授权/服务边界。源码与合并检查已通过，与 CyberGrid SDK 更新统一发布；实际拖动位移仍保留输入环境验收限制，见[合并记录](reviews/ui-login-cybergrid-merged.md)。
 
 ## Current UI v2 delivery
 
