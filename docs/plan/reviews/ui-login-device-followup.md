@@ -4,7 +4,7 @@
 
 ## 结论
 
-**初轮 blocked：源码契约与针对测试通过，macOS 实际窗口拖动和常规交通灯可见性尚未通过独立门禁。暂不能据此宣布整个候选可合并。**
+**修正轮 accepted，可合并：固定候选 `e42eba5015e1d3c43b9ea15cb9a50b094fa98268` 包含修正 `3e155cce0fce53805397395dd548dc854bb342af`。源码与针对测试通过，常规原生交通灯及 800×620 窗口证据成立；真实拖动位移仍未验证，按明确的验收澄清记录为输入环境限制，不记 drag pass。初轮 blocked 历史保留如下。**
 
 审查的组合提交为 `918c3ac9fd0b71b198f2454107fe77be684c6d49`，包含 Native `aa725917737e9bb506e712b535db0a3a9801ceb5`、UI `3cf36e11041892d8284d07a6e17045435ba94e4c` 和 main `c3f4074` 设计文档。另外只读核对 main `7e24dab` 的文档澄清。未审未提交作者修改，未改作者代码，未认可后续 CyberGrid v0.8.0 候选。
 
@@ -62,3 +62,16 @@ CUA 所有目标返回的名称均为 `AnyWorkIndependentReview`；没有调用�
 - 锁定的 Tao 0.37.2 在 macOS `drag_window` 发现 `NSApp.currentEvent` 缺失时，会记录 warning 并返回 `Ok(())` 而不拖动，源码明确列举了 mouse-down 已处理后的异步请求。Tauri 运行时也不把实际位移作为 IPC 返回值。因此应检查真实事件类型/按钮状态和前后 frame，而不能以“调用成功”关闭门禁。参见 [Tao 发布记录](https://github.com/tauri-apps/tao/releases) 的 `19a43d27` / #1372。
 - 同一 Tauri 版本自带 drag.js 在 invoke 前调用 `preventDefault()` 和 `stopImmediatePropagation()`，当前 React 自定义 handler 没有这两步；文本选区可能是浏览器默认行为，不能单凭选区断言 Native 未执行。补事件抑制也不等于证明已修复 Native 事件时序。
 - [Firefox/macOS 实际报告](https://bugzilla.mozilla.org/show_bug.cgi?id=1948100) 确认共享 stream 可在交通灯位置出现系统紫色徽标，点击后出现关闭/最小化等菜单。没有证据保证 hover 恢复三色按钮。较窄的取证路径是新进程启动后、绑定 CUA/开始该窗口 stream 前先按精确 window ID 截取常规窗口，再做无调试暂停的几何位移、按钮和 800×620 检查。不得把 AXSetPosition 等直接改 frame 的操作当作拖动证明。
+
+
+## 修正轮独立复核：2026-11-12
+
+复核 clean review HEAD `e42eba5015e1d3c43b9ea15cb9a50b094fa98268`，修正提交 `3e155cce0fce53805397395dd548dc854bb342af`。该修正只涉及 renderer 两处拖动 handler、WebKit user-select 样式和针对 E2E；Rust、Tao/Tauri、服务所有权及凭据路径未改。独立构建 desktop UI，并以隔离 Chrome、无 Native/云端真实账户边界重跑 `desktop-login-device.spec.ts`：**5 passed / 14.4s**。空白区和标题子节点左键取消默认事件，右键不取消；交互控件不调用拖动 IPC。证据：`artifacts/ui-login-independent-review/corrective/`。
+
+独立检查作者的 `artifacts/ui-login-native-drag-author/provenance.json`，现存 UI HTML/JS/CSS 与两份最终原生可执行文件的 SHA-256 全部匹配。逐图查看 `final-960-before-sharing.png` 与 `final-800-before-sharing.png`：红黄绿原生控件在普通窗口左上预留区内直接可见，背景与侧栏连续；没有独立应用标题栏，也没有共享徽标遮挡。它们为作者精确窗口截图，本轮未冒称是独立重新截取。
+
+复核作者逐状态 CGWindow 记录：PID29755 普通窗口 `(264,121),961×721`，实际 AX 最小化后 onscreen=false、恢复后同 PID/同 frame onscreen=true，全屏后 `(0,29),1440×903`，关闭后无候选进程/窗口；PID30425 对应真实 `800×620` 窗口，同样最小化隐藏、恢复同 PID/frame、关闭后无候选窗口。结合初轮独立 AX full-screen/close 结果，常规控件与最小尺寸缺口可以关闭。新增实际控件操作由作者执行，本轮为独立来源/几何/截图复核，不能写成独立重新操作。
+
+拖动仍**没有位移实证**。作者修正后没有文本选区，但 frame 仍不变；临时诊断记录 Native handler 收到 MouseMoved 或 MouseDown 时 `pressedMouseButtons=0`。本轮独立只读执行 `CGPreflightPostEventAccess()` 得到 **false**，存于 `corrective/input-access.log`。这证明当前终端 CGEvent 替代驱动缺少投递权限，并支持现有合成手势不能作为有效 held-mouse 验收的判断；它不能证明真实鼠标必然成功，也不能完全排除真实输入/IPC 时序缺陷。没有修改隐私权限、制造按键状态、用 AXSetPosition 改 frame 或继续无效手势。按 root 明确允许的“源码事件抑制修正 + 原生控件实证 + 诚实输入环境限制”门槛接受合并，后续由有有效 held-mouse 输入的环境或人工确认两处拖动区位移。报告结论不是全功能无条件实窗 pass。
+
+本轮未启动/关闭用户安装应用，未用 Cargo、未改作者代码、未启动新的 Native preview；只运行隔离 renderer 测试。先前 PID7444 消失仍原因不明，历史表述不变。真实 provider SSO 与候选 Native 全 Runtime 的边界同前，CyberGrid 增量另行验收。
