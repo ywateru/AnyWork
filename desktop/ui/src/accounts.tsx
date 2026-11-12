@@ -28,6 +28,8 @@ export type AccountSnapshot = {
   signedIn: boolean;
   subject: string | null;
   accountLabel: string | null;
+  deviceName: string;
+  deviceNameSynced: boolean;
   enabled: boolean;
   busy: boolean;
   error: string | null;
@@ -207,7 +209,7 @@ async function login(mode: "register" | "signIn"): Promise<void> {
   try {
     await client.signIn({
       redirectUri: begin.redirectUri,
-      prompt: [Prompt.Login, Prompt.Consent],
+      prompt: [Prompt.Consent],
       firstScreen: mode,
     });
     const callback = await invoke<string>("account_wait_callback", {
@@ -379,6 +381,41 @@ export function useAccountController() {
         await invoke("account_logout");
         await clearLogin();
       }),
+    renameDevice: async (name: string, expectedName: string) => {
+      if (
+        !available ||
+        pending ||
+        remoteOperations > 0 ||
+        state?.busy ||
+        state?.deviceName !== expectedName
+      )
+        throw new Error(message);
+      const owner = authorizationGeneration.current;
+      let accepted = false;
+      let conflict = false;
+      await action(async () => {
+        let next: AccountSnapshot;
+        try {
+          next = await invoke<AccountSnapshot>("account_rename_device", {
+            name,
+            expectedName,
+          });
+        } catch (error) {
+          conflict =
+            error === "设备名称未完成同步，账号目录已发生变化，请刷新后重试。";
+          throw error;
+        }
+        if (
+          owner !== authorizationGeneration.current ||
+          next.deviceName !== name
+        )
+          throw new Error(message);
+        acceptSnapshot(next);
+        accepted = true;
+      });
+      if (!accepted)
+        throw new Error(conflict ? "DEVICE_NAME_CONFLICT" : message);
+    },
   };
 }
 export type AccountController = ReturnType<typeof useAccountController>;
@@ -391,9 +428,12 @@ const statusLabels: Record<AuthorizationStatus, string> = {
   unsupported: "当前平台暂不支持账号远程访问",
 };
 export function accountStatusText(state: AccountSnapshot): string {
-  return state.authorizationStatus === "signedIn" && state.accountLabel
-    ? `已登录 · ${state.accountLabel}`
+  return state.authorizationStatus === "signedIn"
+    ? `已登录 · ${accountDisplayName(state)}`
     : statusLabels[state.authorizationStatus];
+}
+export function accountDisplayName(state: AccountSnapshot | null): string {
+  return state?.accountLabel?.trim() || "已登录账号";
 }
 export function AccountActions({
   controller,

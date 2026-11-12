@@ -113,6 +113,25 @@ async function noOverflow(page) {
     ),
   ).toBe(true);
 }
+async function centeredDialog(page) {
+  const dialog = page.locator(".account-dialog[open]");
+  await expect(dialog).toBeVisible();
+  const bounds = await dialog.boundingBox();
+  const viewport = page.viewportSize();
+  expect(
+    Math.abs(bounds.x + bounds.width / 2 - viewport.width / 2),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(bounds.y + bounds.height / 2 - viewport.height / 2),
+  ).toBeLessThanOrEqual(1);
+  expect(bounds.x).toBeGreaterThanOrEqual(16);
+  expect(bounds.y).toBeGreaterThanOrEqual(19);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width - 16);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height - 19);
+  expect(
+    await dialog.evaluate((node) => node.contains(document.activeElement)),
+  ).toBe(true);
+}
 async function ready(page) {
   await expect(
     page.getByRole("heading", { name: "我的设备", exact: true }),
@@ -122,7 +141,7 @@ async function ready(page) {
   ).toBeEnabled();
 }
 async function openKey(page, changed = false) {
-  await page.getByRole("button", { name: "打开工作区" }).click();
+  await page.getByRole("button", { name: "打开工作区" }).first().click();
   await expect(
     page.getByRole("heading", {
       name: changed ? "这台电脑的公钥已改变" : "确认这台电脑的身份",
@@ -133,9 +152,10 @@ async function openKey(page, changed = false) {
   await expect(
     page.getByRole("button", { name: "取消", exact: true }),
   ).toBeFocused();
+  await centeredDialog(page);
 }
 try {
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 800, 390]) {
     let f = await fixture(width, { authenticated: false });
     await expect(
       f.page.getByRole("heading", { name: "登录账号", exact: true }),
@@ -178,6 +198,7 @@ try {
     });
     await f.page.locator(".account-device-menu > summary").click();
     await f.page.getByRole("button", { name: "修改名称", exact: true }).click();
+    await centeredDialog(f.page);
     await f.page.getByRole("textbox", { name: "设备名称" }).fill("研发电脑");
     await f.page.getByRole("button", { name: "保存", exact: true }).click();
     await expect(
@@ -274,6 +295,7 @@ try {
     await f.page.getByRole("button", { name: "取消", exact: true }).click();
     await f.page.locator(".account-device-menu > summary").click();
     await f.page.getByRole("button", { name: "移除显示", exact: true }).click();
+    await centeredDialog(f.page);
     await expect(f.page.getByText(/不会关闭该电脑的远程访问/)).toBeVisible();
     await f.page
       .getByRole("dialog")
@@ -306,6 +328,7 @@ try {
         await f.page
           .getByRole("button", { name: "添加设备", exact: true })
           .click();
+        await centeredDialog(f.page);
         await expect(
           f.page.getByText(/工作区就绪后将默认尝试开启远程访问/),
         ).toBeVisible();
@@ -341,6 +364,92 @@ try {
     console.log(
       `Passed ${width}px: centered OAuth entry, real AccountHome/AccountStore directory/mutation, empty/unknown/offline/unready, first/changed key, cancel ownership, connected shell and safe switch (synthetic service boundaries only)`,
     );
+  }
+
+  for (const [width, height] of [
+    [1440, 480],
+    [800, 480],
+    [390, 480],
+    [390, 320],
+  ]) {
+    const records = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [
+        index
+          ? `11111111-1111-4111-8111-${String(index).padStart(12, "0")}`
+          : id,
+        {
+          label: index ? `测试电脑 ${index}` : "工作电脑",
+          platform: "macOS",
+          publicKey: key,
+          keyVersion: 1,
+          gridDeviceId: index ? `offline-${index}` : grid,
+        },
+      ]),
+    );
+    const f = await fixture(width, {
+      height,
+      profile: {
+        customData: { anywork: { schemaVersion: 1, devices: records } },
+      },
+    });
+    try {
+      await ready(f.page);
+      await f.page
+        .getByRole("button", { name: "添加设备", exact: true })
+        .click();
+      await centeredDialog(f.page);
+      await f.page.screenshot({ path: `${output}/add-${width}x${height}.png` });
+      await f.page.keyboard.press("Escape");
+      await expect(
+        f.page.getByRole("button", { name: "添加设备", exact: true }),
+      ).toBeFocused();
+      const menu = f.page.locator(".account-device-menu").last();
+      const trigger = menu.locator("summary");
+      await trigger.click();
+      expect(await f.page.evaluate(() => scrollY)).toBeGreaterThan(0);
+      await menu.getByRole("button", { name: "修改名称", exact: true }).click();
+      await centeredDialog(f.page);
+      await expect(
+        f.page.getByRole("textbox", { name: "设备名称" }),
+      ).toBeFocused();
+      await f.page.screenshot({
+        path: `${output}/rename-scrolled-${width}x${height}.png`,
+      });
+      await f.page.keyboard.press("Escape");
+      await expect(trigger).toBeFocused();
+      await trigger.click();
+      await menu.getByRole("button", { name: "移除显示", exact: true }).click();
+      await centeredDialog(f.page);
+      await f.page.getByRole("button", { name: "取消", exact: true }).click();
+      await expect(trigger).toBeFocused();
+      await openKey(f.page);
+      if (height === 320) {
+        const dialog = f.page.locator(".account-dialog[open]");
+        expect(
+          await dialog.evaluate(
+            (node) => node.scrollHeight > node.clientHeight,
+          ),
+        ).toBe(true);
+        await f.page
+          .getByRole("button", { name: "取消", exact: true })
+          .scrollIntoViewIfNeeded();
+        await expect(
+          f.page.getByRole("button", { name: "取消", exact: true }),
+        ).toBeInViewport({ ratio: 1 });
+        await centeredDialog(f.page);
+      }
+      await f.page.screenshot({ path: `${output}/key-${width}x${height}.png` });
+      await f.page.keyboard.press("Escape");
+      await expect(
+        f.page.getByRole("button", { name: "打开工作区", exact: true }).first(),
+      ).toBeFocused();
+      await noOverflow(f.page);
+      console.log(
+        `Passed ${width}x${height}: add/rename/remove/key dialogs centered in actual viewport, scrolled directory, internal overflow and focus restoration`,
+      );
+    } finally {
+      await f.close();
+    }
   }
 
   // The connected shell must retain its device and account actions when the

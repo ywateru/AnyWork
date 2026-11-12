@@ -211,6 +211,7 @@ try {
     entry.getByRole("status").filter({ hasText: "尚未登录" }),
   ).toBeVisible();
   await page.screenshot({ path: "artifacts/ui-v2-desktop-account-entry.png" });
+  const authorizationAttempts = [];
   for (const [button, screen] of [
     ["创建账号", "register"],
     ["登录已有账号", "signIn"],
@@ -226,12 +227,26 @@ try {
     const url = new URL(raw);
     assert.equal(url.searchParams.get("first_screen"), screen);
     assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+    assert.equal(url.searchParams.get("prompt"), "consent");
+    assert.ok(
+      url.searchParams.get("scope").split(" ").includes("offline_access"),
+    );
+    assert.match(url.searchParams.get("code_challenge"), /^[A-Za-z0-9_-]{43}$/);
     assert.equal(
       url.searchParams.get("redirect_uri"),
       "http://127.0.0.1:17897/callback",
     );
     assert.ok(url.searchParams.get("state"));
+    authorizationAttempts.push(url);
   }
+  assert.notEqual(
+    authorizationAttempts[0].searchParams.get("state"),
+    authorizationAttempts[1].searchParams.get("state"),
+  );
+  assert.notEqual(
+    authorizationAttempts[0].searchParams.get("code_challenge"),
+    authorizationAttempts[1].searchParams.get("code_challenge"),
+  );
   await page.evaluate(() => {
     window.fixtureMode = "cleanupReadFailure";
   });
