@@ -1,0 +1,52 @@
+{
+  "repository": "https://github.com/ywateru/CyberGrid",
+  "commit": "f2a3961536e5c69b13c7dbc661953d9243becbae",
+  "componentVersion": "0.2.0",
+  "files": {
+    "index.ts": {
+      "upstreamPath": "sdk-js/src/index.ts",
+      "upstreamSha256": "382b8bae5b85cc0b9ec12775dd3bd15b81f91ceeb6d239b498d8b22984f707a3",
+      "vendoredSha256": "6726e99b667372e08a89dc0fb91cb8098438a3e49e695cf6647fdd1adf6ef66a"
+    },
+    "bridge.ts": {
+      "upstreamPath": "sdk-js/src/bridge.ts",
+      "upstreamSha256": "3373c32794a35f5b804557a585db90243f628fbd9907a31431a22d995dbb23be",
+      "vendoredSha256": "3373c32794a35f5b804557a585db90243f628fbd9907a31431a22d995dbb23be"
+    },
+    "directory.ts": {
+      "upstreamPath": "sdk-js/src/directory.ts",
+      "upstreamSha256": "02bd6ac436b84dc08c9073e1f458d08a8d999971d663841d4ed0a5fd197f5fbc",
+      "vendoredSha256": "02bd6ac436b84dc08c9073e1f458d08a8d999971d663841d4ed0a5fd197f5fbc"
+    },
+    "endpoints.ts": {
+      "upstreamPath": "sdk-js/src/endpoints.ts",
+      "upstreamSha256": "06574fb7ce7e63c355b031576cf7c8ad4b18210100817f9a445120d99d527fc7",
+      "vendoredSha256": "06574fb7ce7e63c355b031576cf7c8ad4b18210100817f9a445120d99d527fc7"
+    },
+    "LICENSE": {
+      "upstreamPath": "sdk-js/LICENSE",
+      "upstreamSha256": "8c239b03ee76f4a2e9206e3c5be03c1fbf8dd249026af4c102467498de22431f",
+      "vendoredSha256": "8c239b03ee76f4a2e9206e3c5be03c1fbf8dd249026af4c102467498de22431f"
+    },
+    "notices/README.md": {
+      "upstreamPath": "sdk-js/notices/README.md",
+      "upstreamSha256": "9f0f223935c691fddd1ed97bd72a956d60db873f16d8f53fe86e5880a8232806",
+      "vendoredSha256": "9f0f223935c691fddd1ed97bd72a956d60db873f16d8f53fe86e5880a8232806"
+    },
+    "notices/typescript-5.9.3/SOURCE.json": {
+      "upstreamPath": "sdk-js/notices/typescript-5.9.3/SOURCE.json",
+      "upstreamSha256": "276dcd8f6e670c4d8229bed35893e303c6f37065e6c88684a078e611e854fa1c",
+      "vendoredSha256": "276dcd8f6e670c4d8229bed35893e303c6f37065e6c88684a078e611e854fa1c"
+    },
+    "notices/typescript-5.9.3/LICENSE.txt": {
+      "upstreamPath": "sdk-js/notices/typescript-5.9.3/LICENSE.txt",
+      "upstreamSha256": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
+      "vendoredSha256": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47"
+    },
+    "notices/typescript-5.9.3/ThirdPartyNoticeText.txt": {
+      "upstreamPath": "sdk-js/notices/typescript-5.9.3/ThirdPartyNoticeText.txt",
+      "upstreamSha256": "1af3c68039c57e539422da82a4faada506ce6d0ea6f90e0b699d02dbcdb7a90c",
+      "vendoredSha256": "1af3c68039c57e539422da82a4faada506ce6d0ea6f90e0b699d02dbcdb7a90c"
+    }
+  }
+}

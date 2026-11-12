@@ -67,7 +67,7 @@ async function fixture(width, options = {}) {
   await context.route("**/src/accountAuth.ts", (r) =>
     r.fulfill({
       contentType: "text/javascript",
-      body: `export class AccountLogtoClient { async isAuthenticated(){return window.fixture.authenticated;} async getIdTokenClaims(){return {sub:'public-layout-fixture',name:'布局测试账号'};} async getAccountAccessToken(){return 'synthetic-layout-token';} async startAccountSignIn(options){window.fixture.signIn=options;} async endAccountSession(url){window.fixture.signOut=url;} }`,
+      body: `export {withAccountSubject} from '/src/accountAuth.ts?fixture-original'; export class AccountLogtoClient { async isAuthenticated(){return window.fixture.authenticated;} async getIdTokenClaims(){return {sub:'public-layout-fixture',name:'布局测试账号'};} async getAccountAccessToken(){return 'synthetic-layout-token';} async getCyberGridAccessToken(){return 'synthetic-layout-token';} async startAccountSignIn(options){window.fixture.signIn=options;} async endAccountSession(url){window.fixture.signOut=url;} }`,
     }),
   );
   await context.route("**/src/vendor/cybergrid/index.ts", (r) =>
