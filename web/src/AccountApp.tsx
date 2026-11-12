@@ -47,6 +47,7 @@ import {
   AccountBrand as Brand,
   AccountSurface,
   AccountUtilities,
+  AccountOpenSource,
   DeviceNavigation,
 } from "./components/AccountChrome";
 
@@ -802,10 +803,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
             <ArrowUpRight size={15} />
           </a>
           {utilities}
-          <div className="account-source-links">
-            <a href="/source">{locale === "zh-CN" ? "对应源码" : "Source"}</a>
-            <a href="https://github.com/ywateru/AnyWork">GitHub</a>
-          </div>
+          <AccountOpenSource locale={locale} />
         </main>
       ) : (
         <div className="account-shell">
@@ -827,10 +825,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
                 </button>
               </div>
             </details>
-            <div className="account-source-links">
-              <a href="/source">{locale === "zh-CN" ? "对应源码" : "Source"}</a>
-              <a href="https://github.com/ywateru/AnyWork">GitHub</a>
-            </div>
           </DeviceNavigation>
           <div className="account-page">
             <header className="account-page-heading">
@@ -1014,6 +1008,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
                   ))}
                 </ul>
               )}
+              <AccountOpenSource locale={locale} />
               <details className="account-privacy">
                 <summary>
                   <ShieldCheck size={16} />

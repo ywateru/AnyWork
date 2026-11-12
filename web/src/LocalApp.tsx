@@ -16,6 +16,7 @@ import {
   AccountBrand,
   AccountSurface,
   AccountUtilities,
+  AccountOpenSource,
 } from "./components/AccountChrome";
 // StrictMode remounts must not consume the single-use handoff twice.
 let bootstrap: Promise<LocalContext> | undefined;
@@ -120,6 +121,7 @@ export default function LocalApp() {
           </>
         )}
         <AccountUtilities />
+        <AccountOpenSource />
       </main>
     </AccountSurface>
   );

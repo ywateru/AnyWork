@@ -127,6 +127,11 @@ pub async fn desktop_open(
 pub fn desktop_account_portal(accounts: State<'_, crate::accounts::Handle>) -> Result<(), String> {
     open::that_detached(accounts.portal_url()).map_err(|_| "无法打开默认浏览器。".into())
 }
+#[tauri::command]
+pub fn desktop_open_source() -> Result<(), String> {
+    open::that_detached("https://github.com/ywateru/AnyWork")
+        .map_err(|_| "无法打开默认浏览器，请访问 https://github.com/ywateru/AnyWork。".into())
+}
 #[cfg(unix)]
 fn local_context(s: &crate::accounts::Snapshot) -> BrowserContext {
     let derived = s

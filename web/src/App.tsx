@@ -2056,7 +2056,16 @@ export default function App({
               <p className="license">
                 AnyWork v{appVersion} · AGPL-3.0-only
                 <br />
-                部分界面代码来自 tiann/hapi。
+                服务端与客户端均开源，数据安全与隐私实现可公开审查。
+                <br />
+                <a
+                  href="https://github.com/ywateru/AnyWork"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  GitHub ↗
+                </a>
+                {" · "}
                 <a
                   href={connection.transport ? "/source" : api.url("/source")}
                   target="_blank"
@@ -2064,6 +2073,8 @@ export default function App({
                 >
                   下载对应源码（AGPL）
                 </a>
+                <br />
+                部分界面代码来自 tiann/hapi。
               </p>
             </SettingsPanel>
           )}

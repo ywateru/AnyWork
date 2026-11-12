@@ -10,7 +10,7 @@
   "navDownload": "Download",
   "navGuide": "Guide",
   "skip": "Skip to content",
-  "release": "Open source. Runs on your computer.",
+  "release": "Open-source server and clients.",
   "headline": "Good work.<br>No fixed address.",
   "intro": "Let your agents keep working on your computer. Sign in from a browser or phone, find your computer, and continue the conversation, approvals and work.",
   "cta": "Get AnyWork",
@@ -170,5 +170,6 @@
   "privacyDetails": "Data and security boundaries",
   "supportMatrix": "See the support matrix",
   "accountPlatformNote": "Account remote access is currently qualified on macOS. Android opens the same HTTPS account and device page in a Custom Tab or system browser. Windows and Linux account endpoints require separate validation.",
-  "downloadUpdateNote": "Use the latest desktop version. Review the introduction, sign in and prepare the workspace, remote access turns on by default once it is ready and can be turned off anytime. On your phone or the Web, use the same account to select the computer. The desktop console shows active encrypted connections."
+  "downloadUpdateNote": "Use the latest desktop version. Review the introduction, sign in and prepare the workspace, remote access turns on by default once it is ready and can be turned off anytime. On your phone or the Web, use the same account to select the computer. The desktop console shows active encrypted connections.",
+  "openSourceNote": "Review the code to understand how data security and privacy are implemented."
 }

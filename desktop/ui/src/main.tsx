@@ -726,6 +726,23 @@ function App() {
                   保存程序位置
                 </button>
               </details>
+              <section className="open-source-settings" aria-label="开源与隐私">
+                <h2>开源与隐私</h2>
+                <p>
+                  AnyWork 服务端与客户端均开源，数据安全与隐私实现可公开审查。
+                </p>
+                <a
+                  href="https://github.com/ywateru/AnyWork"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void invoke("desktop_open_source").catch((error) =>
+                      setError(String(error)),
+                    );
+                  }}
+                >
+                  在 GitHub 查看源码 <ExternalLink size={14} />
+                </a>
+              </section>
               <details className="privacy-settings">
                 <summary>连接与隐私说明</summary>
                 <p>
