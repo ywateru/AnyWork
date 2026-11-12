@@ -1,12 +1,13 @@
 # UI v2 merged checks and publication
 
-Date: 2026-11-11. Product scope is the [UI v2 task](../tasks/ui-refactor-v2.md). This record separates candidate review, merged checks and actual deployment.
+Date: 2026-11-12. Product scope is the [UI v2 task](../tasks/ui-refactor-v2.md). This record separates candidate review, merged checks and actual deployment.
 
 ## Accepted candidates
 
 - Web `81a97709e37d3a1df5cd6b592caad1d65bbdb654`: independently passed and merged. See [Web review](ui-v2-web-independent.md).
 - Desktop `4be6ef378074487d8c2736f2f63a01eb4a36b899`: independently passed and merged. See [desktop review](ui-v2-desktop-independent.md).
 - Hosted branding: actual configuration and public page independently passed at 1440/390. See [hosted review](ui-v2-hosted-branding.md). Only branding and primary colors changed; existing Logto background/footer remain.
+- Corrected Web `148f380b1fa7404b2d7f3cb0d37cf9e6ad8e5ee2`: independently passed, then merged as `c87ac8790cae0f18c9019f8bf8f6d55ee2a2cfb8`. See [short-height review](ui-v2-web-short-height.md). Original touch tests and timeout are unchanged; all six sidebar cases passed independently, including the 390 × 480 case in 19.9 seconds. The short-window history measured 192px and its first trusted touch advanced 145px.
 
 ## Merged local checks
 
@@ -18,9 +19,11 @@ Date: 2026-11-11. Product scope is the [UI v2 task](../tasks/ui-refactor-v2.md).
 
 The two initial task worktrees and merged branches were removed after independent candidate acceptance. On the merged regression failure, the Web merge was reverted locally, and a separate `codex/ui-v2-web-fix` worktree reapplies the candidate to fix compact-height navigation before re-review. Desktop remains accepted. Existing unrelated worktrees and installed services were retained.
 
+After correction merge `c87ac87`, root repeated the affected integration checks on isolated port 3336: all 12 account/local-entry and sidebar E2E cases passed in 45.9 seconds on Desktop and Android projects. The original short-height Android touch case passed in 19.8 seconds. Actual local ticket/cookie/PTY paths remain covered. Production build (including TypeScript), repository format and 1440/390 client account-entry checks also passed. Logs: ignored `artifacts/ui-v2-integrated-final/`. Earlier unaffected full-suite evidence remains above; no test was weakened.
+
 ## Publication
 
-Blocked on the short-height Web regression. Dry run selected next immutable version `0.1.26`; no release/tag was created and the application website has not been updated. Publication will use the existing resumable `scripts/publish.py` flow only after the fix passes independent and merged checks, followed by exact source/version and live entry checks.
+Short-height independent and targeted merged acceptance are complete. Ready for immutable `0.1.26` publication through the existing resumable `scripts/publish.py` flow. No release/tag has yet been created and the application website has not been updated. Exact source/version and live entry checks follow publication.
 
 ## Limits
 

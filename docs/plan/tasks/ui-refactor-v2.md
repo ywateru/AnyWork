@@ -56,4 +56,6 @@ Web 不重做消息、输入框、审批与工具面板；必要外层属性可�
 - 托管品牌：一次窄范围 PATCH 已提交且独立验收 pass，见 `docs/plan/reviews/ui-v2-hosted-branding.md`。正式页 1440/390 图标加载与黑色主按钮通过；Logto 原有背景和页脚保留。
 - 合并后的 Web typecheck、353 unit + 8 private-state、build，以及两端格式检查通过；桌面 build、根目录 account-entry 与 updater 脚本、96 E2E 通过。初次 updater 调用未指定本机 Chrome 而缺少 Playwright 自带浏览器，改用 `PLAYWRIGHT_CHANNEL=chrome` 后通过，不是产品失败。
 - 完整 Web 574 E2E：572 pass、1 条件 skip、1 blocking（390×480 侧栏列表只剩 67px，真实触摸长列表超时）。按门禁已在 main 撤回 Web merge，并在 `codex/ui-v2-web-fix` 重应用候选后修复；不得以加大超时、跳过或削弱真实触摸断言放行。见[合并记录](../reviews/ui-v2-merged-release.md)。
-- 发行、线上检查：待短高度修复验收后进行，发布预检为下一版 `0.1.26`；尚未更新应用网站。
+- 短高度修复 `148f380` 已于 2026-11-12 独立 pass 并合并为 `c87ac87`。原 sidebar 6 项测试全部通过，390×480 原生触摸用例 19.9 秒，原超时和断言未改；账号菜单、设备切换取消和安全退出通过。见[修复验收](../reviews/ui-v2-web-short-height.md)。
+- 最终针对合并检查：12 项账号/本机入口与侧栏 E2E 全通过，390×480 触摸 19.8 秒；production build（含类型检查）、format、1440/390 客户端入口检查通过。此前其余完整套件记录保留。
+- 发行、线上检查：准备以现有发布器发布 `0.1.26`；尚未更新应用网站。
