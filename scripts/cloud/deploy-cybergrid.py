@@ -262,7 +262,7 @@ def main():
     p.add_argument('--redis-state', type=Path, required=True)
     p.add_argument('--project', required=True)
     p.add_argument('--prefix', required=True)
-    p.add_argument('--frontend-origin', default='https://anywork-tau.vercel.app')
+    p.add_argument('--frontend-origin', default='https://anywork.aixgg.com')
     p.add_argument('--grid-origin', required=True)
     p.add_argument('--allow-local-development', action='store_true')
     p.add_argument('--prebuilt-directory', type=Path, help='Private checked upload-only staging for an adapted self-hosted coordinator')

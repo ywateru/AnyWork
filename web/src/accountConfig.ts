@@ -93,7 +93,7 @@ export function resolveAccountConfig(
 }
 
 export function accountPortalUrl(
-  value: unknown = "https://anywork-tau.vercel.app/app/",
+  value: unknown = "https://anywork.aixgg.com/app/",
 ): string {
   try {
     if (typeof value !== "string") throw new Error();

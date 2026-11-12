@@ -144,7 +144,7 @@ impl Default for PublicConfig {
             spa_client_id: "5ere2kbu9mugfu3xd8e90".into(),
             resource: "https://anywork-cybergrid-selfhost.vercel.app/api".into(),
             cybergrid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
-            frontend_origin: "https://anywork-tau.vercel.app".into(),
+            frontend_origin: "https://anywork.aixgg.com".into(),
         }
     }
 }
@@ -2907,7 +2907,7 @@ mod tests {
                 "spaClientId":"5ere2kbu9mugfu3xd8e90",
                 "resource":"https://anywork-cybergrid-selfhost.vercel.app/api",
                 "cybergridUrl":"https://anywork-cybergrid-selfhost.vercel.app",
-                "frontendOrigin":"https://anywork-tau.vercel.app"
+                "frontendOrigin":"https://anywork.aixgg.com"
             })
         );
         let expected = defaults.namespace(dir.path()).unwrap();

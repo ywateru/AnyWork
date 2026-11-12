@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SITE = ROOT / 'site'
 DIST = SITE / 'dist'
 REPO = 'https://github.com/ywateru/AnyWork'
-BASE = os.environ.get('ANYWORK_SITE_URL', 'https://anywork-tau.vercel.app').rstrip('/')
+BASE = os.environ.get('ANYWORK_SITE_URL', 'https://anywork.aixgg.com').rstrip('/')
 
 def main():
     parser = argparse.ArgumentParser()

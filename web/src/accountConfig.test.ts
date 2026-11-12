@@ -42,7 +42,7 @@ describe("account deployment selection", () => {
     });
   });
   it("validates the public portal without accepting untrusted credentials or redirects", () => {
-    expect(accountPortalUrl()).toBe("https://anywork-tau.vercel.app/app/");
+    expect(accountPortalUrl()).toBe("https://anywork.aixgg.com/app/");
     expect(accountPortalUrl("https://work.example/app/")).toBe(
       "https://work.example/app/",
     );

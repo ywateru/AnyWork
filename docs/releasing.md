@@ -149,3 +149,5 @@ Publishing preflight and final authorization both peel the existing remote tag a
 ## 旧 Pages 网站手动恢复
 
 旧的 GitHub Pages 产物/OIDC 工作流仅作明确手动恢复，普通 Release、push 与发布器均不调用。需要修复旧站时，先确认 repository Pages source 为 GitHub Actions，再显式运行 `gh workflow run pages.yml --ref main`。此动作只修复历史入口，不代表 Vercel 正式网站验收，也不创建或改写 Release。正式网站恢复使用 `--site-only`；`--pages-only` 是同一 Vercel 修复命令的兼容别名。
+
+2026-11-12: The canonical website is now `https://anywork.aixgg.com`, bound to the same Vercel project. Publication verification and new client defaults use this origin; earlier deployment URLs in historical evidence remain unchanged.

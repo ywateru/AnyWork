@@ -1,3 +1,5 @@
+> 2026-11-12 domain update: the canonical website and new client defaults use `https://anywork.aixgg.com`. It is attached to the existing Vercel project; root verified the existing DNS ownership record without changing DNS. Deployment must also add the new SPA callback/logout/CORS origin and coordinator browser origin while preserving old entries. Earlier acceptance below records the previous domain and does not establish new-domain account acceptance.
+
 > 2026-11-11 存储切换：此前正式 CyberGrid 配置接口的 HTTP503 已确认由 Upstash 免费月度命令额度耗尽引起（供应商固定错误 `max requests limit exceeded`、上限500000）。现按使用者授权改用 `redis.x.aixgg.com:6379` 自部署 TLS Redis，严格校验可信证书链与域名，不使用 IP 或明文回退。新 deployment `dpl_7Xvjo9kSsDNoWycj57W4zLyP4Xz4` 已 READY，正式 alias 与新环境读回一致，原版 RedisStore.ready 初始化通过；独立上线验收见[切换报告](plan/reviews/cybergrid-selfhost-redis-independent.md)。旧 Upstash 与旧不可变 deployment 保留，没有套餐升级或业务数据迁移。此前下述证据均保留原验收时点。
 
 > 最新用户修订：本轮切换到自部署Logto default业务租户（公开endpoint https://auth.x.aixgg.com，Console https://logto.x.aixgg.com/）。新应用/权限已独立核验，专用CyberGrid和[正式主页](https://anywork-tau.vercel.app/)均READY；真实Native/Web公网加密链、重启换钥、正式域名与390/1440视口通过，本机更新结果见[当前集成状态](plan/reviews/account-selfhost-cutover-01.md)。下方Cloud Development配置保留为此前证据，不作为最终部署默认值。不迁移秘密或用户业务数据。
@@ -105,7 +107,7 @@ CyberGrid 从其 GitHub **仓库根**固定源码部署，Node22，官方 `api/i
 
 ## 前端部署的完整公开配置
 
-`vercel.yml` 从同名 GitHub repository vars 显式传入五项 `VITE_LOGTO_ENDPOINT`、`VITE_LOGTO_APP_ID`、`VITE_LOGTO_RESOURCE`、`VITE_CYBERGRID_URL`、`VITE_CYBERGRID_NATIVE_APP_ID`，当前值为上表开发列。可选 `VITE_ACCOUNT_PORTAL_URL` 指定工作区账号入口，默认 `https://anywork-tau.vercel.app/app/`。不要把 PAT、M2M secret、Upstash token 或用户 grant 放入任何 `VITE_` 字段。
+`vercel.yml` 从同名 GitHub repository vars 显式传入五项 `VITE_LOGTO_ENDPOINT`、`VITE_LOGTO_APP_ID`、`VITE_LOGTO_RESOURCE`、`VITE_CYBERGRID_URL`、`VITE_CYBERGRID_NATIVE_APP_ID`，当前值为上表开发列。可选 `VITE_ACCOUNT_PORTAL_URL` 指定工作区账号入口，默认 `https://anywork.aixgg.com/app/`。不要把 PAT、M2M secret、Upstash token 或用户 grant 放入任何 `VITE_` 字段。
 
 部署前执行 `python3 scripts/cloud/prepare-frontend.py`：只读这五项公开环境变量，必须完整且是合法 HTTPS origin/resource 和客户端 ID；不读管理凭据、不调用云 API。脚本用所选 Logto/Grid origin 生成 `vercel.json` 中唯一全局 CSP，保留现有脚本/字体/对象/frame限制与加密 Cloudflare tunnel 连接许可，不保留旧租户 origin 或放开所有 HTTPS。随后 `vercel build --prod` 读取该配置。`scripts/assemble-vercel.py` 再次核对 CSP 与同一构建环境一致，缺字段或未提前生成配置均拒绝组装，避免发出能构建却被 CSP 拦截的自部署前端。Vercel 的 `--prod` 只指 Vercel 部署目标，不表示 Logto 模式。
 
@@ -157,8 +159,8 @@ vercel deploy --prebuilt --prod
 | `spaClientId` | `5ere2kbu9mugfu3xd8e90` |
 | `resource` | `https://anywork-cybergrid-selfhost.vercel.app/api` |
 | `cybergridUrl` | `https://anywork-cybergrid-selfhost.vercel.app` |
-| `frontendOrigin` | `https://anywork-tau.vercel.app` |
-| `accountPortalUrl` | `https://anywork-tau.vercel.app/app/` |
+| `frontendOrigin` | `https://anywork.aixgg.com` |
+| `accountPortalUrl` | `https://anywork.aixgg.com/app/` |
 
 作者离线检查：6项自部署配置契约、6项prebuilt隐私/身份/CLI/未知结果契约、20项原发布恢复与新增pinned环境检查、9项配置安全、7项前端配置/CSP、6项源码导出、28项发布器检查，共82项通过；候选变更文件对已知真实bootstrap/管理令牌/synthetic登录秘密字节扫描命中0。真实自部署配置已创建并重放读回，不代表协调服务已部署，也未发布前端或修改运行中的用户服务。
 

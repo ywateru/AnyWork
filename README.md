@@ -8,7 +8,7 @@
 
 Continue Codex or DeepSeek Harness from your browser or Android phone.<br />Your workspace and agent process stay on your own computer.
 
-[Website](https://anywork-tau.vercel.app/en/) · [My devices](https://anywork-tau.vercel.app/app/) · [Download](https://github.com/ywateru/AnyWork/releases/latest) · [中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md)
+[Website](https://anywork.aixgg.com/en/) · [My devices](https://anywork.aixgg.com/app/) · [Download](https://github.com/ywateru/AnyWork/releases/latest) · [中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md)
 
 [![Checks](https://github.com/ywateru/AnyWork/actions/workflows/ci.yml/badge.svg)](https://github.com/ywateru/AnyWork/actions/workflows/ci.yml)
 [![Build releases](https://github.com/ywateru/AnyWork/actions/workflows/release.yml/badge.svg)](https://github.com/ywateru/AnyWork/actions/workflows/release.yml)
@@ -36,7 +36,7 @@ Existing dsh and WorkBuddy histories can be browsed alongside Codex, including s
 
 ## Download and connect
 
-Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest), or use the [bilingual download page](https://anywork-tau.vercel.app/en/#download). These instructions describe the current source; published packages retain the capabilities recorded in their release notes. Account remote hosting is qualified first on macOS; other platform availability is tracked in the [support matrix](docs/support-matrix.md).
+Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest), or use the [bilingual download page](https://anywork.aixgg.com/en/#download). These instructions describe the current source; published packages retain the capabilities recorded in their release notes. Account remote hosting is qualified first on macOS; other platform availability is tracked in the [support matrix](docs/support-matrix.md).
 
 | Platform | Package | Requirements |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases
 
 1. Set up the [Codex CLI](https://github.com/openai/codex) or an existing [supported Harness host](docs/harness-setup.md) **on the host computer**. Keep that computer awake while tasks run.
 2. Open AnyWork, choose your workspace if needed, and click **Open workspace** for local browser access. Local use does not require a cloud account.
-3. To connect remotely, register or sign in on the host and enable **Allow my other devices to access**. Open [My devices](https://anywork-tau.vercel.app/app/) on another computer or phone, sign in to the same account, verify the host identity and open its workspace.
+3. To connect remotely, register or sign in on the host and enable **Allow my other devices to access**. Open [My devices](https://anywork.aixgg.com/app/) on another computer or phone, sign in to the same account, verify the host identity and open its workspace.
 
 Native account credentials and endpoint keys stay in process memory. After exiting the desktop app, sign in and enable remote access again. A new endpoint key requires confirmation. Closing remote access leaves local work available.
 

@@ -149,7 +149,7 @@ class FrontendDeployment(unittest.TestCase):
         workflow = (frontend.ROOT / '.github/workflows/vercel.yml').read_text()
         self.assertIn('vars.ANYWORK_ACCOUNT_READY', workflow)
         self.assertNotIn('ANYWORK_PRODUCTION_READY', workflow)
-        self.assertIn("VITE_ACCOUNT_PORTAL_URL: ${{ vars.VITE_ACCOUNT_PORTAL_URL || 'https://anywork-tau.vercel.app/app/' }}", workflow)
+        self.assertIn("VITE_ACCOUNT_PORTAL_URL: ${{ vars.VITE_ACCOUNT_PORTAL_URL || 'https://anywork.aixgg.com/app/' }}", workflow)
         for key in self.values:
             self.assertIn(key + ': ${{ vars.' + key + ' }}', workflow)
         self.assertLess(workflow.index('scripts/cloud/prepare-frontend.py'), workflow.index('run: vercel build'))

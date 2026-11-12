@@ -8,7 +8,7 @@
 
 从浏览器和 Android 手机继续本机的 Codex 或 DeepSeek Harness 会话。<br />工作目录和 Agent 执行进程，始终留在自己的电脑上。
 
-[产品官网](https://anywork-tau.vercel.app/zh/) · [我的设备](https://anywork-tau.vercel.app/app/) · [下载](https://github.com/ywateru/AnyWork/releases/latest) · [English](README.md) · [使用指南](docs/getting-started.zh-CN.md)
+[产品官网](https://anywork.aixgg.com/zh/) · [我的设备](https://anywork.aixgg.com/app/) · [下载](https://github.com/ywateru/AnyWork/releases/latest) · [English](README.md) · [使用指南](docs/getting-started.zh-CN.md)
 
 [![检查](https://github.com/ywateru/AnyWork/actions/workflows/ci.yml/badge.svg)](https://github.com/ywateru/AnyWork/actions/workflows/ci.yml)
 [![构建发行版](https://github.com/ywateru/AnyWork/actions/workflows/release.yml/badge.svg)](https://github.com/ywateru/AnyWork/actions/workflows/release.yml)
@@ -36,7 +36,7 @@ Rust 桌面应用负责启动本地工作区，一键在浏览器打开。需要
 
 ## 下载与连接
 
-从 [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest) 获取安装包，或访问[双语下载页](https://anywork-tau.vercel.app/zh/#download)。本指南描述当前源码；已发布安装包以对应发行说明为准。账号远程宿主首先验收 macOS，其他平台范围见[支持矩阵](docs/support-matrix.md)。
+从 [GitHub Releases](https://github.com/ywateru/AnyWork/releases/latest) 获取安装包，或访问[双语下载页](https://anywork.aixgg.com/zh/#download)。本指南描述当前源码；已发布安装包以对应发行说明为准。账号远程宿主首先验收 macOS，其他平台范围见[支持矩阵](docs/support-matrix.md)。
 
 | 平台 | 下载内容 | 安装要求 |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ Rust 桌面应用负责启动本地工作区，一键在浏览器打开。需要
 
 1. 在**执行工作的电脑**配置 [Codex CLI](https://github.com/openai/codex)，或已有的[兼容 Harness 主机](docs/harness-setup.md)，执行期间保持电脑唤醒。
 2. 打开 AnyWork，按需选择工作目录，点击“打开工作区”进入本地浏览器。本地使用不要求云端账号。
-3. 需要远程访问时，在电脑端注册或登录，开启“允许我的其他设备访问”。其他电脑或手机打开[我的设备](https://anywork-tau.vercel.app/app/)，登录同一账号、核对电脑身份并打开工作区。
+3. 需要远程访问时，在电脑端注册或登录，开启“允许我的其他设备访问”。其他电脑或手机打开[我的设备](https://anywork.aixgg.com/app/)，登录同一账号、核对电脑身份并打开工作区。
 
 Native账号凭据和端点私钥只留在进程内存；退出桌面应用后，需要重新登录并开启远程访问，新公钥需要确认。关闭远程访问后，本地工作仍可继续。
 
