@@ -1,5 +1,7 @@
 # Documentation index
 
+- [登录、窗口与设备体验修订](plan/tasks/ui-login-device-followup.md)：弹窗居中、回调页、浏览器 SSO、原生标题栏、用户名和可编辑设备名。
+
 - [桌面与 Web 统一 UI / 交互框线设计稿（2026-11-11，v2）](design/desktop-refactor/README.md)：采用现有六角标志，精简桌面信息与 Web 登录、连接、设备入口；Web 对话部分暂保留，设计核验与产品验收分别记录。
 
 - [统一界面 v2 实施与发布](plan/tasks/ui-refactor-v2.md) · [线上验收](plan/reviews/ui-v2-production.md)：已发布 v0.1.26，正式 Web 与各平台安装包核验通过；旧构建缓存已清理。

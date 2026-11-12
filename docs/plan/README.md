@@ -1,5 +1,9 @@
 # DeepSeek Harness delivery
 
+## Current login and device follow-up
+
+[登录与设备体验修订](tasks/ui-login-device-followup.md) 对 v0.1.26 的实际截图反馈实施五项修正，分离 Native 和 UI 作者并独立验收，保留授权/服务边界。
+
 ## Current UI v2 delivery
 
 [统一界面 v2](tasks/ui-refactor-v2.md) 已完成并发布 [v0.1.26](https://github.com/ywateru/AnyWork/releases/tag/v0.1.26)：精简桌面控制台与 Web 登录、连接、设备入口，统一六角标志，保留 Web 对话内部。两端隔离开发、独立验收、短窗口回归修复及精确源码 CI 均通过；正式网站已更新，安装包与签名更新可用。见[合并发布记录](reviews/ui-v2-merged-release.md)和[线上验收](reviews/ui-v2-production.md)。用户追加的旧构建缓存清理已完成，业务数据与当前运行服务保留。
