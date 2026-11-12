@@ -144,7 +144,7 @@ impl Default for PublicConfig {
             spa_client_id: "5ere2kbu9mugfu3xd8e90".into(),
             resource: "https://anywork-cybergrid-selfhost.vercel.app/api".into(),
             cybergrid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
-            frontend_origin: "https://anywork-tau.vercel.app".into(),
+            frontend_origin: "https://anywork.aixgg.com".into(),
         }
     }
 }
@@ -522,32 +522,60 @@ fn public_installation_id(
     struct PublicIdentity {
         installation_id: String,
     }
-    let binding = format!("{}\0{subject}", config.namespace(support)?);
     let directory = support.join("account-installations");
     if std::fs::symlink_metadata(&directory).is_ok_and(|m| m.file_type().is_symlink()) {
         bail!("INSTALLATION_ID_REJECTED")
     }
-    let path = directory.join(format!("{:x}.json", Sha256::digest(binding.as_bytes())));
-    let id = match std::fs::symlink_metadata(&path) {
-        Ok(metadata) => {
-            if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 128 {
-                bail!("INSTALLATION_ID_REJECTED")
-            }
-            serde_json::from_slice::<PublicIdentity>(&std::fs::read(&path)?)?.installation_id
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let id = uuid::Uuid::new_v4().to_string();
-            config::atomic_private(
-                &path,
-                &serde_json::to_vec(&PublicIdentity {
-                    installation_id: id.clone(),
-                })?,
-            )?;
-            id
-        }
-        Err(error) => return Err(error.into()),
+    let path_for = |config: &PublicConfig| -> Result<PathBuf> {
+        let binding = format!("{}\0{subject}", config.namespace(support)?);
+        Ok(directory.join(format!("{:x}.json", Sha256::digest(binding.as_bytes()))))
     };
-    uuid::Uuid::parse_str(&id).map_err(|_| anyhow::anyhow!("INSTALLATION_ID_REJECTED"))?;
+    let read_id = |path: &std::path::Path| -> Result<Option<String>> {
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 128
+                {
+                    bail!("INSTALLATION_ID_REJECTED")
+                }
+                let id = serde_json::from_slice::<PublicIdentity>(&std::fs::read(path)?)?
+                    .installation_id;
+                uuid::Uuid::parse_str(&id)
+                    .map_err(|_| anyhow::anyhow!("INSTALLATION_ID_REJECTED"))?;
+                Ok(Some(id))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    };
+    let path = path_for(config)?;
+    if let Some(id) = read_id(&path)? {
+        return Ok(id);
+    }
+    // Only the verified official domain alias changed. Keep the public device
+    // UUID for that exact binding; namespace isolation and gateway origins stay
+    // strict. This never reads a key, token or grant, and retains the old file.
+    let mut official = PublicConfig {
+        endpoint: "https://auth.x.aixgg.com".into(),
+        issuer: "https://auth.x.aixgg.com/oidc".into(),
+        native_client_id: "x7lzj58abb1sdp16lkd34".into(),
+        spa_client_id: "5ere2kbu9mugfu3xd8e90".into(),
+        resource: "https://anywork-cybergrid-selfhost.vercel.app/api".into(),
+        cybergrid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
+        frontend_origin: "https://anywork.aixgg.com".into(),
+    };
+    let legacy_id = if config == &official {
+        official.frontend_origin = "https://anywork-tau.vercel.app".into();
+        read_id(&path_for(&official)?)?
+    } else {
+        None
+    };
+    let id = legacy_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    config::atomic_private(
+        &path,
+        &serde_json::to_vec(&PublicIdentity {
+            installation_id: id.clone(),
+        })?,
+    )?;
     Ok(id)
 }
 fn update_device_index(data: &mut Value, i: &Installation, grid_id: &str) -> Result<()> {
@@ -2710,6 +2738,170 @@ mod tests {
         let changed = handle(dir.path()).installation("owner-a").await.unwrap();
         assert_ne!(a.id, changed.id);
     }
+    fn public_identity_path(
+        support: &std::path::Path,
+        config: &PublicConfig,
+        subject: &str,
+    ) -> PathBuf {
+        let binding = format!("{}\0{subject}", config.namespace(support).unwrap());
+        support
+            .join("account-installations")
+            .join(format!("{:x}.json", Sha256::digest(binding.as_bytes())))
+    }
+    fn legacy_official_config() -> PublicConfig {
+        PublicConfig {
+            frontend_origin: "https://anywork-tau.vercel.app".into(),
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn official_domain_upgrade_keeps_public_id_and_device_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = legacy_official_config();
+        let new = PublicConfig::default();
+        let id = public_installation_id(dir.path(), &old, "owner").unwrap();
+        let old_path = public_identity_path(dir.path(), &old, "owner");
+        let before = std::fs::read(&old_path).unwrap();
+        save_device_name(dir.path(), "Saved local name").unwrap();
+        assert_ne!(
+            old.namespace(dir.path()).unwrap(),
+            new.namespace(dir.path()).unwrap()
+        );
+        assert_eq!(
+            public_installation_id(dir.path(), &new, "owner").unwrap(),
+            id
+        );
+        assert_eq!(std::fs::read(&old_path).unwrap(), before);
+        assert_eq!(
+            std::fs::read(public_identity_path(dir.path(), &new, "owner")).unwrap(),
+            before
+        );
+        assert_eq!(
+            load_device_name(dir.path(), false).unwrap(),
+            "Saved local name"
+        );
+        let installation = Installation {
+            config: new,
+            subject: "owner".into(),
+            id: id.clone(),
+            private_key: "ram-only".into(),
+            public_key: "fresh-key".into(),
+            name: "Saved local name".into(),
+        };
+        let mut data = json!({"anywork":{"schemaVersion":1,"devices":{
+            id.clone():{"label":"Web renamed","publicKey":"previous-key","keyVersion":4}
+        }}});
+        update_device_index(&mut data, &installation, "new-grid-device").unwrap();
+        assert_eq!(data["anywork"]["devices"].as_object().unwrap().len(), 1);
+        assert_eq!(data["anywork"]["devices"][&id]["keyVersion"], 5);
+        assert_eq!(
+            directory_name(&json!({"customData":data}), &id).as_deref(),
+            Some("Web renamed")
+        );
+    }
+    #[test]
+    fn official_domain_upgrade_prefers_existing_new_identity_without_reading_old() {
+        let dir = tempfile::tempdir().unwrap();
+        let new = PublicConfig::default();
+        let new_id = public_installation_id(dir.path(), &new, "owner").unwrap();
+        let old = legacy_official_config();
+        let old_id = public_installation_id(dir.path(), &old, "owner").unwrap();
+        assert_ne!(new_id, old_id);
+        let old_path = public_identity_path(dir.path(), &old, "owner");
+        std::fs::write(&old_path, "corrupt old identity").unwrap();
+        assert_eq!(
+            public_installation_id(dir.path(), &new, "owner").unwrap(),
+            new_id
+        );
+        assert_eq!(
+            std::fs::read_to_string(old_path).unwrap(),
+            "corrupt old identity"
+        );
+    }
+    #[test]
+    fn official_domain_upgrade_does_not_alias_other_bindings_or_owners() {
+        for field in [
+            "endpoint",
+            "issuer",
+            "nativeClientId",
+            "spaClientId",
+            "resource",
+            "cybergridUrl",
+            "frontendOrigin",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut value = serde_json::to_value(PublicConfig::default()).unwrap();
+            value[field] = json!(format!("{}-different", value[field].as_str().unwrap()));
+            let changed: PublicConfig = serde_json::from_value(value).unwrap();
+            let old = PublicConfig {
+                frontend_origin: "https://anywork-tau.vercel.app".into(),
+                ..changed.clone()
+            };
+            let old_id = public_installation_id(dir.path(), &old, "owner").unwrap();
+            assert_ne!(
+                public_installation_id(dir.path(), &changed, "owner").unwrap(),
+                old_id,
+                "{field}"
+            );
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let old_id =
+            public_installation_id(dir.path(), &legacy_official_config(), "owner-a").unwrap();
+        assert_ne!(
+            public_installation_id(dir.path(), &PublicConfig::default(), "owner-b").unwrap(),
+            old_id
+        );
+        let elsewhere = tempfile::tempdir().unwrap();
+        assert_ne!(
+            public_installation_id(elsewhere.path(), &PublicConfig::default(), "owner-a").unwrap(),
+            old_id
+        );
+    }
+    #[test]
+    fn official_domain_upgrade_rejects_corrupt_or_symlink_legacy_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = legacy_official_config();
+        let new = PublicConfig::default();
+        public_installation_id(dir.path(), &old, "owner").unwrap();
+        let old_path = public_identity_path(dir.path(), &old, "owner");
+        let new_path = public_identity_path(dir.path(), &new, "owner");
+        for corrupt in [
+            "not json",
+            r#"{"installationId":"not-a-uuid"}"#,
+            r#"{"installationId":"00000000-0000-4000-8000-000000000001","refresh":"forbidden"}"#,
+        ] {
+            std::fs::write(&old_path, corrupt).unwrap();
+            assert!(public_installation_id(dir.path(), &new, "owner").is_err());
+            assert!(!new_path.exists());
+            assert_eq!(std::fs::read_to_string(&old_path).unwrap(), corrupt);
+        }
+        std::fs::remove_file(&old_path).unwrap();
+        let outside = dir.path().join("outside");
+        let bytes = r#"{"installationId":"00000000-0000-4000-8000-000000000001"}"#;
+        std::fs::write(&outside, bytes).unwrap();
+        std::os::unix::fs::symlink(&outside, &old_path).unwrap();
+        assert!(public_installation_id(dir.path(), &new, "owner").is_err());
+        assert!(!new_path.exists());
+        assert_eq!(std::fs::read_to_string(outside).unwrap(), bytes);
+    }
+    #[test]
+    fn official_domain_upgrade_without_legacy_generates_and_reuses_new_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let new = PublicConfig::default();
+        let id = public_installation_id(dir.path(), &new, "owner").unwrap();
+        uuid::Uuid::parse_str(&id).unwrap();
+        assert_eq!(
+            public_installation_id(dir.path(), &new, "owner").unwrap(),
+            id
+        );
+        assert!(!public_identity_path(dir.path(), &legacy_official_config(), "owner").exists());
+        assert_eq!(
+            std::fs::read_dir(dir.path().join("account-installations"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
     #[test]
     fn public_identity_rejects_corruption_and_symlinks_without_replacing_them() {
         let dir = tempfile::tempdir().unwrap();
@@ -2907,7 +3099,7 @@ mod tests {
                 "spaClientId":"5ere2kbu9mugfu3xd8e90",
                 "resource":"https://anywork-cybergrid-selfhost.vercel.app/api",
                 "cybergridUrl":"https://anywork-cybergrid-selfhost.vercel.app",
-                "frontendOrigin":"https://anywork-tau.vercel.app"
+                "frontendOrigin":"https://anywork.aixgg.com"
             })
         );
         let expected = defaults.namespace(dir.path()).unwrap();

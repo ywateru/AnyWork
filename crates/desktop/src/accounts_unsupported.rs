@@ -26,7 +26,7 @@ impl Handle {
     }
     pub async fn disable(&self) {}
     pub fn portal_url(&self) -> String {
-        "https://anywork-tau.vercel.app/app/".into()
+        "https://anywork.aixgg.com/app/".into()
     }
     fn snapshot(&self) -> Value {
         let name = self.name.lock().unwrap_or_else(|e| e.into_inner()).clone();

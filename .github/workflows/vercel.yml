@@ -14,7 +14,7 @@ concurrency:
 jobs:
   deploy:
     env:
-      VITE_ACCOUNT_PORTAL_URL: ${{ vars.VITE_ACCOUNT_PORTAL_URL || 'https://anywork-tau.vercel.app/app/' }}
+      VITE_ACCOUNT_PORTAL_URL: ${{ vars.VITE_ACCOUNT_PORTAL_URL || 'https://anywork.aixgg.com/app/' }}
       VITE_LOGTO_ENDPOINT: ${{ vars.VITE_LOGTO_ENDPOINT }}
       VITE_LOGTO_APP_ID: ${{ vars.VITE_LOGTO_APP_ID }}
       VITE_LOGTO_RESOURCE: ${{ vars.VITE_LOGTO_RESOURCE }}

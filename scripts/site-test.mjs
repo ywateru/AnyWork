@@ -97,7 +97,7 @@ try {
   await page.route('https://api.github.com/**', route => route.abort());
   await page.goto(`${base}/`,{waitUntil:'networkidle'});
   assert.equal(await page.locator('html').getAttribute('lang'),'en');
-  assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'),(process.env.ANYWORK_SITE_URL || 'https://anywork-tau.vercel.app') + '/en/');
+  assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'),(process.env.ANYWORK_SITE_URL || 'https://anywork.aixgg.com') + '/en/');
   assert(await page.locator('#release-status').textContent());
   if (process.env.ANYWORK_SITE_SOCIAL === '1') {
     await page.addStyleTag({content:'.header{height:60px}.hero{padding-block:20px;gap:45px}.manager-scene{padding-top:0}.manager-content{padding:17px 18px 12px}.service-summary{margin-top:16px;padding-block:11px}.manager-section-label{margin-top:15px}.manager-route{padding-block:9px}.manager-address{margin-top:12px}.intro{font-size:17px}.hero h1{font-size:56px}.release-line{margin-bottom:18px}.manager-scene .preview-disclaimer{margin-top:9px}'});

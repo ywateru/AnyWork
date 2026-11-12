@@ -1,5 +1,7 @@
 # Documentation index
 
+- [开源说明与 GitHub 入口](plan/tasks/open-source-ui.md)：官网与客户端补充服务端、客户端均开源的说明及源码入口，仅做必要界面调整。
+
 - [CyberGrid v0.8.0 集成更新](plan/tasks/cybergrid-v080.md)：官方 Rust/JS SDK 与宿主远程门禁、令牌新鲜度适配已随 v0.1.28 交付；[最终独立验收](plan/reviews/ui-login-cybergrid-v28-release.md)通过，服务端迁移另行验证。
 
 - [登录、窗口与设备体验修订](plan/tasks/ui-login-device-followup.md)：弹窗居中、回调页、浏览器 SSO、原生标题栏、用户名和可编辑设备名已随 v0.1.28 交付，实证边界见最终独立验收。

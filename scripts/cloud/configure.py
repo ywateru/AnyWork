@@ -306,7 +306,7 @@ def main():
     p.add_argument('--name', default='AnyWork')
     p.add_argument('--tag', choices=['development', 'production'], default='production')
     p.add_argument('--region', default='JP')
-    p.add_argument('--frontend-origin', default='https://anywork-tau.vercel.app')
+    p.add_argument('--frontend-origin', default='https://anywork.aixgg.com')
     p.add_argument('--grid-origin', default='https://anywork-cybergrid.vercel.app')
     p.add_argument('--allow-local-development', action='store_true')
     p.add_argument('--upstash-email')

@@ -108,15 +108,13 @@ try {
     });
     await expect(signup).toHaveAttribute(
       "href",
-      "https://anywork-tau.vercel.app/app/?signup=1",
+      "https://anywork.aixgg.com/app/?signup=1",
     );
     const [popup] = await Promise.all([
       page.waitForEvent("popup"),
       signup.click(),
     ]);
-    await expect(popup).toHaveURL(
-      "https://anywork-tau.vercel.app/app/?signup=1",
-    );
+    await expect(popup).toHaveURL("https://anywork.aixgg.com/app/?signup=1");
     await popup.close();
     local = true;
     await page.reload();
