@@ -31,8 +31,13 @@
 
 ## 部署建议与限制
 
-SDK 可与当前旧服务功能兼容，因此服务端升级不是本 Web 合并的协议前提。但客户端更新不能补齐服务端 session/receipt 的实际 authClientId/policyMode 绑定；若本轮要求获得该策略安全收益，建议另行精确升级官方 static-products 服务。单 product ID 沿用现有 Native ID，保持现有 SPA、TLS Redis prefix/epoch/limits 和 legacy-v1；不新增业务桥接或 Management 凭据。
+SDK 可与当前旧服务功能兼容，因此服务端升级不是本 Web 合并的协议前提。但客户端更新不能补齐服务端 session/receipt 的实际 authClientId/policyMode 绑定；**本轮采用 SDK-only 并延期服务端升级可接受**：现有固定单 SPA/单 Native allowlist 及绑定保持不变，没有实证表明任意客户端可越权；本轮已执行真实 SDK→legacy HTTP 测试。服务端策略绑定收益应留在后续独立迁移中，不将本次 SDK 更新描述为已修复服务端策略撤销边界。若未来变更客户端集合/产品策略，必须先重新评估旧 session 撤销并精确升级官方 static-products 服务。单 product ID 沿用现有 Native ID，保持现有 SPA、TLS Redis prefix/epoch/limits 和 legacy-v1；不新增业务桥接或 Management 凭据。
 
 新 static 会拒绝旧无绑定 session/receipt。JS 对同 epoch APPLICATION_UNAVAILABLE 没有自动恢复触发，不能承诺透明重连；需验证明确重连/重载与 unknown fence。不能只移动生产 alias 就宣称旧策略退役，所有旧公开 deployment URL 也须停用或受保护。Standard Vercel Authentication 保留正式域名公开/保护生成 URL 的方案尚待项目实证。本次未执行任何平台变更。
 
 现有 redis-cutover helper 是固定旧 artifact 的 Upstash→TCP 操作，不能重用为代码升级；新 PIN/source/artifact/products/provenance 必须建立新 operation。保留同 epoch 不等于旧代码 rollback 已被证明；回到旧服务会恢复旧策略缺口，应明确作为安全降级。详见证据目录 server-readiness.md。
+
+
+### 服务端决策补充
+
+root 转达的只读线上结果为旧 immutable URLs 受 Standard Protection（all_except_custom_domains）保护返回 401，正式 alias 返回 200；独立 verifier 本轮没有重新请求这些具体旧 URL，不冒称独立确认。既有单产品/固定客户端配置不变时，保留旧服务具有更小的本轮迁移风险，**无服务端升级前置 blocker**。旧服务本身仍校验 exchange JWT/actual client/Native app，策略变更后的旧 console session/receipt 绑定缺口是未来策略撤销问题，不应夸大成当前任意客户端漏洞。后续 server 升级仍需隔离 old→new→old Redis/receipt、旧 session 明确恢复、保护范围与回退实证。不得把存在保护的生产旧实例与仍公开的旁路混淆。
