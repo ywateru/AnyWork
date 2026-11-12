@@ -17,3 +17,9 @@ Native SDK 候选 `d56532a` 通过[独立审查](cybergrid-v080-native.md)后合
 服务端维持现有固定绑定及 TLS Redis，不把 SDK 更新写成服务端切换。已保存本次作者/审查证据后删除五个已结束工作树及已合入的作者分支，约释放 347MiB；保留正在开发的 Native SDK 工作树和共享 Cargo target，未清理用户数据或无关工作树。
 
 源码及合并集成门槛已经完成；最终发行仍等待精确源码 CI、不可变发行和线上身份核验。本轮不以旧版本 v0.1.26 的成功记录替代这些门槛。
+
+## v0.1.27 发行中止与修正门槛
+
+发行源码 `37357859d0436b8d6b7efc9912715a30fee0b529` 的[完整 Checks](https://github.com/ywateru/AnyWork/actions/runs/43164129824)全部通过，首次网站部署和[独立线上第一阶段](ui-login-cybergrid-release.md)也通过。但[正式发行构建](https://github.com/ywateru/AnyWork/actions/runs/43166548130)的 macOS arm64 Native 测试有两项失败，其余六个构建目标成功。发行工作流和 publisher 均以 failure 结束，**未创建 v0.1.27 Release 或发布其安装包**；现有不可变 tag 不移动或复用。
+
+两项均在 `Fixture::close` 对旧 gateway 地址的裸 TCP connect 断言失败，分别为 `disable_and_logout_fence_delayed_config_token_registration_and_index` 与 `failed_logout_retains_latest_grant_but_never_reopens_remote`。现有日志不足以区分真实 gateway 残留、端口被其他并行夹具重用或 socket 自连接；不能通过删除断言、盲目延迟或直接重试掩盖。作者在隔离分支诊断，保留原 gateway 退出和业务入口关闭的可验证断言；作者提交后由另一代理独立复核，再决定后续不可变发行。复用串行共享 Cargo target，不影响用户应用或正在运行的服务。原始日志保留在忽略的 `artifacts/ui-login-cybergrid-final/release-macos-arm64.log`。
