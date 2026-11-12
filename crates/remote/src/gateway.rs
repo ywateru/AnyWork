@@ -29,7 +29,7 @@ use std::{
 use tokio::{
     net::TcpListener,
     sync::{Semaphore, mpsc},
-    task::JoinHandle,
+    task::{AbortHandle, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -154,10 +154,22 @@ struct Context {
     http: reqwest::Client,
     clients: Arc<Clients>,
 }
+/// Read-only completion witness for one gateway's serving task. Unlike its
+/// loopback port, this identity cannot be reused by a later listener.
+#[derive(Clone)]
+pub struct GatewayShutdown(AbortHandle);
+impl GatewayShutdown {
+    /// True only once the original serving task and its listener have exited.
+    /// Requesting shutdown alone does not complete this witness.
+    pub fn is_complete(&self) -> bool {
+        self.0.is_finished()
+    }
+}
 pub struct Gateway {
     pub port: u16,
     stop: CancellationToken,
     task: Option<JoinHandle<()>>,
+    shutdown: GatewayShutdown,
     clients: Arc<Clients>,
 }
 impl Gateway {
@@ -202,12 +214,19 @@ impl Gateway {
                 .with_graceful_shutdown(task_stop.cancelled_owned())
                 .await;
         });
+        let shutdown = GatewayShutdown(task.abort_handle());
         Ok(Self {
             port,
             stop,
             task: Some(task),
+            shutdown,
             clients,
         })
+    }
+    /// Retains this task's completion identity, including after `close` or drop.
+    /// The observer cannot cancel or otherwise change the task.
+    pub fn shutdown_observer(&self) -> GatewayShutdown {
+        self.shutdown.clone()
     }
     pub fn remote_clients(&self) -> Vec<RemoteClient> {
         if self.stop.is_cancelled() {

@@ -704,6 +704,10 @@ struct Inner {
     state: Mutex<State>,
     operation: Mutex<()>,
     account_write: Mutex<()>,
+    #[cfg(test)]
+    gateway_shutdowns: Mutex<Vec<anywork_remote::gateway::GatewayShutdown>>,
+    #[cfg(test)]
+    provider_spawned: Mutex<Option<tokio::sync::oneshot::Sender<u32>>>,
 }
 #[derive(Clone)]
 pub struct Handle(Arc<Inner>);
@@ -761,6 +765,10 @@ impl Handle {
             }),
             operation: Mutex::new(()),
             account_write: Mutex::new(()),
+            #[cfg(test)]
+            gateway_shutdowns: Mutex::new(Vec::new()),
+            #[cfg(test)]
+            provider_spawned: Mutex::new(None),
         })))
     }
     pub fn portal_url(&self) -> String {
@@ -1390,6 +1398,12 @@ impl Handle {
             verifier: Arc::new(verifier),
         })
         .await)?;
+        #[cfg(test)]
+        self.0
+            .gateway_shutdowns
+            .lock()
+            .await
+            .push(gateway.shutdown_observer());
         let (tx, mut rx) = mpsc::channel(8);
         let prepared_provider = (|| {
             owner.policy().check(&generation)?;
@@ -1424,6 +1438,10 @@ impl Handle {
                 return Err(error);
             }
         };
+        #[cfg(test)]
+        if let Some(spawned) = self.0.provider_spawned.lock().await.take() {
+            let _ = spawned.send(provider.child.id().expect("new provider process has a PID"));
+        }
         let received = tokio::select! {
             biased;
             _ = stop.cancelled() => None,
