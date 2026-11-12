@@ -1,7 +1,7 @@
 ---
 id: ui-refactor-v2
 scope: desktop console and Web account/device/connection UI
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -58,4 +58,6 @@ Web 不重做消息、输入框、审批与工具面板；必要外层属性可�
 - 完整 Web 574 E2E：572 pass、1 条件 skip、1 blocking（390×480 侧栏列表只剩 67px，真实触摸长列表超时）。按门禁已在 main 撤回 Web merge，并在 `codex/ui-v2-web-fix` 重应用候选后修复；不得以加大超时、跳过或削弱真实触摸断言放行。见[合并记录](../reviews/ui-v2-merged-release.md)。
 - 短高度修复 `148f380` 已于 2026-11-12 独立 pass 并合并为 `c87ac87`。原 sidebar 6 项测试全部通过，390×480 原生触摸用例 19.9 秒，原超时和断言未改；账号菜单、设备切换取消和安全退出通过。见[修复验收](../reviews/ui-v2-web-short-height.md)。
 - 最终针对合并检查：12 项账号/本机入口与侧栏 E2E 全通过，390×480 触摸 19.8 秒；production build（含类型检查）、format、1440/390 客户端入口检查通过。此前其余完整套件记录保留。
-- 发行、线上检查：准备以现有发布器发布 `0.1.26`；尚未更新应用网站。
+- 发行、线上检查：`v0.1.26` 已发布，精确源码 `c8fcb717f835bd903cf8c2d4bf37ff26fd240e8f` 的完整 Checks、各平台 Release 和最终 Vercel 部署全部成功，发布器 exit 0 / complete。正式 Web 已更新，1440/390 登录入口及托管页品牌独立 pass；发行元数据和对应源码核验见[正式环境验收](../reviews/ui-v2-production.md)与[合并发布记录](../reviews/ui-v2-merged-release.md)。桌面新安装包和签名更新可用，保留用户当前运行实例。
+- 缓存清理：移除三个旧工作树的 Rust target 和主树增量编译缓存，测得释放约 37GiB；npm 校验另回收 1,463,116,162 字节无引用缓存。源码、业务数据、凭据和验收记录保留。
+- 运维范围：本次刷新已有 Vercel CLI 凭据、同步现有 secret 后恢复部署；该 OAuth access token 约八小时有效，未来无人值守部署仍需有效专用凭据。本次未改造长期凭据管理，见[云配置](../../cloud-configuration.md)。

@@ -89,6 +89,8 @@ CyberGrid 从其 GitHub **仓库根**固定源码部署，Node22，官方 `api/i
 
 官网 workflow 已改为 `vercel.yml`，使用精确事件提交、Vercel prebuilt 产物与 `/build.json` 源码身份。`pages.yml` 只保留手动恢复旧网站。发布器以 Vercel 为正式站点，保留不可变 Release、签名/校验和与 `--pages-only` 兼容别名；推荐 `--site-only` 修复现有版本网站。CI 的 `ANYWORK_ACCOUNT_READY=true` 是账号/加密传输启用开关：Development、自部署或 Cloud 生产模式均可使用，但仅在所选完整配置、E2EE、独立审查及真实链路验收后设置；未设置时明确失败，不能出现“跳过即成功”。它不表示已购买或启用 Logto Cloud 生产套餐。Vercel token 只作为 GitHub secret，org/project ID 和下述公开配置作为 repository vars；旧 `ANYWORK_PRODUCTION_READY` 不再读取。
 
+2026-11-12 的 UI v2 发布发现已有 `VERCEL_TOKEN` 失效，初次官网工作流在 pull 配置时失败。使用已有 Vercel CLI 的 refresh grant 恢复认证后，仅更新同名 GitHub secret 并重试成功，最终 0.1.26 发行与网站核验通过。该 OAuth access token 约八小时有效（本次到期 2026-11-12 10:30:37 UTC），CI 内没有自动 refresh；后续无人值守发布仍需有效的专用部署凭据，不能将本次恢复视为长期认证修复。没有创建新账号、扩大云权限或改变付费方案；凭据值不进入文档或日志。
+
 ## 实际验证范围
 
 - 上游当前固定源码服务测试实际运行：87 项中 80 pass、7 skip、0 fail。7 项需要本机 redis-server，未以假通过记账；后续实际 Upstash/部署验证另记。

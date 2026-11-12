@@ -2,7 +2,7 @@
 
 - [桌面与 Web 统一 UI / 交互框线设计稿（2026-11-11，v2）](design/desktop-refactor/README.md)：采用现有六角标志，精简桌面信息与 Web 登录、连接、设备入口；Web 对话部分暂保留，设计核验与产品验收分别记录。
 
-- [统一界面 v2 实施与发布](plan/tasks/ui-refactor-v2.md)：隔离实施桌面及 Web 入口，独立验收后按既有流程发布。
+- [统一界面 v2 实施与发布](plan/tasks/ui-refactor-v2.md) · [线上验收](plan/reviews/ui-v2-production.md)：已发布 v0.1.26，正式 Web 与各平台安装包核验通过；旧构建缓存已清理。
 
 - [登录后默认远程与精简控制台](plan/tasks/desktop-default-remote.md)：当前用户修订，修正协调配置读取失败，支持会话内手动关闭。
 - [自部署 TLS Redis 切换](plan/tasks/cybergrid-selfhost-redis.md) · [独立验收](plan/reviews/cybergrid-selfhost-redis-independent.md)：替代已耗尽免费月额度的 Upstash，保持账号与端到端授权绑定。

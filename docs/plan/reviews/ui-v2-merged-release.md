@@ -23,7 +23,22 @@ After correction merge `c87ac87`, root repeated the affected integration checks 
 
 ## Publication
 
-Short-height independent and targeted merged acceptance are complete. Ready for immutable `0.1.26` publication through the existing resumable `scripts/publish.py` flow. No release/tag has yet been created and the application website has not been updated. Exact source/version and live entry checks follow publication.
+Published [v0.1.26](https://github.com/ywateru/AnyWork/releases/tag/v0.1.26) from exact source `c8fcb717f835bd903cf8c2d4bf37ff26fd240e8f`. The existing resumable publisher finished with exit 0 and phase `complete`.
+
+- Exact-source [Checks](https://github.com/ywateru/AnyWork/actions/runs/43141374588) passed, including the full service/Web suite and Android, container, Windows and macOS checks.
+- All-platform [Release](https://github.com/ywateru/AnyWork/actions/runs/43143859381) passed. Publisher verified 20 assets, 19 SHA-256 entries and five updater target/signature/version bindings.
+- Final [Vercel deployment](https://github.com/ywateru/AnyWork/actions/runs/43145655894) passed. Official [application](https://anywork-tau.vercel.app/app/) and bilingual download metadata match 0.1.26; `/build.json` identifies the exact release source.
+- Independent public-entry review at 1440/390 passed, including actual OAuth entry navigation, canonical SVG bytes and coordinator health. Final independent publication evidence is recorded in [production review](ui-v2-production.md).
+
+Initial Vercel run 43141374531 failed while pulling configuration because the stored deployment token had expired. The existing authenticated CLI refreshed its credential; the existing GitHub `VERCEL_TOKEN` secret was updated without printing it, and the failed job retry passed. This OAuth access credential expires at 2026-11-12 10:30:37 UTC; successful current deployment does not establish durable future CI authentication. See [cloud configuration](../../cloud-configuration.md).
+
+The final correction worktree and branch were removed after merge and independent verification. The installed desktop and running local service were retained; new desktop packages and signed update metadata are available in the release.
+
+## Cache cleanup
+
+The user's follow-up cleanup removed untracked, rebuildable Rust artifacts from three old worktrees (`account-desktop`, `account-reliability-review`, `improve-ledger-merged`) and the main `target/debug/incremental`. No compiler or runtime was using these paths. Disk free space increased from about 33GiB to 70GiB at that measurement (approximately 37GiB reclaimed). `npm cache verify` additionally garbage-collected 1,162 unreferenced entries / 1,463,116,162 bytes while retaining verified dependency content. Current activity elsewhere can change disk totals.
+
+Source branches, worktree edits, business sessions/configuration/credentials, current root executables and acceptance evidence were preserved. Cleanup audit is local-only at `artifacts/ui-v2-integrated-final/cache-cleanup.json`; no personal runtime data or development screenshots were added to the release source.
 
 ## Limits
 
