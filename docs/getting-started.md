@@ -11,7 +11,7 @@ Download from [GitHub Releases](https://github.com/ywateru/AnyWork/releases/late
 - **macOS 14+:** choose `macos-arm64` for Apple Silicon or `macos-x86_64` for Intel, open the `.dmg` and drag `AnyWork.app` into Applications. Read `INSTALL-macOS.txt` in the disk image; before opening the installed app, run `sudo xattr -cr "/Applications/AnyWork.app"` in Terminal. Run the copy in Applications so automatic updates can replace it. The app is ad-hoc signed, not Apple notarized. After checking its source and checksum, use Privacy & Security → Open Anyway if Gatekeeper blocks it.
 - **Windows 10/11 x64:** use the per-user `-setup.exe` installer for automatic updates. For the portable ZIP, unzip and keep `anywork-desktop.exe` beside `resources`. Install [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) if absent. The binary has no publisher certificate. This release does not hot-attach to the Windows Codex desktop process; use the Codex CLI adapter.
 - **Linux:** use a writable AppImage for automatic updates (`chmod +x anywork-linux-*.AppImage`). For portable archives, extract and run `./anywork-desktop`. x64 is built on Ubuntu 22.04 (glibc 2.35+); ARM64 on Ubuntu 24.04 (glibc 2.39+). Install runtime libraries: `sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 libsecret-1-0`. Other distributions need equivalent packages.
-- **Android 8+:** install the APK from the applicable release, or open [My devices](https://anywork-tau.vercel.app/app/) in your phone browser. The new account launcher uses browser Custom Tabs when available, without stored host addresses or shared keys. If signatures differ, use a matching package instead of uninstalling and deleting old data. Keep your browser up to date.
+- **Android 8+:** install the APK from the applicable release, or open [My devices](https://anywork.aixgg.com/app/) in your phone browser. The new account launcher uses browser Custom Tabs when available, without stored host addresses or shared keys. If signatures differ, use a matching package instead of uninstalling and deleting old data. Keep your browser up to date.
 
 Automatic desktop updates are available from 0.1.1. Use the Windows per-user installer or Linux AppImage to enable them. Keep AppImages writable (on recent Ubuntu, install `libfuse2t64`, or use `--appimage-extract-and-run` if FUSE is unavailable). Version 0.1.0 needs one manual upgrade. [Update behavior and supported packages](updates.md).
 
@@ -26,7 +26,7 @@ An independently started service is reused after identity verification; select i
 ## Continue on the website or phone
 
 1. Register or sign in on the host computer, then explicitly enable **Allow my other devices to access**.
-2. Open [My devices](https://anywork-tau.vercel.app/app/) on another computer or phone and sign in to the same account. The Android launcher opens this same HTTPS account flow; no VPN configuration or pairing link is required.
+2. Open [My devices](https://anywork.aixgg.com/app/) on another computer or phone and sign in to the same account. The Android launcher opens this same HTTPS account flow; no VPN configuration or pairing link is required.
 3. Select a ready computer. For a first connection or changed key, verify its identity against the host before opening the workspace.
 4. Return to **My devices** to choose another computer. Signing out remotely ends that remote connection. Disabling remote access on the host leaves local work available.
 

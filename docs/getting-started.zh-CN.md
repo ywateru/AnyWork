@@ -11,7 +11,7 @@
 - **macOS 14+：** Apple Silicon 选 `macos-arm64`，Intel 选 `macos-x86_64`。打开 `.dmg`，将 `AnyWork.app` 拖入 Applications（应用程序）。磁盘映像内附 `INSTALL-macOS.txt` 中英文说明；打开安装后的应用前，在终端执行 `sudo xattr -cr "/Applications/AnyWork.app"`。请从应用程序目录运行，便于后续自动更新。目前是临时签名，尚未经过 Apple 公证。核对来源和校验值后，如被 Gatekeeper 拦截，可前往“隐私与安全性 → 仍要打开”。
 - **Windows 10/11 x64：** 推荐使用当前用户 `-setup.exe` 安装版以支持自动更新。便携版需解压并保持 `anywork-desktop.exe` 和 `resources` 在同一目录。如缺少则安装 [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)。程序尚无发行商证书。本版不支持 Windows Codex 桌面进程热接入，可使用 Codex CLI 会话。
 - **Linux：** 推荐从可写位置运行 AppImage 以支持自动更新（`chmod +x anywork-linux-*.AppImage`）。便携包解压后运行 `./anywork-desktop`。x64 基于 Ubuntu 22.04（glibc 2.35+），ARM64 基于 Ubuntu 24.04（glibc 2.39+）。安装运行库：`sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 libsecret-1-0`。其他发行版使用等价软件包。
-- **Android 8+：** 安装适用发行版的APK，或直接用手机浏览器打开[我的设备](https://anywork-tau.vercel.app/app/)。新版Android账号入口优先使用系统浏览器Custom Tabs，不保存桌面地址/访问密钥。签名不兼容时不要自行卸载以免删除旧数据，应使用匹配签名的安装包。保持浏览器更新。
+- **Android 8+：** 安装适用发行版的APK，或直接用手机浏览器打开[我的设备](https://anywork.aixgg.com/app/)。新版Android账号入口优先使用系统浏览器Custom Tabs，不保存桌面地址/访问密钥。签名不兼容时不要自行卸载以免删除旧数据，应使用匹配签名的安装包。保持浏览器更新。
 
 0.1.1 起支持桌面自动更新。Windows 推荐当前用户安装版，Linux 推荐 AppImage，并放在可写位置。较新 Ubuntu 可安装 `libfuse2t64`；无 FUSE 时可尝试 `--appimage-extract-and-run`。0.1.0 需先手动升级一次。[更新行为与支持的安装方式](updates.md)。
 
@@ -26,7 +26,7 @@
 ## 从网页或手机继续
 
 1. 在工作电脑的AnyWork中注册或登录，明确开启“允许我的其他设备访问”。
-2. 在其他电脑或手机打开[我的设备](https://anywork-tau.vercel.app/app/)，登录同一账号。Android App打开同一个正式HTTPS账号入口，无需配置VPN或导入配对链接。
+2. 在其他电脑或手机打开[我的设备](https://anywork.aixgg.com/app/)，登录同一账号。Android App打开同一个正式HTTPS账号入口，无需配置VPN或导入配对链接。
 3. 选择已就绪的电脑。首次连接或公钥变化时，与工作电脑核对设备身份，确认后打开工作区。
 4. 返回“我的设备”可以切换电脑；退出远程账号会结束当前远程连接。关闭工作电脑的远程访问后，本地仍可继续使用。
 

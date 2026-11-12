@@ -1,6 +1,6 @@
 # Android账号入口
 
-Android8+保持既有applicationId `dev.remoteagent.app`与签名兼容。主Activity仅打开`https://anywork-tau.vercel.app/app/`，注册按钮只附加`?signup=1`。Custom Tab保留系统浏览器的TLS、Cookie和Logto跳转；返回App后可重新打开。App不接收OAuth回调，浏览器在HTTPS `/app/callback`处理，工作区继续在同一移动Web内使用。
+Android8+保持既有applicationId `dev.remoteagent.app`与签名兼容。主Activity仅打开`https://anywork.aixgg.com/app/`，注册按钮只附加`?signup=1`。Custom Tab保留系统浏览器的TLS、Cookie和Logto跳转；返回App后可重新打开。App不接收OAuth回调，浏览器在HTTPS `/app/callback`处理，工作区继续在同一移动Web内使用。
 
 无Custom Tabs provider时打开相同固定HTTPS地址到系统浏览器；无浏览器显示明确安装提示，不回退WebView或手动配置。任意传入Intent不控制目标。仅声明启动Intent，不接收旧配对deep link、分享或地址令牌参数。
 

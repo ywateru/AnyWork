@@ -31,7 +31,7 @@ guard = importlib.import_module('check-release-version')
 updater = importlib.import_module('updater-artifacts')
 REPO = 'ywateru/AnyWork'
 WEB = 'https://github.com/' + REPO
-SITE = 'https://anywork-tau.vercel.app'
+SITE = 'https://anywork.aixgg.com'
 API = 'https://api.github.com/repos/' + REPO + '/'
 FILES = ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json',
          'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json',

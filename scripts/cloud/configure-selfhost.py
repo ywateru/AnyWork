@@ -128,7 +128,7 @@ class SelfHosted:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state', type=Path, required=True)
-    parser.add_argument('--frontend-origin', default='https://anywork-tau.vercel.app')
+    parser.add_argument('--frontend-origin', default='https://anywork.aixgg.com')
     parser.add_argument('--grid-origin', required=True)
     parser.add_argument('--allow-loopback', action='store_true')
     args = parser.parse_args()
