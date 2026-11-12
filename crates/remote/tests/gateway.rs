@@ -187,6 +187,8 @@ async fn assert_closed(socket: &mut Socket, seconds: u64) {
 #[tokio::test]
 async fn encrypted_request_preserves_local_auth_and_disable_closes_it() {
     let (mut gateway, key, calls) = start(60).await;
+    let shutdown = gateway.shutdown_observer();
+    assert!(!shutdown.is_complete());
     let (mut ws, mut noise) = connect(gateway.port, &key, "allowed-test-access").await;
     for value in [
         json!({"type":"request","id":"r1","method":"GET","path":"/api/info","size":0}),
@@ -202,6 +204,9 @@ async fn encrypted_request_preserves_local_auth_and_disable_closes_it() {
     assert_eq!(receive(&mut ws, &mut noise).await["type"], "end");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     gateway.close().await;
+    assert!(shutdown.is_complete());
+    assert!(gateway.shutdown_observer().is_complete());
+    assert!(gateway.remote_clients().is_empty());
     assert_closed(&mut ws, 1).await;
 }
 #[tokio::test]
