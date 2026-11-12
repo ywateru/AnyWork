@@ -8,6 +8,10 @@ The website and clients now clearly state that both the server and clients are o
 
 官网与客户端明确说明服务端和客户端均开源，并提供 GitHub 链接，便于审查源码、了解数据安全与隐私边界。本次仅调整界面入口与文案。
 
+The official website and default client account entry now use https://anywork.aixgg.com.
+
+正式官网与客户端默认账号入口统一使用 https://anywork.aixgg.com。
+
 **Previous release 0.1.28 / 上一版本**
 
 Account dialogs now open in the center of the browser window, including on narrow and short screens. The desktop sign-in callback has a compact AnyWork page with clear instructions for returning to the app; receiving a callback is distinguished from completing account verification.
