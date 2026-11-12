@@ -1,7 +1,7 @@
 ---
 id: open-source-ui
 scope: website and client open-source links and copy
-status: in-progress
+status: done
 depends-on: []
 ---
 
@@ -37,4 +37,6 @@ Web 现有源码区域          → 简短开源说明 + GitHub
 
 ## progress
 
-UI `874b4a7`、域名及兼容修正 `e0c093c` 已通过[独立审查](../reviews/open-source-ui.md)并合并。新增迁移与既有隔离边界共 8 项 Native 检查通过，Web/官网/Android 相关既有检查通过。新域名已验证且 HTTPS 可用；Logto、GitHub portal 与同代码协调 origin 配置已更新并独立核验。旧入口兼容项和 TLS Redis 配置保留。等待正式 v0.1.29 发布及最终精确源码核验；旧宿主需要更新并重启后接受新域名。
+UI `874b4a7`、域名及兼容修正 `e0c093c` 已通过[独立审查](../reviews/open-source-ui.md)并合并。新增迁移与既有隔离边界共 8 项 Native 检查通过，Web/官网/Android 相关既有检查通过。新域名已验证且 HTTPS 可用；Logto、GitHub portal 与同代码协调 origin 配置已更新并独立核验。旧入口兼容项和 TLS Redis 配置保留。
+
+2026-11-12：正式 [v0.1.29](https://github.com/ywateru/AnyWork/releases/tag/v0.1.29) 已发布，精确源码为 `17679e4f01e0ced8946b5dfa8456bbe56bd84c45`，网站统一为 `https://anywork.aixgg.com`。Checks `43193643523`、Release `43197004589` attempt2、最终 Vercel `43201878549` 均成功；publisher exit0 / complete。[两阶段独立发行验收](../reviews/open-source-release.md) PASS：20 资产、19 校验项、5 更新目标、双语下载及完整 `/source` 的 815 个公开文件均匹配发布源码。首次 macOS Intel DMG 创建遇 `Resource busy`，同版本显式重试成功，保留原失败记录。未替换用户安装版或操作业务数据；旧宿主需要更新并重启后接受新域名。

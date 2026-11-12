@@ -1,6 +1,6 @@
 # Documentation index
 
-- [开源说明与 GitHub 入口](plan/tasks/open-source-ui.md)：官网与客户端补充服务端、客户端均开源的说明及源码入口，仅做必要界面调整。
+- [开源说明与正式域名](plan/tasks/open-source-ui.md)：已随 v0.1.29 发布；官网、Web 与桌面补充服务端和客户端开源说明及 GitHub，默认入口统一为 `https://anywork.aixgg.com`，[最终独立验收](plan/reviews/open-source-release.md)通过。
 
 - [CyberGrid v0.8.0 集成更新](plan/tasks/cybergrid-v080.md)：官方 Rust/JS SDK 与宿主远程门禁、令牌新鲜度适配已随 v0.1.28 交付；[最终独立验收](plan/reviews/ui-login-cybergrid-v28-release.md)通过，服务端迁移另行验证。
 

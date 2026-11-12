@@ -1,6 +1,6 @@
 # DeepSeek Harness delivery
 
-- [开源说明与 GitHub 入口](tasks/open-source-ui.md)：按用户要求精简补充官网、Web 和桌面说明，独立复核后按标准流程发布。
+- [开源说明与正式域名](tasks/open-source-ui.md)：已发布 v0.1.29，官网、Web 和桌面补充 GitHub 及服务端/客户端开源说明，默认入口统一为 `https://anywork.aixgg.com`；[两阶段独立线上验收](reviews/open-source-release.md)通过。
 
 - [CyberGrid v0.8.0](tasks/cybergrid-v080.md)：必要 SDK/宿主适配已随 v0.1.28 发布；登录设备修订、SDK 和发行测试修正均独立接受，精确源码 CI、全部发行构建与[两阶段线上独立验收](reviews/ui-login-cybergrid-v28-release.md)通过。v0.1.27 失败历史保留于合并记录。当前固定客户端配置下保留协调服务，服务端迁移另行验证。
 
