@@ -2,7 +2,7 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.25 / 本次更新**
+**New in 0.1.26 / 本次更新**
 
 The desktop console and Web account entry share a quieter, neutral interface and the existing hexagonal AnyWork logo. Desktop navigation separates the local workspace, remote access, settings and updates. The local panel keeps its open action, saved loopback address, copy action, first-visit explanation and working directory together.
 
