@@ -1,6 +1,6 @@
 # DeepSeek Harness delivery
 
-- [CyberGrid v0.8.0](tasks/cybergrid-v080.md)：用户追加的上游更新检查与必要 SDK/宿主适配，纳入本次发行；先合并登录设备修订，再隔离实施与独立验收。
+- [CyberGrid v0.8.0](tasks/cybergrid-v080.md)：用户追加的上游更新检查与必要 SDK/宿主适配，纳入本次发行；登录设备修订及 Web SDK 已独立接受并合并，Native SDK 正在隔离实施。当前固定客户端配置下保留协调服务，服务端迁移另行验证。
 
 ## Current login and device follow-up
 
