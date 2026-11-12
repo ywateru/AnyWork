@@ -28,4 +28,4 @@ Native 作者：`Cargo.lock`、`crates/desktop/Cargo.toml`、`crates/desktop/src
 
 ## delivery
 
-2026-11-12：Web `a7fb33f` 与 Native `d56532a` 已分别通过独立审查并合入 main。合并检查通过，见[统一记录](../reviews/ui-login-cybergrid-merged.md)。本任务保持进行中，直至 v0.1.27 精确源码 CI、不可变发布与线上独立核验完成。现有协调服务和 TLS Redis 不升级；static-products 服务端迁移须另行验证旧→新→旧兼容及回退，不属于本次 SDK-only 发行完成条件。
+2026-11-12：Web `a7fb33f` 与 Native `d56532a` 已分别通过独立审查并合入 main。合并检查通过，见[统一记录](../reviews/ui-login-cybergrid-merged.md)。本任务保持进行中，直至 v0.1.28 精确源码 CI、不可变发布与线上独立核验完成。现有协调服务和 TLS Redis 不升级；static-products 服务端迁移须另行验证旧→新→旧兼容及回退，不属于本次 SDK-only 发行完成条件。

@@ -25,3 +25,11 @@ Native SDK 候选 `d56532a` 通过[独立审查](cybergrid-v080-native.md)后合
 两项均在 `Fixture::close` 对旧 gateway 地址的裸 TCP connect 断言失败，分别为 `disable_and_logout_fence_delayed_config_token_registration_and_index` 与 `failed_logout_retains_latest_grant_but_never_reopens_remote`。现有日志不足以区分真实 gateway 残留、端口被其他并行夹具重用或 socket 自连接；不能通过删除断言、盲目延迟或直接重试掩盖。作者在隔离分支诊断，保留原 gateway 退出和业务入口关闭的可验证断言；作者提交后由另一代理独立复核，再决定后续不可变发行。复用串行共享 Cargo target，不影响用户应用或正在运行的服务。原始日志保留在忽略的 `artifacts/ui-login-cybergrid-final/release-macos-arm64.log`。
 
 阶段诊断没有复现原发行的两项失败：80 轮中 37 轮全绿，43 轮均为另一个 provider 就绪文件等待超时；2,197 次已记录关闭任务全部正常完成，不能将这些日志写成原错误已复现。作者随后构造原 gateway 任务结束、原端口重新绑定并接受其他 TCP 连接的确定性用例，证明裸端口断言存在误判条件，但仍不证明原 CI 当时确实端口复用。候选方向是观察原 gateway 任务身份及完成状态，保留 Native disabled、无 remote/clients、provider 退出等原有断言，不改变 production 关闭流程；另以明确阶段同步定位就绪夹具，撤回未证实的 sleep 调整。完成候选及独立验收前不放行发行。
+
+## v0.1.28 修复验收与合并复检
+
+作者 `da043f04404feadae4d18a0db62650b644941b23` 已通过[独立复核](ui-release-gateway-close.md)，无 blocking finding，合入 main；独立报告为 `d761f7e`，主树对应 `aee2d7d`。只读 observer 识别原 gateway task 的完成状态，测试专用 oneshot 同步实际子进程创建。production 关闭顺序、取消及超时不变；受控替代 listener 用例不用于推断原事故根因。
+
+主树 `aee2d7d` 执行 `cargo test --locked --workspace --release` 全部通过：**316 passed / 8 ignored / 0 failed**，含服务端 193、Native 78、remote unit 5 与真实 Noise/WS 8。未改变此前已经验收的 Web/GUI 源码；完整精确发行 SHA 的远端 Checks 仍是后续门禁。证据在忽略的 `artifacts/ui-login-cybergrid-final/merged-v28-workspace.log`；作者及独立证据已保存至主树，复用共享 target，无用户服务操作。
+
+双语发行说明准备为 v0.1.28。v0.1.27 构建已经终态失败，后续使用 publisher `--new` 保留旧 tag，发布新精确源码；本节仍不表示新版已发布。

@@ -45,4 +45,4 @@ depends-on: [ui-refactor-v2]
 
 ## delivery
 
-2026-11-12：五项修订已通过[独立审查](../reviews/ui-login-device-followup.md)、合并及[集成检查](../reviews/ui-login-cybergrid-merged.md)。真实原生按钮已有实窗证据；实际拖动位移因输入权限环境限制仍未实证通过。身份服务 SSO 与候选回调 listener 分别验证，不合称完整 Native 真实账户 runtime 验收。待与 CyberGrid SDK 更新统一完成 v0.1.27 发布及线上核验后关闭本任务。
+2026-11-12：五项修订已通过[独立审查](../reviews/ui-login-device-followup.md)、合并及[集成检查](../reviews/ui-login-cybergrid-merged.md)。真实原生按钮已有实窗证据；实际拖动位移因输入权限环境限制仍未实证通过。身份服务 SSO 与候选回调 listener 分别验证，不合称完整 Native 真实账户 runtime 验收。待与 CyberGrid SDK 更新统一完成 v0.1.28 发布及线上核验后关闭本任务。
