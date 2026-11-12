@@ -1,6 +1,6 @@
 # Native account dependencies and provenance
 
-The native account integration references CyberGrid's `cybergrid-sdk` 0.2.0 directly from source commit `2bd6729c6bbee90ed2926410caca883a0a100890` at <https://github.com/ywateru/CyberGrid>. Cargo.lock records the exact Git source. This code is not relicensed by AnyWork. The upstream original code is **All rights reserved**; a compatible distribution grant from the owner is a release gate. Private integration and source testing do not imply permission to publish binaries containing it.
+The native account integration references CyberGrid's `cybergrid-sdk` 0.3.0 directly from source commit `f2a3961536e5c69b13c7dbc661953d9243becbae` at <https://github.com/ywateru/CyberGrid>. Cargo.lock records the exact Git source. This code is not relicensed by AnyWork. The upstream original code is **All rights reserved**; a compatible distribution grant from the owner is a release gate. Private integration and source testing do not imply permission to publish binaries containing it.
 
 CyberGrid's existing SDK/provider notices and original license texts remain in the pinned dependency: `sdk-rust/LICENSE`, `sdk-rust/THIRD_PARTY_NOTICES.md`, `sdk-rust/licenses/`, `sdk-rust/provider-assets/`. The current AnyWork browser gateway launches AnyWork's existing explicitly resolved cloudflared distribution; it does not copy or modify upstream provider assets. Existing cloudflared notices in the AnyWork release remain required.
 

@@ -1248,8 +1248,8 @@ dependencies = [
 
 [[package]]
 name = "cybergrid-sdk"
-version = "0.2.0"
-source = "git+https://github.com/ywateru/CyberGrid.git?rev=2bd6729c6bbee90ed2926410caca883a0a100890#2bd6729c6bbee90ed2926410caca883a0a100890"
+version = "0.3.0"
+source = "git+https://github.com/ywateru/CyberGrid.git?rev=f2a3961536e5c69b13c7dbc661953d9243becbae#f2a3961536e5c69b13c7dbc661953d9243becbae"
 dependencies = [
  "base64 0.22.1",
  "bytes",

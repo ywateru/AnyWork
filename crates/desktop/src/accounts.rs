@@ -20,6 +20,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 const CALLBACK: &str = "http://127.0.0.1:17897/callback";
+const GRID_SCOPES: [&str; 5] = ["openid", "offline_access", "profile", "email", "connect"];
+const GRID_CLEANUP_PENDING: &str =
+    "本地远程入口已关闭，但上次协调登记或撤销结果尚未确认；恢复网络后请重试。";
 // Fixed diagnostics only. Provider errors can contain credentials/URLs and are
 // deliberately discarded at the boundary rather than formatted or logged.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,6 +99,13 @@ async fn verified_grid_config(
                 if auth.issuer != expected.issuer
                     || auth.resource != expected.resource
                     || auth.client_id != expected.native_client_id
+                    || !grid_scopes_match(
+                        &auth
+                            .scope
+                            .split_whitespace()
+                            .map(str::to_owned)
+                            .collect::<Vec<_>>(),
+                    )
                 {
                     return Err(EnableStage::GridConfig.into());
                 }
@@ -288,6 +298,8 @@ struct GrantOwner {
     remote_policy: std::sync::Mutex<RemotePolicy>,
     state: Mutex<GrantState>,
     http: reqwest::Client,
+    #[cfg(test)]
+    token_endpoint: Option<String>,
 }
 impl GrantOwner {
     fn new(grant: Grant) -> Result<Self> {
@@ -299,13 +311,35 @@ impl GrantOwner {
                 uncertain: false,
             }),
             http: client()?,
+            #[cfg(test)]
+            token_endpoint: None,
         })
     }
     fn policy(&self) -> std::sync::MutexGuard<'_, RemotePolicy> {
         self.remote_policy.lock().unwrap_or_else(|e| e.into_inner())
     }
+    fn token_endpoint(&self, config: &PublicConfig) -> String {
+        #[cfg(test)]
+        if let Some(endpoint) = &self.token_endpoint {
+            return endpoint.clone();
+        }
+        format!("{}/token", config.issuer)
+    }
+    async fn revoke(&self) -> Result<()> {
+        let state = self.state.lock().await;
+        Handle::revoke_at(
+            &self.http,
+            &format!("{}/revocation", self.token_endpoint(&state.grant.config)),
+            &state.grant.config.native_client_id,
+            &state.grant.refresh,
+        )
+        .await
+    }
     async fn token(&self, resource: bool) -> Result<String> {
         let mut state = self.state.lock().await;
+        self.refresh(&mut state, resource).await
+    }
+    async fn refresh(&self, state: &mut GrantState, resource: bool) -> Result<String> {
         if state.invalid || state.uncertain {
             bail!("ACCOUNT_REAUTH_REQUIRED")
         }
@@ -321,12 +355,8 @@ impl GrantOwner {
         // Unknown exchange outcomes block this RAM owner from replaying a
         // possibly rotated grant. Nothing is checkpointed to persistent storage.
         state.uncertain = true;
-        let response = self
-            .http
-            .post(format!("{}/token", config.issuer))
-            .form(&form)
-            .send()
-            .await?;
+        let endpoint = self.token_endpoint(&config);
+        let response = self.http.post(endpoint).form(&form).send().await?;
         let successful = response.status().is_success();
         let bytes = bounded(response).await?;
         let value: Value = serde_json::from_slice(&bytes)?;
@@ -353,6 +383,100 @@ impl GrantOwner {
             .filter(|v| !v.is_empty())
             .map(str::to_owned)
             .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))
+    }
+}
+
+fn grid_scopes_match(scopes: &[String]) -> bool {
+    scopes.len() == GRID_SCOPES.len()
+        && GRID_SCOPES
+            .iter()
+            .all(|expected| scopes.iter().filter(|s| s.as_str() == *expected).count() == 1)
+}
+
+fn grid_publication_confirmed(grid: &cybergrid_sdk::Client) -> Result<()> {
+    let snapshot = grid.snapshot();
+    if !snapshot.remote_enabled
+        || snapshot.publication.phase != cybergrid_sdk::StatePhase::Ready
+        || snapshot.publication.reason != cybergrid_sdk::StateReason::PublicationConfirmed
+        || snapshot.confirmed_intent_revision != Some(snapshot.intent_revision)
+        || snapshot.server_publish_revision.is_none()
+    {
+        return Err(EnableStage::GridExpose.into());
+    }
+    Ok(())
+}
+
+// One SDK instance is bound to one host intent. It never owns or rotates a
+// second grant; all token work remains serialized by the existing RAM owner.
+struct GridAuthorization {
+    owner: Arc<GrantOwner>,
+    generation: Arc<()>,
+    client: std::sync::Weak<cybergrid_sdk::Client>,
+    retired: std::sync::atomic::AtomicBool,
+}
+impl GridAuthorization {
+    fn current(
+        &self,
+        client: &cybergrid_sdk::Client,
+        request: &cybergrid_sdk::AuthTokenRequest,
+    ) -> Result<()> {
+        let policy = self.owner.policy();
+        policy.check(&self.generation)?;
+        if policy.manual_off
+            || self.retired.load(std::sync::atomic::Ordering::SeqCst)
+            || !self
+                .client
+                .upgrade()
+                .is_some_and(|bound| std::ptr::eq(bound.as_ref(), client))
+            || client.snapshot().coordination.phase == cybergrid_sdk::StatePhase::Closed
+            || request.cancel.is_cancelled()
+            || client.snapshot().generation != request.generation
+            || !(1..=3600).contains(&request.min_validity)
+            || request.min_validity != client.config().auth_min_validity
+            || request.force_refresh
+                != matches!(
+                    request.reason,
+                    cybergrid_sdk::AuthRequestReason::AuthorizationRejected
+                )
+        {
+            bail!("ACCOUNT_TOKEN_REJECTED")
+        }
+        Ok(())
+    }
+    async fn token(
+        &self,
+        client: &cybergrid_sdk::Client,
+        request: &cybergrid_sdk::AuthTokenRequest,
+    ) -> Result<String> {
+        self.current(client, request)?;
+        let mut state = self.owner.state.lock().await;
+        self.current(client, request)?;
+        let config = &state.grant.config;
+        if request.issuer != config.issuer
+            || request.client_id != config.native_client_id
+            || request.resource != config.resource
+            || !grid_scopes_match(&request.scopes)
+        {
+            bail!("ACCOUNT_TOKEN_REJECTED")
+        }
+        // Every request obtains a fresh token (there is no access-token cache).
+        // Once dispatched, finish recording any rotation even if intent changes.
+        let token = self.owner.refresh(&mut state, true).await?;
+        self.current(client, request)?;
+        // Only freshness is read from this payload. Identity is still established
+        // by the original verified grant and the coordinator's verified session.
+        let payload = token
+            .split('.')
+            .nth(1)
+            .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))?;
+        let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload)?)?;
+        let expires = claims["exp"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))?;
+        if expires < anywork_remote::auth::now().saturating_add(request.min_validity) {
+            bail!("ACCOUNT_TOKEN_REJECTED")
+        }
+        Ok(token)
     }
 }
 fn profile_text(account: &Value, keys: &[&str]) -> Option<String> {
@@ -497,15 +621,16 @@ fn validate_directory_record(record: &Value) -> Result<()> {
     }
     Ok(())
 }
-impl cybergrid_sdk::AuthProvider for GrantOwner {
-    fn access_token<'a>(
+impl cybergrid_sdk::AuthProvider for GridAuthorization {
+    fn access_token_for<'a>(
         &'a self,
-        _client: &'a cybergrid_sdk::Client,
+        client: &'a cybergrid_sdk::Client,
+        request: &'a cybergrid_sdk::AuthTokenRequest,
     ) -> cybergrid_sdk::AuthFuture<'a> {
         Box::pin(async move {
-            self.token(true).await.map_err(|_| {
-                cybergrid_sdk::Error::Credentials("Account authorization needs recovery".into())
-            })
+            self.token(client, request)
+                .await
+                .map_err(|_| cybergrid_sdk::Error::AuthorizationUnavailable)
         })
     }
 }
@@ -543,20 +668,32 @@ struct Remote {
     provider: OwnedProcess,
     grid: Arc<cybergrid_sdk::Client>,
     watcher: tokio::task::JoinHandle<()>,
+    authorization: Arc<GridAuthorization>,
 }
 impl Remote {
-    async fn close(&mut self) {
+    async fn close(&mut self) -> cybergrid_sdk::RemoteDisableOutcome {
+        self.authorization
+            .retired
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         self.gateway.close().await;
         self.watcher.abort();
-        let _ = self.grid.close().await;
         self.provider.stop().await;
+        self.grid.disable_remote().await
     }
+}
+struct PendingGrid {
+    grid: Arc<cybergrid_sdk::Client>,
+    authorization: Arc<GridAuthorization>,
+    // Only an initial unknown registration, whose remote gate never opened,
+    // can be resumed. A retired client is retained for exact revocation retry.
+    retry_login: bool,
 }
 struct State {
     installation: Option<Installation>,
     transaction: Option<Arc<Transaction>>,
     owner: Option<Arc<GrantOwner>>,
     remote: Option<Remote>,
+    pending_grid: Option<PendingGrid>,
     snapshot: Snapshot,
 }
 struct Inner {
@@ -616,6 +753,7 @@ impl Handle {
                 transaction: None,
                 owner: None,
                 remote: None,
+                pending_grid: None,
                 snapshot: Snapshot {
                     device_name,
                     ..Default::default()
@@ -649,6 +787,9 @@ impl Handle {
                 continue;
             }
             let mut snapshot = state.snapshot.clone();
+            if state.pending_grid.is_some() {
+                snapshot.error = Some(GRID_CLEANUP_PENDING.into());
+            }
             snapshot.account_portal_url = self.portal_url();
             snapshot.remote_clients = match &state.remote {
                 Some(remote) => remote.gateway.remote_clients(),
@@ -1206,6 +1347,17 @@ impl Handle {
         if !snapshot.authorized || snapshot.service != manager::Phase::Running {
             bail!("LOCAL_SERVICE_NOT_READY")
         }
+        let resumable = {
+            let state = self.0.state.lock().await;
+            state.pending_grid.as_ref().is_some_and(|pending| {
+                pending.retry_login
+                    && Arc::ptr_eq(&pending.authorization.owner, &owner)
+                    && Arc::ptr_eq(&pending.authorization.generation, &generation)
+            })
+        };
+        if !resumable {
+            self.cleanup_pending_grid().await?;
+        }
         let (run, stop) = {
             let state = self.0.state.lock().await;
             let mut policy = owner.policy();
@@ -1285,24 +1437,41 @@ impl Handle {
                 return Err(EnableStage::Provider.into());
             }
         };
-        let grid =
+        let prior = self.0.state.lock().await.pending_grid.take();
+        let (grid, authorization) = if let Some(prior) = prior {
+            (prior.grid, prior.authorization)
+        } else {
             match EnableStage::GridClient.at(cybergrid_sdk::Client::new(cybergrid_sdk::Config {
                 base_url: self.0.config.cybergrid_url.clone(),
                 app_id: self.0.config.native_client_id.clone(),
                 cloudflared: None,
+                // AnyWork business traffic uses its Noise/Quick Tunnel gateway;
+                // SDK direct transports and STUN are not used by this host.
+                iroh_enabled: false,
+                stun_servers: vec![],
                 ..Default::default()
             })) {
-                Ok(grid) => grid,
+                Ok(grid) => {
+                    let authorization = Arc::new(GridAuthorization {
+                        owner: owner.clone(),
+                        generation: generation.clone(),
+                        client: Arc::downgrade(&grid),
+                        retired: std::sync::atomic::AtomicBool::new(false),
+                    });
+                    (grid, authorization)
+                }
                 Err(error) => {
                     gateway.close().await;
                     provider.stop().await;
                     return Err(error);
                 }
-            };
+            }
+        };
         // Client::new leaves grant_store=None in the pinned official SDK. Only
         // this RAM AuthProvider is installed: never call use_credential_store,
         // SDK browser login/import, or credential loading on the account path.
-        grid.set_auth_provider(owner.clone()).await;
+        grid.set_auth_provider(authorization.clone()).await;
+        let mut registration_unknown = false;
         let result = async {
             owner.policy().check(&generation)?;
             tokio::select! {
@@ -1316,28 +1485,63 @@ impl Handle {
                 ) => { result?; }
             }
             owner.policy().check(&generation)?;
-            let token = EnableStage::ResourceToken.at(owner.token(true).await)?;
-            owner.policy().check(&generation)?;
-            let session = EnableStage::GridRegister.at(grid
-                .login_with_access_token(&token, "AnyWork desktop")
-                .await)?;
+            let session = match grid.login_with_auth_provider(&i.name).await {
+                Ok(session) => session,
+                Err(error) => {
+                    registration_unknown =
+                        matches!(error, cybergrid_sdk::Error::ExchangeOutcomeUnknown);
+                    let stage = if matches!(error, cybergrid_sdk::Error::AuthorizationUnavailable) {
+                        EnableStage::ResourceToken
+                    } else {
+                        EnableStage::GridRegister
+                    };
+                    return Err(stage.into());
+                }
+            };
+            if session.user.id != i.subject {
+                return Err(EnableStage::Identity.into());
+            }
             owner.policy().check(&generation)?;
             let mut port =
                 cybergrid_sdk::Port::tcp("anywork-remote", gateway.port, "anywork-noise-v1");
             port.tunnel_url = Some(url);
             EnableStage::GridExpose.at(grid.expose(port).await)?;
             owner.policy().check(&generation)?;
+            EnableStage::GridExpose.at(grid.enable_remote().await)?;
+            owner.policy().check(&generation)?;
+            grid_publication_confirmed(&grid)?;
             self.publish_index(&owner, &i, &session.device_id).await?;
             owner.policy().check(&generation)?;
+            grid_publication_confirmed(&grid)?;
             Ok::<_, anyhow::Error>(session.device_id)
         }
         .await;
         let device = match result {
             Ok(id) => id,
             Err(e) => {
+                if !registration_unknown {
+                    authorization
+                        .retired
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                }
                 gateway.close().await;
-                let _ = grid.close().await;
                 provider.stop().await;
+                let mut pending = PendingGrid {
+                    grid,
+                    authorization,
+                    retry_login: registration_unknown,
+                };
+                if registration_unknown {
+                    self.0.state.lock().await.pending_grid = Some(pending);
+                } else {
+                    let outcome = pending.grid.disable_remote().await;
+                    pending.retry_login = false;
+                    if outcome.coordinator_revocation
+                        == cybergrid_sdk::CoordinatorRevocation::Pending
+                    {
+                        self.0.state.lock().await.pending_grid = Some(pending);
+                    }
+                }
                 return Err(e);
             }
         };
@@ -1391,6 +1595,7 @@ impl Handle {
             provider,
             grid,
             watcher,
+            authorization,
         });
         let installed = {
             let mut state = self.0.state.lock().await;
@@ -1408,7 +1613,15 @@ impl Handle {
             }
         };
         if !installed {
-            pending.as_mut().unwrap().close().await;
+            let remote = pending.as_mut().unwrap();
+            let outcome = remote.close().await;
+            if outcome.coordinator_revocation == cybergrid_sdk::CoordinatorRevocation::Pending {
+                self.0.state.lock().await.pending_grid = Some(PendingGrid {
+                    grid: remote.grid.clone(),
+                    authorization: remote.authorization.clone(),
+                    retry_login: false,
+                });
+            }
             bail!("REMOTE_OPERATION_CANCELLED")
         }
         Ok(())
@@ -1432,15 +1645,56 @@ impl Handle {
     }
     // Caller holds operation; no public action can interleave with cleanup.
     async fn close_remote(&self) {
-        let remote = self.0.state.lock().await.remote.take();
-        if let Some(mut remote) = remote {
-            remote.close().await
+        let remote = {
+            let mut state = self.0.state.lock().await;
+            state.snapshot.enabled = false;
+            state.snapshot.grid_device_id = None;
+            state.snapshot.installation_id = None;
+            state.snapshot.public_key = None;
+            state.remote.take()
         };
-        let mut state = self.0.state.lock().await;
-        state.snapshot.enabled = false;
-        state.snapshot.grid_device_id = None;
-        state.snapshot.installation_id = None;
-        state.snapshot.public_key = None;
+        if let Some(mut remote) = remote {
+            let outcome = remote.close().await;
+            if outcome.coordinator_revocation == cybergrid_sdk::CoordinatorRevocation::Pending {
+                self.0.state.lock().await.pending_grid = Some(PendingGrid {
+                    grid: remote.grid.clone(),
+                    authorization: remote.authorization.clone(),
+                    retry_login: false,
+                });
+            }
+        } else {
+            let _ = self.cleanup_pending_grid().await;
+        }
+    }
+    // Caller owns operation. Reconciliation never enables the SDK remote gate.
+    // An unknown registration remains in its original Client, token and request.
+    async fn cleanup_pending_grid(&self) -> Result<()> {
+        let Some(mut pending) = self.0.state.lock().await.pending_grid.take() else {
+            return Ok(());
+        };
+        if pending.retry_login
+            && matches!(
+                pending
+                    .grid
+                    .login_with_auth_provider("AnyWork desktop")
+                    .await,
+                Err(cybergrid_sdk::Error::ExchangeOutcomeUnknown)
+            )
+        {
+            self.0.state.lock().await.pending_grid = Some(pending);
+            bail!("REMOTE_COORDINATION_CLEANUP_REQUIRED")
+        }
+        pending
+            .authorization
+            .retired
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let outcome = pending.grid.disable_remote().await;
+        pending.retry_login = false;
+        if outcome.coordinator_revocation == cybergrid_sdk::CoordinatorRevocation::Pending {
+            self.0.state.lock().await.pending_grid = Some(pending);
+            bail!("REMOTE_COORDINATION_CLEANUP_REQUIRED")
+        }
+        Ok(())
     }
     pub async fn cancel(&self, id: &str) -> Result<()> {
         let _op = self.0.operation.lock().await;
@@ -1473,10 +1727,24 @@ impl Handle {
         Self::revoke_owned(&self.0.config, refresh).await
     }
     async fn revoke_owned(config: &PublicConfig, refresh: &str) -> Result<()> {
-        let response = client()?
-            .post(format!("{}/token/revocation", config.issuer))
+        Self::revoke_at(
+            &client()?,
+            &format!("{}/token/revocation", config.issuer),
+            &config.native_client_id,
+            refresh,
+        )
+        .await
+    }
+    async fn revoke_at(
+        http: &reqwest::Client,
+        endpoint: &str,
+        client_id: &str,
+        refresh: &str,
+    ) -> Result<()> {
+        let response = http
+            .post(endpoint)
             .form(&[
-                ("client_id", config.native_client_id.as_str()),
+                ("client_id", client_id),
                 ("token", refresh),
                 ("token_type_hint", "refresh_token"),
             ])
@@ -1507,8 +1775,7 @@ impl Handle {
             None => None,
         };
         if let Some(owner) = owner {
-            let state = owner.state.lock().await;
-            Self::revoke_owned(&state.grant.config, &state.grant.refresh).await?;
+            owner.revoke().await?;
         } else if let Some(refresh) = match &transaction {
             Some(tx) => tx.latest.lock().await.clone(),
             None => None,
@@ -1660,6 +1927,7 @@ fn safe_error(error: anyhow::Error) -> String {
         "LOGIN_CALLBACK_PORT_IN_USE" => "登录回调端口已被占用，请关闭其他登录窗口后重试。".into(),
         "LOCAL_SERVICE_NOT_READY" => "请先启动并连接本地服务。".into(),
         "ACCOUNT_REAUTH_REQUIRED" => "账号授权已失效，请退出账号后重新登录。".into(),
+        "REMOTE_COORDINATION_CLEANUP_REQUIRED" => GRID_CLEANUP_PENDING.into(),
         "DEVICE_NAME_REJECTED" => "名称需为 1–80 个字符，且不能包含控制字符。".into(),
         "DEVICE_NAME_CONFLICT" => "设备名称未完成同步，账号目录已发生变化，请刷新后重试。".into(),
         "DEVICE_NAME_STORAGE_REJECTED" => "无法保存设备名称，请检查本机配置文件。".into(),
@@ -1810,7 +2078,7 @@ mod tests {
         json!({
             "provider":"logto", "clientId":config.native_client_id,
             "issuer":config.issuer, "resource":config.resource,
-            "scope":"openid offline_access connect",
+            "scope":"openid offline_access profile email connect",
             "deviceAuthorizationEndpoint":format!("{}/device/auth",config.issuer),
             "tokenEndpoint":format!("{}/token",config.issuer),
         })
