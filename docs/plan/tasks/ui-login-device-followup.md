@@ -11,6 +11,8 @@ depends-on: [ui-refactor-v2]
 
 完成用户 2026-11-12 的五项截图反馈。沿用已发布 v0.1.26 的 v2 界面，实施后独立验收并按现有流程更新。用户已明确授权上述行为调整，无需为同一修订重复确认。
 
+同日追加：检查 CyberGrid 上游更新，对照当前固定 SDK、浏览器 vendored SDK 和已适配协调服务判断是否需要更新；需要时纳入本次隔离实施、独立审查和发布。先只读比对准确提交及兼容性，再记录具体修改范围，保留现有账号、加密协议和严格 TLS Redis 配置。
+
 ## context
 
 - `docs/design/desktop-refactor/login-device-followup.md`（本轮权威修订）
@@ -24,7 +26,7 @@ depends-on: [ui-refactor-v2]
 | lane | 归属 | 交付 |
 | --- | --- | --- |
 | native | `crates/desktop/**`，Native 相关测试脚本；不改 `desktop/ui/**` | loopback 回调页面、安全资料映射、稳定设备名/目录改名 API、macOS 原生标题栏设置 |
-| UI | `desktop/ui/**`、`web/src/account.css`、`web/scripts/**`、`e2e/account-unified.spec.ts`、新增本轮 UI E2E；不改 Rust | dialog 居中、普通登录复用 SSO 参数、名称编辑与可信显示名、标题栏安全布局 |
+| UI | `desktop/ui/**`、`web/src/account.css`、`web/scripts/**`、`e2e/account-unified.spec.ts`、`e2e/desktop-fixture.ts`、新增本轮 UI E2E；不改 Rust | dialog 居中、普通登录复用 SSO 参数、名称编辑与可信显示名、标题栏安全布局 |
 | root/review | `docs/**`、发行说明 | 契约/协调/独立审查/合并/发布 |
 
 作者须在实现前对齐新增 snapshot 字段/IPC 参数和 macOS chrome 标记；不得在 UI 使用临时假字段掩盖未接通的 Native API。原 `e2e/sidebar-scroll.spec.ts` 不改。保留默认远程一次、手动关闭、RAM-only grant、外部服务所有权、dirty draft 和任务安全停止门禁。
