@@ -2,7 +2,25 @@ AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Andro
 
 AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
 
-**New in 0.1.26 / 本次更新**
+**New in 0.1.27 / 本次更新**
+
+Account dialogs now open in the center of the browser window, including on narrow and short screens. The desktop sign-in callback has a compact AnyWork page with clear instructions for returning to the app; receiving a callback is distinguished from completing account verification.
+
+账号弹窗在浏览器窗口中居中显示，并适配窄屏和短窗口。桌面登录回调采用简洁的 AnyWork 页面，提示返回应用继续验证，准确区分收到登录结果与完成账号验证。
+
+Desktop sign-in can reuse an existing identity-provider session in the same system browser and profile. It no longer forces password entry on every sign-in; authorization consent may still be required for the separate desktop grant. Expired sessions, a different browser profile or identity-provider policy can still require authentication. Web and desktop credentials remain separate.
+
+桌面登录可以复用同一系统浏览器及用户配置中的有效身份服务会话，不再每次强制输入密码；桌面端独立授权仍可能需要确认同意。会话过期、浏览器用户配置不同或身份服务策略要求时，仍需重新认证。Web 与桌面凭据继续独立管理。
+
+On macOS, native window controls share the app's layout without a separate title strip. Account labels use verified profile names or email addresses, with a generic signed-in label when profile information is unavailable. Internal account IDs are no longer used as display names.
+
+macOS 原生窗口按钮与应用界面融合，移除独立标题条。账号名称使用经过验证的个人资料名称或邮箱；没有资料时显示通用的已登录提示，不再把内部账号 ID 当作用户名展示。
+
+Each desktop installation receives a persistent, distinguishable device name. You can edit it from the workspace, and account-directory updates preserve device identity, keys and existing connections. Existing names, including names changed from the Web device list, take priority over generated defaults.
+
+每个桌面安装生成持久且可区分的设备名，可在工作区编辑。账号设备目录的更新保留设备身份、密钥和已有连接；已有名称，包括在 Web 设备列表中修改的名称，优先于自动生成的默认值。
+
+**Previous release 0.1.26 / 上一版本**
 
 The desktop console and Web account entry share a quieter, neutral interface and the existing hexagonal AnyWork logo. Desktop navigation separates the local workspace, remote access, settings and updates. The local panel keeps its open action, saved loopback address, copy action, first-visit explanation and working directory together.
 

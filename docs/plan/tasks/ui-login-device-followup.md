@@ -24,7 +24,7 @@ depends-on: [ui-refactor-v2]
 | lane | 归属 | 交付 |
 | --- | --- | --- |
 | native | `crates/desktop/**`，Native 相关测试脚本；不改 `desktop/ui/**` | loopback 回调页面、安全资料映射、稳定设备名/目录改名 API、macOS 原生标题栏设置 |
-| UI | `desktop/ui/**`、`web/src/account.css`、`web/scripts/**`、`e2e/account-unified.spec.ts`、新增本轮 UI E2E；不改 Rust | dialog 居中、普通登录复用 SSO 参数、名称编辑与可信显示名、标题栏安全布局 |
+| UI | `desktop/ui/**`、`web/src/account.css`、`web/scripts/**`、`e2e/account-unified.spec.ts`、`e2e/desktop-fixture.ts`、新增本轮 UI E2E；不改 Rust | dialog 居中、普通登录复用 SSO 参数、名称编辑与可信显示名、标题栏安全布局 |
 | root/review | `docs/**`、发行说明 | 契约/协调/独立审查/合并/发布 |
 
 作者须在实现前对齐新增 snapshot 字段/IPC 参数和 macOS chrome 标记；不得在 UI 使用临时假字段掩盖未接通的 Native API。原 `e2e/sidebar-scroll.spec.ts` 不改。保留默认远程一次、手动关闭、RAM-only grant、外部服务所有权、dirty draft 和任务安全停止门禁。
