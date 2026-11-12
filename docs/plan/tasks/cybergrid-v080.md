@@ -1,13 +1,13 @@
 ---
 id: cybergrid-v080
 scope: pinned Rust/JS SDK refresh and host compatibility
-status: pending
+status: in-progress
 depends-on: []
 ---
 
 ## objective
 
-按用户追加要求，将 CyberGrid 正式 v0.8.0 的必要 SDK/宿主适配纳入本次发行。精确范围见 [评估与集成契约](../analysis/cybergrid-v080.md)。先接受并合并登录/设备候选，再从该源码创建隔离分支；前置任务的发布阶段待本任务合并后一并完成。
+按用户追加要求，将 CyberGrid 正式 v0.8.0 的必要 SDK/宿主适配纳入本次发行。精确范围见 [评估与集成契约](../analysis/cybergrid-v080.md)。Native 适配先等待登录/设备与窗口修订接受并合并；文件无交集的 Web SDK 与 token adapter 可以先从当前 main 隔离实施，合并后共同验收。登录设备任务的发布阶段待本任务合并后一并完成。
 
 ## context
 
