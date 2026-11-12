@@ -26,7 +26,7 @@ JS 的 0.2.0 是固定源码中的组件 metadata，不声称 npm 包已发布�
 
 ## 令牌与兼容边界
 
-- 新 SDK 请求的 `issuer/clientId/resource/scopes` 必须匹配宿主公开绑定；scopes 为 `connect`。`minValidity` 是秒，`forceRefresh/requestReason/generation/signal` 不得被只取 resource 的旧适配丢弃。
+- 新 SDK 请求的 `issuer/clientId/resource/scopes` 必须匹配宿主公开绑定。JS callback 的 scopes 为 `connect`；Rust 请求取自可信 auth/config 的完整 OIDC scope 集合，当前为 `openid offline_access profile email connect`，必须与固定已知集合一致且拒绝重复或未知值，资源 JWT 继续要求 `connect`。不得把 Rust 请求误限为单一 `connect`。`minValidity` 是秒，`forceRefresh/requestReason/generation/signal` 不得被只取 resource 的旧适配丢弃。
 - Native 注册/交换结果未知时必须保留 SDK 所持的原事务，或明确阻止新尝试直至完成该事务的清理；不能因开启失败而丢弃 client，再让普通重试创建另一笔未知注册。协调撤销未确认与本机访问已关闭分开表达；本机关闭不能依赖云端确认才生效。
 - Web 沿原 `tokenTail` 单 owner 获取令牌，检查缓存 JWT 剩余寿命，不足时最多重新获取一次，再不足则明确失败；`exp` 仅判定 freshness，身份继续由原可信验证路径决定。已发出的轮换须完成保存/撤销，不因取消等待丢弃其 owner。
 - 初次交换不强刷；只有第一次明确 `401 + INVALID_IDENTITY` 且此前无未知结果，才允许同一 request ID 的一次 forced refresh。其他拒绝和网络/服务错误不触发这条刷新路径。未知交换保留同一 RAM token/epoch/request ID；未知之后的拒绝不能自动新建授权或刷新。
@@ -35,3 +35,11 @@ JS 的 0.2.0 是固定源码中的组件 metadata，不声称 npm 包已发布�
 ## 验收
 
 模块测试之外，需打通真实 SDK 到 legacy HTTP 协调夹具，并记录固定上游版本的实际公开配置兼容性。Native 覆盖默认门禁、显式开启/发布确认/本地关闭、取消、unknown exchange、唯一 owner 和绑定/新鲜度；Web 覆盖四模块构建、fresh token 分支、身份/取消隔离和原设备连接回归。保留原登录、命名及 macOS 窗口验收，增量独立审查后再发布。
+
+## 服务端范围决定
+
+本次发行更新 SDK 与宿主适配，保留目前已部署、经目录补丁适配的协调服务。旧服务已在交换时验证固定 SPA/Native、issuer/audience、用户身份和 connect，Native 请求持续检查应用目录。当前单一 SPA、单一 Native 及允许列表不变，没有发现必须立即切服才能关闭的当前授权缺口；新版 SDK 对 legacy 服务的实际 HTTP 兼容性仍是发行门槛。
+
+v0.8.0 server 的 static products 可替代本地目录补丁，并在策略变化后持续验证 session 的 authClientId/policyMode。但 static 会拒绝旧未绑定 session；旧注册 receipt 的兼容恢复也不等价，不能声称现有会话透明升级。因此服务端切换须作为独立操作先验证旧→新 static→旧的 Redis、receipt、重新登记与回退行为，保留原 TLS、prefix、epoch、seed 和 limits，不在本次 SDK 更新中改配置或初始化 namespace。启用 finite-v2 需要独立 prefix，仍不在本轮范围。
+
+只读 provider 核对显示正式 alias 的公开配置正常，当前及旧 immutable deployment URL 匿名访问被 Vercel Authentication 拒绝；现有保护必须保留。拥有 provider 授权或 bypass 的访问不等于旧 runtime 已停止。未来切换不能仅移动一个 alias 就宣称旧入口全部退休，也不能修改历史 helper 的固定哈希使旧 operation 失去回退能力。此处记录的是本轮范围决定，不宣称服务端已升级或完成回滚实验。
