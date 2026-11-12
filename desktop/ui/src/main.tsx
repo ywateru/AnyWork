@@ -336,7 +336,11 @@ function App() {
           className="native-window-drag-region"
           aria-hidden="true"
           onMouseDown={(event) => {
-            if (event.button === 0) void invoke("desktop_drag").catch(() => {});
+            if (event.button === 0) {
+              event.preventDefault();
+              event.stopPropagation();
+              void invoke("desktop_drag").catch(() => {});
+            }
           }}
         />
       )}
@@ -393,8 +397,11 @@ function App() {
               nativeChrome === "macos-overlay" &&
               event.button === 0 &&
               !(event.target as HTMLElement).closest("button, a, input")
-            )
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
               void invoke("desktop_drag").catch(() => {});
+            }
           }}
         >
           <h1>{titles[page]}</h1>

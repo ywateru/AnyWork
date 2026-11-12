@@ -163,9 +163,11 @@ input:disabled {
   z-index: 2;
   width: 220px;
   height: 40px;
+  -webkit-user-select: none;
   user-select: none;
 }
 .macos-overlay .desktop-titlebar {
+  -webkit-user-select: none;
   user-select: none;
 }
 .device-name-panel {

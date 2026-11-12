@@ -192,6 +192,41 @@ test("macOS overlay reserves the native control area and sends drag only from bl
         ).length,
     ),
   ).toBe(1);
+  for (const selector of [
+    ".native-window-drag-region",
+    ".desktop-titlebar h1",
+  ]) {
+    expect(
+      await page.locator(selector).evaluate((element) =>
+        element.dispatchEvent(
+          new MouseEvent("mousedown", {
+            button: 0,
+            bubbles: true,
+            cancelable: true,
+          }),
+        ),
+      ),
+    ).toBe(false);
+  }
+  expect(
+    await page.locator(".desktop-titlebar h1").evaluate((element) =>
+      element.dispatchEvent(
+        new MouseEvent("mousedown", {
+          button: 2,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).nameFixture.calls.filter(
+          (call: any) => call.command === "desktop_drag",
+        ).length,
+    ),
+  ).toBe(3);
 });
 
 test("device rename supports cancel, error retry, Unicode and stable native identity", async ({
