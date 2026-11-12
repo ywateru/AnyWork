@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Laptop, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import App from "./App";
 import AccountEntry from "./components/AccountEntry";
 import {
@@ -12,6 +12,11 @@ import {
   type LocalContext,
 } from "./localTransport";
 import "./account.css";
+import {
+  AccountBrand,
+  AccountSurface,
+  AccountUtilities,
+} from "./components/AccountChrome";
 // StrictMode remounts must not consume the single-use handoff twice.
 let bootstrap: Promise<LocalContext> | undefined;
 export default function LocalApp() {
@@ -81,48 +86,41 @@ export default function LocalApp() {
           scope: location.origin,
           transport: session.transport,
         }}
+        deviceLabel="这台电脑"
         contextLabel={`这台电脑${session.context.accountLabel ? ` · 由 ${session.context.accountLabel} 在本机打开` : " · 本地工作区"}`}
         disconnectLabel="退出本机网页会话"
         onDisconnect={() => void disconnect()}
       />
     );
   return (
-    <div className="account-root local-entry">
-      <header className="account-header">
-        <a className="account-brand" href="/">
-          <img
-            src={import.meta.env.BASE_URL + "icon.svg"}
-            width="32"
-            height="32"
-            alt=""
-          />
-          AnyWork
-        </a>
-        <AccountEntry />
-      </header>
-      <main className="local-entry-main">
-        <Laptop size={36} strokeWidth={1.4} />
+    <AccountSurface className="account-auth local-entry">
+      <main className="account-auth-main local-entry-main">
+        <AccountBrand />
         <h1>这台电脑的工作区</h1>
-        <p>在 AnyWork 桌面端点击“打开工作区”，即可继续本机工作。</p>
-        <p className="local-entry-hint">
-          本地工作无需云账号。登录正式账号页面可查看已允许远程访问的设备。
-        </p>
+        <p>在 AnyWork 桌面端点击“打开本地工作区”，即可继续本机工作。</p>
         {busy ? (
           <p role="status">正在确认本机会话…</p>
         ) : (
           <>
             <p role="status">{error || "请从桌面端打开工作区。"}</p>
-            <button onClick={() => open(readLocalSession())}>
+            <button
+              className="account-primary"
+              onClick={() => open(readLocalSession())}
+            >
               <RefreshCw size={16} />
               重新检查
             </button>
+            <p className="local-entry-hint">
+              本机浏览器会话与 Web 账号相互独立。登录账号不能代替本机授权。
+            </p>
             <div className="account-login-actions">
-              <AccountEntry />
+              <AccountEntry label="登录查看设备" />
               <AccountEntry signup />
             </div>
           </>
         )}
+        <AccountUtilities />
       </main>
-    </div>
+    </AccountSurface>
   );
 }
