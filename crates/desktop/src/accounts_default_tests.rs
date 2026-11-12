@@ -200,19 +200,65 @@ impl Fixture {
             );
         }
     }
+    async fn assert_gateways_closed(&self) {
+        for gateway in self.handle.0.gateway_shutdowns.lock().await.iter() {
+            assert!(gateway.is_complete(), "original gateway task still running");
+        }
+    }
     async fn close(self) {
         self.handle.disable().await;
         self.provider_stopped();
-        if let Ok(url) = std::fs::read_to_string(self.dir.path().join("gateway-url")) {
-            let port = url::Url::parse(&url).unwrap().port().unwrap();
-            assert!(
-                tokio::net::TcpStream::connect(("127.0.0.1", port))
-                    .await
-                    .is_err()
-            );
-        }
+        // A retired numeric port may already belong to another fixture/service.
+        // Observe every original task, including gateways from failed enables.
+        self.assert_gateways_closed().await;
+        let snapshot = self.handle.snapshot().await;
+        assert!(!snapshot.enabled);
+        assert!(snapshot.remote_clients.is_empty());
+        assert!(self.handle.0.state.lock().await.remote.is_none());
         self.server.abort();
     }
+}
+
+#[tokio::test]
+async fn closed_gateway_identity_survives_its_port_being_reused() {
+    let f = Fixture::new().await;
+    f.handle.enable_default().await.unwrap();
+    let port = {
+        let state = f.handle.0.state.lock().await;
+        state.remote.as_ref().unwrap().gateway.port
+    };
+    assert!(
+        f.handle
+            .0
+            .gateway_shutdowns
+            .lock()
+            .await
+            .iter()
+            .all(|g| !g.is_complete()),
+        "the completion witness must not report an open gateway as closed"
+    );
+    f.handle.disable().await;
+    f.assert_gateways_closed().await;
+    // Binding the exact retired port proves that the original listener is gone.
+    // A new listener makes the old raw connect().is_err() assertion fail even
+    // though the original task and remote access have actually closed.
+    let replacement = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .unwrap();
+    let connection = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+    let (accepted, _) = replacement.accept().await.unwrap();
+    assert_eq!(
+        connection.peer_addr().unwrap(),
+        accepted.local_addr().unwrap()
+    );
+    assert_eq!(
+        connection.local_addr().unwrap(),
+        accepted.peer_addr().unwrap()
+    );
+    f.close().await;
+    drop((accepted, connection, replacement));
 }
 
 #[tokio::test]
@@ -522,19 +568,27 @@ async fn disable_cancels_provider_readiness_and_closes_gateway_before_returning(
     let f = Fixture::new().await;
     let provider = f.handle.0.manager.snapshot().config.cloudflared_binary;
     std::fs::write(provider,format!("#!/bin/sh\nprintf '%s' $$ > '{}'\nfor arg do last=\"$arg\"; done\nprintf '%s' \"$last\" > '{}'\nexec /bin/sleep 60\n",f.dir.path().join("provider-pid").display(),f.dir.path().join("gateway-url").display())).unwrap();
+    // Synchronize on the actual process spawn while its URL channel is pending.
+    // A shell-written marker adds an unrelated OS scheduling/deadline race.
+    let (spawned, process) = tokio::sync::oneshot::channel();
+    *f.handle.0.provider_spawned.lock().await = Some(spawned);
     let handle = f.handle.clone();
     let enable = tokio::spawn(async move { handle.enable_default().await });
-    tokio::time::timeout(Duration::from_secs(3), async {
-        while !f.dir.path().join("gateway-url").exists() {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    let pid = tokio::time::timeout(Duration::from_secs(3), process)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!enable.is_finished());
+    assert!(!f.handle.0.gateway_shutdowns.lock().await[0].is_complete());
     tokio::time::timeout(Duration::from_secs(3), f.handle.disable())
         .await
         .unwrap();
     assert!(enable.await.unwrap().is_err());
+    assert_eq!(
+        unsafe { libc::kill(pid as i32, 0) },
+        -1,
+        "provider process still alive after disable"
+    );
     assert_eq!(f.calls("GET /api/v1/auth/config"), 0);
     assert!(!f.handle.snapshot().await.enabled);
     f.close().await;
@@ -743,8 +797,6 @@ async fn disable_closes_local_gateway_before_pending_revocation_and_blocks_repla
         .unwrap()
         .grid
         .clone();
-    let url = std::fs::read_to_string(f.dir.path().join("gateway-url")).unwrap();
-    let port = url::Url::parse(&url).unwrap().port().unwrap();
     f.fail_grid_revoke.store(true, Ordering::SeqCst);
     f.block("DELETE /api/v1/session").await;
     let closing = tokio::spawn({
@@ -752,11 +804,7 @@ async fn disable_closes_local_gateway_before_pending_revocation_and_blocks_repla
         async move { handle.disable().await }
     });
     f.entered.notified().await;
-    assert!(
-        tokio::net::TcpStream::connect(("127.0.0.1", port))
-            .await
-            .is_err()
-    );
+    f.assert_gateways_closed().await;
     assert!(!grid.snapshot().remote_enabled);
     assert!(!f.handle.snapshot().await.enabled);
     f.provider_stopped();
