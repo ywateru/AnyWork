@@ -1,7 +1,7 @@
 ---
 id: ui-login-device-followup
 scope: dialog, callback, desktop SSO, native titlebar and device naming
-status: in-progress
+status: done
 depends-on: [ui-refactor-v2]
 ---
 
@@ -45,4 +45,4 @@ depends-on: [ui-refactor-v2]
 
 ## delivery
 
-2026-11-12：五项修订已通过[独立审查](../reviews/ui-login-device-followup.md)、合并及[集成检查](../reviews/ui-login-cybergrid-merged.md)。真实原生按钮已有实窗证据；实际拖动位移因输入权限环境限制仍未实证通过。身份服务 SSO 与候选回调 listener 分别验证，不合称完整 Native 真实账户 runtime 验收。待与 CyberGrid SDK 更新统一完成 v0.1.28 发布及线上核验后关闭本任务。
+2026-11-12：五项修订已通过[独立审查](../reviews/ui-login-device-followup.md)、合并及[集成检查](../reviews/ui-login-cybergrid-merged.md)，随 v0.1.28 正式发布并通过[最终独立发行验收](../reviews/ui-login-cybergrid-v28-release.md)。真实原生按钮已有实窗证据；实际拖动位移因输入权限环境限制仍未实证通过。身份服务 SSO 与候选回调 listener 分别验证，不合称完整 Native 真实账户 runtime 验收。已安装的本地应用和用户运行服务未替换；可通过正式更新或下载使用新版。

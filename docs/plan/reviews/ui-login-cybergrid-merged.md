@@ -1,6 +1,6 @@
 # 登录设备修订与 CyberGrid：合并检查
 
-日期：2026-11-12，Asia/Shanghai。此记录仍在交付中，不表示已经发布。
+日期：2026-11-12，Asia/Shanghai。最终状态：v0.1.28 已发布并通过独立验收。以下保留各阶段当时状态与 v0.1.27 失败历史。
 
 登录、设备命名与窗口候选通过[独立修正轮验收](ui-login-device-followup.md)后合入 main `37b5d4d`。独立审查接受源码修正和实际原生控件证据；真实拖动位移仍是输入环境限制，不能记为通过。真实 provider SSO 研究也不等于候选 Native 登录全 runtime 验收。
 
@@ -33,3 +33,13 @@ Native SDK 候选 `d56532a` 通过[独立审查](cybergrid-v080-native.md)后合
 主树 `aee2d7d` 执行 `cargo test --locked --workspace --release` 全部通过：**316 passed / 8 ignored / 0 failed**，含服务端 193、Native 78、remote unit 5 与真实 Noise/WS 8。未改变此前已经验收的 Web/GUI 源码；完整精确发行 SHA 的远端 Checks 仍是后续门禁。证据在忽略的 `artifacts/ui-login-cybergrid-final/merged-v28-workspace.log`；作者及独立证据已保存至主树，复用共享 target，无用户服务操作。
 
 双语发行说明准备为 v0.1.28。v0.1.27 构建已经终态失败，后续使用 publisher `--new` 保留旧 tag，发布新精确源码；本节仍不表示新版已发布。
+
+## v0.1.28 正式交付与清理
+
+正式发行 [v0.1.28](https://github.com/ywateru/AnyWork/releases/tag/v0.1.28) 对应源码 `b750756876369b435d8827e8165af6c64a64bac0`。[精确源码 Checks](https://github.com/ywateru/AnyWork/actions/runs/43173329585)、[全部七个发行目标及发布](https://github.com/ywateru/AnyWork/actions/runs/43176689369)、[最终 Vercel 刷新](https://github.com/ywateru/AnyWork/actions/runs/43179175665)均成功，publisher 完成并 exit 0。正式 Web、双语下载和更新元数据均为 0.1.28。
+
+[两阶段最终独立验收](ui-login-cybergrid-v28-release.md) PASS：20 项资产、19 项校验清单、5 个 updater 目标一致；最终 `/source` 内 812 个公开文件逐字节匹配发行提交。核验不等同于全部大型更新包的完整密码学验签、全平台实装或完整 Native 真实账户业务验收。实际拖动位移的输入权限限制继续保留。
+
+此前清理约 37 GiB 旧 Rust 缓存及 1,463,116,162 bytes npm 缓存；最终又移除本轮四个已结束工作树，共 113,455,104 bytes（约 108 MiB），先保留验收证据。记录在忽略的 `artifacts/ui-v2-integrated-final/cache-cleanup.json` 和 `artifacts/ui-login-cybergrid-final/task-worktree-cleanup.json`。当前复用的共享 Cargo target 保留，后续构建会占用空间，不能将累计清理量表述为净磁盘增量。
+
+用户源码、业务数据、凭据和已有运行服务未清理；已安装的本地应用未替换。现有协调服务与 TLS Redis 保留原配置，本次仅发布 SDK/宿主适配及 UI 修订。用户可通过正式更新或下载使用 v0.1.28。

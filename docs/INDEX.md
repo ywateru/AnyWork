@@ -1,8 +1,8 @@
 # Documentation index
 
-- [CyberGrid v0.8.0 集成更新](plan/tasks/cybergrid-v080.md)：官方 Rust/JS SDK 与宿主远程门禁、令牌新鲜度适配；服务端兼容性单独评估。
+- [CyberGrid v0.8.0 集成更新](plan/tasks/cybergrid-v080.md)：官方 Rust/JS SDK 与宿主远程门禁、令牌新鲜度适配已随 v0.1.28 交付；[最终独立验收](plan/reviews/ui-login-cybergrid-v28-release.md)通过，服务端迁移另行验证。
 
-- [登录、窗口与设备体验修订](plan/tasks/ui-login-device-followup.md)：弹窗居中、回调页、浏览器 SSO、原生标题栏、用户名和可编辑设备名。
+- [登录、窗口与设备体验修订](plan/tasks/ui-login-device-followup.md)：弹窗居中、回调页、浏览器 SSO、原生标题栏、用户名和可编辑设备名已随 v0.1.28 交付，实证边界见最终独立验收。
 
 - [桌面与 Web 统一 UI / 交互框线设计稿（2026-11-11，v2）](design/desktop-refactor/README.md)：采用现有六角标志，精简桌面信息与 Web 登录、连接、设备入口；Web 对话部分暂保留，设计核验与产品验收分别记录。
 
