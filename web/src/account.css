@@ -640,3 +640,18 @@
     transition: none !important;
   }
 }
+
+.account-open-source {
+  margin-top: 20px;
+  max-width: 650px;
+  color: var(--account-muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.account-open-source .account-source-links {
+  margin-top: 6px;
+}
+.account-open-source a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

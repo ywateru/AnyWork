@@ -96,3 +96,30 @@ export function DeviceNavigation({
     </aside>
   );
 }
+
+export function AccountOpenSource({
+  locale = "zh-CN",
+}: {
+  locale?: "zh-CN" | "en";
+}) {
+  const zh = locale === "zh-CN";
+  return (
+    <div className="account-open-source">
+      <p>
+        {zh
+          ? "服务端与客户端均开源，数据安全与隐私实现可公开审查。"
+          : "Open-source server and clients. Review how data security and privacy are implemented."}
+      </p>
+      <div className="account-source-links">
+        <a
+          href="https://github.com/ywateru/AnyWork"
+          target="_blank"
+          rel="noreferrer"
+        >
+          GitHub ↗
+        </a>
+        <a href="/source">{zh ? "对应源码" : "Source"}</a>
+      </div>
+    </div>
+  );
+}

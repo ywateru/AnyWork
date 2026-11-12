@@ -106,6 +106,7 @@ fn run() -> anyhow::Result<()> {
             bridge::desktop_start,
             bridge::desktop_open,
             bridge::desktop_account_portal,
+            bridge::desktop_open_source,
             updates::desktop_update_snapshot,
             updates::desktop_update_check,
             updates::desktop_update_preferences,

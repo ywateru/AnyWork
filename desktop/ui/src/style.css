@@ -1086,3 +1086,21 @@ details .hint {
     transition: none !important;
   }
 }
+
+.open-source-settings {
+  margin: 0 0 24px;
+}
+.open-source-settings h2 {
+  font-size: 14px;
+}
+.open-source-settings p {
+  margin: 8px 0;
+  color: var(--muted);
+}
+.open-source-settings a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  text-underline-offset: 3px;
+}
