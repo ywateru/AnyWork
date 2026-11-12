@@ -87,6 +87,9 @@ fn run() -> anyhow::Result<()> {
         .invoke_handler(tauri::generate_handler![
             bridge::desktop_snapshot,
             accounts::account_snapshot,
+            accounts::account_rename_device,
+            bridge::desktop_chrome,
+            bridge::desktop_drag,
             accounts::account_begin,
             accounts::account_open,
             accounts::account_fetch,

@@ -19,6 +19,7 @@ import {
   AccountActions,
   AccountError,
   accountStatusText,
+  accountDisplayName,
   remoteStatusText,
   useAccountController,
 } from "./accounts";
@@ -26,6 +27,7 @@ import { Introduction, Stepper, RemoteClients } from "./onboarding";
 import { useWorkspacePreparation } from "./startup";
 import { UpdateNotice, UpdatePage, useDesktopUpdates } from "./updates";
 import { ConfirmDialog } from "./confirm";
+import { DeviceNameEditor } from "./device-name";
 import { anyworkLogo } from "./brand";
 import type { Config, Snapshot } from "./types";
 import "./style.css";
@@ -78,8 +80,24 @@ function App() {
     message: string;
   } | null>(null);
   const [saveFeedback, setSaveFeedback] = useState("");
+  const [deviceNameDirty, setDeviceNameDirty] = useState(false);
+  const [nativeChrome, setNativeChrome] = useState<
+    "macos-overlay" | "standard" | null
+  >(null);
   const startup = useWorkspacePreparation(account, introduced);
   const initialized = useRef(false);
+  useEffect(() => {
+    let live = true;
+    void invoke<string>("desktop_chrome")
+      .then((chrome) => {
+        if (live && ["macos-overlay", "standard"].includes(chrome))
+          setNativeChrome(chrome as "macos-overlay" | "standard");
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
   const formState = useRef({ dirty: false });
   useEffect(() => {
     let live = true;
@@ -141,6 +159,7 @@ function App() {
     if (lastActive.current && !startup.active) {
       setPage("workspace");
       setConfirmation(null);
+      setDeviceNameDirty(false);
       setError("");
     }
     lastActive.current = startup.active;
@@ -174,7 +193,10 @@ function App() {
 
   function navigate(next: Page) {
     if (next === page) return;
-    if (page === "settings" && dirty) {
+    if (
+      (page === "settings" && dirty) ||
+      (page === "workspace" && deviceNameDirty)
+    ) {
       setConfirmation({ kind: "discard", page: next });
       return;
     }
@@ -275,6 +297,7 @@ function App() {
       setConfig(currentSaved ? { ...currentSaved } : null);
       setSavedConfig(currentSaved ? { ...currentSaved } : null);
       setConfirmation(null);
+      setDeviceNameDirty(false);
       setPage(confirmation.page);
       setNavOpen(false);
       setError("");
@@ -305,7 +328,22 @@ function App() {
     </button>
   );
   return (
-    <div className={`desktop-shell${navOpen ? " navigation-open" : ""}`}>
+    <div
+      className={`desktop-shell${navOpen ? " navigation-open" : ""}${nativeChrome === "macos-overlay" ? " macos-overlay" : ""}`}
+    >
+      {nativeChrome === "macos-overlay" && (
+        <div
+          className="native-window-drag-region"
+          aria-hidden="true"
+          onMouseDown={(event) => {
+            if (event.button === 0) {
+              event.preventDefault();
+              event.stopPropagation();
+              void invoke("desktop_drag").catch(() => {});
+            }
+          }}
+        />
+      )}
       <aside className="desktop-sidebar" aria-label="应用侧栏">
         <button
           className="brand"
@@ -342,7 +380,7 @@ function App() {
                 {navigation(
                   "account",
                   account.available
-                    ? account.state?.accountLabel || "账号"
+                    ? accountDisplayName(account.state)
                     : "账号状态暂不可用",
                   <CircleUserRound size={16} />,
                 )}
@@ -352,7 +390,20 @@ function App() {
         </nav>
       </aside>
       <div className="desktop-content">
-        <header className="desktop-titlebar">
+        <header
+          className="desktop-titlebar"
+          onMouseDown={(event) => {
+            if (
+              nativeChrome === "macos-overlay" &&
+              event.button === 0 &&
+              !(event.target as HTMLElement).closest("button, a, input")
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              void invoke("desktop_drag").catch(() => {});
+            }
+          }}
+        >
           <h1>{titles[page]}</h1>
           {page !== "workspace" && (
             <button
@@ -431,6 +482,30 @@ function App() {
           )}
           {page === "workspace" && stage === "console" && (
             <>
+              <DeviceNameEditor
+                name={
+                  typeof account.state?.deviceName === "string" &&
+                  account.state.deviceName
+                    ? account.state.deviceName
+                    : null
+                }
+                synced={
+                  account.available &&
+                  typeof account.state?.deviceNameSynced === "boolean"
+                    ? account.state.deviceNameSynced
+                    : null
+                }
+                disabled={
+                  !account.available ||
+                  !snapshotAvailable ||
+                  account.pending ||
+                  account.remotePending ||
+                  Boolean(account.state?.busy) ||
+                  installing
+                }
+                onSave={account.renameDevice}
+                onDirtyChange={setDeviceNameDirty}
+              />
               <section className="local-panel" aria-label="本地工作区">
                 <div className="panel-heading">
                   <h2>本地工作区</h2>
@@ -527,7 +602,7 @@ function App() {
                 <div>
                   <h2>
                     {account.available
-                      ? account.state?.accountLabel || "账号"
+                      ? accountDisplayName(account.state)
                       : "账号状态暂不可用"}
                   </h2>
                   <p className="hint" role="status">

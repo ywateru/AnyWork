@@ -153,6 +153,53 @@ input:disabled {
   flex-direction: column;
   min-width: 0;
 }
+.macos-overlay .desktop-sidebar {
+  padding-top: 54px;
+}
+.native-window-drag-region {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 220px;
+  height: 40px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.macos-overlay .desktop-titlebar {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.device-name-panel {
+  margin-bottom: 24px;
+}
+.device-name-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.device-name-heading button {
+  font-size: 12px;
+}
+.device-name-value {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+  margin: 10px 0 4px;
+}
+.device-name-panel form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.device-name-panel form > label {
+  font-size: 13px;
+}
+.device-name-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .brand {
   align-self: flex-start;
   border: 0;
