@@ -1,7 +1,9 @@
 //! Native account lifecycle. This module owns all refresh operations; the SDK
 //! only asks its AuthProvider for a resource access token.
 use crate::{
-    config, manager,
+    config,
+    device_name::{load_device_name, normalized_device_name, save_device_name, valid_device_name},
+    manager,
     process::{LaunchPlan, OwnedProcess},
 };
 use anyhow::{Result, bail};
@@ -210,6 +212,8 @@ pub struct Snapshot {
     pub signed_in: bool,
     pub subject: Option<String>,
     pub account_label: Option<String>,
+    pub device_name: String,
+    pub device_name_synced: bool,
     pub enabled: bool,
     pub busy: bool,
     pub error: Option<String>,
@@ -232,6 +236,7 @@ struct Installation {
     id: String,
     private_key: String,
     public_key: String,
+    name: String,
 }
 struct GrantState {
     grant: Grant,
@@ -350,16 +355,38 @@ impl GrantOwner {
             .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))
     }
 }
-fn account_label(account: &Value, subject: &str) -> String {
-    ["primaryEmail", "username", "name"]
-        .iter()
+fn profile_text(account: &Value, keys: &[&str]) -> Option<String> {
+    // Account API responses from supported Logto versions may expose profile
+    // attributes at the top level or under `profile`. Both arrive from the
+    // authenticated provider, never from an unverified renderer display string.
+    keys.iter()
         .find_map(|key| {
-            account[*key].as_str().filter(|v| {
-                !v.is_empty() && v.chars().count() <= 160 && !v.chars().any(char::is_control)
-            })
+            [
+                account.get(*key),
+                account.get("profile").and_then(|p| p.get(*key)),
+            ]
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .find(|v| !v.is_empty() && v.chars().count() <= 160 && !v.chars().any(char::is_control))
         })
         .map(str::to_owned)
-        .unwrap_or_else(|| format!("账号 {}", subject.chars().take(12).collect::<String>()))
+}
+fn profile_label(account: &Value) -> Option<String> {
+    profile_text(account, &["name", "username", "primaryEmail", "email"])
+}
+fn account_label(account: &Value) -> String {
+    profile_label(account).unwrap_or_else(|| "已登录账号".into())
+}
+fn directory_name(account: &Value, id: &str) -> Option<String> {
+    if account["customData"]["anywork"]["schemaVersion"] != 1 {
+        return None;
+    }
+    account["customData"]["anywork"]["devices"][id]["label"]
+        .as_str()
+        .filter(|v| valid_device_name(v))
+        .map(str::to_owned)
 }
 fn public_installation_id(
     support: &std::path::Path,
@@ -440,15 +467,35 @@ fn device_record(existing: &Value, installation: &Installation, grid_id: &str) -
     };
     let label = existing["label"]
         .as_str()
-        .filter(|label| {
-            !label.is_empty()
-                && label.encode_utf16().count() <= 80
-                && !label.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}')
-        })
-        .unwrap_or("AnyWork desktop");
+        .filter(|label| valid_device_name(label))
+        .unwrap_or(&installation.name);
     Ok(
         json!({"label":label,"platform":std::env::consts::OS,"publicKey":installation.public_key,"keyVersion":version,"gridDeviceId":grid_id}),
     )
+}
+fn validate_directory_record(record: &Value) -> Result<()> {
+    let safe_text = |value: &Value, limit: usize| {
+        value.as_str().is_some_and(|v| {
+            !v.is_empty() && v.encode_utf16().count() <= limit && !v.chars().any(char::is_control)
+        })
+    };
+    let valid_key = record["publicKey"]
+        .as_str()
+        .is_some_and(|v| v.len() == 43 && URL_SAFE_NO_PAD.decode(v).is_ok_and(|b| b.len() == 32));
+    if !record.is_object()
+        || !safe_text(&record["label"], 80)
+        || !safe_text(&record["platform"], 32)
+        || !valid_key
+        || !record["keyVersion"]
+            .as_u64()
+            .is_some_and(|v| v > 0 && v <= 9_007_199_254_740_991)
+        || record
+            .get("gridDeviceId")
+            .is_some_and(|v| !safe_text(v, 128))
+    {
+        bail!("ACCOUNT_DEVICE_RECORD_REJECTED")
+    }
+    Ok(())
 }
 impl cybergrid_sdk::AuthProvider for GrantOwner {
     fn access_token<'a>(
@@ -558,6 +605,7 @@ pub struct Commit {
 impl Handle {
     pub fn new(support: PathBuf, manager: manager::Handle, read_only: bool) -> Result<Self> {
         let config = PublicConfig::load(&support)?;
+        let device_name = load_device_name(&support, read_only)?;
         Ok(Self(Arc::new(Inner {
             read_only,
             config,
@@ -568,7 +616,10 @@ impl Handle {
                 transaction: None,
                 owner: None,
                 remote: None,
-                snapshot: Snapshot::default(),
+                snapshot: Snapshot {
+                    device_name,
+                    ..Default::default()
+                },
             }),
             operation: Mutex::new(()),
             account_write: Mutex::new(()),
@@ -847,6 +898,23 @@ impl Handle {
         if account["id"].as_str() != Some(&subject) {
             bail!("ACCOUNT_IDENTITY_MISMATCH")
         }
+        let profile = if profile_text(&account, &["name", "username"]).is_some() {
+            account.clone()
+        } else {
+            // The same opaque no-resource token is used by the official Logto
+            // SDK for UserInfo. TLS/provider origin and subject are both bound.
+            let info = self.user_info(&tokens.account_token, &subject).await?;
+            if profile_label(&info).is_some() {
+                info
+            } else {
+                account.clone()
+            }
+        };
+        let installation = self.installation(&subject).await?;
+        let cloud_name = directory_name(&account, &installation.id);
+        if let Some(name) = &cloud_name {
+            save_device_name(&self.0.support, name)?;
+        }
         let grant = Grant {
             config: self.0.config.clone(),
             refresh: tokens.refresh_token,
@@ -859,7 +927,14 @@ impl Handle {
         state.transaction = None;
         tx.stop.cancel();
         state.snapshot.busy = false;
-        state.snapshot.account_label = Some(account_label(&account, &subject));
+        state.snapshot.account_label = Some(account_label(&profile));
+        state.snapshot.device_name_synced = cloud_name.is_some();
+        if let Some(name) = cloud_name {
+            state.snapshot.device_name = name.clone();
+            if let Some(installation) = &mut state.installation {
+                installation.name = name;
+            }
+        }
         state.snapshot.subject = Some(subject);
         state.snapshot.signed_in = true;
         Ok("OwnedInMemory".into())
@@ -882,6 +957,129 @@ impl Handle {
         };
         Ok(serde_json::from_slice(&bounded(response).await?)?)
     }
+    async fn user_info(&self, token: &str, subject: &str) -> Result<Value> {
+        let response = client()?
+            .get(format!("{}/me", self.0.config.issuer))
+            .bearer_auth(token)
+            .send()
+            .await;
+        let Ok(response) = response else {
+            return Ok(json!({}));
+        };
+        if !response.status().is_success() {
+            // Profile lookup is optional; the already verified identity remains
+            // usable without publishing the provider's opaque subject as a name.
+            return Ok(json!({}));
+        }
+        let profile: Value = serde_json::from_slice(&bounded(response).await?)?;
+        if profile["sub"].as_str() != Some(subject) {
+            bail!("ACCOUNT_IDENTITY_MISMATCH")
+        }
+        Ok(profile)
+    }
+    async fn check_name_owner(&self, owner: &Arc<GrantOwner>) -> Result<()> {
+        let state = self.0.state.lock().await;
+        if !state.owner.as_ref().is_some_and(|o| Arc::ptr_eq(o, owner)) || owner.policy().logged_out
+        {
+            bail!("ACCOUNT_OPERATION_CANCELLED")
+        }
+        Ok(())
+    }
+    async fn remember_name(&self, name: &str, synced: bool) -> Result<()> {
+        save_device_name(&self.0.support, name)?;
+        let mut state = self.0.state.lock().await;
+        state.snapshot.device_name = name.into();
+        state.snapshot.device_name_synced = synced;
+        if let Some(installation) = &mut state.installation {
+            installation.name = name.into();
+        }
+        Ok(())
+    }
+    pub async fn rename_device(&self, name: &str, expected_name: &str) -> Result<Snapshot> {
+        if self.0.read_only {
+            bail!("ACCOUNT_PREVIEW_READ_ONLY")
+        }
+        let name = normalized_device_name(name)?;
+        let owner = self.0.state.lock().await.owner.clone();
+        let _op = self.0.operation.lock().await;
+        {
+            let mut state = self.0.state.lock().await;
+            if state.snapshot.device_name != expected_name {
+                bail!("DEVICE_NAME_CONFLICT")
+            }
+            state.snapshot.device_name_synced = false;
+        }
+        let mut synced = false;
+        if let Some(owner) = &owner {
+            self.check_name_owner(owner).await?;
+            let _write = self.0.account_write.lock().await;
+            self.check_name_owner(owner).await?;
+            let token = owner.token(false).await?;
+            self.check_name_owner(owner).await?;
+            let subject = owner.state.lock().await.grant.subject.clone();
+            let installation = self.installation(&subject).await?;
+            let mut account = self
+                .account_request(&token, reqwest::Method::GET, None)
+                .await?;
+            self.check_name_owner(owner).await?;
+            if account["id"].as_str() != Some(&subject) {
+                bail!("ACCOUNT_IDENTITY_MISMATCH")
+            }
+            let mut data = account["customData"].take();
+            if let Some(anywork) = data.get("anywork") {
+                if anywork["schemaVersion"] != 1
+                    || !anywork["devices"].is_object()
+                    || anywork["devices"]
+                        .as_object()
+                        .is_some_and(|devices| devices.len() > 32)
+                {
+                    bail!("ACCOUNT_SCHEMA_REJECTED")
+                }
+                if let Some(record) = data["anywork"]["devices"].get_mut(&installation.id) {
+                    // Validation must not rotate a key or replace a record that
+                    // Web currently owns. Only the label field changes.
+                    validate_directory_record(record)?;
+                    if record["label"].as_str() != Some(expected_name) {
+                        self.remember_name(record["label"].as_str().unwrap(), false)
+                            .await?;
+                        bail!("DEVICE_NAME_CONFLICT")
+                    }
+                    record["label"] = json!(name);
+                    if serde_json::to_vec(&data)?.len() > 32768 {
+                        bail!("ACCOUNT_DATA_LIMIT")
+                    }
+                    self.check_name_owner(owner).await?;
+                    self.0.state.lock().await.snapshot.device_name_synced = false;
+                    self.account_request(
+                        &token,
+                        reqwest::Method::PATCH,
+                        Some(json!({"customData":data.clone()})),
+                    )
+                    .await?;
+                    self.check_name_owner(owner).await?;
+                    let after = self
+                        .account_request(&token, reqwest::Method::GET, None)
+                        .await?;
+                    self.check_name_owner(owner).await?;
+                    if after["id"].as_str() != Some(&subject) || after["customData"] != data {
+                        if after["id"].as_str() == Some(&subject)
+                            && let Some(current) = directory_name(&after, &installation.id)
+                        {
+                            self.remember_name(&current, false).await?;
+                        }
+                        bail!("DEVICE_NAME_CONFLICT")
+                    }
+                    synced = true;
+                }
+            } else if !data.is_null() && !data.is_object() {
+                bail!("ACCOUNT_DATA_REJECTED")
+            }
+        } else if self.0.state.lock().await.owner.is_some() {
+            bail!("ACCOUNT_OPERATION_CANCELLED")
+        }
+        self.remember_name(&name, synced).await?;
+        Ok(self.snapshot().await)
+    }
     async fn installation(&self, subject: &str) -> Result<Installation> {
         let mut state = self.0.state.lock().await;
         if let Some(i) = &state.installation
@@ -898,6 +1096,7 @@ impl Handle {
             id,
             private_key: URL_SAFE_NO_PAD.encode(keys.private),
             public_key: URL_SAFE_NO_PAD.encode(keys.public),
+            name: state.snapshot.device_name.clone(),
         };
         state.installation = Some(i.clone());
         Ok(i)
@@ -945,9 +1144,18 @@ impl Handle {
         let after = EnableStage::IndexReadback.at(self
             .account_request(&token, reqwest::Method::GET, None)
             .await)?;
-        if after["customData"] != data {
+        if after["id"].as_str() != Some(&i.subject) || after["customData"] != data {
             return Err(EnableStage::IndexReadback.into());
         };
+        check()?;
+        let name = directory_name(&after, &i.id).ok_or(EnableStage::IndexReadback)?;
+        EnableStage::IndexReadback.at(save_device_name(&self.0.support, &name))?;
+        let mut state = self.0.state.lock().await;
+        state.snapshot.device_name = name.clone();
+        state.snapshot.device_name_synced = true;
+        if let Some(installation) = &mut state.installation {
+            installation.name = name;
+        }
         Ok(())
     }
     pub async fn enable(&self) -> Result<()> {
@@ -1313,7 +1521,11 @@ impl Handle {
         };
         state.owner = None;
         state.installation = None;
-        state.snapshot = Snapshot::default();
+        let device_name = state.snapshot.device_name.clone();
+        state.snapshot = Snapshot {
+            device_name,
+            ..Default::default()
+        };
         Ok(())
     }
 }
@@ -1329,6 +1541,78 @@ fn jwt_subject(token: &str) -> Result<String> {
         .map(str::to_owned)
         .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CallbackPage {
+    Received,
+    Cancelled,
+    Failed,
+    Invalid,
+}
+fn callback_page(url: Option<&url::Url>, expected: Option<&str>) -> CallbackPage {
+    let Some(url) = url else {
+        return CallbackPage::Invalid;
+    };
+    let values = |key: &str| {
+        url.query_pairs()
+            .filter(|(k, _)| k == key)
+            .map(|(_, v)| v.into_owned())
+            .collect::<Vec<_>>()
+    };
+    let states = values("state");
+    if url.path() != "/callback"
+        || expected.is_none()
+        || states.len() != 1
+        || states.first().map(String::as_str) != expected
+    {
+        return CallbackPage::Invalid;
+    }
+    let codes = values("code");
+    let errors = values("error");
+    match (codes.as_slice(), errors.as_slice()) {
+        ([code], []) if !code.is_empty() => CallbackPage::Received,
+        ([], [error]) if error == "access_denied" => CallbackPage::Cancelled,
+        ([], [error]) if !error.is_empty() => CallbackPage::Failed,
+        _ => CallbackPage::Invalid,
+    }
+}
+fn callback_response(page: CallbackPage) -> String {
+    let (title, message) = match page {
+        CallbackPage::Received => (
+            "已收到登录结果",
+            "请返回 AnyWork，应用正在完成验证。此页面可以安全关闭。",
+        ),
+        CallbackPage::Cancelled => (
+            "已取消登录",
+            "请返回 AnyWork。你可以在应用中重新开始登录，此页面可以安全关闭。",
+        ),
+        CallbackPage::Failed => (
+            "登录未完成",
+            "请返回 AnyWork 查看登录状态并重试。此页面可以安全关闭。",
+        ),
+        CallbackPage::Invalid => (
+            "此登录链接无效",
+            "请返回 AnyWork，重新开始登录。此页面可以安全关闭。",
+        ),
+    };
+    let body = include_str!("account-callback.html")
+        .replace("{{ICON}}", include_str!("../../../web/public/icon.svg"))
+        .replace("{{TITLE}}", title)
+        .replace("{{MESSAGE}}", message);
+    let script_hash = base64::engine::general_purpose::STANDARD.encode(Sha256::digest(
+        b"try{history.replaceState(null,\"\",\"/callback\")}catch{}",
+    ));
+    format!(
+        "HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-{}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+        if page == CallbackPage::Invalid {
+            "400 Bad Request"
+        } else {
+            "200 OK"
+        },
+        script_hash,
+        body.len(),
+        body
+    )
+}
 async fn callback_listener(listener: tokio::net::TcpListener, tx: Arc<Transaction>) {
     let deadline = tokio::time::sleep(Duration::from_secs(180));
     tokio::pin!(deadline);
@@ -1339,7 +1623,7 @@ async fn callback_listener(listener: tokio::net::TcpListener, tx: Arc<Transactio
         };
         if !peer.ip().is_loopback() {
             continue;
-        };
+        }
         let mut bytes = vec![0; 8192];
         let read = tokio::time::timeout(Duration::from_secs(3), stream.read(&mut bytes)).await;
         let Ok(Ok(n)) = read else { continue };
@@ -1351,29 +1635,16 @@ async fn callback_listener(listener: tokio::net::TcpListener, tx: Arc<Transactio
         } else {
             None
         };
-        let valid = if let Some(u) = &url {
-            u.path() == "/callback"
-                && u.query_pairs()
-                    .find(|(k, _)| k == "state")
-                    .map(|(_, v)| v.into_owned())
-                    == *tx.expected_state.lock().await
-                && tx.expected_state.lock().await.is_some()
+        let expected = tx.expected_state.lock().await;
+        let page = if tx.stop.is_cancelled() {
+            CallbackPage::Invalid
         } else {
-            false
+            callback_page(url.as_ref(), expected.as_deref())
         };
-        let body = if valid {
-            "AnyWork sign-in received. Return to the desktop app."
-        } else {
-            "Invalid AnyWork sign-in callback."
-        };
-        let response = format!(
-            "HTTP/1.1 {}\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
-            if valid { "200 OK" } else { "400 Bad Request" },
-            body.len(),
-            body
-        );
+        drop(expected);
+        let response = callback_response(page);
         let _ = stream.write_all(response.as_bytes()).await;
-        if valid {
+        if page != CallbackPage::Invalid && !tx.stop.is_cancelled() {
             *tx.callback.lock().await = url.map(|u| u.to_string());
             tx.notify.notify_waiters();
             break;
@@ -1389,12 +1660,26 @@ fn safe_error(error: anyhow::Error) -> String {
         "LOGIN_CALLBACK_PORT_IN_USE" => "登录回调端口已被占用，请关闭其他登录窗口后重试。".into(),
         "LOCAL_SERVICE_NOT_READY" => "请先启动并连接本地服务。".into(),
         "ACCOUNT_REAUTH_REQUIRED" => "账号授权已失效，请退出账号后重新登录。".into(),
+        "DEVICE_NAME_REJECTED" => "名称需为 1–80 个字符，且不能包含控制字符。".into(),
+        "DEVICE_NAME_CONFLICT" => "设备名称未完成同步，账号目录已发生变化，请刷新后重试。".into(),
+        "DEVICE_NAME_STORAGE_REJECTED" => "无法保存设备名称，请检查本机配置文件。".into(),
         _ => "账号操作未完成，请检查登录状态和网络后重试。".into(),
     }
 }
 #[tauri::command]
 pub async fn account_snapshot(state: tauri::State<'_, Handle>) -> Result<Snapshot, String> {
     Ok(state.snapshot().await)
+}
+#[tauri::command]
+pub async fn account_rename_device(
+    state: tauri::State<'_, Handle>,
+    name: String,
+    expected_name: String,
+) -> Result<Snapshot, String> {
+    state
+        .rename_device(&name, &expected_name)
+        .await
+        .map_err(safe_error)
 }
 #[tauri::command]
 pub async fn account_begin(state: tauri::State<'_, Handle>) -> Result<Begin, String> {
@@ -1467,6 +1752,9 @@ pub async fn account_logout(state: tauri::State<'_, Handle>) -> Result<(), Strin
 #[cfg(test)]
 #[path = "accounts_default_tests.rs"]
 mod default_tests;
+#[cfg(test)]
+#[path = "accounts_experience_tests.rs"]
+mod experience_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1828,7 +2116,7 @@ mod tests {
             server.abort();
         }
     }
-    fn handle(support: &std::path::Path) -> Handle {
+    pub(super) fn handle(support: &std::path::Path) -> Handle {
         Handle::new(
             support.to_path_buf(),
             manager::Handle::preview(manager::Snapshot::new(
@@ -1985,7 +2273,7 @@ mod tests {
                 .is_err()
         );
     }
-    fn transaction() -> Arc<Transaction> {
+    pub(super) fn transaction() -> Arc<Transaction> {
         Arc::new(Transaction {
             id: "test-login".into(),
             expected_state: Mutex::new(None),
@@ -2219,7 +2507,7 @@ mod tests {
             handle(dir.path()).snapshot().await.authorization_status,
             AuthorizationStatus::SignedOut
         );
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
     #[tokio::test]
     async fn restarting_updates_one_directory_record_and_increments_key_version() {
@@ -2272,7 +2560,7 @@ mod tests {
             std::fs::read_to_string(old).unwrap(),
             "ignored-old-sentinel"
         );
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
     }
     #[tokio::test]
     async fn broker_unknown_exchange_cannot_retry_the_code_or_grant() {
@@ -2402,21 +2690,23 @@ mod tests {
         );
     }
     #[test]
-    fn account_label_uses_existing_profile_or_short_subject_without_extra_request() {
+    fn account_label_uses_trusted_profile_and_never_an_opaque_id() {
         assert_eq!(
-            account_label(
-                &json!({"primaryEmail":"person@example.org","username":"name"}),
-                "subject"
-            ),
-            "person@example.org"
-        );
-        assert_eq!(
-            account_label(&json!({"username":"name"}), "subject"),
+            account_label(&json!({"primaryEmail":"person@example.org","username":"name"})),
             "name"
         );
         assert_eq!(
-            account_label(&json!({}), "abcdefghijklmnopqrst"),
-            "账号 abcdefghijkl"
+            account_label(&json!({"username":"login", "profile":{"name":"显示名"}})),
+            "显示名"
+        );
+        assert_eq!(
+            account_label(&json!({"profile":{"username":"nested"},"primaryEmail":"mail"})),
+            "nested"
+        );
+        assert_eq!(account_label(&json!({"id":"opaque-subject"})), "已登录账号");
+        assert_eq!(
+            account_label(&json!({"name":" ","username":"bad\nname","email":"person@example.org"})),
+            "person@example.org"
         );
     }
 }

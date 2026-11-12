@@ -26,6 +26,21 @@ pub fn desktop_preview(state: State<'_, DesktopState>) -> Option<String> {
     state.preview.clone()
 }
 #[tauri::command]
+pub fn desktop_chrome() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos-overlay"
+    } else {
+        "standard"
+    }
+}
+#[tauri::command]
+pub fn desktop_drag(window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("WINDOW_REJECTED".into());
+    }
+    window.start_dragging().map_err(|_| "无法移动窗口。".into())
+}
+#[tauri::command]
 pub fn desktop_action(
     state: State<'_, DesktopState>,
     updates: State<'_, crate::updates::Handle>,
