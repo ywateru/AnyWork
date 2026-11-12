@@ -20,6 +20,10 @@ Each desktop installation receives a persistent, distinguishable device name. Yo
 
 每个桌面安装生成持久且可区分的设备名，可在工作区编辑。账号设备目录的更新保留设备身份、密钥和已有连接；已有名称，包括在 Web 设备列表中修改的名称，优先于自动生成的默认值。
 
+Updates the pinned CyberGrid Rust SDK to 0.3.0 and the vendored browser SDK source to its 0.2.0 metadata revision from CyberGrid v0.8.0. Host adapters preserve explicit remote-access intent and handle token-binding and freshness requests. The existing AnyWork encrypted workspace transport remains in use; new bridge and finite-v2 features are not automatically enabled by this dependency update.
+
+同步 CyberGrid v0.8.0 中的 Rust SDK 0.3.0 与标记为 0.2.0 的浏览器 SDK 源码。宿主适配保留明确的远程访问意图，并处理令牌绑定和新鲜度要求。工作区继续使用现有 AnyWork 加密传输，依赖更新不会自动启用新的 bridge 或 finite-v2 功能。
+
 **Previous release 0.1.26 / 上一版本**
 
 The desktop console and Web account entry share a quieter, neutral interface and the existing hexagonal AnyWork logo. Desktop navigation separates the local workspace, remote access, settings and updates. The local panel keeps its open action, saved loopback address, copy action, first-visit explanation and working directory together.

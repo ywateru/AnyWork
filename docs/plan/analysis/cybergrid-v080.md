@@ -27,6 +27,7 @@ JS 的 0.2.0 是固定源码中的组件 metadata，不声称 npm 包已发布�
 ## 令牌与兼容边界
 
 - 新 SDK 请求的 `issuer/clientId/resource/scopes` 必须匹配宿主公开绑定；scopes 为 `connect`。`minValidity` 是秒，`forceRefresh/requestReason/generation/signal` 不得被只取 resource 的旧适配丢弃。
+- Native 注册/交换结果未知时必须保留 SDK 所持的原事务，或明确阻止新尝试直至完成该事务的清理；不能因开启失败而丢弃 client，再让普通重试创建另一笔未知注册。协调撤销未确认与本机访问已关闭分开表达；本机关闭不能依赖云端确认才生效。
 - Web 沿原 `tokenTail` 单 owner 获取令牌，检查缓存 JWT 剩余寿命，不足时最多重新获取一次，再不足则明确失败；`exp` 仅判定 freshness，身份继续由原可信验证路径决定。已发出的轮换须完成保存/撤销，不因取消等待丢弃其 owner。
 - 初次交换不强刷；只有第一次明确 `401 + INVALID_IDENTITY` 且此前无未知结果，才允许同一 request ID 的一次 forced refresh。其他拒绝和网络/服务错误不触发这条刷新路径。未知交换保留同一 RAM token/epoch/request ID；未知之后的拒绝不能自动新建授权或刷新。
 - 旧服务缺省 `products/policyVersion/endpointPolicy` 时，保留原 `devices()/getPortTunnelUrl()` 兼容路径；新字段若存在则必须通过新版严格校验。AnyWork 入口仍只接受原合法 Quick Tunnel HTTPS 根，不因新版 endpoint descriptor 而放宽允许地址。
