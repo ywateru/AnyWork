@@ -423,6 +423,9 @@
   color: light-dark(#a42e2e, #f0a2a2);
 }
 .account-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
   width: min(480px, calc(100% - 32px));
   max-height: calc(100dvh - 40px);
   overflow-y: auto;

@@ -158,6 +158,7 @@ export async function manager(page: Page, options: Options = {}) {
               throw new Error("Fixture account unavailable");
             return result;
           }
+          if (command === "desktop_chrome") return "standard";
           if (command === "desktop_update_snapshot")
             return {
               currentVersion: "0.1.16",
