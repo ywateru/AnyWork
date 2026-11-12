@@ -11,6 +11,8 @@ depends-on: [ui-refactor-v2]
 
 完成用户 2026-11-12 的五项截图反馈。沿用已发布 v0.1.26 的 v2 界面，实施后独立验收并按现有流程更新。用户已明确授权上述行为调整，无需为同一修订重复确认。
 
+同日追加：检查 CyberGrid 上游更新，对照当前固定 SDK、浏览器 vendored SDK 和已适配协调服务判断是否需要更新；需要时纳入本次隔离实施、独立审查和发布。先只读比对准确提交及兼容性，再记录具体修改范围，保留现有账号、加密协议和严格 TLS Redis 配置。
+
 ## context
 
 - `docs/design/desktop-refactor/login-device-followup.md`（本轮权威修订）
