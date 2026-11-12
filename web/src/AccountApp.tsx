@@ -1,5 +1,5 @@
 import { UserScope } from "@logto/browser";
-import { AccountLogtoClient } from "./accountAuth";
+import { AccountLogtoClient, withAccountSubject } from "./accountAuth";
 import {
   createContext,
   useCallback,
@@ -36,7 +36,11 @@ import {
   type AccountProfile,
   type DeviceRecord,
 } from "./accountData";
-import { CyberGridClient, type Device } from "./vendor/cybergrid";
+import {
+  CyberGridClient,
+  type AccessTokenRequest,
+  type Device,
+} from "./vendor/cybergrid";
 import { RemoteTransport } from "./remoteTransport";
 import "./account.css";
 import {
@@ -286,6 +290,8 @@ function useAccountAuth() {
         client.getAccountAccessToken(resource),
       getFreshAccessToken: (resource?: string) =>
         client.getAccountAccessToken(resource, true),
+      getCyberGridAccessToken: (request: AccessTokenRequest) =>
+        client.getCyberGridAccessToken(request),
       getIdTokenClaims: client.getIdTokenClaims.bind(client),
       signIn: client.startAccountSignIn.bind(client),
       signOut: client.endAccountSession.bind(client),
@@ -341,6 +347,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
     signOut,
     getAccessToken,
     getFreshAccessToken,
+    getCyberGridAccessToken,
     getIdTokenClaims,
   } = useAccountAuth();
   const [locale, setLocale] = useState<"zh-CN" | "en">(initialLocale),
@@ -376,23 +383,27 @@ function AccountHome({ config }: { config: AccountConfig }) {
     trigger = useRef<HTMLElement | null>(null),
     dialogRef = useRef<HTMLDialogElement>(null),
     getToken = useRef(getAccessToken),
-    getFreshToken = useRef(getFreshAccessToken);
+    getFreshToken = useRef(getFreshAccessToken),
+    getGridToken = useRef(getCyberGridAccessToken);
   getToken.current = getAccessToken;
   getFreshToken.current = getFreshAccessToken;
+  getGridToken.current = getCyberGridAccessToken;
   const subjectRef = useRef(subject);
   subjectRef.current = subject;
   const checkedToken = useCallback(
-    async (resource?: string, fresh = false) => {
-      const before = await getIdTokenClaims();
-      const expected = subjectRef.current;
-      if (!expected || before?.sub !== expected)
-        throw new AccountError("IDENTITY_CHANGED");
-      const token = await (fresh
-        ? getFreshToken.current(resource)
-        : getToken.current(resource));
-      const after = await getIdTokenClaims();
-      if (subjectRef.current !== expected || after?.sub !== expected)
-        throw new AccountError("IDENTITY_CHANGED");
+    async (resource?: string, fresh = false, request?: AccessTokenRequest) => {
+      request?.signal.throwIfAborted();
+      const token = await withAccountSubject(
+        () => subjectRef.current,
+        getIdTokenClaims,
+        () =>
+          request
+            ? getGridToken.current(request)
+            : fresh
+              ? getFreshToken.current(resource)
+              : getToken.current(resource),
+      );
+      request?.signal.throwIfAborted();
       return token;
     },
     [getIdTokenClaims],
@@ -462,7 +473,8 @@ function AccountHome({ config }: { config: AccountConfig }) {
       issuer: config.issuer,
       clientId: config.appId,
       resource: config.resource,
-      getAccessToken: ({ resource }) => checkedToken(resource),
+      getAccessToken: (request) =>
+        checkedToken(request.resource, request.forceRefresh, request),
     });
     gridRef.current = grid;
     void store
