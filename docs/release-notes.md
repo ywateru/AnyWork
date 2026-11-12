@@ -12,6 +12,10 @@ The official website and default client account entry now use https://anywork.ai
 
 正式官网与客户端默认账号入口统一使用 https://anywork.aixgg.com。
 
+Update and restart the desktop client before connecting from the new domain. Existing explicit self-hosted account configuration is preserved. The official domain upgrade retains the public device identifier and saved names.
+
+使用新域名连接前，请更新并重启桌面客户端。已有显式自部署账号配置保持不变；官方域名升级会保留公开设备标识和已保存的名称。
+
 **Previous release 0.1.28 / 上一版本**
 
 Account dialogs now open in the center of the browser window, including on narrow and short screens. The desktop sign-in callback has a compact AnyWork page with clear instructions for returning to the app; receiving a callback is distinguished from completing account verification.

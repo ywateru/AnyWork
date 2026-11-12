@@ -34,3 +34,7 @@ Web 现有源码区域          → 简短开源说明 + GitHub
 同轮用户指定 `https://anywork.aixgg.com` 为后续正式网站。独立作者更新官网 canonical、发布校验、Web/桌面/Android 默认入口及当前指南，历史验收记录保留原地址。现有 Vercel 项目绑定经公开 DNS 核对并重新验证后为 verified；同步配置只添加新域名所需的 Logto callback/logout/CORS 和协调浏览器 origin，保留旧入口兼容项及原有身份、存储、部署源码。发布前必须确认实际 HTTPS、新入口登录重定向与白名单，不把仅改源码作为域名迁移完成。
 
 域名变更会改变 Native 配置 namespace。为避免同一安装重复登记，仅对官方旧→新域名且其余六项公开信任字段完全匹配的路径，在新安装标识文件不存在时延续同 support、同 subject 的旧公开 UUID。新路径优先，旧路径保留回退；旧文件沿用普通文件、大小、JSON、UUID、禁止 symlink 校验，损坏时失败。其他配置变化仍隔离，不迁移密钥、token 或 grant，不放宽 gateway Origin。此兼容例外须有针对性测试并独立复核。
+
+## progress
+
+UI `874b4a7`、域名及兼容修正 `e0c093c` 已通过[独立审查](../reviews/open-source-ui.md)并合并。新增迁移与既有隔离边界共 8 项 Native 检查通过，Web/官网/Android 相关既有检查通过。新域名已验证且 HTTPS 可用；Logto、GitHub portal 与同代码协调 origin 配置已更新并独立核验。旧入口兼容项和 TLS Redis 配置保留。等待正式 v0.1.29 发布及最终精确源码核验；旧宿主需要更新并重启后接受新域名。
