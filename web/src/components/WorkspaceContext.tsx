@@ -10,6 +10,7 @@ type Props = {
   onDevices?: () => void;
   onSignOut?: () => void;
   onDisconnect?: () => void;
+  onHome?: () => void;
 };
 
 export function WorkspaceDevice({
@@ -131,6 +132,7 @@ export function WorkspaceAccount({
   onDevices,
   onSignOut,
   onDisconnect,
+  onHome,
 }: Omit<Props, "deviceLabel">) {
   return (
     <details className="workspace-account-menu" data-floating-menu>
@@ -147,6 +149,15 @@ export function WorkspaceAccount({
           <p className="workspace-source-hint">
             来源是打开时的快照，不表示此网页已登录该账号，也不表示当前桌面账号或远程状态。
           </p>
+        )}
+        {onHome && (
+          <button
+            className="workspace-compact-home"
+            type="button"
+            onClick={onHome}
+          >
+            工作区首页
+          </button>
         )}
         {onSignOut ? (
           <ConfirmConnectionAction

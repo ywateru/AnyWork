@@ -1354,6 +1354,7 @@ export default function App({
                 <span className="sidebar-version">v{appVersion}</span>
               </button>
               <WorkspaceAccount
+                onHome={() => select("")}
                 accountLabel={accountLabel}
                 contextLabel={contextLabel}
                 onDevices={onDevices}

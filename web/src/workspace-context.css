@@ -222,3 +222,88 @@
     min-height: 44px;
   }
 }
+
+/* In a short window, keep full touch targets while sharing rows instead of
+   letting fixed chrome consume the session list. Home moves into the account
+   menu; the device row keeps the same icon and text axis as New and Search. */
+.workspace-context-options > .workspace-compact-home {
+  display: none;
+}
+@media (max-height: 600px) {
+  .codex-shell > aside.sidebar {
+    display: grid;
+    --compact-view-width: 92px;
+    grid-template-columns: minmax(0, 1fr) var(--compact-view-width);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand brand"
+      "actions actions"
+      "agent view"
+      "sessions sessions"
+      "footer footer";
+  }
+  aside.sidebar .navigation-heading {
+    grid-area: brand;
+  }
+  aside.sidebar .navigation-actions {
+    grid-area: actions;
+    padding-block: 4px;
+  }
+  aside.sidebar .sidebar-agent-filter {
+    grid-area: agent;
+    margin: 0;
+    align-self: center;
+  }
+  aside.sidebar .sidebar-agent-menu {
+    width: calc(100% + var(--compact-view-width));
+  }
+  aside.sidebar .navigation-view {
+    grid-area: view;
+    justify-content: flex-end;
+    padding-inline: 0;
+  }
+  aside.sidebar .navigation-view > span {
+    display: none;
+  }
+  aside.sidebar .session-list {
+    grid-area: sessions;
+  }
+  aside.sidebar .sidebar-bottom {
+    grid-area: footer;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding-top: 4px;
+  }
+  aside.sidebar .sidebar-bottom > .sidebar-identity {
+    display: none;
+  }
+  aside.sidebar .workspace-account-menu {
+    margin-top: 0;
+    min-width: 0;
+  }
+  aside.sidebar .workspace-account-menu .workspace-context-options {
+    left: auto;
+    right: 0;
+    width: min(290px, calc(100vw - 32px));
+    max-height: calc(100dvh - 70px);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  aside.sidebar .workspace-context-options > .workspace-compact-home {
+    display: flex;
+  }
+}
+
+@media (max-height: 600px) and (pointer: coarse) {
+  aside.sidebar .sidebar-agent-filter > summary,
+  aside.sidebar .navigation-view .icon-button,
+  aside.sidebar .navigation-options > summary {
+    min-height: 44px;
+  }
+  aside.sidebar .navigation-view .icon-button,
+  aside.sidebar .navigation-options > summary {
+    width: 44px;
+  }
+}

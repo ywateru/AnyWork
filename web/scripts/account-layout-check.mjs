@@ -3,7 +3,7 @@ import { chromium, expect } from "@playwright/test";
 const origin = process.env.ANYWORK_LAYOUT_ORIGIN || "http://127.0.0.1:3322";
 if (new URL(origin).hostname !== "127.0.0.1")
   throw new Error("Isolated loopback Vite fixture required");
-const output = "artifacts/ui-v2-web";
+const output = process.env.ANYWORK_LAYOUT_OUTPUT || "artifacts/ui-v2-web";
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({
   channel: process.env.PLAYWRIGHT_CHANNEL || "chrome",
@@ -14,8 +14,11 @@ const key = "A".repeat(43);
 // AccountHome and AccountStore are real. Only the SDK/coordination/encrypted transport
 // boundaries are synthetic; this does not claim a real OAuth grant or Noise handshake.
 async function fixture(width, options = {}) {
+  const { height = 900, ...initialState } = options;
   const context = await browser.newContext({
-    viewport: { width, height: 900 },
+    viewport: { width, height },
+    isMobile: width < 720,
+    hasTouch: width < 720,
     locale: "zh-CN",
     serviceWorkers: "block",
   });
@@ -42,7 +45,7 @@ async function fixture(width, options = {}) {
         },
       },
     },
-    ...options,
+    ...initialState,
   };
   await context.addInitScript(
     ({ state, id, key }) => {
@@ -338,6 +341,91 @@ try {
     console.log(
       `Passed ${width}px: centered OAuth entry, real AccountHome/AccountStore directory/mutation, empty/unknown/offline/unready, first/changed key, cancel ownership, connected shell and safe switch (synthetic service boundaries only)`,
     );
+  }
+
+  // The connected shell must retain its device and account actions when the
+  // keyboard or a short browser window leaves little vertical space.
+  const f = await fixture(390, { height: 480 });
+  try {
+    await ready(f.page);
+    await openKey(f.page);
+    await f.page.getByRole("checkbox").check();
+    await f.page.getByRole("button", { name: "确认并连接" }).click();
+    await expect(
+      f.page.getByRole("heading", { name: "从哪里开始？" }),
+    ).toBeVisible();
+    await f.page.getByRole("button", { name: "会话列表", exact: true }).click();
+    const device = f.page.locator(".workspace-device-trigger");
+    const account = f.page.locator(".workspace-account-menu > summary");
+    await expect(device).toBeInViewport({ ratio: 1 });
+    await expect(account).toBeInViewport({ ratio: 1 });
+    const metrics = await f.page.locator(".session-list").evaluate((list) => ({
+      height: list.clientHeight,
+      documentHeight: document.documentElement.scrollHeight,
+      viewportHeight: innerHeight,
+    }));
+    expect(metrics.documentHeight).toBe(metrics.viewportHeight);
+    await noOverflow(f.page);
+    await f.page.screenshot({ path: `${output}/connected-390x480.png` });
+
+    await device.click();
+    const switchDevice = f.page.getByRole("button", {
+      name: "我的设备 / 切换电脑",
+      exact: true,
+    });
+    await expect(switchDevice).toBeInViewport({ ratio: 1 });
+    await switchDevice.click();
+    const switchDialog = f.page.getByRole("dialog", { name: "返回我的设备？" });
+    await expect(switchDialog).toBeInViewport({ ratio: 1 });
+    await expect(
+      switchDialog.getByRole("button", { name: "取消" }),
+    ).toBeFocused();
+    await switchDialog.getByRole("button", { name: "取消" }).click();
+    await expect(device).toBeFocused();
+    expect(await f.page.evaluate(() => window.fixture.closes)).toBe(0);
+
+    await account.click();
+    const home = f.page.locator(".workspace-compact-home");
+    await expect(home).toBeInViewport({ ratio: 1 });
+    await home.click();
+    await expect(f.page.locator(".workspace-account-menu")).not.toHaveAttribute(
+      "open",
+    );
+    await expect(f.page.locator("aside.sidebar")).not.toHaveClass(/\bopen\b/);
+    await f.page.getByRole("button", { name: "会话列表", exact: true }).click();
+    await account.click();
+    const signOut = f.page.getByRole("button", {
+      name: "退出账号",
+      exact: true,
+    });
+    await expect(signOut).toBeInViewport({ ratio: 1 });
+    await f.page.screenshot({ path: `${output}/account-menu-390x480.png` });
+    await signOut.click();
+    const exitDialog = f.page.getByRole("dialog", { name: "退出 Web 账号？" });
+    await expect(exitDialog).toBeInViewport({ ratio: 1 });
+    await expect(
+      exitDialog.getByRole("button", { name: "取消" }),
+    ).toBeFocused();
+    await f.page.screenshot({ path: `${output}/safe-exit-390x480.png` });
+    await f.page.keyboard.press("Escape");
+    await expect(exitDialog).not.toBeVisible();
+    await expect(account).toBeFocused();
+    expect(await f.page.evaluate(() => window.fixture.closes)).toBe(0);
+    expect(await f.page.evaluate(() => window.fixture.signOut)).toBeUndefined();
+    await account.click();
+    await signOut.click();
+    await exitDialog
+      .getByRole("button", { name: "退出账号", exact: true })
+      .click();
+    await expect
+      .poll(() => f.page.evaluate(() => window.fixture.signOut))
+      .toBe(origin + "/app/");
+    expect(await f.page.evaluate(() => window.fixture.closes)).toBe(1);
+    console.log(
+      `Passed 390x480 touch shell: ${metrics.height}px history, device switch cancellation, relocated home, account exit cancellation/focus and confirmed logout`,
+    );
+  } finally {
+    await f.close();
   }
 } finally {
   await browser.close();
