@@ -86,6 +86,43 @@ const connect=()=>NativeTransport.connect({deviceRef:'fixture',expectedEpoch:1,e
  const b=bridge();b.setEarly();await assert.rejects(connect(),{code:'CONNECTION_CLOSED'});
  console.log('PASS connection end arriving before connect reply');
 }
-console.log('5 adapter checks passed');
+{
+ const b=bridge(),t=await connect();const OriginalRequest=globalThis.Request;let encoded=0,reads=0;
+ const originalRead=ReadableStreamDefaultReader.prototype.read;
+ ReadableStreamDefaultReader.prototype.read=function(...args){reads++;return originalRead.apply(this,args);};
+ globalThis.Request=class extends OriginalRequest{constructor(...args){encoded++;super(...args);}};
+ try {
+  const blob=new Blob([new Uint8Array(20*1024*1024+1)]);
+  await assert.rejects(t.request('/api/sessions/test/uploads',{method:'POST',body:blob}),{code:'LIMIT_EXCEEDED'});
+  const form=new FormData();
+  form.append('files',new Blob([new Uint8Array(12*1024*1024)]),'一.bin');
+  form.append('files',new Blob([new Uint8Array(11*1024*1024)]),'二.bin');
+  await assert.rejects(t.request('/api/sessions/test/uploads',{method:'POST',body:form}),{code:'LIMIT_EXCEEDED'});
+  assert.equal(encoded,0);assert.equal(reads,0);assert.equal(b.operations.size,0);
+  // A rejected reservation must not poison later small requests.
+  assert.equal((await t.request('/api/info')).status,409);
+ } finally {globalThis.Request=OriginalRequest;ReadableStreamDefaultReader.prototype.read=originalRead;t.close();}
+ console.log('PASS Blob/file and multi-file limits reject before Request encoding');
+}
+{
+ const b=bridge(),t=await connect();let release;
+ b.setHeadHold(new Promise(r=>release=r));
+ const first=t.request('/api/sessions/test/uploads',{method:'POST',body:new Uint8Array(3*1024*1024)});
+ while(!b.calls.some(([n])=>n==='mobile_transport_http_finish'))await tick();
+ const OriginalRequest=globalThis.Request;let encoded=0,reads=0;
+ const originalRead=ReadableStreamDefaultReader.prototype.read;
+ ReadableStreamDefaultReader.prototype.read=function(...args){reads++;return originalRead.apply(this,args);};
+ globalThis.Request=class extends OriginalRequest{constructor(...args){encoded++;super(...args);}};
+ try {
+  await assert.rejects(t.request('/api/sessions/test/uploads',{
+   method:'POST',body:new Blob([new Uint8Array(20*1024*1024)]),
+  }),{code:'LIMIT_EXCEEDED'});
+  assert.equal(encoded,0);assert.equal(reads,0);assert.equal(b.operations.size,1);
+ } finally {globalThis.Request=OriginalRequest;ReadableStreamDefaultReader.prototype.read=originalRead;release({status:409,contentType:'application/json',size:Buffer.byteLength(JSON.stringify({error:'fixture conflict'}))});}
+ // Match the fixture body size, and allow its finite response to drain.
+ await first;t.close();
+ console.log('PASS known bytes include concurrent request reservations before encoding');
+}
+console.log('7 adapter checks passed');
 
 } finally { fs.rmSync(temporary,{recursive:true,force:true}); }

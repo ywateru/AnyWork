@@ -37,6 +37,44 @@ function decode(value: string): Uint8Array {
 function same(a: ConnectionRef, b: ConnectionRef) {
   return a.connectionId === b.connectionId && a.generation === b.generation;
 }
+const MAX_FILE = 20 * 1024 * 1024;
+function utf8Size(value: string): number {
+  let size = 0;
+  for (let index = 0; index < value.length && size <= MAX_BODY; index++) {
+    const unit = value.charCodeAt(index);
+    if (unit < 0x80) size++;
+    else if (unit < 0x800) size += 2;
+    else if (unit >= 0xd800 && unit <= 0xdbff
+      && value.charCodeAt(index + 1) >= 0xdc00 && value.charCodeAt(index + 1) <= 0xdfff) {
+      size += 4; index++;
+    } else size += 3;
+  }
+  return size;
+}
+/** A lower bound only; multipart/URL encoding overhead is checked while reading. */
+function knownBodySize(body: BodyInit | null | undefined): number {
+  const fileSize = (blob: Blob) => {
+    if (blob.size > MAX_FILE) throw new NativeTransportError("LIMIT_EXCEEDED");
+    return blob.size;
+  };
+  if (body == null) return 0;
+  if (body instanceof Blob) return fileSize(body);
+  if (typeof body === "string") return utf8Size(body);
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return body.byteLength;
+  let size = 0;
+  if (body instanceof FormData) {
+    for (const [, value] of body) {
+      size += typeof value === "string" ? utf8Size(value) : fileSize(value);
+      if (size > MAX_BODY) break;
+    }
+  } else if (body instanceof URLSearchParams) {
+    for (const [key, value] of body) {
+      size += utf8Size(key) + utf8Size(value);
+      if (size > MAX_BODY) break;
+    }
+  }
+  return size;
+}
 
 /** Business bytes go through Rust; this class owns only Web API / IPC adaptation. */
 export class NativeTransport implements BusinessTransport {
@@ -119,24 +157,35 @@ export class NativeTransport implements BusinessTransport {
     });
     try {
       check();
+      // Reserve known bytes synchronously before Request can encode FormData or
+      // read Blob data, including the budget held by concurrent requests.
+      reserved = knownBodySize(options.body);
+      if (this.requestBytes + reserved > MAX_BODY) {
+        reserved = 0;
+        throw new NativeTransportError("LIMIT_EXCEEDED");
+      }
+      this.requestBytes += reserved;
       const headers = new Headers(options.headers);
       // Credentials are never accepted from the React business surface.
       headers.delete("Authorization");
       const request = new Request("https://tauri.localhost" + path, { ...options, headers, signal });
       reader = request.body?.getReader();
       const body: Uint8Array[] = [];
+      let encodedSize = 0;
       if (reader) for (;;) {
         check();
         const item = await wait(reader.read());
         check();
         if (item.done) break;
-        if (this.requestBytes + item.value.byteLength > MAX_BODY)
+        encodedSize += item.value.byteLength;
+        const additional = Math.max(0, encodedSize - reserved);
+        if (this.requestBytes + additional > MAX_BODY)
           throw new NativeTransportError("LIMIT_EXCEEDED");
-        reserved += item.value.byteLength; this.requestBytes += item.value.byteLength;
+        reserved += additional; this.requestBytes += additional;
         body.push(item.value);
       }
       await wait(this.invoke("http_begin", { ...operation, method: request.method, path,
-        contentType: request.headers.get("Content-Type"), size: reserved }));
+        contentType: request.headers.get("Content-Type"), size: encodedSize }));
       check();
       let offset = 0;
       for (const bytes of body) for (let start = 0; start < bytes.length; start += CHUNK) {
