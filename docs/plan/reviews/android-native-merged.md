@@ -51,4 +51,12 @@
 
 非作者随后核对取消运行`43416531358`的server-web日志：普通E2E实际收集740项；取消前已观察到desktop项目下30项手机spec失败，其中26项耗时30.0–30.1秒，另4项约5.3–5.4秒。android-web当时仍在运行普通spec，不能记为60项全部超时；日志未给详细失败栈或404，具体错误类型亦不扩大推断。后续远端format/site步骤被跳过，本机相应通过记录仍独立有效。
 
-CI接线修复`a116f31`（主线`b484b52`）经非作者独立复审通过：普通配置680项/44文件、mobile配置30项/2文件，无重叠、无skip；完整脚本无条件先运行专用mobile，再运行普通Web。专项30/30再次通过，未修改spec或断言、未改变产品行为及APK。检查日志和独立摘要保留于ignored `artifacts/mobile-ci-independent/`，不把离线核对当作新版远端Checks成功。
+CI接线修复`a116f31`（主线`b484b52`）经非作者独立复审通过：普通配置680项/44文件、mobile配置30项/2文件，无重叠、未新增skip；完整脚本无条件先运行专用mobile，再运行普通Web。专项30/30再次通过，未修改spec或断言、未改变产品行为及APK。列表收集与实际执行时的既有project skip分开统计，见下文。检查日志和独立摘要保留于ignored `artifacts/mobile-ci-independent/`，不把离线核对当作新版远端Checks成功。
+
+## v0.1.32 精确检查与 Release 失败记录
+
+源码`8c3cf123fbccfb43efb2c2f095f1978d9be02b1c`的[Checks 43421353163](https://github.com/ywateru/AnyWork/actions/runs/43421353163)五项全部成功。远端日志确认mobile30 passed/0 skipped/0 failed；普通Web收集680项，其中679 passed、1 skipped、0 failed。唯一skip为android-web下只适用于桌面参考截图的既有用例。另有前置sidebar/model-picker42 passed，不与680重复计数。format及中英文各5视口的site-test均实际执行并通过。
+
+该tag的[Release 43424798695](https://github.com/ywateru/AnyWork/actions/runs/43424798695)五个桌面目标及source-web均成功；Android四种ABI的Rust release库亦完成编译，但R8报`Missing class org.slf4j.impl.StaticLoggerBinder`，在`:app:minifyUniversalReleaseWithR8`失败。Android artifact未上传，publish跳过，未创建公开Release。不可将桌面包成功推广为本轮发布成功，也不改动已有v0.1.32 tag。
+
+依赖为jose4j0.9.6经slf4j-api1.7.36使用可选binding；实际LoggerFactory字节码在缺失binder时捕获错误并回退NOP。最小修复`26413eb`（主线`b21449f`）精确忽略该可选类的R8缺失诊断，保留现有fallback，不关闭优化、不使用包级或全局忽略，不改变认证校验。非作者重新核对真实JAR字节码、Release规则加载和唯一变更后接受；新版本实际R8结果仍须作为发布门禁。原日志与证据保存在ignored `artifacts/release-android-failure/`。

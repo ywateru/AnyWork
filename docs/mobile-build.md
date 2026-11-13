@@ -17,6 +17,8 @@ Tauri CLI2.12.4构建先执行 `npm run build:mobile-ui`；真实 `web/mobile.ht
 
 签名兼容旧应用：release要求 ANYWORK_ANDROID_KEYSTORE、ANYWORK_ANDROID_STORE_PASSWORD、ANYWORK_ANDROID_KEY_PASSWORD，alias默认为anywork，可用 ANYWORK_ANDROID_KEY_ALIAS覆盖。凭据仅由环境交Gradle，不写入仓库。APK验证工具检查package/version/minSdk、Rust native lib与所有已构建HTML/JS/CSS资产key、签名证书、ELF PT_LOAD 16KiB及zipalign16KiB。release证书必须与配置keystore一致；是否与历史已安装包同证书还需核对历史APK证书，不能单凭applicationId宣称可升级。
 
+Release启用R8优化。官方Logto Android AAR保留core.type的反射字段；jose4j经SLF4J1.7使用的可选StaticLoggerBinder缺失时，库本身回退NOP logger。应用规则仅精确忽略该可选类的缺失诊断，其他缺失类继续失败；不能用debug成功替代实际Release R8验证。v0.1.32曾在该步骤失败且未发布，详见[合并记录](plan/reviews/android-native-merged.md)。
+
 system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_path生成Cargo links元数据，再由tauri-build写入tauri.settings.gradle / tauri.build.gradle.kts合并Android library。生成source/template/wrapper受版本控制；本机路径、generated JNI/Kotlin、.so、Gradle/Rust缓存、tauri.properties和动态Gradle include文件不归档。source archive包含插件源码、manifest、license说明和Gradle wrapper，排除dist-mobile及产物；无需依赖作者未跟踪文件。
 
 本地配置不设置devUrl，验证打包Origin固定为 https://tauri.localhost，入口mobile.html；Android真实WebView provider、选择器、分享接收者、中文IME、生命周期和隔离网关仍以APK独立验收为准。build/lint/unit成功不等于已执行这些运行验收。
