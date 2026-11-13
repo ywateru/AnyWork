@@ -370,6 +370,14 @@ async function fixture(
             return {};
           }
           if (command === "plugin:mobile-system|insets_get") return insets;
+          if (command === "plugin:mobile-system|appearance_set") {
+            if (
+              Object.keys(args).join() !== "request" ||
+              typeof request.dark !== "boolean"
+            )
+              throw Error("Invalid appearance DTO");
+            return { dark: request.dark };
+          }
           if (command === "plugin:mobile-system|export_begin") {
             const handle = "export-" + exports.size;
             exports.set(handle, { ...request, received: 0 });
@@ -1118,4 +1126,38 @@ test("explicit not_sent clears the pre-dispatch fence and retains editable draft
       ),
     ),
   ).toHaveLength(0);
+});
+
+test("system bar appearance follows resolved app theme instead of OS theme", async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await fixture(page, { signedIn: true });
+  await page.getByRole("button", { name: "账户与设置", exact: true }).click();
+  await expect
+    .poll(async () =>
+      (await calls(page, "plugin:mobile-system|appearance_set")).map(
+        (c: any) => c.request,
+      ),
+    )
+    .toEqual([{ dark: false }]);
+  await page.getByRole("button", { name: "深色", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect
+    .poll(
+      async () =>
+        (await calls(page, "plugin:mobile-system|appearance_set")).at(-1)
+          ?.request,
+    )
+    .toEqual({ dark: true });
+  await page.screenshot({ path: testInfo.outputPath("dark-app-light-os.png") });
+  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect
+    .poll(
+      async () =>
+        (await calls(page, "plugin:mobile-system|appearance_set")).at(-1)
+          ?.request,
+    )
+    .toEqual({ dark: false });
 });

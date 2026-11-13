@@ -128,6 +128,25 @@ export async function startSystem(options: {
   let revision = -1;
   let backRevision = -1;
   let lifecycleRevision = -1;
+  let appearanceTail = Promise.resolve();
+  let requestedDark: boolean | undefined;
+  const syncAppearance = () => {
+    const dark = document.documentElement.dataset.theme === "dark";
+    if (requestedDark === dark) return appearanceTail;
+    requestedDark = dark;
+    appearanceTail = appearanceTail
+      .catch(() => {})
+      .then(async () => {
+        if (stopped) return;
+        const ack = await invoke<{ dark: boolean }>(
+          "plugin:mobile-system|appearance_set",
+          { dark },
+        );
+        if (ack.dark !== dark)
+          throw new Error("系统栏外观未确认，请重新打开应用");
+      });
+    return appearanceTail;
+  };
   function applyInsets(value: Insets) {
     if (stopped || value.revision <= revision) return;
     if (value.unit !== "cssPx") throw new Error("原生安全区单位不匹配");
@@ -184,6 +203,15 @@ export async function startSystem(options: {
   document.addEventListener("click", click);
   cleanups.push(() => document.removeEventListener("click", click));
   try {
+    const appearanceObserver = new MutationObserver(() => {
+      void syncAppearance().catch(platformError);
+    });
+    appearanceObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    cleanups.push(() => appearanceObserver.disconnect());
+    await syncAppearance();
     cleanups.push(await listen<Insets>("mobile-system-insets", applyInsets));
     cleanups.push(
       await listen<{ eventId: number; revision: number }>(
@@ -217,6 +245,7 @@ export async function startSystem(options: {
     );
     applyInsets(await invoke<Insets>("plugin:mobile-system|insets_get"));
   } catch (error) {
+    stopped = true;
     for (const cleanup of cleanups.reverse()) cleanup();
     throw error;
   }
