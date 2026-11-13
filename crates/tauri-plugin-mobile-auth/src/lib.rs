@@ -188,9 +188,10 @@ mod boundary_tests {
                         invoke_key: tauri::test::INVOKE_KEY.into(),
                     },
                 );
-                let denied = response
-                    .err()
-                    .expect("guest auth method unexpectedly exposed");
+                let denied = match response {
+                    Err(error) => error,
+                    Ok(_) => panic!("guest auth method unexpectedly exposed"),
+                };
                 assert!(
                     denied
                         .as_str()
