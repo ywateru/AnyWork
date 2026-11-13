@@ -30,3 +30,9 @@ status: in-progress
 5. 控制依赖/target复用，清理本任务临时构建/截图/工作树，保留独立审查文档；推送可审查源码和CI，记录APK及未测限制。
 
 初次清理已移除上一轮七个干净 Claude 工作树及可重建增量缓存，保留分支和审查，回收约14GiB；不得扩大清理到未知工作区或用户资料。
+
+## Current integration
+
+网页账号修复已独立接受并合入，包含真实 SDK 跨标签旧 owner 缓存与迟到刷新写入的 P1 闭环。Android 分层实现已形成独立候选，尚在合并前审查与 APK 构建，不把已有提交视为完整验收。独立设计审查已明确 Native 同产品设备会话、SDK cookie/授权桥边界与已注册回调；见[设计证据](../analysis/android-native-client.md)。
+
+Transport 独立审查覆盖真实隔离 Snow/Gateway 与 JS Request/Response/FormData 联合调用，已发现并修复总时限、pending connect 关停和超大正文编码前拒绝，WSS TLS provider 的复测仍是门槛。手机 UI 独立审查发现文件草稿基线恢复与发送等待回执时断线的 P1，作者已提交 follow-up，须待非作者复审关闭再合入。报告保留发现和闭环，不以删除失败断言或仅运行作者夹具替代复测。
