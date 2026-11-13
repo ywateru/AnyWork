@@ -20,10 +20,12 @@ system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_p
 本地配置不设置devUrl，验证打包Origin固定为 https://tauri.localhost，入口mobile.html；Android真实WebView provider、选择器、分享接收者、中文IME、生命周期和隔离网关仍以APK独立验收为准。build/lint/unit成功不等于已执行这些运行验收。
 
 
-## 本机集成记录（2026-11-13，尚非运行验收）
+## 本机集成记录（2026-11-13）
 
 使用 NDK27.2.12479018、Java17、真实 Android `aarch64-linux-android` target。独立 SDK cross-check 实际通过（44.55秒），首次完整 mobile Rust 编译通过（1分54秒），包含真实 account/transport/auth/system 及生成 ACL；本地 path 插件自动写入 Gradle，auth 与 system 均实际被包含。首次 Kotlin 编译暴露两个插件都需要直接 AppCompat 依赖，现已分别由各 owner 修复；system Kotlin 与7项 ExportStore JUnit 已通过。
 
-集成后的最终 canonical APK build、lint、auth JUnit 及 APK 内容/签名/alignment 检查还在执行，完成结果另行记录。运行中的测试依赖由 Gradle 正常下载，未借用真实账号或任何设备。Logto2.0.3 内部 OkHttp refresh POST 可能重试/保留 body 重定向的限制由 auth owner README 明示，不能因 Rust 或 APK 编译通过而宣称已满足严格不重放。
+后续 canonical 构建已完成 Rust Android 编译、assemble、variant lint（0 error、38 warning）、system 11项、auth 8项、patched core HTTP 7项单测，以及 APK 内容/签名/ELF与ZIP16KiB检查。运行中的测试依赖由 Gradle 正常下载，未借用真实账号或任何设备。官方 Android AAR 固定2.0.3，JVM core 使用附带来源摘要与小范围 HTTP patch 的本地模块；独立验收确认 refresh POST 单次请求、禁自动重试与重定向，见[HTTP独立审查](plan/reviews/mobile-auth-http-independent.md)。
+
+首个完整 patched 候选 `cb20de40` 包含 core、receipt、portal 与系统取消/关闭修复，但与主线后续用户名代码存在差异，因此仅作为构建证据；交付 APK 另从主线完整产品源码增量重建。编译、lint、单测和包内容验证与实际运行验收分别记录，不把旧基包或浏览器手机仿真视为最终 APK 验收。
 
 transport 的显式 ring Connector 在双 provider、未初始化 global provider 的独立进程中通过6项真实 loopback WSS测试，包括可信CA exchange、生产WebPKI拒绝未知CA、可信CA但主机名错误拒绝。shell 在原生入口安装 ring 默认 provider 保护其它SDK调用；transport 不依赖该全局初始化。没有禁用证书或主机名验证。

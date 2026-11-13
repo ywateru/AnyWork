@@ -1,6 +1,6 @@
 # Mobile 集成周边专项验证（非 Android）
 
-日期：2026-11-13。执行者在 `/Users/water/work/2026/any-work` 的 main 只读产品源码运行本次指定检查；本报告单独提交在 `mobile-ui-review` 树。本报告记录周边发布脚本及合成浏览器集成结果，**不是协调者的最终整体验收，也不替代 Android APK、真实账号、设备或 gateway 验收**。
+日期：2026-11-13。执行者在仓库 main 只读产品源码运行本次指定检查；本报告单独提交在 `mobile-ui-review` 树。本报告记录周边发布脚本及合成浏览器集成结果，**不是协调者的最终整体验收，也不替代 Android APK、真实账号、设备或 gateway 验收**。
 
 ## 结论
 
@@ -53,6 +53,6 @@ ignored wrapper 直接导入 main 的原配置，仅将端口/baseURL 设为 `32
 
 所有执行记录位于 main 的 ignored 目录：
 
-`/Users/water/work/2026/any-work/artifacts/mobile-final-integration/07b7f23/`
+`artifacts/mobile-final-integration/07b7f23/`
 
 包括 `start.json`、`end.json`、`scripts-results.json`、`format-only-check.json`、`logs/`、配置 wrappers 和 `browser-results/`。报告提交不包含这些二进制或临时产物；本轮没有 push 或发布行为。既有 UI 独立发现及关闭过程仍保留在 `docs/plan/reviews/mobile-ui-independent.md`，本报告不重新作该项产品审查。

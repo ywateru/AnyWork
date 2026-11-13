@@ -2,7 +2,25 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.30 / 本次更新**
+**New in 0.1.31 / 本次更新**
+
+Android is rebuilt as a Rust/Tauri 2 client with a bundled mobile workspace and an embedded sign-in WebView. Account and device discovery, trust verification, encrypted workspace connections, HTTP streaming and terminal transport are owned by the native layer. Mobile navigation, onboarding, file saving/sharing, previews, account controls and system back behavior are integrated into the app. The application ID and release signing identity are retained for updates from the previous Android app.
+
+Android 重构为 Rust/Tauri 2 客户端，手机工作区随安装包提供，登录在应用内的 WebView 中完成。账号与设备发现、公钥信任核验、加密工作区连接、HTTP 流和终端传输由原生层管理；手机导航、引导、文件保存与分享、预览、账号操作和系统返回均集成在应用内。保留原应用标识与发行签名，支持从旧版 Android 应用更新。
+
+**Update and restart the computer-side AnyWork host before connecting from the new Android client.** This release adds the required mobile Native-client authorization. Sign-in grants remain in native process memory; after the app process exits, sign in again. Identity-provider WebView cookies may persist. Background connections and physical-device Chinese keyboard behavior are not claimed as validated.
+
+**使用新版 Android 客户端连接前，请更新并重启电脑上的 AnyWork 宿主。** 本版同时增加移动 Native client 所需的授权支持。登录授权仅保存在原生进程内存中，应用进程退出后需要重新登录；身份服务 WebView 的登录 cookie 可能保留。不宣称已验收后台持续连接或实体设备中文输入法行为。
+
+The Web account menu now shows the verified user's name, username or email, with full account details. Account switching and sign-out also isolate SDK caches and late refresh results so the displayed account and active authorization remain aligned.
+
+网页账号菜单修复用户名缺失，显示经过验证的姓名、用户名或邮箱，并提供完整账号信息。切换账号与退出时同步隔离 SDK 缓存和迟到的刷新结果，使显示账号与实际授权保持一致。
+
+File drafts retain their original revision for conflict checks. Unknown message, approval and sub-session outcomes remain visible and are not automatically replayed after disconnection or reload. Claude Desktop bridge connection and write/control hardware testing remain deferred to the user's manual testing.
+
+文件草稿保留原始版本用于冲突检测；消息、审批及子会话操作结果未知时，断线或重新加载后仍保留核对提示，不自动重放。Claude Desktop 原生桥连接与写入/控制真机测试继续留待用户手动执行。
+
+**Previous release 0.1.30 / 上一版本**
 
 Claude Code CLI now supports passive session discovery and paginated history, original-ID resumption, new sessions, text/image transport, streamed replies/thinking/tools, one-time approvals, open questions, cancellation and model selection. It reuses native local sign-in and prevents a second writer from taking over a busy native session. Real CLI acceptance covered isolated text streaming, tool approval, questions, cancellation, model changes and same-ID restart/resumption; it does not imply every model, Windows runtime or real image understanding has been tested.
 
