@@ -1,3 +1,7 @@
 include ':app'
 
 apply from: 'tauri.settings.gradle'
+
+// Patched fixed-version JVM core; the official Android AAR remains unchanged.
+include ':anywork-logto-core'
+project(':anywork-logto-core').projectDir = new File(settingsDir, '../../../tauri-plugin-mobile-auth/android/logto-core')

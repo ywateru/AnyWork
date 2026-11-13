@@ -9,6 +9,12 @@ buildscript {
     }
 }
 
+plugins {
+    // Loaded by the pinned kotlin-gradle-plugin:2.2.10 buildscript above.
+    // Repeating a plugins-DSL version conflicts with that legacy classpath.
+    id("org.jetbrains.kotlin.jvm") apply false
+}
+
 allprojects {
     repositories {
         google()
