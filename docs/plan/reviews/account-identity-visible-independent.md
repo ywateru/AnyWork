@@ -2,9 +2,9 @@
 
 审查对象：作者提交 `5462fe4ac3f5227cb8f09f57581079d4060e362e`，已 cherry-pick 至独立 review 分支为 `c3a78362a7e666111cc5b6c5881aebdd35a2198a`。设计基线 `b7f13f1`；本次只审作者十二个 Web 文件，不实现产品、不操作真实账号或会话。
 
-**结论：需要修复，暂不合入。存在一项已独立复现的 P1 账号隔离问题。** 类型检查、75 项测试和合成组件浏览器核验均通过，不能覆盖掉下述真实 SDK 缓存反例。已将发现、复现和最小修复建议直接发送作者 Mendel。
+**当前结论：P1 已经独立复审关闭，用户名改动可以合入。** 修复对象为作者 `e501d220daaffed30796278779596bfb16ef085a`，在 review 分支对应 `7cb8232`。独立类型检查、五文件 84 项测试、真实 SDK 双标签浏览器检查及原身份展示浏览器检查全部通过。下文保留初次发现，修复验证见文末；本结论不代表 Android 原生账号或 APK 集成已经通过。
 
-## P1：跨标签账号切换继续复用旧 SDK 的 accessTokenMap
+## 初次 P1（已关闭）：跨标签账号切换继续复用旧 SDK 的 accessTokenMap
 
 位置：`web/src/AccountApp.tsx:667-689`，尤其 `setSubjectRevision`；关联 `AccountProvider` 的 client 实例与 `web/src/accountAuth.ts / accountToken`。
 
@@ -56,6 +56,25 @@
 
 ## 交付及清理
 
-设计审查另见 `docs/plan/analysis/android-native-client.md`，原报告提交 `43b6d9d`。协调契约 `80b32a5` 已作同既有 Native app、IdP cookie 与 RAM grant 区分、SDK 桥/来源提示及 `https://tauri.localhost` 的决策；实际账号/回调/Android 集成仍待验收，本次用户名阻断不因此消失。
+设计审查另见 `docs/plan/analysis/android-native-client.md`，原报告提交 `43b6d9d`。协调契约 `80b32a5` 已作同既有 Native app、IdP cookie 与 RAM grant 区分、SDK 桥/来源提示及 `https://tauri.localhost` 的决策；实际账号/回调/Android 集成仍待验收。
 
-所有独立 SDK 复现临时目录均在 finally 中删除。组件浏览器只生成合成身份截图及 Vite cache，位于本 review WT 的 ignored artifacts；核验后清理，不删除作者证据或共享依赖。未运行 Cargo/Gradle、启动模拟器、读写真实账号、push 或部署。等待作者修复 hash 后更新复审结论。
+所有独立 SDK 复现临时目录均在 finally 中删除。组件浏览器只生成合成身份截图及 Vite cache，位于本 review WT 的 ignored artifacts；核验后清理，不删除作者证据或共享依赖。初次用户名验证未运行 Cargo/Gradle、启动模拟器、读写真实账号、push 或部署。
+
+## 修复复审：真实 SDK owner 重建与旧 storage 写入栅栏
+
+独立审阅了 `e501d22` 的全部五个修改文件。`AccountApp.tsx / AccountOwner` 在 storage 事件中同步退休旧 client、清空身份并关闭连接，等待旧 token 队列结束后通过 provider generation 重建整个 owner；不对替换后的 grant 调用旧 client 的 sign-out 或清理操作。真实卸载时延后到 microtask 退休 owner，避开 StrictMode 同实例的 effect replay。
+
+`accountAuth.ts / retireAccountOwner` 在 await 前递增 epoch 并禁止 token 访问。`accountGrantStorage.ts / AccountGrantStorage` 在实例构造时捕获 ID/refresh/access-token storage 快照，在每次读写之前检查持久值；任何外部变更都会永久退休该实例。除已送达的 storage 事件外，这也覆盖事件尚未送达时旧请求完成的窗口。已对照实际安装 `@logto/browser/lib/storage.js`：其 `setItem/removeItem` 在返回 Promise 前同步完成 localStorage 写入，因此 adapter 同步更新自身 expected 值的前提在当前版本成立；后续升级 SDK 应重新核对这一前提。
+
+独立执行结果（复用既有依赖，不安装、不进行真实登录）：
+
+- `tsc --noEmit -p web/tsconfig.json`：exit 0。
+- `vitest run --root web src/accountOwner.sdk.test.ts src/accountIdentity.test.ts src/accountAuth.test.ts src/accountAuth.sdk.test.ts src/accountGrid.integration.test.ts`：**五文件 84/84 通过**。
+- `PLAYWRIGHT_CHANNEL=chrome node web/scripts/account-owner.check.mjs`：exit 0。实际 AccountApp、同源双标签和实际 storage 事件；使用安装的真实 SDK token cache/refresh/storage，仅 HTTP、持久 grant 与目录服务使用合成夹具，没有覆盖 claims/token getter。A 的 opaque/resource 缓存加载后切换 B，旧 owner 均拒绝 token，新 owner 的 UI、目录请求和两类 token 均为 B。分别挂起 A refresh 后换 B、注销、A→B→A，再释放旧响应，替换 storage 保持不变，且没有自动登录或意外授权导航。
+- 真实 SDK 单测另外覆盖 storage 事件尚未送达的相同竞态、旧 owner forced clear 不得删除新 storage、正常同 owner rotation 可落盘，以及 storage denied 时安全失败。
+- `PLAYWRIGHT_CHANNEL=chrome node web/scripts/account-identity.check.mjs`：exit 0。1440/390px、中英文、设备页及已连接 workspace 菜单、长名称与邮箱、键盘、资料回填与失败重试、换号与注销迟到资料均通过。浏览器仍为桌面 Chrome，不能代替 Android WebView 实测。
+- 独立查看真实 SDK 换 B 后的合成目录截图，目录及账号菜单身份一致；源码差异检查通过。
+
+行为边界：当前监听器对同命名空间的任意跨标签 storage 变化均采取退休/重建并关闭既有 workspace 连接，包括其他标签的正常同账号 grant rotation。这是保守失效策略，未声称多标签正常刷新可以保持连接不断；不影响本次 P1 隔离修复的成立。跨进程原子 refresh owner 协调及无缝多标签续连不在本次验证结论内。
+
+本轮没有新增阻断发现，P1 关闭。仅提交此审查文档；所有本轮自产合成截图/Vite cache 在检查后删除，保留作者独立证据。AVD 的单独隔离启动曾被原始 snapshot 锁阻止，已退出并清理自产临时目录，未删除原始锁；没有可用于声称 Android 实测通过的运行实例。
