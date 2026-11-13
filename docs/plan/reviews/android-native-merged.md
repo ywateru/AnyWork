@@ -60,3 +60,17 @@ CI接线修复`a116f31`（主线`b484b52`）经非作者独立复审通过：普
 该tag的[Release 43424798695](https://github.com/ywateru/AnyWork/actions/runs/43424798695)五个桌面目标及source-web均成功；Android四种ABI的Rust release库亦完成编译，但R8报`Missing class org.slf4j.impl.StaticLoggerBinder`，在`:app:minifyUniversalReleaseWithR8`失败。Android artifact未上传，publish跳过，未创建公开Release。不可将桌面包成功推广为本轮发布成功，也不改动已有v0.1.32 tag。
 
 依赖为jose4j0.9.6经slf4j-api1.7.36使用可选binding；实际LoggerFactory字节码在缺失binder时捕获错误并回退NOP。最小修复`26413eb`（主线`b21449f`）精确忽略该可选类的R8缺失诊断，保留现有fallback，不关闭优化、不使用包级或全局忽略，不改变认证校验。非作者重新核对真实JAR字节码、Release规则加载和唯一变更后接受；新版本实际R8结果仍须作为发布门禁。原日志与证据保存在ignored `artifacts/release-android-failure/`。
+
+## v0.1.33 实际 R8 与后置任务修复
+
+源码`37d901a33c34c5be846b03266626bbe4213a6c32`的[Checks 43428936228](https://github.com/ywateru/AnyWork/actions/runs/43428936228)五项全部通过，非作者核对mobile30 passed，普通Web679 passed/1既有skip，format/site均实际执行成功。
+
+[Release 43432444934](https://github.com/ywateru/AnyWork/actions/runs/43432444934)五个桌面目标及source-web成功；Android四ABI release编译、R8与APK assembly已完成并输出APK路径，因此前述SLF4J修复已通过实际R8。失败转到后置脚本，调用了当前AGP未提供的`:app:testUniversalReleaseUnitTest`。APK checker与artifact上传尚未执行，仍未创建公开Release；v0.1.33 tag保留。
+
+修复`44eab4c`（主线`a77af19`）保留当前variant lint，App JVM使用真实存在的Debug unit任务，system/auth/core单测全部保留，并排除两profile的Rust任务以避免后置重复编译。非作者复核真实任务枚举及完整Debug/Release dry-run：分别201/243个任务，Release lintAnalyze/report/总任务均存在，四组JVM任务及编译依赖保留，任务图零Rust。dry-run标记SKIPPED不是单测执行成功。本机另以独立临时测试keystore运行完整单ABI canonical Release，实际结果完成后单独记录；不将测试签名APK作为公开发行包。
+
+### 本机实际 canonical Release 闭环
+
+修复源`44eab4c981a62f61cb252f7b219b1c91c6551bc5`与主线`a77af19`产品代码零差异。本机使用新建的临时测试keystore运行`build-android.sh --release --target aarch64`，实际完成Rust Android release、R8/assemble、Release lint、App Debug JVM任务及system/auth/core回归，最后APK checker通过版本/本地资产/原生库/测试签名证书及ELF/ZIP16KiB验证。App unit为NO-SOURCE，不把空任务记作测试用例；未删除任何现有JVM测试。后置Gradle实际205任务（100 executed、105 up-to-date），无额外Rust编译。
+
+测试APK SHA-256为`6d8870644fd807ea6a8505916d594cfb18e1981da23ba7e318fedccee685f47a`。这是单arm64、临时测试签名的Release验证，不使用生产签名、真实账号或设备，不安装、不上传为正式发布。日志保留于ignored `artifacts/release-android-failure/v34-canonical-aarch64-release.log`。正式四ABI与既有生产签名仍由新版本精确源码Checks和Release工作流验证，不改动旧失败tag。

@@ -11,7 +11,7 @@ bash scripts/build-android.sh --release --target aarch64,armv7,i686,x86_64
 
 统一入口不运行adb、安装或选择设备。NDK固定27.2.12479018（r27c），从ANDROID_HOME/ndk读取，覆盖可能指向未安装r28的继承NDK_HOME；Java17、SDK37.0/build-tools36、Rust Android target及根npm依赖需预装。默认本机SDK位置为 ~/Library/Android/sdk，Linux/CI应显式设ANDROID_HOME。不复制node_modules或target；worktree可链接主node_modules，Rust由协调者通过CARGO_TARGET_DIR共享主target、CARGO_INCREMENTAL=0复用。
 
-Tauri CLI2.12.4构建先执行 `npm run build:mobile-ui`；真实 `web/mobile.html` 经Vite到 `web/dist-mobile`，由Tauri macro嵌入Rust库。`scripts/check.sh`及Checks workspace前置也构建mobile assets，host插件明确报SYSTEM_UNAVAILABLE，不伪造Android成功。Android build后运行当前variant lint/unit及 system/auth plugin 单元测试，不重复启动设备。稳定debug输出为 `artifacts/anywork-android-debug.apk`，Checks成功后公开CI artifact保留7天；release为 `release/anywork-android.apk`。
+Tauri CLI2.12.4构建先执行 `npm run build:mobile-ui`；真实 `web/mobile.html` 经Vite到 `web/dist-mobile`，由Tauri macro嵌入Rust库。`scripts/check.sh`及Checks workspace前置也构建mobile assets，host插件明确报SYSTEM_UNAVAILABLE，不伪造Android成功。Android build后运行当前variant的lint，以及实际存在的App Debug JVM、system/auth Debug与core单元测试；优化Release不提供App Release UnitTest component，不能拼接不存在的任务名。后置检查排除两种profile的Rust构建任务，不重复编译原生库或启动设备。稳定debug输出为 `artifacts/anywork-android-debug.apk`，Checks成功后公开CI artifact保留7天；release为 `release/anywork-android.apk`。
 
 浏览器回归使用两个明确服务：普通 Web 配置由 `scripts/e2e-server.py` 提供 `web/dist`；手机专项配置 `e2e/mobile.config.ts` 启动 mobile Vite 入口。普通配置必须精确排除两份手机 spec，完整检查脚本再显式执行手机专项全部用例。不能把 `/mobile.html` 用例交给没有该入口的普通 Web 服务，也不能仅排除而漏掉 CI 中的手机回归。
 
@@ -41,5 +41,7 @@ system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_p
 该候选用于隔离 APK 运行检查；正式四 ABI、发行签名与版本递增由精确源码 GitHub Checks 和 Release 工作流完成，不将 debug 候选当正式下载包。
 
 [最终无账号 APK 独立运行验收](plan/reviews/mobile-apk-runtime-independent.md)已通过，实际安装字节与该 hash一致。API35官方fresh guest验证真实Origin/IPC/ACL、离线启动、保存读回与取消、分享面板、图片选择器、IME/insets、Back、系统栏、外链、公开内嵌登录及取消、强停后重启。未使用真实账号，实际登录/refresh、设备目录、真实远程电脑工作区、实体中文IME及发行覆盖安装仍不作已测声明。临时镜像/SDK/AVD、emulator及其overlay已回收。
+
+v0.1.32的实际Release发现可选SLF4J binding诊断，修复后v0.1.33已通过真实四ABI编译、R8与assemble，但后置脚本引用不存在的Release app unit任务。任务修复经真实Gradle枚举及双profile dry-run独立接受后，本机用临时测试签名实际跑通完整单arm64 canonical Release、Release lint/JVM与APK checker；证据见[合并记录](plan/reviews/android-native-merged.md)。测试签名包不作为公开发行；正式包仍须完整远端四ABI、发行证书与发布门禁通过。
 
 transport 的显式 ring Connector 在双 provider、未初始化 global provider 的独立进程中通过6项真实 loopback WSS测试，包括可信CA exchange、生产WebPKI拒绝未知CA、可信CA但主机名错误拒绝。shell 在原生入口安装 ring 默认 provider 保护其它SDK调用；transport 不依赖该全局初始化。没有禁用证书或主机名验证。
