@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application>
+        <provider android:name="dev.anywork.auth.AuthLifecycleInitializer"
+            android:authorities="${applicationId}.mobile-auth-lifecycle"
+            android:exported="false" android:initOrder="100" />
+    </application>
+</manifest>
