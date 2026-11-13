@@ -39,3 +39,17 @@ HTTP 上限与协议一致，32 KiB chunk，单体/连接缓冲有界，最多�
 独立 mobile-system plugin，仅本地业务窗口可调用。`exportBegin({name,mime,expectedBytes,purpose:save|share})→{handle}`；`exportWrite({handle,sequence,base64})→{received}`；`exportFinish({handle})→{status:saved|cancelled|chooserOpened}`；`exportAbort({handle})`。系统失败为 typed error，不伪装 cancelled。句柄归属当前宿主并有期限；账号退出取消待导出。
 
 `openExternal({url})` 仅合法 HTTPS。`backSetState({canGoBack,blocking})` 与 back event；`insetsGet()` 与 insets event 返回 system bars/cutout/IME 逻辑单位、visible 和 revision。前端 `system.ts` 为单一适配器。前后台事件触发授权与连接核验，不自动恢复写入。权限和实际原生实现由 shell owner 精确记录。
+
+## Shell wire 与平台规则（Tauri 2.12.5 / CLI 2.12.4）
+
+JS 使用公开 `window.__TAURI__.core.invoke(command, {request: DTO})`；无参命令省略第二参数。`app.withGlobalTauri=true` 提供 `event.listen` 和 `core.Channel`，PTY Channel 放在 `request.onEvent`。不使用 `__TAURI_INTERNALS__`。仅 main 本地 capability 授权账号/transport 和 mobile-system 的精确命令、core event listen/unlisten；auth Kotlin 插件无 JS guest 权限。build.rs 从同一命令列表生成 ACL，不给远程 origin 授权。
+
+随包入口 `https://tauri.localhost/mobile.html`、`frontendDist=../../web/dist-mobile`、`useHttpsScheme=true`。Rust WS 固定 Origin `https://tauri.localhost`，不接受 JS URL/Origin。业务 WebView 导航只接受此 origin；CSP 允许本地脚本、IPC、blob 图片/PDF，拒绝远程脚本、frame 及表单提交。外链通过 `plugin:mobile-system|open_external`，仅合法 HTTPS。
+
+系统命令为 `plugin:mobile-system|export_begin/export_write/export_finish/export_abort/open_external/back_set_state/insets_get`。`export_write.received` 是累计字节数；句柄10分钟期限、64KiB decoded chunk、22MiB文件、最多2个驻留句柄（含等待保存及分享保留文件）。保存 picker 由非导出 Activity 承载，取消/退出关闭自身 chooser，迟到结果不恢复句柄；分享仅返回 chooserOpened，退出/到期撤销临时 URI 授权并删除专属cache。进程重启清理专属 `anywork-exports` cache，绝不遍历或删除用户选择的目标文件。
+
+事件通过公开 event.listen：`mobile-system-back` 返回 `{eventId,revision}`，单调eventId；UI处理后调用 back_set_state `{canGoBack,blocking,handledEventId}`，包括仍停留在脏编辑确认的情况。IME由原生先消费。1500ms未ACK不自动退出，下一次物理返回交系统；等待ACK期间的重复按键不重复派发。root原生结束当前 Activity，不走WebView URL历史。
+
+`mobile-system-insets` 和 `insets_get` 返回 `{unit:"cssPx",systemBars:{top,right,bottom,left},cutout:{...},ime:{...},imeVisible,revision}`。Android物理像素除实际WebView scale（含density/page scale，未就绪fallback density）转CSS px；UI不再按density乘除。main使用edge-to-edge、adjustNothing，不给WebView加原生padding；IME是完整遮挡高度，UI各边取systemBars/cutout的max、bottom再取IME的max，只应用一次。实际APK visualViewport/中文IME仍须独立验收，若WebView provider消耗部分遮挡则原生改报剩余overlap。
+
+`mobile-system-lifecycle` 返回 `{foreground,revision}`；前台核验授权和既有连接lease，不重新发送业务写入。上传沿用固定Wry onShowFileChooser系统选择器（multiple/ClipData/content URI/cancel）；文件大小在UI/transport请求边界继续校验，Android provider行为、中文名和宿主重建列入APK验收。

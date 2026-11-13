@@ -8,6 +8,8 @@ import re
 import shutil
 import tempfile
 import unittest
+import urllib.error
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 bump = importlib.import_module('bump-version')
@@ -18,7 +20,7 @@ class ReleaseVersions(unittest.TestCase):
     def test_bump_updates_all_embedded_versions_and_rejects_reuse(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            for name in ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json', 'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json', 'desktop/Info.plist', 'android/app/build.gradle.kts']:
+            for name in ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json', 'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json', 'desktop/Info.plist', 'crates/mobile/tauri.conf.json']:
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(ROOT / name, target)
@@ -39,6 +41,22 @@ class ReleaseVersions(unittest.TestCase):
                 guard.check_local('v' + original, root)
             major = bump.bump('major', root)
             self.assertEqual(guard.check_local('v' + major, root)[0], major)
+
+    def test_android_tag_guard_uses_new_config_and_only_404_legacy_fallback(self):
+        def encoded(value): return {'content': base64.b64encode(value.encode()).decode()}
+        mobile = encoded(json.dumps({'bundle': {'android': {'versionCode': 32}}}))
+        with mock.patch.object(guard, 'api', return_value=mobile) as api:
+            self.assertEqual(guard.published_android_code('v0.2.0'), 32)
+            self.assertIn('crates/mobile/tauri.conf.json?ref=v0.2.0', api.call_args.args[0])
+        missing = urllib.error.HTTPError('https://fixture.invalid', 404, 'missing', {}, None)
+        with mock.patch.object(guard, 'api', side_effect=[missing, encoded('versionCode = 31')]):
+            self.assertEqual(guard.published_android_code('v0.1.30'), 31)
+        failed = urllib.error.HTTPError('https://fixture.invalid', 503, 'unavailable', {}, None)
+        with mock.patch.object(guard, 'api', side_effect=failed) as api:
+            with self.assertRaises(urllib.error.HTTPError): guard.published_android_code('v0.2.0')
+            self.assertEqual(api.call_count, 1)
+        with mock.patch.object(guard, 'api', return_value=encoded('{}')):
+            with self.assertRaises(KeyError): guard.published_android_code('v0.2.0')
 
     def test_published_version_order_is_numeric_and_strict(self):
         releases = [{'tag_name': 'v0.1.9'}, {'tag_name': 'v0.2.0-beta', 'prerelease': True}]

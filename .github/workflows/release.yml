@@ -127,8 +127,14 @@ jobs:
         with:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
-      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
-      - run: npm ci && npm run build
+      - run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0' 'ndk;27.2.12479018'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-release-ndk27
+      - run: npm ci
       - name: Restore Android release signing key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -136,15 +142,12 @@ jobs:
           if [ -z "$KEYSTORE" ]; then echo 'Android release signing secret is required.' >&2; exit 1; fi
           printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/anywork-release.jks"
       - name: Build and verify Android
-        working-directory: android
         env:
           ANYWORK_ANDROID_KEYSTORE: ${{ runner.temp }}/anywork-release.jks
           ANYWORK_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANYWORK_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANYWORK_ANDROID_KEY_ALIAS: anywork
-        run: ./gradlew :app:assembleRelease :app:lintRelease :app:testReleaseUnitTest
-      - name: Package Android
-        run: mkdir -p release && cp android/app/build/outputs/apk/release/app-release.apk release/anywork-android.apk
+        run: ./scripts/build-android.sh --release --target aarch64,armv7,i686,x86_64
       - uses: actions/upload-artifact@v4
         with:
           name: android

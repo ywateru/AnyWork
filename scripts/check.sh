@@ -3,6 +3,7 @@ set -euo pipefail
 source "$(dirname "$0")/env.sh"
 cd "$RA_PROJECT_ROOT"
 npm run build:desktop-ui
+npm run build:mobile-ui
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace

@@ -29,6 +29,7 @@ jobs:
       - name: Build focused browser prerequisites
         run: |
           npm run build:desktop-ui
+          npm run build:mobile-ui
           cargo build --locked -p anywork
           npm run build
       - name: Check sidebar gestures and model picker focus early
@@ -109,9 +110,21 @@ jobs:
         with:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
-      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0' 'ndk;27.2.12479018'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-aarch64-ndk27
       - run: npm ci
       - run: ./scripts/build-android.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anywork-android-debug
+          path: artifacts/anywork-android-debug.apk
+          if-no-files-found: error
+          retention-days: 7
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 45

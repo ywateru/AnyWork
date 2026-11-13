@@ -9,6 +9,7 @@ import pathlib
 import plistlib
 import re
 import urllib.request
+import urllib.error
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 versions = importlib.import_module('bump-version')
@@ -23,16 +24,18 @@ def check_local(tag, root=ROOT):
         locked = re.findall(r'(?m)^name = "' + re.escape(name) + r'"\nversion = "([^"]+)"', cargo_lock)
         if locked != [version]:
             raise ValueError(f'Workspace lock version mismatch: {name}')
-    for name in ['package.json', 'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json']:
+    for name in ['package.json', 'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json', 'crates/mobile/tauri.conf.json']:
         if json.loads((root / name).read_text())['version'] != version:
             raise ValueError(f'Version mismatch: {name}')
     lock = json.loads((root / 'package-lock.json').read_text())
     if lock['version'] != version or any(lock['packages'][name]['version'] != version for name in ['', 'web', 'desktop/ui']):
         raise ValueError('npm workspace lock versions disagree')
-    android = (root / 'android/app/build.gradle.kts').read_text()
-    if re.search(r'versionName\s*=\s*"([^"]+)"', android)[1] != version:
-        raise ValueError('Android version mismatch')
-    code = int(re.search(r'versionCode\s*=\s*(\d+)', android)[1])
+    mobile = json.loads((root / 'crates/mobile/tauri.conf.json').read_text())
+    if mobile['identifier'] != 'dev.remoteagent.app' or mobile['bundle']['android']['minSdkVersion'] != 26:
+        raise ValueError('Android upgrade identity or minimum SDK changed')
+    code = mobile['bundle']['android']['versionCode']
+    if type(code) is not int:
+        raise ValueError('Invalid Android versionCode')
     if not 0 < code <= 2100000000:
         raise ValueError('Invalid Android versionCode')
     plist = plistlib.loads((root / 'desktop/Info.plist').read_bytes())
@@ -61,6 +64,22 @@ def api(path):
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
 
+def published_android_code(tag):
+    # Immutable old tags used Java/Gradle; only a genuine 404 permits legacy fallback.
+    try:
+        content = api('contents/crates/mobile/tauri.conf.json?ref=' + tag)
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        content = api('contents/android/app/build.gradle.kts?ref=' + tag)
+        text = base64.b64decode(content['content']).decode()
+        return int(re.search(r'versionCode\s*=\s*(\d+)', text)[1])
+    config = json.loads(base64.b64decode(content['content']))
+    code = config['bundle']['android']['versionCode']
+    if type(code) is not int or not 0 < code <= 2100000000:
+        raise ValueError('Invalid published Android versionCode')
+    return code
+
 def check_remote(version, android_code):
     releases = []
     page = 1
@@ -74,9 +93,7 @@ def check_remote(version, android_code):
     stable = [r for r in releases if not r['draft'] and not r['prerelease'] and re.fullmatch(r'v\d+\.\d+\.\d+', r['tag_name'])]
     if stable:
         latest = max(stable, key=lambda r: versions.version_tuple(r['tag_name'][1:]))
-        content = api('contents/android/app/build.gradle.kts?ref=' + latest['tag_name'])
-        text = base64.b64decode(content['content']).decode()
-        previous = int(re.search(r'versionCode\s*=\s*(\d+)', text)[1])
+        previous = published_android_code(latest['tag_name'])
         if android_code <= previous:
             raise ValueError('Android versionCode must increase for every release')
 

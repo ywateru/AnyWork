@@ -1,0 +1,4 @@
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+  <external-files-path name="capture_images" path="Pictures/" />
+  <cache-path name="capture_cache" path="wry-captures/" />
+</paths>

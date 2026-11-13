@@ -7,6 +7,13 @@
   ],
   "permissions": [
     "core:event:allow-listen",
-    "core:event:allow-unlisten"
+    "core:event:allow-unlisten",
+    "mobile-system:allow-export-begin",
+    "mobile-system:allow-export-write",
+    "mobile-system:allow-export-finish",
+    "mobile-system:allow-export-abort",
+    "mobile-system:allow-open-external",
+    "mobile-system:allow-back-set-state",
+    "mobile-system:allow-insets-get"
   ]
 }

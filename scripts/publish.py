@@ -35,7 +35,7 @@ SITE = 'https://anywork.aixgg.com'
 API = 'https://api.github.com/repos/' + REPO + '/'
 FILES = ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json',
          'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json',
-         'desktop/Info.plist', 'android/app/build.gradle.kts', 'docs/release-notes.md']
+         'desktop/Info.plist', 'crates/mobile/tauri.conf.json', 'docs/release-notes.md']
 TARGETS = {target: 'anywork-' + platform + suffix
            for platform, (target, _, _, suffix) in updater.PLATFORMS.items()}
 INSTALLERS = {'anywork-macos-arm64.dmg', 'anywork-macos-x86_64.dmg',

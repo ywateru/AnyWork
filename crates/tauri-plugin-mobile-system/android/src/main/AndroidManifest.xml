@@ -1,1 +1,12 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name="dev.remoteagent.app.system.ExportPickerActivity"
+            android:exported="false" android:excludeFromRecents="true" />
+        <provider android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.mobile-system.exports"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/mobile_system_export_paths" />
+        </provider>
+    </application>
+</manifest>

@@ -206,9 +206,11 @@ name = "anywork-mobile"
 version = "0.1.30"
 dependencies = [
  "anyhow",
+ "anywork-remote",
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "cybergrid-sdk",
  "futures-util",
  "percent-encoding",
  "reqwest 0.13.5",

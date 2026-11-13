@@ -7,7 +7,7 @@ import plistlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-WORKSPACE_PACKAGES = ('anywork', 'anywork-desktop', 'anywork-remote', 'remote-agent-sdk', 'remote-agent-codex')
+WORKSPACE_PACKAGES = ('anywork', 'anywork-desktop', 'anywork-remote', 'remote-agent-sdk', 'remote-agent-codex', 'anywork-mobile', 'tauri-plugin-mobile-system')
 
 def current_version(root=ROOT):
     return re.search(r'\[workspace.package\]\s*version\s*=\s*"([^"]+)"', (root / 'Cargo.toml').read_text())[1]
@@ -25,7 +25,7 @@ def bump(value, root=ROOT):
         raise ValueError('Every release must have a strictly newer version')
     path = root / 'Cargo.toml'
     path.write_text(path.read_text().replace(f'version = "{old}"', f'version = "{new}"', 1))
-    names = ['package.json', 'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json']
+    names = ['package.json', 'web/package.json', 'desktop/ui/package.json', 'crates/desktop/tauri.conf.json', 'crates/mobile/tauri.conf.json']
     for name in names:
         path = root / name
         # Preserve the file's existing formatting.
@@ -42,12 +42,11 @@ def bump(value, root=ROOT):
     for name in WORKSPACE_PACKAGES:
         text = re.sub(r'(name = "' + re.escape(name) + r'"\nversion = ")[^"]+', lambda m: m[1] + new, text)
     path.write_text(text)
-    path = root / 'android/app/build.gradle.kts'
-    text = path.read_text()
-    text = re.sub(r'versionName\s*=\s*"[^"]+"', f'versionName = "{new}"', text)
-    code = int(re.search(r'versionCode\s*=\s*(\d+)', text)[1]) + 1
-    text = re.sub(r'versionCode\s*=\s*\d+', f'versionCode = {code}', text)
-    path.write_text(text)
+    path = root / 'crates/mobile/tauri.conf.json'
+    config = json.loads(path.read_text())
+    code = config['bundle']['android']['versionCode'] + 1
+    config['bundle']['android']['versionCode'] = code
+    path.write_text(json.dumps(config, indent=2) + '\n')
     path = root / 'desktop/Info.plist'
     data = plistlib.loads(path.read_bytes())
     data['CFBundleShortVersionString'] = new

@@ -7,9 +7,11 @@ pub const BUSINESS_ORIGIN: &str = "https://tauri.localhost";
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_mobile_system::init())
-        .plugin(tauri::plugin::Builder::<tauri::Wry>::new("local-navigation")
-            .on_navigation(|_, url| url.origin().ascii_serialization() == BUSINESS_ORIGIN)
-            .build())
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("local-navigation")
+                .on_navigation(|_, url| url.origin().ascii_serialization() == BUSINESS_ORIGIN)
+                .build(),
+        )
         .run(tauri::generate_context!())
         .expect("run AnyWork mobile");
 }
