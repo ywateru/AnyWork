@@ -181,6 +181,7 @@ export default function Workspace({
     [revision, setRevision] = useState<string | null>(null),
     [saving, setSaving] = useState(false),
     [saveError, setSaveError] = useState(""),
+    [restoreConflict, setRestoreConflict] = useState(false),
     [comparing, setComparing] = useState(false),
     [latest, setLatest] = useState<{
       content: string;
@@ -259,7 +260,7 @@ export default function Workspace({
       if (content !== original)
         sessionStorage.setItem(
           fileDraftKey,
-          JSON.stringify({ content, revision }),
+          JSON.stringify({ content, revision, original }),
         );
       else sessionStorage.removeItem(fileDraftKey);
     } catch {
@@ -281,6 +282,7 @@ export default function Workspace({
   useEffect(() => {
     setSaving(false);
     setSaveError("");
+    setRestoreConflict(false);
     setComparing(false);
     setLatest(null);
     setRevision(null);
@@ -306,7 +308,13 @@ export default function Workspace({
   }
   async function save() {
     const identity = owner.current;
-    if (!revision || inFlight.current === identity || content === null) return;
+    if (
+      !revision ||
+      restoreConflict ||
+      inFlight.current === identity ||
+      content === null
+    )
+      return;
     const submitted = content;
     const expected = revision;
     inFlight.current = identity;
@@ -360,21 +368,55 @@ export default function Workspace({
           { signal: controller.signal },
         );
         if (!controller.signal.aborted) {
-          let restored: string | null = null;
+          let restored: {
+            content: string;
+            original?: string;
+            revision: string | null;
+          } | null = null;
           if (isNativeClient()) {
             try {
               const draft = JSON.parse(
                 sessionStorage.getItem(fileDraftKey) || "null",
               );
-              if (typeof draft?.content === "string") restored = draft.content;
+              if (typeof draft?.content === "string")
+                restored = {
+                  content: draft.content,
+                  original:
+                    typeof draft.original === "string"
+                      ? draft.original
+                      : undefined,
+                  revision: isFileRevision(draft.revision)
+                    ? draft.revision
+                    : null,
+                };
             } catch {
               /* Ignore malformed optional draft. */
             }
           }
           loadedPath.current = path;
-          setContent(restored ?? data.content ?? null);
-          setOriginal(data.content ?? "");
-          setRevision(isFileRevision(data.revision) ? data.revision : null);
+          setContent(restored?.content ?? data.content ?? null);
+          setOriginal(restored?.original ?? data.content ?? "");
+          setRevision(
+            restored
+              ? restored.revision
+              : isFileRevision(data.revision)
+                ? data.revision
+                : null,
+          );
+          if (
+            restored &&
+            (!restored.revision || restored.revision !== data.revision)
+          ) {
+            setRestoreConflict(true);
+            setSaveError(
+              "电脑文件已更改，手机草稿基于旧版本。请比较最新文件并明确选择保存基线。",
+            );
+            if (
+              typeof data.content === "string" &&
+              isFileRevision(data.revision)
+            )
+              setLatest({ content: data.content, revision: data.revision });
+          }
         }
       }
     };
@@ -603,7 +645,12 @@ export default function Workspace({
                 {(!markdown || edit) && (
                   <button
                     className="save-file"
-                    disabled={content === original || saving || !revision}
+                    disabled={
+                      content === original ||
+                      saving ||
+                      !revision ||
+                      restoreConflict
+                    }
                     onClick={() => void save()}
                   >
                     <Save size={14} />
@@ -648,6 +695,7 @@ export default function Workspace({
                     onClick={() => {
                       setOriginal(latest.content);
                       setRevision(latest.revision);
+                      setRestoreConflict(false);
                       setSaveError("");
                       setLatest(null);
                     }}
@@ -659,6 +707,7 @@ export default function Workspace({
                       setContent(latest.content);
                       setOriginal(latest.content);
                       setRevision(latest.revision);
+                      setRestoreConflict(false);
                       setSaveError("");
                       setLatest(null);
                     }}

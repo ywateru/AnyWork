@@ -26,27 +26,29 @@ function encode(bytes: Uint8Array) {
 }
 export async function cancelExports() {
   exportEpoch++;
+  const handles = [...active];
+  for (const handle of handles) active.delete(handle);
   await Promise.allSettled(
-    [...active].map((handle) =>
+    handles.map((handle) =>
       invoke("plugin:mobile-system|export_abort", { handle }),
     ),
   );
-  active.clear();
 }
 async function exportBlob(blob: Blob, name: string, purpose: "save" | "share") {
   if (blob.size > LIMIT) throw new Error("文件超过 22 MiB，无法导出");
   const epoch = exportEpoch;
-  const { handle } = await invoke<{ handle: string }>(
-    "plugin:mobile-system|export_begin",
-    {
-      name: name.split(/[\\/]/).pop() || "AnyWork",
-      mime: blob.type || "application/octet-stream",
-      expectedBytes: blob.size,
-      purpose,
-    },
-  );
-  active.add(handle);
+  let handle: string | undefined;
   try {
+    ({ handle } = await invoke<{ handle: string }>(
+      "plugin:mobile-system|export_begin",
+      {
+        name: name.split(/[\\/]/).pop() || "AnyWork",
+        mime: blob.type || "application/octet-stream",
+        expectedBytes: blob.size,
+        purpose,
+      },
+    ));
+    active.add(handle);
     for (
       let offset = 0, sequence = 0;
       offset < blob.size;
@@ -86,12 +88,14 @@ async function exportBlob(blob: Blob, name: string, purpose: "save" | "share") {
       }),
     );
   } catch (error) {
-    await invoke("plugin:mobile-system|export_abort", { handle }).catch(
-      () => {},
-    );
+    if (handle)
+      await invoke("plugin:mobile-system|export_abort", { handle }).catch(
+        () => {},
+      );
+    if (epoch !== exportEpoch) return;
     throw error;
   } finally {
-    active.delete(handle);
+    if (handle) active.delete(handle);
   }
 }
 export async function openExternal(value: string) {

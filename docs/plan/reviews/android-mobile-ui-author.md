@@ -49,3 +49,14 @@ No Android runtime evidence is claimed here. Actual SDK login, system URI choose
 Connect cancellation invalidates UI waiting and closes a late successful transport; it does not claim native handshake cancellation (native bounded timeout applies). Save cancellation is distinct from success, and share reports only chooser opened. PDF in native UI uses save/share fallback rather than an unsupported iframe. Grant is process-local, while SSO cookies may persist independently. Existing App copy remains Chinese; no nonfunctional language or notification toggle was added.
 
 Independent reviewer: Mendel (`mobile-ui-review` worktree). Any P1 raised against this source candidate will be fixed in this lane. Shell/transport/account review remains with their assigned independent reviewers.
+
+## Followup after independent review ccaca93
+
+Mendel independently reproduced two P1s in `062130d`: a restored file draft silently adopted a newer remote revision; a native closed event while POST was pending aborted the request without marking unknown delivery. The followup accompanying this section fixes both:
+
+- File drafts retain their original content and revision. Remote revision changes put the restored draft into the existing comparison UI and disable direct save until explicit rebase or discard. No PUT is issued before that choice.
+- Each message submission persists a unique receipt ticket before POST crosses IPC. Pending native disconnect, abort, unload and reload preserve that ticket. Successful response or explicit `not_sent` settles only its matching ticket; late responses/confirmations cannot clear a newer one. If persistence fails the message is not dispatched. Drafts remain editable while send is protected.
+
+Additional followup fixes: preserve browser `a[download]` for DocumentPreview (independent Web PDF regression); native continues to use direct Blob system-save. Late export success and failure belong to their original account; cancellation only removes captured export handles. Dirty file tab selection/close and preview close ask before leaving. Mobile dialogs trap focus, restore it and support Escape. File tabs have real 48px hit areas without toolbar overlap. Corrected the document tree CSS selector.
+
+Verification on final source: TypeScript and mobile build pass; shared 7 files / 66 unit tests pass. The 17-case full mobile suite passed, followed by an additional targeted explicit-`not_sent` scenario (1/1 pass). New cases include both independent P1 triggers (remote change and pending native close), pending reload, confirmed receipt clearing, bridge missing with no browser auth fallback, native PDF save/share/cancel, dirty tab cancellation/focus, and late export failure. The independent reviewer is rechecking these fixes and the Web PDF case; his initial report remains the authoritative blocked review until that followup is accepted. Native APK gates remain as listed above.

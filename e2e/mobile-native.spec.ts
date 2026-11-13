@@ -227,6 +227,11 @@ async function fixture(
       },
       insets,
       resolveSave: null,
+      setRemoteFile: (content: string, revision: string) => {
+        file = content;
+        fileRevision = revision;
+      },
+      remoteFile: () => file,
     };
     w.__TAURI__ = {
       core: {
@@ -377,15 +382,18 @@ async function fixture(
           }
           if (command === "plugin:mobile-system|export_finish") {
             if (options.holdSave)
-              return new Promise((resolve) => {
-                w.mobileFixture.resolveSave = () =>
-                  resolve({ status: "saved" });
+              return new Promise((resolve, reject) => {
+                w.mobileFixture.resolveSave = (failed = false) =>
+                  failed
+                    ? reject(new Error("old account chooser failed"))
+                    : resolve({ status: "saved" });
               });
             return {
               status:
-                exports.get(request.handle).purpose === "share"
+                w.mobileFixture.exportResult ??
+                (exports.get(request.handle).purpose === "share"
                   ? "chooserOpened"
-                  : "saved",
+                  : "saved"),
             };
           }
           if (command.startsWith("plugin:mobile-system|")) return {};
@@ -546,7 +554,7 @@ test("full App uses real native adapter; FormData, file save/share and one back 
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath("files-320.png") });
+  await page.screenshot({ path: testInfo.outputPath("conversation-320.png") });
 });
 
 test("late chooser completion after account epoch change never reports saved", async ({
@@ -788,4 +796,326 @@ test("native back leaves approval pending and explicit decision keeps request id
       ),
     )
     .toEqual([{ request_id: 17, result: { decision: "accept" } }]);
+});
+
+test("missing native bridge exposes retry without a browser login fallback", async ({
+  page,
+}) => {
+  const apiRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/"))
+      apiRequests.push(request.url());
+  });
+  await page.goto("/mobile.html");
+  await expect(page.getByRole("alert")).toContainText(
+    /原生事件接口不可用|请在 AnyWork Android 应用中打开此界面/,
+  );
+  await expect(
+    page.getByRole("button", { name: "重新加载", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toHaveCount(0);
+  expect(apiRequests).toEqual([]);
+});
+
+test("native PDF uses actual save/share and cancellation is not success", async ({
+  page,
+}) => {
+  await fixture(page, { signedIn: true });
+  await connect(page);
+  await page.getByRole("button", { name: "文件", exact: true }).click();
+  await page.getByRole("treeitem", { name: "report.pdf", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "分享文件", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as any).mobileFixture.exportResult = "cancelled";
+  });
+  await page
+    .getByRole("button", { name: "保存到手机", exact: true })
+    .first()
+    .click();
+  await expect(page.getByRole("status")).toContainText("已取消保存");
+  await expect(page.getByText("已保存到所选位置", { exact: true })).toHaveCount(
+    0,
+  );
+  await page.evaluate(() => {
+    delete (window as any).mobileFixture.exportResult;
+  });
+  await page.getByRole("button", { name: "分享文件", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("已打开系统分享面板");
+  expect(
+    (await calls(page, "plugin:mobile-system|export_begin")).map((c: any) => [
+      c.request.name,
+      c.request.mime,
+      c.request.purpose,
+    ]),
+  ).toEqual([
+    ["report.pdf", "application/pdf", "save"],
+    ["report.pdf", "application/pdf", "share"],
+  ]);
+});
+
+test("dirty file tab close is cancellable and dialog traps focus", async ({
+  page,
+}) => {
+  await fixture(page, { signedIn: true });
+  await connect(page);
+  await page.getByRole("button", { name: "文件", exact: true }).click();
+  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await page.getByRole("button", { name: "编辑文档", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "文件内容", exact: true })
+    .fill("保留草稿");
+  await page
+    .getByRole("button", { name: "关闭标签：README.md", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "取消", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    dialog.getByRole("button", { name: "确认", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("textbox", { name: "文件内容", exact: true }),
+  ).toHaveValue("保留草稿");
+});
+
+test("late export failure belongs to the old account", async ({ page }) => {
+  await fixture(page, { signedIn: true, holdSave: true });
+  await page.getByRole("heading", { name: "我的设备" }).waitFor();
+  await page.evaluate(async () => {
+    const p = await import("/src/platform.ts");
+    void p
+      .saveBlob(new Blob(["fixture"]), "fixture.txt")
+      .catch(p.platformError);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => !!(window as any).mobileFixture.resolveSave),
+    )
+    .toBe(true);
+  await page.evaluate(() => {
+    const f = (window as any).mobileFixture;
+    f.setSnapshot({
+      ...f.snapshot(),
+      epoch: 2,
+      phase: "signedOut",
+      account: null,
+      devices: [],
+    });
+    f.resolveSave(true);
+  });
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect
+    .poll(
+      async () =>
+        (await calls(page, "plugin:mobile-system|export_abort")).length,
+    )
+    .toBeGreaterThan(0);
+});
+
+test("restored file draft retains its original revision and requires explicit rebase", async ({
+  page,
+}) => {
+  await fixture(page, { signedIn: true });
+  await connect(page);
+  await page.getByRole("button", { name: "文件", exact: true }).click();
+  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await page.getByRole("button", { name: "编辑文档", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "文件内容" })
+    .fill("old mobile draft");
+  await page.evaluate(() =>
+    (window as any).mobileFixture.emit("mobile-system-back", {
+      eventId: 30,
+      revision: 30,
+    }),
+  );
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).mobileFixture.setRemoteFile(
+      "another user changed this file",
+      "sha256:" + "c".repeat(64),
+    ),
+  );
+  await page.getByRole("button", { name: "文件", exact: true }).click();
+  await page.getByRole("button", { name: "编辑文档", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "文件内容" })).toHaveValue(
+    "old mobile draft",
+  );
+  await expect(
+    page.getByRole("button", { name: "保存", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("region", { name: "最新文件比较" }),
+  ).toContainText("another user changed this file");
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(
+          sessionStorage.getItem(
+            Object.keys(sessionStorage).find((k) =>
+              k.includes("mobile-file-draft"),
+            )!,
+          )!,
+        ).revision,
+    ),
+  ).toBe("sha256:" + "a".repeat(64));
+  expect(
+    await page.evaluate(() => (window as any).mobileFixture.remoteFile()),
+  ).toBe("another user changed this file");
+  await page
+    .getByRole("button", {
+      name: "使用此版本作为保存基线，保留草稿",
+      exact: true,
+    })
+    .click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).mobileFixture.remoteFile()))
+    .toBe("old mobile draft");
+  const submitted = await page.evaluate(() =>
+    [...(window as any).mobileFixture.operations.values()]
+      .filter((o: any) => o.method === "PUT")
+      .map((o: any) => JSON.parse(new TextDecoder().decode(o.body))),
+  );
+  expect(submitted).toHaveLength(1);
+  expect(submitted[0].expected_revision).toBe("sha256:" + "c".repeat(64));
+});
+
+for (const exit of ["native-close", "reload"] as const)
+  test(`pending send ${exit} retains a pre-dispatch receipt fence`, async ({
+    page,
+  }) => {
+    await fixture(page, { signedIn: true });
+    await connect(page);
+    await page.evaluate(() => {
+      const api = (window as any).__TAURI__.core;
+      const original = api.invoke.bind(api);
+      const f = (window as any).mobileFixture;
+      api.invoke = async (command: string, args: any) => {
+        if (
+          command === "mobile_transport_http_finish" &&
+          f.operations.get(args.request.operationId)?.path.endsWith("/messages")
+        ) {
+          f.heldSend = true;
+          return new Promise(() => {});
+        }
+        return original(command, args);
+      };
+    });
+    await page
+      .getByRole("textbox", { name: "消息", exact: true })
+      .fill("may already be executing");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as any).mobileFixture.heldSend))
+      .toBe(true);
+    expect(
+      await page.evaluate(() =>
+        Object.keys(sessionStorage).filter((k) =>
+          k.includes("mobile-uncertain-send"),
+        ),
+      ),
+    ).toHaveLength(1);
+    if (exit === "reload") await page.reload();
+    else
+      await page.evaluate(() =>
+        (window as any).mobileFixture.emit("mobile-transport-closed", {
+          connection: { connectionId: "fixture-connection", generation: 1 },
+          code: "CONNECTION_CLOSED",
+        }),
+      );
+    await expect(
+      page.getByRole("heading", { name: "我的设备", exact: true }),
+    ).toBeVisible();
+    await connect(page);
+    await expect(
+      page.getByRole("textbox", { name: "消息", exact: true }),
+    ).toContainText("may already be executing");
+    await expect(
+      page.getByRole("button", { name: "发送", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByText(
+        "上次发送结果未知，电脑可能已经收到。请核对会话记录，避免重复发送。",
+      ),
+    ).toBeVisible();
+  });
+
+test("confirmed response clears only its submission receipt", async ({
+  page,
+}) => {
+  await fixture(page, { signedIn: true });
+  await connect(page);
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("confirmed request");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "消息", exact: true }),
+  ).toHaveText("");
+  expect(
+    await page.evaluate(() =>
+      Object.keys(sessionStorage).filter((k) =>
+        k.includes("mobile-uncertain-send"),
+      ),
+    ),
+  ).toHaveLength(0);
+});
+
+test("explicit not_sent clears the pre-dispatch fence and retains editable draft", async ({
+  page,
+}) => {
+  await fixture(page, { signedIn: true });
+  await connect(page);
+  await page.evaluate(() => {
+    const api = (window as any).__TAURI__.core;
+    const original = api.invoke.bind(api);
+    const f = (window as any).mobileFixture;
+    api.invoke = async (command: string, args: any) => {
+      if (
+        command === "mobile_transport_http_begin" &&
+        args.request.path.endsWith("/messages")
+      ) {
+        f.seenReceipt = Object.keys(sessionStorage).some(
+          (k) =>
+            k.includes("mobile-uncertain-send") && sessionStorage.getItem(k),
+        );
+        throw { code: "DEVICE_NOT_READY", delivery: "not_sent" };
+      }
+      return original(command, args);
+    };
+  });
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("not dispatched");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("DEVICE_NOT_READY");
+  expect(
+    await page.evaluate(() => (window as any).mobileFixture.seenReceipt),
+  ).toBe(true);
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("textbox", { name: "消息", exact: true }),
+  ).toContainText("not dispatched");
+  expect(
+    await page.evaluate(() =>
+      Object.keys(sessionStorage).filter((k) =>
+        k.includes("mobile-uncertain-send"),
+      ),
+    ),
+  ).toHaveLength(0);
 });

@@ -61,6 +61,16 @@ export default function MobileApp() {
   } | null>(null);
   const [dialog, setDialog] = useState<DialogRequest | null>(null);
   const [dialogValue, setDialogValue] = useState("");
+  const dialogElement = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!dialog) return;
+    const previous = document.activeElement;
+    dialogElement.current?.querySelector<HTMLElement>("input,button")?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, [dialog]);
   const appearance = useAppearance();
   const state = useRef({ snapshot, page, verification, connection, dialog });
   state.current = { snapshot, page, verification, connection, dialog };
@@ -806,10 +816,32 @@ export default function MobileApp() {
       {dialog && (
         <div className="mobile-dialog-shade">
           <form
+            ref={dialogElement}
             className="mobile-dialog"
             role="dialog"
             aria-modal="true"
             aria-label={dialog.message}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                finishDialog(null);
+              } else if (event.key === "Tab") {
+                const nodes = [
+                  ...event.currentTarget.querySelectorAll<HTMLElement>(
+                    "input,button:not(:disabled)",
+                  ),
+                ];
+                const first = nodes[0],
+                  last = nodes.at(-1);
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first?.focus();
+                }
+              }
+            }}
             onSubmit={(e) => {
               e.preventDefault();
               finishDialog(dialog.value === undefined ? true : dialogValue);

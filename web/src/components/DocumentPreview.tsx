@@ -77,14 +77,21 @@ export default function DocumentPreview({
           <FileText size={15} />
           {name}
         </span>
-        <button
-          onClick={() =>
-            void saveBlob(resource.blob, name).catch(platformError)
-          }
-        >
-          <Download size={15} />
-          {isNativeClient() ? "保存到手机" : "下载文件"}
-        </button>
+        {isNativeClient() ? (
+          <button
+            onClick={() =>
+              void saveBlob(resource.blob, name).catch(platformError)
+            }
+          >
+            <Download size={15} />
+            保存到手机
+          </button>
+        ) : (
+          <a href={resource.url} download={name}>
+            <Download size={15} />
+            下载文件
+          </a>
+        )}
         {isNativeClient() && (
           <button
             onClick={() =>
@@ -106,13 +113,19 @@ export default function DocumentPreview({
           <FileText size={32} />
           <p>{name}</p>
           <p>保存后使用文档应用打开，或通过分享选择应用。</p>
-          <button
-            onClick={() =>
-              void saveBlob(resource.blob, name).catch(platformError)
-            }
-          >
-            {isNativeClient() ? "保存到手机" : "下载文档"}
-          </button>
+          {isNativeClient() ? (
+            <button
+              onClick={() =>
+                void saveBlob(resource.blob, name).catch(platformError)
+              }
+            >
+              保存到手机
+            </button>
+          ) : (
+            <a href={resource.url} download={name}>
+              下载文档
+            </a>
+          )}
         </div>
       )}
     </div>

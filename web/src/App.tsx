@@ -984,6 +984,7 @@ export default function App({
       sessionId = session.id;
     sendInFlight.current = true;
     setSending(true);
+    let sendTicket: string | undefined;
     try {
       if (session.external && !historyCache?.get(sessionId).attached) {
         const connection = await api.post(`/sessions/${sessionId}/connect`);
@@ -1014,6 +1015,7 @@ export default function App({
         submission?.composer ?? { plain: draft },
       );
       composerEditor.current?.resetHistorySelection();
+      if (mobile) sendTicket = uncertainSend.begin();
       if (queueDraftRef.current) {
         const result = await api.post<typeof queue>(
           `/sessions/${sessionId}/queue`,
@@ -1026,6 +1028,7 @@ export default function App({
             goal: submission?.goal ?? goalMode,
           },
         );
+        uncertainSend.settle(sendTicket);
         if (queueScope.current !== scope || selectedRef.current !== sessionId)
           return;
         setQueue(result);
@@ -1039,6 +1042,7 @@ export default function App({
           attachments: attachments.map((f) => f.path),
           goal: (submission?.goal ?? goalMode) || undefined,
         });
+        uncertainSend.settle(sendTicket);
         if (
           queueScope.current === scope &&
           selectedRef.current === sessionId &&
@@ -1080,13 +1084,12 @@ export default function App({
       void reload().catch(() => {});
     } catch (e) {
       if (
-        mobile &&
         e &&
         typeof e === "object" &&
         "delivery" in e &&
-        e.delivery === "outcome_unknown"
+        e.delivery === "not_sent"
       )
-        uncertainSend.mark();
+        uncertainSend.settle(sendTicket);
       if (queueScope.current === scope && selectedRef.current === sessionId)
         fail(e);
     } finally {
@@ -1242,11 +1245,7 @@ export default function App({
       setReviewRequest(null);
     }
   };
-  const openTool = (kind: string) => {
-    const open = () => {
-      if (kind !== "git") leaveReviewRoute();
-      setTab(kind);
-    };
+  const guardPanelNavigation = (open: () => void) => {
     if (mobile && document.querySelector('[data-native-unsaved="true"]'))
       void confirmPlatform(
         "文件修改尚未保存到电脑。保留手机草稿并切换工具？",
@@ -1254,6 +1253,13 @@ export default function App({
         if (ok) open();
       });
     else open();
+  };
+  const openTool = (kind: string) => {
+    if (kind === tab) return;
+    guardPanelNavigation(() => {
+      if (kind !== "git") leaveReviewRoute();
+      setTab(kind);
+    });
   };
   const panelLauncher = (
     <details className="panel-launcher header-tools-menu" data-floating-menu>
@@ -1369,12 +1375,19 @@ export default function App({
       tabs={panels.tabs}
       selected={panels.active}
       onSelect={(id) => {
-        if (id !== "git") leaveReviewRoute();
-        panels.activate(id);
+        if (id === panels.active) return;
+        guardPanelNavigation(() => {
+          if (id !== "git") leaveReviewRoute();
+          panels.activate(id);
+        });
       }}
       onClose={(id) => {
-        if (id === "git") leaveReviewRoute();
-        panels.close(id);
+        const close = () => {
+          if (id === "git") leaveReviewRoute();
+          panels.close(id);
+        };
+        if (id === panels.active) guardPanelNavigation(close);
+        else close();
       }}
     />
   ) : null;
@@ -1613,7 +1626,7 @@ export default function App({
                         ) : (
                           <button
                             className="conversation-title"
-                            onClick={() => setTab("chat")}
+                            onClick={() => openTool("chat")}
                             title={session.title}
                           >
                             <FolderOpen size={16} />
@@ -1640,7 +1653,7 @@ export default function App({
                     <button
                       className="icon-button panel-close"
                       aria-label="关闭预览面板"
-                      onClick={() => setTab("chat")}
+                      onClick={() => openTool("chat")}
                     >
                       <PanelRightClose size={17} />
                     </button>
@@ -1710,7 +1723,7 @@ export default function App({
                           <button
                             className="icon-button"
                             aria-label="关闭侧面板"
-                            onClick={() => setTab("chat")}
+                            onClick={() => openTool("chat")}
                           >
                             <X size={16} />
                           </button>
@@ -1973,7 +1986,7 @@ export default function App({
                       </div>
                     </div>
                     <ComposerAccess session={session}>
-                      {uncertainSend.blocked && (
+                      {uncertainSend.blocked && !sending && (
                         <div className="mobile-send-uncertain" role="alert">
                           <p>
                             上次发送结果未知，电脑可能已经收到。请核对会话记录，避免重复发送。

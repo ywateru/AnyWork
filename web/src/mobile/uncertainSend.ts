@@ -1,31 +1,45 @@
 import { useState } from "react";
 
 // Receipt uncertainty survives reconnects, without storing message text or credentials.
-const pending = new Set<string>();
+const pending = new Map<string, string>();
 function stored(key: string) {
   try {
-    return pending.has(key) || sessionStorage.getItem(key) === "1";
+    return sessionStorage.getItem(key) || pending.get(key);
   } catch {
-    return pending.has(key);
+    return pending.get(key);
   }
 }
 export function useUncertainSend(enabled: boolean, scope: string, id: string) {
   const key = JSON.stringify(["mobile-uncertain-send", scope, id]);
   const [, render] = useState(0);
-  const update = (value: boolean, target = key) => {
-    if (value) pending.add(target);
-    else pending.delete(target);
+  const receipt = stored(key);
+  const settle = (ticket: string | undefined) => {
+    // A late response or confirmation must never unlock a later submission.
+    if (!ticket || stored(key) !== ticket) return;
+    pending.delete(key);
     try {
-      if (value) sessionStorage.setItem(target, "1");
-      else sessionStorage.removeItem(target);
+      sessionStorage.removeItem(key);
     } catch {
       // Keep the in-memory fence when storage is unavailable.
     }
     render((n) => n + 1);
   };
   return {
-    blocked: enabled && stored(key),
-    mark: () => update(true),
-    clear: () => update(false),
+    blocked: enabled && !!receipt,
+    begin: () => {
+      const ticket = crypto.randomUUID();
+      // Persist before crossing IPC: unload/AbortError may prevent any catch handler.
+      try {
+        sessionStorage.setItem(key, ticket);
+        if (sessionStorage.getItem(key) !== ticket) throw new Error();
+      } catch {
+        throw new Error("无法保存发送保护，请恢复手机存储后重试；消息尚未发送");
+      }
+      pending.set(key, ticket);
+      render((n) => n + 1);
+      return ticket;
+    },
+    settle,
+    clear: () => settle(receipt),
   };
 }
