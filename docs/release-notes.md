@@ -2,7 +2,7 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.32 / 本次更新**
+**New in 0.1.33 / 本次更新**
 
 Android is rebuilt as a Rust/Tauri 2 client with a bundled mobile workspace and an embedded sign-in WebView. Account and device discovery, trust verification, encrypted workspace connections, HTTP streaming and terminal transport are owned by the native layer. Mobile navigation, onboarding, file saving/sharing, previews, account controls and system back behavior are integrated into the app. The application ID and release signing identity are retained for updates from the previous Android app.
 
