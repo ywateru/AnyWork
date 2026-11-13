@@ -1,5 +1,6 @@
 import LogtoClient, {
   BrowserStorage,
+  UserScope,
   decodeAccessToken,
   type LogtoConfig,
   type SignInOptions,
@@ -10,6 +11,15 @@ import {
   type AccountConfig,
 } from "./accountConfig";
 import type { AccessTokenRequest } from "./vendor/cybergrid";
+
+// The SDK already includes profile by default. Declare it explicitly for the
+// name/username display contract; email is needed for the final fallback.
+export const accountScopes = [
+  UserScope.Profile,
+  UserScope.Email,
+  UserScope.CustomData,
+  "connect",
+];
 
 /** Capture the owner before the first await, including a delayed claims read. */
 export async function withAccountSubject<T>(
@@ -45,6 +55,9 @@ function sufficientValidity(token: string, seconds: number): boolean {
 
 /** Keep the official browser adapter, isolating persisted grants across issuers. */
 export class AccountLogtoClient extends LogtoClient {
+  // The SDK installs a memoized instance field, not a prototype method.
+  declare readonly getAccessToken: LogtoClient["getAccessToken"];
+  private readonly sdkAccessToken: LogtoClient["getAccessToken"];
   private tokenTail: Promise<void> = Promise.resolve();
   private accountEpoch = 0;
   private tokenAccessBlocked = false;
@@ -54,6 +67,11 @@ export class AccountLogtoClient extends LogtoClient {
   >;
   constructor(config: LogtoConfig, account: AccountConfig) {
     super(config);
+    this.sdkAccessToken = this.getAccessToken.bind(this);
+    // Official fetchUserInfo() calls this field. Its token acquisition shares
+    // the refresh owner with directory/Grid and sign-out, without queue nesting.
+    this.getAccessToken = (resource, organizationId) =>
+      this.accountToken(resource, false, undefined, organizationId);
     this.gridBinding = {
       issuer: account.issuer,
       appId: account.appId,
@@ -74,6 +92,26 @@ export class AccountLogtoClient extends LogtoClient {
   /** All opaque/resource requests share one refresh-token owner, including renewals. */
   getAccountAccessToken(resource?: string, fresh = false): Promise<string> {
     return this.accountToken(resource, fresh);
+  }
+  async getAccountUserInfo(subject: string, signal: AbortSignal) {
+    const epoch = this.accountEpoch;
+    const current = () => {
+      signal.throwIfAborted();
+      if (epoch !== this.accountEpoch || this.tokenAccessBlocked)
+        throw new AccountError("IDENTITY_CHANGED");
+    };
+    current();
+    const before = await this.getIdTokenClaims();
+    current();
+    if (!subject || before.sub !== subject)
+      throw new AccountError("IDENTITY_CHANGED");
+    const info = await this.fetchUserInfo();
+    current();
+    const after = await this.getIdTokenClaims();
+    current();
+    if (info.sub !== subject || after.sub !== subject)
+      throw new AccountError("IDENTITY_CHANGED");
+    return info;
   }
   /** Only the official Grid callback can request this fixed resource binding. */
   getCyberGridAccessToken(request: AccessTokenRequest): Promise<string> {
@@ -105,6 +143,7 @@ export class AccountLogtoClient extends LogtoClient {
     resource?: string,
     fresh = false,
     request?: AccessTokenRequest,
+    organizationId?: string,
   ): Promise<string> {
     const epoch = this.accountEpoch;
     return this.serialize(async () => {
@@ -130,7 +169,11 @@ export class AccountLogtoClient extends LogtoClient {
         }
         // Never cancel an already-started rotation: the official SDK must
         // finish saving its result before another resource/logout can run.
-        return ownedSDK(() => this.getAccessToken(resource));
+        return ownedSDK(() =>
+          organizationId === undefined
+            ? this.sdkAccessToken(resource)
+            : this.sdkAccessToken(resource, organizationId),
+        );
       };
       let token = await acquire(fresh);
       current();

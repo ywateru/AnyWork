@@ -8,6 +8,8 @@ const sdk = vi.hoisted(() => ({
   clear: vi.fn<() => Promise<void>>(),
   signOut: vi.fn<() => Promise<void>>(),
   signIn: vi.fn<() => Promise<void>>(),
+  claims: vi.fn<() => Promise<{ sub: string }>>(),
+  userInfo: vi.fn<() => Promise<{ sub: string; username?: string }>>(),
 }));
 vi.mock("@logto/browser", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@logto/browser")>()),
@@ -17,6 +19,11 @@ vi.mock("@logto/browser", async (importOriginal) => ({
     clearAccessToken = sdk.clear;
     signOut = sdk.signOut;
     signIn = sdk.signIn;
+    getIdTokenClaims = sdk.claims;
+    async fetchUserInfo() {
+      await this.getAccessToken();
+      return sdk.userInfo();
+    }
   },
   BrowserStorage: class {},
 }));
@@ -65,6 +72,8 @@ beforeEach(() => {
   sdk.get.mockResolvedValue("cached-token");
   sdk.signOut.mockResolvedValue();
   sdk.signIn.mockResolvedValue();
+  sdk.claims.mockResolvedValue({ sub: "owner" });
+  sdk.userInfo.mockResolvedValue({ sub: "owner", username: "Synthetic user" });
 });
 describe("single browser refresh owner", () => {
   it("serializes opaque, resource and forced-fresh requests without overlapping rotation", async () => {
@@ -332,5 +341,79 @@ describe("account subject fence", () => {
     subject = undefined;
     held.resolve("late");
     await expect(result).rejects.toMatchObject({ code: "IDENTITY_CHANGED" });
+  });
+});
+
+describe("official UserInfo API ownership", () => {
+  it("serializes UserInfo's SDK token request behind a directory refresh", async () => {
+    const c = client(),
+      held = deferred<string>();
+    sdk.get.mockReturnValueOnce(held.promise).mockResolvedValue("opaque");
+    const directory = c.getAccountAccessToken("directory");
+    const profile = c.getAccountUserInfo("owner", new AbortController().signal);
+    await vi.waitFor(() => expect(sdk.get).toHaveBeenCalledOnce());
+    expect(sdk.userInfo).not.toHaveBeenCalled();
+    held.resolve("directory-token");
+    await directory;
+    expect((await profile).username).toBe("Synthetic user");
+    expect(sdk.get.mock.calls).toEqual([["directory"], [undefined]]);
+  });
+  it("does not poison the refresh owner on a UserInfo network failure", async () => {
+    const c = client(),
+      signal = new AbortController().signal;
+    sdk.userInfo.mockRejectedValueOnce(new Error("offline"));
+    await expect(c.getAccountUserInfo("owner", signal)).rejects.toThrow(
+      "offline",
+    );
+    expect((await c.getAccountUserInfo("owner", signal)).username).toBe(
+      "Synthetic user",
+    );
+    expect(sdk.signIn).not.toHaveBeenCalled();
+  });
+  it("rejects a foreign UserInfo response and mismatching SDK claims", async () => {
+    const c = client(),
+      signal = new AbortController().signal;
+    sdk.userInfo.mockResolvedValueOnce({
+      sub: "foreign",
+      username: "Foreign name",
+    });
+    await expect(c.getAccountUserInfo("owner", signal)).rejects.toMatchObject({
+      code: "IDENTITY_CHANGED",
+    });
+    sdk.claims.mockResolvedValue({ sub: "foreign" });
+    await expect(c.getAccountUserInfo("owner", signal)).rejects.toMatchObject({
+      code: "IDENTITY_CHANGED",
+    });
+    expect(sdk.userInfo).toHaveBeenCalledOnce();
+  });
+  it.each(["logout", "sign-in", "abort"])(
+    "fences a late official response after %s",
+    async (change) => {
+      const c = client(),
+        controller = new AbortController(),
+        held = deferred<{ sub: string; username: string }>();
+      sdk.userInfo.mockReturnValue(held.promise);
+      const result = c.getAccountUserInfo("owner", controller.signal);
+      await vi.waitFor(() => expect(sdk.userInfo).toHaveBeenCalledOnce());
+      if (change === "logout") await c.endAccountSession();
+      else if (change === "sign-in")
+        await c.startAccountSignIn({
+          redirectUri: "https://example.com/app/callback",
+        });
+      else controller.abort();
+      held.resolve({ sub: "owner", username: "Late name" });
+      await expect(result).rejects.toThrow();
+    },
+  );
+  it("blocks further refreshes if UserInfo's token exchange outcome is unknown", async () => {
+    const c = client();
+    sdk.get.mockRejectedValueOnce(new Error("refresh lost"));
+    await expect(
+      c.getAccountUserInfo("owner", new AbortController().signal),
+    ).rejects.toThrow("ACCOUNT_REAUTH_REQUIRED");
+    await expect(c.getAccountAccessToken()).rejects.toThrow(
+      "ACCOUNT_REAUTH_REQUIRED",
+    );
+    expect(sdk.get).toHaveBeenCalledOnce();
   });
 });

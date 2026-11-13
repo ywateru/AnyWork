@@ -576,7 +576,7 @@
     margin: 0;
   }
   .account-user-menu summary > span:nth-child(2) {
-    display: none;
+    max-width: 100px;
   }
   .account-user-options {
     top: calc(100% + 5px);

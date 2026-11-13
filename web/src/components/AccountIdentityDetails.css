@@ -1,0 +1,19 @@
+.account-identity-details {
+  min-width: 0;
+  max-width: min(290px, calc(100vw - 40px));
+  overflow-wrap: anywhere;
+}
+.account-identity-details p {
+  padding: 6px 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, var(--account-muted));
+}
+.account-identity-details .account-identity-name {
+  color: var(--text, var(--account-text));
+}
+.account-identity-details > button {
+  display: block;
+  width: 100%;
+  text-align: start;
+}

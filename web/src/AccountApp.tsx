@@ -1,5 +1,14 @@
-import { UserScope } from "@logto/browser";
-import { AccountLogtoClient, withAccountSubject } from "./accountAuth";
+import {
+  AccountLogtoClient,
+  accountScopes,
+  withAccountSubject,
+} from "./accountAuth";
+import { readAccountIdentity, type AccountIdentity } from "./accountIdentity";
+import {
+  AccountIdentityContext,
+  AccountIdentityDetails,
+  type AccountIdentityView,
+} from "./components/AccountIdentityDetails";
 import {
   createContext,
   useCallback,
@@ -71,7 +80,7 @@ function AccountProvider({
           endpoint: config.endpoint,
           appId: config.appId,
           resources: [config.resource],
-          scopes: [UserScope.CustomData, "connect"],
+          scopes: accountScopes,
           requestTimeoutMs: 15000,
         },
         config,
@@ -183,6 +192,7 @@ const zh = {
   loginError: "登录未完成，请重新登录。",
   connectError: "无法建立安全连接。请确认电脑在线、远程访问已开启，然后重试。",
   sessionExpired: "连接授权已过期，请返回设备页重新连接。",
+  signedInAccount: "已登录账号",
 };
 const en: typeof zh = {
   devices: "My devices",
@@ -258,6 +268,7 @@ const en: typeof zh = {
     "A secure connection could not be established. Check that the computer is online with remote access enabled, then try again.",
   sessionExpired:
     "Connection authorization has expired. Return to devices to reconnect.",
+  signedInAccount: "Signed-in account",
 };
 export default function AccountApp() {
   if (isLocalEntry()) return <LocalApp />;
@@ -273,7 +284,7 @@ export default function AccountApp() {
   }
   if (!config) return <div role="alert">账号服务配置无效</div>;
   return (
-    <AccountProvider config={config}>
+    <AccountProvider key={accountStorageNamespace(config)} config={config}>
       {location.pathname.replace(/\/$/, "").endsWith("/callback") ? (
         <Callback />
       ) : (
@@ -294,6 +305,7 @@ function useAccountAuth() {
       getCyberGridAccessToken: (request: AccessTokenRequest) =>
         client.getCyberGridAccessToken(request),
       getIdTokenClaims: client.getIdTokenClaims.bind(client),
+      getAccountUserInfo: client.getAccountUserInfo.bind(client),
       signIn: client.startAccountSignIn.bind(client),
       signOut: client.endAccountSession.bind(client),
     }),
@@ -303,6 +315,7 @@ function useAccountAuth() {
     ...methods,
     isAuthenticated: context.isAuthenticated,
     isLoading: context.isLoading,
+    setIsAuthenticated: context.setIsAuthenticated,
   };
 }
 function Callback() {
@@ -350,10 +363,16 @@ function AccountHome({ config }: { config: AccountConfig }) {
     getFreshAccessToken,
     getCyberGridAccessToken,
     getIdTokenClaims,
+    getAccountUserInfo,
+    setIsAuthenticated,
   } = useAccountAuth();
   const [locale, setLocale] = useState<"zh-CN" | "en">(initialLocale),
     t = locale === "zh-CN" ? zh : en;
-  const [accountLabel, setAccountLabel] = useState(""),
+  const [displayIdentity, setDisplayIdentity] = useState<AccountIdentity>(),
+    [identityStatus, setIdentityStatus] =
+      useState<AccountIdentityView["status"]>("loading"),
+    [identityRevision, setIdentityRevision] = useState(0),
+    [subjectRevision, setSubjectRevision] = useState(0),
     [deviceLabel, setDeviceLabel] = useState(""),
     [subject, setSubject] = useState<string>(),
     [profile, setProfile] = useState<AccountProfile>(),
@@ -378,6 +397,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
     [saving, setSaving] = useState(false),
     [keyChecked, setKeyChecked] = useState(false);
   const life = useRef(new AbortController()),
+    identityRequest = useRef<AbortController | undefined>(undefined),
     connectController = useRef<AbortController | undefined>(undefined),
     transport = useRef<RemoteTransport | undefined>(undefined),
     gridRef = useRef<CyberGridClient | undefined>(undefined),
@@ -391,6 +411,11 @@ function AccountHome({ config }: { config: AccountConfig }) {
   getGridToken.current = getCyberGridAccessToken;
   const subjectRef = useRef(subject);
   subjectRef.current = subject;
+  const visibleIdentity =
+    isAuthenticated && displayIdentity?.subject === subject
+      ? displayIdentity
+      : undefined;
+  const accountLabel = visibleIdentity?.label ?? t.signedInAccount;
   const checkedToken = useCallback(
     async (resource?: string, fresh = false, request?: AccessTokenRequest) => {
       request?.signal.throwIfAborted();
@@ -435,7 +460,10 @@ function AccountHome({ config }: { config: AccountConfig }) {
   useEffect(() => {
     const controller = new AbortController();
     life.current = controller;
+    subjectRef.current = undefined;
     setSubject(undefined);
+    setDisplayIdentity(undefined);
+    setIdentityStatus("loading");
     setProfile(undefined);
     setDevices([]);
     setConnection(null);
@@ -443,27 +471,80 @@ function AccountHome({ config }: { config: AccountConfig }) {
     if (isAuthenticated)
       void getIdTokenClaims()
         .then((claims) => {
-          if (!controller.signal.aborted && claims?.sub) {
+          if (
+            !controller.signal.aborted &&
+            life.current === controller &&
+            claims?.sub
+          ) {
             setSubject(claims.sub);
-            setAccountLabel(
-              String(
-                claims.name ||
-                  claims.email ||
-                  (locale === "zh-CN" ? "当前账号" : "Current account"),
-              ),
-            );
+          } else if (!controller.signal.aborted) {
+            setIdentityStatus("error");
+            setIsAuthenticated(false);
           }
         })
         .catch(() => {
-          if (!controller.signal.aborted) setError(t.loginError);
+          if (!controller.signal.aborted) {
+            setIdentityStatus("error");
+            setError(t.loginError);
+            setIsAuthenticated(false);
+          }
         });
     return () => {
       controller.abort();
+      identityRequest.current?.abort();
       connectController.current?.abort();
       transport.current?.close();
       void gridRef.current?.disconnect();
     };
-  }, [isAuthenticated, config.issuer, getIdTokenClaims]);
+  }, [
+    isAuthenticated,
+    config.issuer,
+    getIdTokenClaims,
+    subjectRevision,
+    setIsAuthenticated,
+  ]);
+  useEffect(() => {
+    if (!isAuthenticated || !subject) return;
+    const controller = new AbortController();
+    identityRequest.current?.abort();
+    identityRequest.current = controller;
+    setDisplayIdentity(undefined);
+    setIdentityStatus("loading");
+    void readAccountIdentity({
+      subject,
+      claims: getIdTokenClaims,
+      userInfo: getAccountUserInfo,
+      signal: controller.signal,
+    })
+      .then((value) => {
+        if (controller.signal.aborted || subjectRef.current !== subject) return;
+        setDisplayIdentity(value);
+        setIdentityStatus(value ? "ready" : "missing");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || subjectRef.current !== subject) return;
+        setDisplayIdentity(undefined);
+        setIdentityStatus("error");
+        if (error instanceof AccountError && error.code === "IDENTITY_CHANGED") {
+          life.current.abort();
+          subjectRef.current = undefined;
+          setSubject(undefined);
+          setProfile(undefined);
+          setDevices([]);
+          setConnection(null);
+          connectController.current?.abort();
+          transport.current?.close();
+          void gridRef.current?.disconnect();
+        }
+      });
+    return () => controller.abort();
+  }, [
+    isAuthenticated,
+    subject,
+    identityRevision,
+    getIdTokenClaims,
+    getAccountUserInfo,
+  ]);
   useEffect(() => {
     if (!identity) return;
     const controller = new AbortController();
@@ -548,6 +629,14 @@ function AccountHome({ config }: { config: AccountConfig }) {
     setConnecting(undefined);
   }, []);
   const login = async (signup = false) => {
+    life.current.abort();
+    identityRequest.current?.abort();
+    subjectRef.current = undefined;
+    setSubject(undefined);
+    setDisplayIdentity(undefined);
+    setIsAuthenticated(false);
+    closeConnection();
+    void gridRef.current?.disconnect();
     setError("");
     try {
       await signIn({
@@ -560,6 +649,10 @@ function AccountHome({ config }: { config: AccountConfig }) {
   };
   const logout = async () => {
     life.current.abort();
+    identityRequest.current?.abort();
+    subjectRef.current = undefined;
+    setDisplayIdentity(undefined);
+    setIsAuthenticated(false);
     closeConnection();
     void gridRef.current?.disconnect();
     setProfile(undefined);
@@ -572,34 +665,28 @@ function AccountHome({ config }: { config: AccountConfig }) {
     }
   };
   useEffect(() => {
-    const changed = () => {
-      void getIdTokenClaims()
-        .then((claims) => {
-          if (claims?.sub !== subjectRef.current) {
-            life.current.abort();
-            closeConnection();
-            setSubject(undefined);
-            setProfile(undefined);
-            setDevices([]);
-            location.replace("/app/");
-          }
-        })
-        .catch(() => {
-          life.current.abort();
-          closeConnection();
-          location.replace("/app/");
-        });
-    };
     const listener = (event: StorageEvent) => {
       if (
         event.key === null ||
         event.key.startsWith("logto:" + accountStorageNamespace(config) + ":")
-      )
-        changed();
+      ) {
+        // The persisted owner may have changed. Invalidate synchronously, before
+        // another delayed claims/UserInfo read can restore the previous name.
+        life.current.abort();
+        identityRequest.current?.abort();
+        subjectRef.current = undefined;
+        setSubject(undefined);
+        setDisplayIdentity(undefined);
+        setProfile(undefined);
+        setDevices([]);
+        closeConnection();
+        void gridRef.current?.disconnect();
+        setSubjectRevision((value) => value + 1);
+      }
     };
     window.addEventListener("storage", listener);
     return () => window.removeEventListener("storage", listener);
-  }, [config.appId, config.issuer, getIdTokenClaims, closeConnection]);
+  }, [config.appId, config.issuer, closeConnection]);
   const signupStarted = useRef(false);
   useEffect(() => {
     if (
@@ -731,19 +818,32 @@ function AccountHome({ config }: { config: AccountConfig }) {
       setSaving(false);
     }
   };
+  const identityView: AccountIdentityView = {
+    label: accountLabel,
+    email: visibleIdentity?.email,
+    status: identityStatus,
+    locale,
+    retry: () =>
+      subjectRef.current
+        ? setIdentityRevision((value) => value + 1)
+        : setSubjectRevision((value) => value + 1),
+    signIn: () => void login(),
+  };
   if (connection)
     return (
-      <App
-        key={connection.scope}
-        initial={connection}
-        deviceLabel={deviceLabel}
-        accountLabel={accountLabel}
-        onDisconnect={closeConnection}
-        onDevices={closeConnection}
-        onSignOut={() => void logout()}
-        contextLabel={`${deviceLabel} · ${accountLabel}`}
-        disconnectLabel="返回我的设备"
-      />
+      <AccountIdentityContext.Provider value={identityView}>
+        <App
+          key={connection.scope}
+          initial={connection}
+          deviceLabel={deviceLabel}
+          accountLabel={accountLabel}
+          onDisconnect={closeConnection}
+          onDevices={closeConnection}
+          onSignOut={() => void logout()}
+          contextLabel={`${deviceLabel} · ${accountLabel}`}
+          disconnectLabel="返回我的设备"
+        />
+      </AccountIdentityContext.Provider>
     );
   const records = profile?.anywork.devices ?? {};
   const matched = new Set(
@@ -765,391 +865,396 @@ function AccountHome({ config }: { config: AccountConfig }) {
     />
   );
   return (
-    <AccountSurface
-      className={
-        isAuthenticated && !isLoading ? "account-devices" : "account-auth"
-      }
-    >
-      {isLoading ? (
-        <main className="account-auth-main">
-          <Brand />
-          <p className="account-loading" role="status">
-            {t.loading}
-          </p>
-        </main>
-      ) : !isAuthenticated ? (
-        <main className="account-auth-main account-welcome">
-          <Brand />
-          <h1>{t.title}</h1>
-          <p className="account-auth-description">{t.intro}</p>
-          <div className="account-login-actions">
-            <button className="account-primary" onClick={() => void login()}>
-              {t.signIn}
-              <ArrowUpRight size={16} />
-            </button>
-            <button onClick={() => void login(true)}>{t.signUp}</button>
-          </div>
-          <p className="account-small">{t.accountHint}</p>
-          {error && (
-            <p role="alert" className="account-error">
-              {error}
-            </p>
-          )}
-          <a
-            className="account-download"
-            href={locale === "zh-CN" ? "/zh/#download" : "/en/#download"}
-          >
-            {t.download}
-            <ArrowUpRight size={15} />
-          </a>
-          {utilities}
-          <AccountOpenSource locale={locale} />
-        </main>
-      ) : (
-        <div className="account-shell">
-          <DeviceNavigation label={t.devices}>
-            {utilities}
-            <details className="account-user-menu" data-floating-menu>
-              <summary aria-label={t.account}>
-                <span className="account-avatar">
-                  {(accountLabel || "A").slice(0, 1)}
-                </span>
-                <span>{accountLabel}</span>
-                <ChevronsUpDown size={15} />
-              </summary>
-              <div className="account-user-options">
-                <p>{accountLabel}</p>
-                <button onClick={() => void logout()}>
-                  <LogOut size={15} />
-                  {t.signOut}
-                </button>
-              </div>
-            </details>
-          </DeviceNavigation>
-          <div className="account-page">
-            <header className="account-page-heading">
-              <h1>{t.devices}</h1>
-              <div className="account-page-actions">
-                <button
-                  disabled={directoryState === "loading" || !!connecting}
-                  onClick={() => setRevision((value) => value + 1)}
-                >
-                  <RefreshCw size={15} />
-                  {t.refresh}
-                </button>
-                {profile && !empty && (
-                  <button
-                    className="account-primary"
-                    disabled={!!connecting}
-                    onClick={() => setDialog({ type: "add" })}
-                  >
-                    <Plus size={16} />
-                    {t.add}
-                  </button>
-                )}
-              </div>
-            </header>
-            <main className="account-main">
-              {!empty && (
-                <p className="account-page-description">{t.subtitle}</p>
-              )}
-              {error && (
-                <p role="alert" className="account-error">
-                  {error}
-                </p>
-              )}
-              {directoryState === "error" && (
-                <p role="status" className="account-warning">
-                  {t.directoryError}
-                </p>
-              )}
-              {!profile && (error || directoryState === "error") ? (
-                <div className="account-empty">
-                  <p>{t.accountError}</p>
-                  <button onClick={() => setRevision((value) => value + 1)}>
-                    {t.retry}
-                  </button>
-                </div>
-              ) : !profile || directoryState === "loading" ? (
-                <p role="status" className="account-loading">
-                  {t.loading}
-                </p>
-              ) : empty ? (
-                <div className="account-empty">
-                  <h2>{t.emptyTitle}</h2>
-                  <p>{t.emptyText}</p>
-                  <button
-                    className="account-primary"
-                    onClick={() => setDialog({ type: "add" })}
-                  >
-                    <Plus size={16} />
-                    {t.add}
-                  </button>
-                </div>
-              ) : (
-                <ul className="account-device-list">
-                  {Object.entries(records).map(([id, device]) => {
-                    const live = devices.find(
-                        (item) => item.id === device.gridDeviceId,
-                      ),
-                      online = directoryState === "ready" && live?.online,
-                      ready =
-                        online &&
-                        live.ports.some(
-                          (port) =>
-                            port.id === "anywork-remote" &&
-                            port.type === "anywork-noise-v1" &&
-                            port.tunnelUrl,
-                        );
-                    return (
-                      <li className="account-device" key={id}>
-                        <Laptop
-                          className="account-device-icon"
-                          size={23}
-                          strokeWidth={1.5}
-                        />
-                        <div className="account-device-info">
-                          <h2>{device.label}</h2>
-                          <p>
-                            {device.platform}
-                            <span
-                              className={
-                                online
-                                  ? "account-state online"
-                                  : "account-state"
-                              }
-                            >
-                              <i />
-                              {directoryState === "error"
-                                ? t.unknown
-                                : online
-                                  ? t.online
-                                  : t.offline}
-                            </span>
-                          </p>
-                          {!online && directoryState !== "error" && (
-                            <small>{t.offlineHint}</small>
-                          )}
-                        </div>
-                        <div className="account-device-open">
-                          {connecting === id ? (
-                            <>
-                              <span role="status">{t.connecting}</span>
-                              <button
-                                onClick={() => {
-                                  connectController.current?.abort();
-                                  setConnecting(undefined);
-                                }}
-                              >
-                                {t.cancel}
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                className="account-primary"
-                                disabled={!ready || !!connecting}
-                                onClick={() => void connect(id, device)}
-                              >
-                                {t.open}
-                                <ArrowUpRight size={15} />
-                              </button>
-                              {online && !ready && (
-                                <small>{t.unavailable}</small>
-                              )}
-                            </>
-                          )}
-                        </div>
-                        <details
-                          className="account-device-menu"
-                          data-floating-menu
-                        >
-                          <summary
-                            aria-label={`${device.label} — ${t.more}`}
-                            aria-disabled={!!connecting}
-                            onClick={(event) => {
-                              if (connecting) event.preventDefault();
-                            }}
-                          >
-                            <MoreHorizontal size={18} />
-                          </summary>
-                          <div className="account-device-settings">
-                            <button
-                              disabled={!!connecting}
-                              onClick={() => {
-                                setLabel(device.label);
-                                setDialog({ type: "rename", id, device });
-                              }}
-                            >
-                              {t.rename}
-                            </button>
-                            <button
-                              disabled={!!connecting}
-                              onClick={() =>
-                                setDialog({ type: "remove", id, device })
-                              }
-                            >
-                              {t.remove}
-                            </button>
-                          </div>
-                        </details>
-                      </li>
-                    );
-                  })}
-                  {unknown.map((device) => (
-                    <li className="account-device" key={device.id}>
-                      <Laptop className="account-device-icon" size={23} />
-                      <div className="account-device-info">
-                        <h2>{device.name}</h2>
-                        <p>{t.newDevice}</p>
-                        <small>{t.unverified}</small>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <AccountOpenSource locale={locale} />
-              <details className="account-privacy">
-                <summary>
-                  <ShieldCheck size={16} />
-                  {t.security}
-                </summary>
-                <p>{t.securityText}</p>
-              </details>
-            </main>
-          </div>
-        </div>
-      )}
-      <dialog
-        className="account-dialog"
-        ref={dialogRef}
-        onCancel={(event) => {
-          if (saving) event.preventDefault();
-          else setDialog(undefined);
-        }}
-        onClick={(event) => {
-          if (!saving && event.target === event.currentTarget)
-            setDialog(undefined);
-        }}
+    <AccountIdentityContext.Provider value={identityView}>
+      <AccountSurface
+        className={
+          isAuthenticated && !isLoading ? "account-devices" : "account-auth"
+        }
       >
-        <div className="account-dialog-heading">
-          <h2>
-            {dialog?.type === "add"
-              ? t.addTitle
-              : dialog?.type === "rename"
-                ? t.rename
-                : dialog?.type === "remove"
-                  ? t.removeConfirm
-                  : dialog?.type === "key"
-                    ? dialog.changed
-                      ? t.changedKey
-                      : t.firstKey
-                    : ""}
-          </h2>
-          <button
-            disabled={saving}
-            aria-label={t.close}
-            onClick={() => setDialog(undefined)}
-          >
-            <X size={19} />
-          </button>
-        </div>
-        {dialog?.type === "add" ? (
-          <>
-            <ol>
-              <li>{t.step1}</li>
-              <li>{t.step2}</li>
-              <li>{t.step3}</li>
-            </ol>
-            <p>{t.addFoot}</p>
+        {isLoading ? (
+          <main className="account-auth-main">
+            <Brand />
+            <p className="account-loading" role="status">
+              {t.loading}
+            </p>
+          </main>
+        ) : !isAuthenticated ? (
+          <main className="account-auth-main account-welcome">
+            <Brand />
+            <h1>{t.title}</h1>
+            <p className="account-auth-description">{t.intro}</p>
+            <div className="account-login-actions">
+              <button className="account-primary" onClick={() => void login()}>
+                {t.signIn}
+                <ArrowUpRight size={16} />
+              </button>
+              <button onClick={() => void login(true)}>{t.signUp}</button>
+            </div>
+            <p className="account-small">{t.accountHint}</p>
+            {error && (
+              <p role="alert" className="account-error">
+                {error}
+              </p>
+            )}
             <a
-              className="account-primary"
+              className="account-download"
               href={locale === "zh-CN" ? "/zh/#download" : "/en/#download"}
             >
               {t.download}
+              <ArrowUpRight size={15} />
             </a>
-          </>
-        ) : dialog?.type === "key" ? (
-          <>
-            <p>{t.keyHint}</p>
-            <code className="account-device-key">
-              {dialog.device.publicKey}
-            </code>
-            <label className="account-key-check">
-              <input
-                type="checkbox"
-                checked={keyChecked}
-                onChange={(event) => setKeyChecked(event.target.checked)}
-              />
-              {t.keyChecked}
-            </label>
-            <div className="account-dialog-actions">
-              <button autoFocus onClick={() => setDialog(undefined)}>
-                {t.cancel}
-              </button>
-              <button
-                className="account-primary"
-                disabled={!keyChecked}
-                onClick={() => {
-                  if (!keyChecked) return;
-                  const active = dialog;
-                  setDialog(undefined);
-                  void connect(active.id, active.device, true);
-                }}
-              >
-                <Check size={16} />
-                {t.keyConfirm}
-              </button>
-            </div>
-          </>
+            {utilities}
+            <AccountOpenSource locale={locale} />
+          </main>
         ) : (
-          dialog && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void mutate();
-              }}
-            >
-              {dialog.type === "rename" ? (
-                <label>
-                  {t.name}
-                  <input
-                    autoFocus
-                    value={label}
-                    maxLength={80}
-                    required
-                    onChange={(event) => setLabel(event.target.value)}
-                  />
-                </label>
-              ) : (
-                <p>{t.removeHint}</p>
-              )}
-              {error && (
-                <p className="account-error" role="alert">
-                  {error}
-                </p>
-              )}
-              <div className="account-dialog-actions">
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => setDialog(undefined)}
+          <div className="account-shell">
+            <DeviceNavigation label={t.devices}>
+              {utilities}
+              <details className="account-user-menu" data-floating-menu>
+                <summary
+                  aria-label={`${t.account} — ${accountLabel}`}
+                  title={accountLabel}
                 >
+                  <span className="account-avatar">
+                    {(accountLabel || "A").slice(0, 1)}
+                  </span>
+                  <span>{accountLabel}</span>
+                  <ChevronsUpDown size={15} />
+                </summary>
+                <div className="account-user-options">
+                  <AccountIdentityDetails />
+                  <button onClick={() => void logout()}>
+                    <LogOut size={15} />
+                    {t.signOut}
+                  </button>
+                </div>
+              </details>
+            </DeviceNavigation>
+            <div className="account-page">
+              <header className="account-page-heading">
+                <h1>{t.devices}</h1>
+                <div className="account-page-actions">
+                  <button
+                    disabled={directoryState === "loading" || !!connecting}
+                    onClick={() => setRevision((value) => value + 1)}
+                  >
+                    <RefreshCw size={15} />
+                    {t.refresh}
+                  </button>
+                  {profile && !empty && (
+                    <button
+                      className="account-primary"
+                      disabled={!!connecting}
+                      onClick={() => setDialog({ type: "add" })}
+                    >
+                      <Plus size={16} />
+                      {t.add}
+                    </button>
+                  )}
+                </div>
+              </header>
+              <main className="account-main">
+                {!empty && (
+                  <p className="account-page-description">{t.subtitle}</p>
+                )}
+                {error && (
+                  <p role="alert" className="account-error">
+                    {error}
+                  </p>
+                )}
+                {directoryState === "error" && (
+                  <p role="status" className="account-warning">
+                    {t.directoryError}
+                  </p>
+                )}
+                {!profile && (error || directoryState === "error") ? (
+                  <div className="account-empty">
+                    <p>{t.accountError}</p>
+                    <button onClick={() => setRevision((value) => value + 1)}>
+                      {t.retry}
+                    </button>
+                  </div>
+                ) : !profile || directoryState === "loading" ? (
+                  <p role="status" className="account-loading">
+                    {t.loading}
+                  </p>
+                ) : empty ? (
+                  <div className="account-empty">
+                    <h2>{t.emptyTitle}</h2>
+                    <p>{t.emptyText}</p>
+                    <button
+                      className="account-primary"
+                      onClick={() => setDialog({ type: "add" })}
+                    >
+                      <Plus size={16} />
+                      {t.add}
+                    </button>
+                  </div>
+                ) : (
+                  <ul className="account-device-list">
+                    {Object.entries(records).map(([id, device]) => {
+                      const live = devices.find(
+                          (item) => item.id === device.gridDeviceId,
+                        ),
+                        online = directoryState === "ready" && live?.online,
+                        ready =
+                          online &&
+                          live.ports.some(
+                            (port) =>
+                              port.id === "anywork-remote" &&
+                              port.type === "anywork-noise-v1" &&
+                              port.tunnelUrl,
+                          );
+                      return (
+                        <li className="account-device" key={id}>
+                          <Laptop
+                            className="account-device-icon"
+                            size={23}
+                            strokeWidth={1.5}
+                          />
+                          <div className="account-device-info">
+                            <h2>{device.label}</h2>
+                            <p>
+                              {device.platform}
+                              <span
+                                className={
+                                  online
+                                    ? "account-state online"
+                                    : "account-state"
+                                }
+                              >
+                                <i />
+                                {directoryState === "error"
+                                  ? t.unknown
+                                  : online
+                                    ? t.online
+                                    : t.offline}
+                              </span>
+                            </p>
+                            {!online && directoryState !== "error" && (
+                              <small>{t.offlineHint}</small>
+                            )}
+                          </div>
+                          <div className="account-device-open">
+                            {connecting === id ? (
+                              <>
+                                <span role="status">{t.connecting}</span>
+                                <button
+                                  onClick={() => {
+                                    connectController.current?.abort();
+                                    setConnecting(undefined);
+                                  }}
+                                >
+                                  {t.cancel}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  className="account-primary"
+                                  disabled={!ready || !!connecting}
+                                  onClick={() => void connect(id, device)}
+                                >
+                                  {t.open}
+                                  <ArrowUpRight size={15} />
+                                </button>
+                                {online && !ready && (
+                                  <small>{t.unavailable}</small>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <details
+                            className="account-device-menu"
+                            data-floating-menu
+                          >
+                            <summary
+                              aria-label={`${device.label} — ${t.more}`}
+                              aria-disabled={!!connecting}
+                              onClick={(event) => {
+                                if (connecting) event.preventDefault();
+                              }}
+                            >
+                              <MoreHorizontal size={18} />
+                            </summary>
+                            <div className="account-device-settings">
+                              <button
+                                disabled={!!connecting}
+                                onClick={() => {
+                                  setLabel(device.label);
+                                  setDialog({ type: "rename", id, device });
+                                }}
+                              >
+                                {t.rename}
+                              </button>
+                              <button
+                                disabled={!!connecting}
+                                onClick={() =>
+                                  setDialog({ type: "remove", id, device })
+                                }
+                              >
+                                {t.remove}
+                              </button>
+                            </div>
+                          </details>
+                        </li>
+                      );
+                    })}
+                    {unknown.map((device) => (
+                      <li className="account-device" key={device.id}>
+                        <Laptop className="account-device-icon" size={23} />
+                        <div className="account-device-info">
+                          <h2>{device.name}</h2>
+                          <p>{t.newDevice}</p>
+                          <small>{t.unverified}</small>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <AccountOpenSource locale={locale} />
+                <details className="account-privacy">
+                  <summary>
+                    <ShieldCheck size={16} />
+                    {t.security}
+                  </summary>
+                  <p>{t.securityText}</p>
+                </details>
+              </main>
+            </div>
+          </div>
+        )}
+        <dialog
+          className="account-dialog"
+          ref={dialogRef}
+          onCancel={(event) => {
+            if (saving) event.preventDefault();
+            else setDialog(undefined);
+          }}
+          onClick={(event) => {
+            if (!saving && event.target === event.currentTarget)
+              setDialog(undefined);
+          }}
+        >
+          <div className="account-dialog-heading">
+            <h2>
+              {dialog?.type === "add"
+                ? t.addTitle
+                : dialog?.type === "rename"
+                  ? t.rename
+                  : dialog?.type === "remove"
+                    ? t.removeConfirm
+                    : dialog?.type === "key"
+                      ? dialog.changed
+                        ? t.changedKey
+                        : t.firstKey
+                      : ""}
+            </h2>
+            <button
+              disabled={saving}
+              aria-label={t.close}
+              onClick={() => setDialog(undefined)}
+            >
+              <X size={19} />
+            </button>
+          </div>
+          {dialog?.type === "add" ? (
+            <>
+              <ol>
+                <li>{t.step1}</li>
+                <li>{t.step2}</li>
+                <li>{t.step3}</li>
+              </ol>
+              <p>{t.addFoot}</p>
+              <a
+                className="account-primary"
+                href={locale === "zh-CN" ? "/zh/#download" : "/en/#download"}
+              >
+                {t.download}
+              </a>
+            </>
+          ) : dialog?.type === "key" ? (
+            <>
+              <p>{t.keyHint}</p>
+              <code className="account-device-key">
+                {dialog.device.publicKey}
+              </code>
+              <label className="account-key-check">
+                <input
+                  type="checkbox"
+                  checked={keyChecked}
+                  onChange={(event) => setKeyChecked(event.target.checked)}
+                />
+                {t.keyChecked}
+              </label>
+              <div className="account-dialog-actions">
+                <button autoFocus onClick={() => setDialog(undefined)}>
                   {t.cancel}
                 </button>
                 <button
                   className="account-primary"
-                  disabled={
-                    saving || (dialog.type === "rename" && !label.trim())
-                  }
+                  disabled={!keyChecked}
+                  onClick={() => {
+                    if (!keyChecked) return;
+                    const active = dialog;
+                    setDialog(undefined);
+                    void connect(active.id, active.device, true);
+                  }}
                 >
-                  {dialog.type === "rename" ? t.save : t.removeConfirm}
+                  <Check size={16} />
+                  {t.keyConfirm}
                 </button>
               </div>
-            </form>
-          )
-        )}
-      </dialog>
-    </AccountSurface>
+            </>
+          ) : (
+            dialog && (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void mutate();
+                }}
+              >
+                {dialog.type === "rename" ? (
+                  <label>
+                    {t.name}
+                    <input
+                      autoFocus
+                      value={label}
+                      maxLength={80}
+                      required
+                      onChange={(event) => setLabel(event.target.value)}
+                    />
+                  </label>
+                ) : (
+                  <p>{t.removeHint}</p>
+                )}
+                {error && (
+                  <p className="account-error" role="alert">
+                    {error}
+                  </p>
+                )}
+                <div className="account-dialog-actions">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setDialog(undefined)}
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    className="account-primary"
+                    disabled={
+                      saving || (dialog.type === "rename" && !label.trim())
+                    }
+                  >
+                    {dialog.type === "rename" ? t.save : t.removeConfirm}
+                  </button>
+                </div>
+              </form>
+            )
+          )}
+        </dialog>
+      </AccountSurface>
+    </AccountIdentityContext.Provider>
   );
 }

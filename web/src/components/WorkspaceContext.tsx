@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronsUpDown, Laptop, Monitor, X } from "lucide-react";
 import AccountEntry from "./AccountEntry";
+import { AccountIdentityDetails } from "./AccountIdentityDetails";
 
 type Props = {
   deviceLabel: string;
@@ -136,7 +137,7 @@ export function WorkspaceAccount({
 }: Omit<Props, "deviceLabel">) {
   return (
     <details className="workspace-account-menu" data-floating-menu>
-      <summary>
+      <summary title={accountLabel}>
         <span className="workspace-account-avatar">
           {onDevices ? (accountLabel || "账号").slice(0, 1) : "本"}
         </span>
@@ -144,7 +145,13 @@ export function WorkspaceAccount({
         <ChevronsUpDown size={15} />
       </summary>
       <div className="workspace-context-options">
-        <p className="workspace-context">{contextLabel}</p>
+        {onDevices ? (
+          <AccountIdentityDetails
+            fallback={<p className="workspace-context">{contextLabel}</p>}
+          />
+        ) : (
+          <p className="workspace-context">{contextLabel}</p>
+        )}
         {!onDevices && (
           <p className="workspace-source-hint">
             来源是打开时的快照，不表示此网页已登录该账号，也不表示当前桌面账号或远程状态。

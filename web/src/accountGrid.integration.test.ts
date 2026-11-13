@@ -13,6 +13,26 @@ import { AccountLogtoClient, withAccountSubject } from "./accountAuth";
 import type { AccountConfig } from "./accountConfig";
 import { CyberGridClient, type AccessTokenRequest } from "./vendor/cybergrid";
 
+// Install the isolated OAuth grant provider before AccountLogtoClient captures
+// the SDK's memoized instance field. Spying on the public serialized wrapper
+// afterward would bypass the refresh-owner behavior this suite exercises.
+const oauth = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock("@logto/browser", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@logto/browser")>();
+  return {
+    ...actual,
+    default: class extends actual.default {
+      constructor(...args: ConstructorParameters<typeof actual.default>) {
+        super(...args);
+        Object.defineProperty(this, "getAccessToken", {
+          value: oauth.get,
+          writable: true,
+        });
+      }
+    },
+  };
+});
+
 // Real vendored SDK, fetch and HTTP. Only the OAuth grant provider is isolated;
 // no real account, business gateway, or upstream service is mutated.
 const epoch = "00000000-0000-4000-8000-000000000001";
@@ -160,11 +180,11 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 function setup(timeoutMs = 1000) {
+  const get = oauth.get.mockReset().mockResolvedValue(jwt());
   const owner = new AccountLogtoClient(
     { endpoint: account.endpoint, appId: account.appId },
     account,
   );
-  const get = vi.spyOn(owner, "getAccessToken").mockResolvedValue(jwt());
   const clear = vi.spyOn(owner, "clearAccessToken").mockResolvedValue();
   const provider = vi.fn((request: AccessTokenRequest) =>
     owner.getCyberGridAccessToken(request),
