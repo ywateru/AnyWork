@@ -76,7 +76,9 @@ impl<R: Runtime> MobileAuth<R> {
     }
     pub async fn sign_in(&self, register: bool) -> Result<Snapshot> {
         #[derive(Serialize)]
-        struct Args { register: bool }
+        struct Args {
+            register: bool,
+        }
         self.call("signIn", Args { register }).await
     }
     pub async fn logout(&self) -> Result<Snapshot> {
@@ -84,7 +86,9 @@ impl<R: Runtime> MobileAuth<R> {
     }
     pub async fn profile(&self, generation: u64) -> Result<Snapshot> {
         #[derive(Serialize)]
-        struct Args { generation: u64 }
+        struct Args {
+            generation: u64,
+        }
         self.call("profile", Args { generation }).await
     }
     pub async fn token(
@@ -96,8 +100,22 @@ impl<R: Runtime> MobileAuth<R> {
     ) -> Result<AccessGrant> {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
-        struct Args { generation: u64, resource: bool, force_refresh: bool, min_validity: u64 }
-        self.call("token", Args { generation, resource, force_refresh, min_validity }).await
+        struct Args {
+            generation: u64,
+            resource: bool,
+            force_refresh: bool,
+            min_validity: u64,
+        }
+        self.call(
+            "token",
+            Args {
+                generation,
+                resource,
+                force_refresh,
+                min_validity,
+            },
+        )
+        .await
     }
 }
 
@@ -105,16 +123,25 @@ pub trait MobileAuthExt<R: Runtime> {
     fn mobile_auth(&self) -> &MobileAuth<R>;
 }
 impl<R: Runtime, T: Manager<R>> MobileAuthExt<R> for T {
-    fn mobile_auth(&self) -> &MobileAuth<R> { self.state::<MobileAuth<R>>().inner() }
+    fn mobile_auth(&self) -> &MobileAuth<R> {
+        self.state::<MobileAuth<R>>().inner()
+    }
 }
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     tauri::plugin::Builder::new("mobile-auth")
         .setup(|app, api| {
             #[cfg(target_os = "android")]
-            let auth = MobileAuth { handle: api.register_android_plugin("dev.anywork.auth", "MobileAuthPlugin")? };
+            let auth = MobileAuth {
+                handle: api.register_android_plugin("dev.anywork.auth", "MobileAuthPlugin")?,
+            };
             #[cfg(not(target_os = "android"))]
-            let auth = { let _ = api; MobileAuth::<R> { runtime: std::marker::PhantomData } };
+            let auth = {
+                let _ = api;
+                MobileAuth::<R> {
+                    runtime: std::marker::PhantomData,
+                }
+            };
             app.manage(auth);
             Ok(())
         })

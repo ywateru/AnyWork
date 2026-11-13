@@ -11,6 +11,7 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import androidx.appcompat.app.AppCompatActivity
 import com.google.gson.Gson
 import io.logto.sdk.android.LogtoClient
 import io.logto.sdk.android.type.AccessToken
@@ -22,7 +23,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicLong
@@ -56,7 +56,7 @@ private class LoginCancelled : Exception()
 @TauriPlugin
 class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val operation = Mutex()
+    private val operation get() = AuthLifecycle.operation
     private val generation = AtomicLong(0)
     private var configuration: ConfigureArgs? = null
     private var client: RamClient? = null
@@ -64,6 +64,7 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
     private var profileValue: JSONObject? = null
     private var errorCode: String? = null
     private var preflight: AlertDialog? = null
+    private var currentAttempt: AuthLifecycle.Attempt? = null
     private val gson = Gson()
 
     init {
@@ -132,6 +133,7 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
         catch (_: Exception) { invoke.reject("MOBILE_AUTH_INPUT"); return }
         scope.launch {
             if (!operation.tryLock()) { invoke.reject("MOBILE_AUTH_BUSY"); return@launch }
+            if (status != "signedOut" || AuthLifecycle.active != null) { operation.unlock(); invoke.reject("MOBILE_AUTH_BUSY"); return@launch }
             var attempt: AuthLifecycle.Attempt? = null
             try {
                 check(status == "signedOut")
@@ -139,6 +141,7 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                 val config = checkNotNull(configuration)
                 val owner = generation.incrementAndGet()
                 attempt = AuthLifecycle.Attempt(owner)
+                currentAttempt = attempt
                 AuthLifecycle.active = attempt
                 status = "authorizing"
                 errorCode = null
@@ -169,7 +172,6 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                 status = "signedIn"
                 profileValue = readProfile(sdk)
                 check(generation.get() == owner)
-                invoke.resolve(jsonSnapshot())
             } catch (_: LoginCancelled) {
                 if (attempt?.generation == generation.get()) {
                     generation.incrementAndGet()
@@ -177,19 +179,19 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                     profileValue = null
                     errorCode = null
                 }
-                invoke.resolve(jsonSnapshot())
             } catch (_: Exception) {
                 // Do not reuse a grant after an exchange with an unknown outcome.
                 if (attempt?.generation == generation.get()) invalidate("MOBILE_AUTH_SIGN_IN")
-                invoke.resolve(jsonSnapshot())
             } finally {
                 // SDK onDestroy cancels its process-global auth session. No B
                 // may start until A's callback AND every A Activity is destroyed.
                 attempt?.let { it.cancel(); it.destroyed.await() }
                 if (AuthLifecycle.active === attempt) AuthLifecycle.active = null
+                if (currentAttempt === attempt) currentAttempt = null
                 preflight = null
                 operation.unlock()
             }
+            invoke.resolve(jsonSnapshot())
         }
     }
 
@@ -279,6 +281,7 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                     }
                     check(grant.expiresAt - System.currentTimeMillis() / 1000 >= args.minValidity)
                     check(grant.token.isNotEmpty() && grant.token.length <= 16384)
+                    check(grant.scope.split(Regex("\\s+")).contains(if (args.resource) "connect" else "custom_data"))
                     invoke.resolve(JSObject().apply {
                         put("accessToken", grant.token)
                         put("expiresAt", grant.expiresAt)
@@ -293,29 +296,44 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
         }
     }
 
-    @Command
-    fun logout(invoke: Invoke) {
+    private fun fence() {
         // Fence immediately before waiting for a rotating SDK request to settle.
         generation.incrementAndGet()
         status = "signedOut"
         profileValue = null
         errorCode = null
         preflight?.dismiss()
-        AuthLifecycle.active?.cancel()
+        currentAttempt?.cancel()
+    }
+
+    private suspend fun clearGrant() {
+        val sdk = client
+        // SDK signOut clears cookies only when authenticated. Explicit
+        // logout also clears SSO cookies after a cancelled/failed login.
+        CookieManager.getInstance().apply { removeAllCookies(null); flush() }
+        if (sdk != null && sdk.isAuthenticated) {
+            val revoked = suspendCancellableCoroutine<Boolean> { continuation ->
+                sdk.signOut { exception ->
+                    if (continuation.isActive) continuation.resume(exception == null)
+                }
+            }
+            if (!revoked) errorCode = "MOBILE_REVOCATION_UNCONFIRMED"
+        }
+    }
+
+    override fun onDestroy(activity: AppCompatActivity) {
+        if (activity !== host) return
+        fence()
+        // Complete any already dispatched rotation before discarding its grant.
+        scope.launch { operation.withLock { clearGrant() } }
+    }
+
+    @Command
+    fun logout(invoke: Invoke) {
+        fence()
         scope.launch {
             operation.withLock {
-                val sdk = client
-                // SDK signOut clears cookies only when authenticated. Explicit
-                // logout also clears SSO cookies after a cancelled/failed login.
-                CookieManager.getInstance().apply { removeAllCookies(null); flush() }
-                if (sdk != null && sdk.isAuthenticated) {
-                    val revoked = suspendCancellableCoroutine<Boolean> { continuation ->
-                        sdk.signOut { exception ->
-                            if (continuation.isActive) continuation.resume(exception == null)
-                        }
-                    }
-                    if (!revoked) errorCode = "MOBILE_REVOCATION_UNCONFIRMED"
-                }
+                clearGrant()
                 // SDK v2 clears local RAM even when revocation fails.
                 invoke.resolve(jsonSnapshot())
             }
