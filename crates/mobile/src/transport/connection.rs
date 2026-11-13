@@ -16,7 +16,7 @@ use tokio::{
     time::Instant,
 };
 use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, connect_async_with_config,
+    MaybeTlsStream, WebSocketStream, connect_async_tls_with_config,
     tungstenite::{Message, client::IntoClientRequest, protocol::WebSocketConfig},
 };
 
@@ -158,9 +158,14 @@ impl Peer {
             let config = WebSocketConfig::default()
                 .max_message_size(Some(65_535))
                 .max_frame_size(Some(65_535));
-            let (mut socket, _) = connect_async_with_config(request, Some(config), true)
-                .await
-                .map_err(|_| error("CONNECTION_FAILED"))?;
+            let (mut socket, _) = connect_async_tls_with_config(
+                request,
+                Some(config),
+                true,
+                Some(super::tls::connector()?),
+            )
+            .await
+            .map_err(|_| error("CONNECTION_FAILED"))?;
             auth.ensure_epoch(epoch)
                 .await
                 .map_err(|_| error("IDENTITY_CHANGED"))?;
