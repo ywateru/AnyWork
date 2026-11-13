@@ -253,10 +253,10 @@ async fn upgrade(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    if !headers
-        .get("origin")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| ctx.cfg.allowed_origins.iter().any(|o| o == v))
+    let mut origins = headers.get_all("origin").iter();
+    let origin = origins.next().and_then(|v| v.to_str().ok());
+    if origins.next().is_some()
+        || !origin.is_some_and(|v| ctx.cfg.allowed_origins.iter().any(|o| o == v))
     {
         return StatusCode::FORBIDDEN.into_response();
     }

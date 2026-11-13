@@ -437,3 +437,18 @@ async fn only_authenticated_connections_project_bounded_device_hints_and_disconn
         assert_closed(&mut ws, 1).await;
     }
 }
+
+#[tokio::test]
+async fn exact_origin_rejects_missing_duplicate_null_and_lookalikes() {
+    let (mut gateway, _, calls) = start(60).await;
+    let address = format!("ws://127.0.0.1:{}/remote/v1/ws", gateway.port);
+    for values in [vec![], vec!["null"], vec!["https://test.example/"],
+        vec!["https://test.example.evil"], vec!["https://test.example", "https://test.example"],
+        vec!["https://test.example", "https://evil.example"], vec!["https://test.example, https://evil.example"]] {
+        let mut request=address.clone().into_client_request().unwrap();
+        for value in values {request.headers_mut().append("origin",value.parse().unwrap());}
+        assert!(connect_async_with_config(request,None,true).await.is_err());
+    }
+    assert_eq!(calls.load(Ordering::SeqCst),0);
+    gateway.close().await;
+}

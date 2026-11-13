@@ -1405,10 +1405,10 @@ impl Handle {
         }
         let subject = owner.state.lock().await.grant.subject.clone();
         let i = EnableStage::Identity.at(self.installation(&subject).await)?;
-        let verifier = EnableStage::Gateway.at(JwtVerifier::new(
+        let verifier = EnableStage::Gateway.at(JwtVerifier::with_allowed_clients(
             self.0.config.issuer.clone(),
             self.0.config.resource.clone(),
-            self.0.config.spa_client_id.clone(),
+            vec![self.0.config.spa_client_id.clone(), self.0.config.native_client_id.clone()],
             subject,
         ))?;
         let private: [u8; 32] = URL_SAFE_NO_PAD
@@ -1420,7 +1420,7 @@ impl Handle {
         let mut gateway = EnableStage::Gateway.at(Gateway::start(GatewayConfig {
             installation_id: i.id.clone(),
             private_key: private,
-            allowed_origins: vec![self.0.config.frontend_origin.clone()],
+            allowed_origins: vec![self.0.config.frontend_origin.clone(), "https://tauri.localhost".into()],
             local_port: snapshot.config.port,
             local_token: snapshot.token,
             verifier: Arc::new(verifier),
