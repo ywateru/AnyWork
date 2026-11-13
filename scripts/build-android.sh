@@ -44,7 +44,9 @@ project="$RA_PROJECT_ROOT/crates/mobile/gen/android"
 if [[ "$profile" == debug ]]; then variant=Debug; else variant=Release; fi
 (
     cd "$project"
-    "${ANYWORK_GRADLE_BIN:-./gradlew}" ":app:lintUniversal$variant" ":app:testUniversal${variant}UnitTest" ":tauri-plugin-mobile-system:testDebugUnitTest" ":tauri-plugin-mobile-auth:testDebugUnitTest" ":anywork-logto-core:test" -x "rustBuildUniversal$variant"
+    # AGP's optimized release variant has no app unit-test component. Keep the
+    # release lint gate, and run JVM fixtures on Debug without rebuilding Rust.
+    "${ANYWORK_GRADLE_BIN:-./gradlew}" ":app:lintUniversal$variant" ":app:testUniversalDebugUnitTest" ":tauri-plugin-mobile-system:testDebugUnitTest" ":tauri-plugin-mobile-auth:testDebugUnitTest" ":anywork-logto-core:test" -x rustBuildUniversalRelease -x rustBuildUniversalDebug
 )
 if [[ "$profile" == debug ]]; then output="$RA_PROJECT_ROOT/artifacts/anywork-android-debug.apk"; else output="$RA_PROJECT_ROOT/release/anywork-android.apk"; fi
 mkdir -p "$(dirname "$output")"
