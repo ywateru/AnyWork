@@ -55,3 +55,10 @@ JS 使用公开 `window.__TAURI__.core.invoke(command, {request: DTO})`；无参
 `mobile-system-lifecycle` 返回 `{foreground,revision}`；前台核验授权和既有连接lease，不重新发送业务写入。上传沿用固定Wry onShowFileChooser系统选择器（multiple/ClipData/content URI/cancel）；文件大小在UI/transport请求边界继续校验，Android provider行为、中文名和宿主重建列入APK验收。
 
 系统主题同步使用 `plugin:mobile-system|appearance_set`，参数 `{request:{dark:boolean}}`，返回 `{dark:boolean}`。仅本地 main 获权；UI 挂载及实际 `data-theme` 变化时同步。原生按 UI 深浅设置状态栏和导航栏图标对比度，并在 resume 重用最近值；未收到 UI 值前使用 Android 系统默认。实际图标对比度仍须 APK 视觉验收。
+
+
+### 关闭通知与导出取消收口
+
+PTY数据仍用64项有界队列，溢出关闭peer；最终connectionClosed不进入该数据队列，由sink同步移除对应connectionId/generation路由并通知main，避免队满丢失终止事件。
+
+保存provider I/O在独立copy worker运行，最多一个active copy；元数据/abort控制worker不等provider写入。exportAbort、账号abortAll与onDestroy都立即退役句柄/待settle invoke，并通过copy取消标记、Android CancellationSignal及后台fd关闭请求释放I/O。每块读取/写入前后及flush后检查取消；迟到完成不能报告saved。某provider忽略取消或已开始的write无法回滚时，已写目标字节保留，逻辑取消仍先确认，copy实际退出前新的finish报告SYSTEM_BUSY，不能宣称文件已回滚或底层I/O必然即时结束。所有清理仅针对自有临时文件，不删除用户目标。

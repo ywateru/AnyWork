@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
 import android.util.Base64
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
@@ -25,6 +27,7 @@ import app.tauri.plugin.Plugin
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @InvokeArg
 class SubscribeArgs { lateinit var channel: Channel }
@@ -32,6 +35,16 @@ class SubscribeArgs { lateinit var channel: Channel }
 @TauriPlugin
 class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
     private val worker = Executors.newSingleThreadScheduledExecutor()
+    // At most one active save is admitted. Provider I/O must not block cancellation/store retirement.
+    private val copyWorker = Executors.newSingleThreadExecutor()
+    private val copyCleanup = Executors.newSingleThreadExecutor()
+    private class SaveCopy(val handle: String, val entry: ExportStore.Entry) {
+        val copy = ExportCopy { entry.live }
+        val signal = CancellationSignal()
+        val descriptor = AtomicReference<ParcelFileDescriptor?>()
+    }
+    private var activeCopy: SaveCopy? = null // worker-only; retained until provider I/O actually exits
+    private var destroyed = false // worker-only
     private val store = ExportStore(File(activity.cacheDir, "anywork-exports"), SystemClock::elapsedRealtime) { entry ->
         if (entry.purpose == "share") {
             try {
@@ -57,10 +70,7 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
         worker.scheduleAtFixedRate({
             pendingSave?.let { (invoke, handle) ->
                 try { store.get(handle) } catch (_: Exception) {
-                    pendingSave = null
-                    val generation = pickerGeneration
-                    activity.runOnUiThread { ExportPickerActivity.cancel(generation) }
-                    invoke.reject("Export expired", "HANDLE_EXPIRED")
+                    cancelPending(handle, "HANDLE_EXPIRED")
                 }
             }
             store.sweep()
@@ -202,13 +212,20 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
         store.abort(handle)
         invoke.resolve()
     }
-    private fun cancelPending(handle: String? = null) {
+    private fun cancelPending(handle: String? = null, code: String = "CANCELLED") {
+        activeCopy?.takeIf { handle == null || handle == it.handle }?.let { job ->
+            if (job.copy.cancel()) copyCleanup.execute {
+                // A provider may ignore cancellation; neither signal nor close can block the control worker.
+                try { job.signal.cancel() } catch (_: Exception) { }
+                try { job.descriptor.getAndSet(null)?.close() } catch (_: Exception) { }
+            }
+        }
         pendingSave?.let { (invoke, pending) ->
             if (handle == null || handle == pending) {
                 pendingSave = null
                 val generation = pickerGeneration
                 activity.runOnUiThread { ExportPickerActivity.cancel(generation) }
-                invoke.reject("Export aborted", "CANCELLED")
+                invoke.reject("Export aborted", code)
             }
         }
     }
@@ -220,7 +237,7 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
     }
     @Command fun exportFinish(invoke: Invoke) = io(invoke) {
         val handle = invoke.getArgs().getString("handle")
-        if (pendingSave != null) throw SystemFailure("SYSTEM_BUSY")
+        if (pendingSave != null || activeCopy != null) throw SystemFailure("SYSTEM_BUSY")
         val e = store.seal(handle)
         if (e.purpose == "save") {
             pendingSave = invoke to handle
@@ -258,8 +275,8 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
     @ActivityCallback fun saveResult(invoke: Invoke, result: ActivityResult) = io(invoke) {
         val pending = pendingSave
         if (pending == null || pending.first.id != invoke.id) return@io
-        pendingSave = null
         val handle = pending.second
+        var copying = false
         try {
             val entry = store.get(handle)
             if (result.resultCode == Activity.RESULT_CANCELED) {
@@ -269,14 +286,44 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
             } else {
                 val uri = result.data!!.data!!
                 if (uri.scheme != "content") throw SystemFailure("INVALID_DESTINATION")
-                activity.contentResolver.openOutputStream(uri, "wt")?.use { output ->
-                    entry.file.inputStream().use { it.copyTo(output, ExportStore.MAX_CHUNK) }
-                    output.flush()
-                } ?: throw SystemFailure("SYSTEM_FAILED")
-                invoke.resolve(JSObject().put("status", "saved"))
+                val job = SaveCopy(handle, entry)
+                activeCopy = job
+                copyWorker.execute {
+                    val failure = try {
+                        job.copy.check()
+                        val descriptor = activity.contentResolver.openFileDescriptor(uri, "wt", job.signal)
+                            ?: throw SystemFailure("SYSTEM_FAILED")
+                        job.descriptor.set(descriptor)
+                        ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
+                            job.copy.check()
+                            entry.file.inputStream().use { job.copy.copy(it, output) }
+                        }
+                        job.copy.check()
+                        null
+                    } catch (error: Exception) {
+                        if (!entry.live) "CANCELLED" else (error as? SystemFailure)?.code ?: "SYSTEM_FAILED"
+                    } finally {
+                        try { job.descriptor.getAndSet(null)?.close() } catch (_: Exception) { }
+                    }
+                    worker.execute {
+                        if (activeCopy === job) activeCopy = null
+                        // Abort/logout already rejected and removed this invoke. Never settle it again.
+                        if (pendingSave?.first?.id == invoke.id) {
+                            pendingSave = null
+                            if (failure == null && entry.live) invoke.resolve(JSObject().put("status", "saved"))
+                            else invoke.reject("Export failed", failure ?: "CANCELLED")
+                        }
+                        store.abort(handle)
+                        if (destroyed) worker.shutdown()
+                    }
+                }
+                copying = true
             }
         } finally {
-            store.abort(handle) // Never delete the user's destination, even on a partial provider failure.
+            if (!copying) {
+                pendingSave = null
+                store.abort(handle) // Never delete the user's destination, including partial output.
+            }
         }
     }
     override fun onResume(activity: AppCompatActivity) {
@@ -291,7 +338,13 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
     override fun onDestroy(activity: AppCompatActivity) {
         events = null
         backCallback?.remove()
-        worker.execute { cancelPending(); store.abortAll() }
-        worker.shutdown()
+        worker.execute {
+            destroyed = true
+            cancelPending()
+            store.abortAll()
+            copyWorker.shutdown()
+            copyCleanup.shutdown()
+            if (activeCopy == null) worker.shutdown()
+        }
     }
 }

@@ -1,11 +1,15 @@
 //! Android local-asset shell with native account, bounded transport and system IPC.
 use serde::Deserialize;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use tauri::{
     AppHandle, Emitter, Listener, Manager, State,
     ipc::{Channel, JavaScriptChannelId},
 };
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::mpsc;
+mod bridge_events;
 use transport::*;
 
 pub mod account;
@@ -16,7 +20,7 @@ type Routes = Arc<Mutex<HashMap<RouteKey, Channel<TransportEvent>>>>;
 struct TransportBridge {
     service: TransportService,
     routes: Routes,
-    events: mpsc::Sender<TransportEvent>,
+    events: EventSink,
 }
 fn route_key(operation: &OperationRef) -> RouteKey {
     (
@@ -41,24 +45,14 @@ impl TransportBridge {
         tauri::async_runtime::spawn(async move {
             while let Some(event) = receive.recv().await {
                 let operation = match &event {
-                    TransportEvent::Closed { connection, code } => {
-                        event_routes.lock().await.retain(|(id, generation, _), _| {
-                            id != &connection.connection_id || generation != &connection.generation
-                        });
-                        let _ = app.emit_to(
-                            "main",
-                            "mobile-transport-closed",
-                            serde_json::json!({"connection":connection,"code":code}),
-                        );
-                        continue;
-                    }
+                    TransportEvent::Closed { .. } => continue,
                     TransportEvent::PtyReady { operation, .. }
                     | TransportEvent::PtyData { operation, .. }
                     | TransportEvent::PtyClosed { operation, .. } => operation,
                 };
                 let key = route_key(operation);
                 let channel = {
-                    let mut routes = event_routes.lock().await;
+                    let mut routes = event_routes.lock().expect("PTY routes lock");
                     if matches!(event, TransportEvent::PtyClosed { .. }) {
                         routes.remove(&key)
                     } else {
@@ -67,10 +61,25 @@ impl TransportBridge {
                 };
                 // Dropped/failed consumer cannot leave a terminal producing unbounded data.
                 if channel.is_none_or(|channel| channel.send(event.clone()).is_err()) {
-                    event_routes.lock().await.remove(&key);
+                    event_routes.lock().expect("PTY routes lock").remove(&key);
                     event_service.close(operation.connection.clone()).await;
                 }
             }
+        });
+        let closed_routes = routes.clone();
+        let events = bridge_events::event_sink(events, move |connection, code| {
+            closed_routes
+                .lock()
+                .expect("PTY routes lock")
+                .retain(|(id, generation, _), _| {
+                    id != &connection.connection_id || generation != &connection.generation
+                });
+            app.emit_to(
+                "main",
+                "mobile-transport-closed",
+                serde_json::json!({"connection":connection,"code":code}),
+            )
+            .is_ok()
         });
         Self {
             service,
@@ -79,8 +88,7 @@ impl TransportBridge {
         }
     }
     fn sink(&self) -> EventSink {
-        let events = self.events.clone();
-        Arc::new(move |event| events.try_send(event).is_ok())
+        self.events.clone()
     }
 }
 macro_rules! transport_command {
@@ -114,7 +122,11 @@ async fn mobile_transport_cancel(
     request: OperationRef,
 ) -> transport::Result<()> {
     let result = state.service.cancel(request.clone()).await;
-    state.routes.lock().await.remove(&route_key(&request));
+    state
+        .routes
+        .lock()
+        .expect("PTY routes lock")
+        .remove(&route_key(&request));
     result
 }
 #[tauri::command]
@@ -123,9 +135,13 @@ async fn mobile_transport_close(
     request: ConnectionRef,
 ) -> transport::Result<CleanupState> {
     let result = state.service.close(request.clone()).await;
-    state.routes.lock().await.retain(|(id, generation, _), _| {
-        id != &request.connection_id || generation != &request.generation
-    });
+    state
+        .routes
+        .lock()
+        .expect("PTY routes lock")
+        .retain(|(id, generation, _), _| {
+            id != &request.connection_id || generation != &request.generation
+        });
     Ok(result)
 }
 #[derive(Deserialize)]
@@ -148,7 +164,7 @@ async fn mobile_transport_pty(
             .on_event
             .ok_or_else(|| bridge_error("INVALID_REQUEST"))?
             .channel_on(webview);
-        let mut routes = state.routes.lock().await;
+        let mut routes = state.routes.lock().expect("PTY routes lock");
         if routes.contains_key(&key) {
             return Err(bridge_error("INVALID_REQUEST"));
         }
@@ -161,7 +177,7 @@ async fn mobile_transport_pty(
     }
     let result = state.service.pty(request.command).await;
     if opening && result.is_err() {
-        state.routes.lock().await.remove(&key);
+        state.routes.lock().expect("PTY routes lock").remove(&key);
     }
     result
 }
@@ -257,7 +273,7 @@ pub fn run() {
                 let service = cleanup_service.clone();
                 let routes = cleanup_routes.clone();
                 tauri::async_runtime::spawn(async move {
-                    routes.lock().await.clear();
+                    routes.lock().expect("PTY routes lock").clear();
                     let _ = tokio::join!(
                         service.close_all(),
                         tauri_plugin_mobile_system::abort_all(&app)
