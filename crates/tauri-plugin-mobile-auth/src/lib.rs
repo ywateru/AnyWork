@@ -188,7 +188,15 @@ mod boundary_tests {
                         invoke_key: tauri::test::INVOKE_KEY.into(),
                     },
                 );
-                assert!(response.is_err(), "guest auth method unexpectedly exposed");
+                let denied = response
+                    .err()
+                    .expect("guest auth method unexpectedly exposed");
+                assert!(
+                    denied
+                        .as_str()
+                        .is_some_and(|message| message.contains("not allowed")),
+                    "auth method must be denied by ACL before native dispatch"
+                );
             }
         }
     }
