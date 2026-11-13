@@ -169,9 +169,11 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                     }
                 }
                 check(generation.get() == owner)
-                status = "signedIn"
-                profileValue = readProfile(sdk)
+                val profile = readProfile(sdk)
                 check(generation.get() == owner)
+                status = "signedIn"
+                profileValue = profile.value
+                errorCode = if (profile.unavailable) "MOBILE_PROFILE_UNAVAILABLE" else null
             } catch (_: LoginCancelled) {
                 if (attempt?.generation == generation.get()) {
                     generation.incrementAndGet()
@@ -195,7 +197,7 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
         }
     }
 
-    private suspend fun readProfile(sdk: RamClient): JSONObject {
+    private suspend fun readProfile(sdk: RamClient): ProfileResult {
         val claims = suspendCancellableCoroutine<JSONObject> { continuation ->
             sdk.getIdTokenClaims { exception, value ->
                 if (continuation.isActive) {
@@ -204,32 +206,16 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                 }
             }
         }
-        val subject = claims.optString("sub")
-        check(subject.isNotBlank() && subject.length <= 128)
-        val info = suspendCancellableCoroutine<JSONObject> { continuation ->
+        val info = suspendCancellableCoroutine<JSONObject?> { continuation ->
             sdk.fetchUserInfo { exception, value ->
                 if (continuation.isActive) {
                     if (exception == null && value != null) continuation.resume(JSONObject(gson.toJson(value)))
-                    else continuation.resumeWithException(IllegalStateException("MOBILE_PROFILE_UNAVAILABLE"))
+                    else if (exception != null && userInfoGetFailed(exception)) continuation.resume(null)
+                    else continuation.resumeWithException(IllegalStateException("MOBILE_AUTH_REAUTH_REQUIRED"))
                 }
             }
         }
-        check(info.optString("sub") == subject)
-        fun text(key: String): String? = listOf(info, claims).firstNotNullOfOrNull { data ->
-            (data.opt(key) as? String)?.trim()?.takeIf { value ->
-                value.isNotEmpty() && value.length <= 160 && value.none { it.isISOControl() }
-            }
-        }
-        val username = text("username") ?: text("preferred_username")
-        val email = text("email")
-        return JSONObject().apply {
-            put("subject", subject)
-            put("displayName", text("name") ?: username ?: email ?: "已登录账号")
-            put("username", username ?: JSONObject.NULL)
-            put("email", email ?: JSONObject.NULL)
-            val picture = text("picture")?.takeIf { Uri.parse(it).scheme == "https" }
-            put("picture", picture ?: JSONObject.NULL)
-        }
+        return verifiedProfile(claims, info, profileValue)
     }
 
     @Command
@@ -242,9 +228,9 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                     val sdk = requireOwner(args.generation)
                     val value = readProfile(sdk)
                     requireOwner(args.generation)
-                    check(profileValue?.optString("subject") == value.optString("subject"))
-                    profileValue = value
-                    errorCode = null
+                    check(profileValue?.optString("subject") == value.value.optString("subject"))
+                    profileValue = value.value
+                    errorCode = if (value.unavailable) "MOBILE_PROFILE_UNAVAILABLE" else null
                     invoke.resolve(jsonSnapshot())
                 } catch (_: Exception) {
                     if (generation.get() == args.generation) invalidate("MOBILE_AUTH_REAUTH_REQUIRED")

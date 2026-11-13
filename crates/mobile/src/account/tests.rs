@@ -22,6 +22,7 @@ fn native(generation: u64, status: &str) -> NativeSnapshot {
 #[derive(Default)]
 struct Backend {
     fail_token: AtomicBool,
+    profile_warning: AtomicBool,
     started: tokio::sync::Notify,
     release: tokio::sync::Notify,
 }
@@ -46,7 +47,13 @@ impl AuthBackend for Backend {
         Box::pin(async { Ok(native(8, "signedOut")) })
     }
     fn profile(&self, _: u64) -> AuthFuture<'_, NativeSnapshot> {
-        self.snapshot()
+        Box::pin(async {
+            let mut value = native(7, "signedIn");
+            if self.profile_warning.load(Ordering::SeqCst) {
+                value.error_code = Some("MOBILE_PROFILE_UNAVAILABLE".into());
+            }
+            Ok(value)
+        })
     }
     fn token(
         &self,
@@ -518,5 +525,28 @@ async fn account_write_readback_conflict_is_not_reported_as_success() {
         .err()
         .unwrap();
     assert_eq!(error.to_string(), "DIRECTORY_CONFLICT");
+    task.abort();
+}
+
+#[tokio::test]
+async fn userinfo_warning_preserves_owner_and_retries_on_refresh() {
+    let (url, _, task) = server(json!({"id":"fixture-subject","customData":{}}), false).await;
+    let (handle, backend) = handle(Config {
+        endpoint: url,
+        ..Config::default()
+    });
+    signed_in(&handle).await;
+    backend.profile_warning.store(true, Ordering::SeqCst);
+    let snapshot = handle.refresh().await.unwrap();
+    assert!(snapshot.phase == Phase::SignedIn);
+    assert_eq!(
+        snapshot.error_code.as_deref(),
+        Some("MOBILE_PROFILE_UNAVAILABLE")
+    );
+    assert_eq!(snapshot.account.unwrap().label, "Fixture User");
+    backend.profile_warning.store(false, Ordering::SeqCst);
+    let snapshot = handle.refresh().await.unwrap();
+    assert!(snapshot.phase == Phase::SignedIn);
+    assert!(snapshot.error_code.is_none());
     task.abort();
 }

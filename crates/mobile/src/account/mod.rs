@@ -123,6 +123,7 @@ struct State {
     snapshot: AccountSnapshot,
     native_generation: u64,
     subject: Option<String>,
+    profile_warning: Option<String>,
     records: Vec<DeviceRecord>,
     directory_hash: String,
     sampled_at: u64,
@@ -260,6 +261,7 @@ impl Handle {
             state: Mutex::new(State {
                 native_generation: 0,
                 subject: None,
+                profile_warning: None,
                 records: vec![],
                 directory_hash: String::new(),
                 sampled_at: 0,
@@ -361,6 +363,11 @@ impl Handle {
                 label: p.display_name,
                 email: p.email.filter(|s| safe_text(s, 160)),
             });
+        state.profile_warning = native
+            .error_code
+            .as_ref()
+            .filter(|s| s.as_str() == "MOBILE_PROFILE_UNAVAILABLE" && phase == Phase::SignedIn)
+            .cloned();
         state.snapshot.error_code = native.error_code.filter(|s| {
             matches!(
                 s.as_str(),
@@ -408,7 +415,7 @@ impl Handle {
             Ok(native) => {
                 self.apply(epoch, native).await?;
                 if self.0.state.lock().await.snapshot.phase == Phase::SignedIn {
-                    self.refresh().await
+                    self.refresh_inner(false).await
                 } else {
                     bail!("CANCELLED")
                 }
@@ -430,6 +437,7 @@ impl Handle {
         state.snapshot.phase = Phase::SignedOut;
         state.snapshot.account = None;
         state.subject = None;
+        state.profile_warning = None;
         state.snapshot.error_code = None;
         Self::clear_directory(&mut state);
         let epoch = state.snapshot.epoch;
@@ -501,6 +509,7 @@ impl Handle {
         state.snapshot.phase = Phase::ReauthRequired;
         state.snapshot.account = None;
         state.subject = None;
+        state.profile_warning = None;
         Self::clear_directory(&mut state);
         state.snapshot.error_code = Some("MOBILE_AUTH_REAUTH_REQUIRED".into());
         let snapshot = state.snapshot.clone();
@@ -663,8 +672,25 @@ impl Handle {
             .collect()
     }
     pub async fn refresh(&self) -> Result<AccountSnapshot> {
+        self.refresh_inner(true).await
+    }
+    async fn refresh_inner(&self, read_profile: bool) -> Result<AccountSnapshot> {
         let _refresh = self.0.refreshes.lock().await;
-        let (epoch, _, subject) = self.owner().await?;
+        let (epoch, generation, subject) = self.owner().await?;
+        if read_profile {
+            let native = match self.0.backend.profile(generation).await {
+                Ok(snapshot) => Ok(snapshot),
+                Err(_) => self.0.backend.snapshot().await,
+            };
+            if let Ok(native) = native {
+                self.apply(epoch, native).await?;
+            } else {
+                let mut state = self.0.state.lock().await;
+                ensure!(state.snapshot.epoch == epoch, "CANCELLED");
+                state.profile_warning = Some("MOBILE_PROFILE_UNAVAILABLE".into());
+            }
+            self.ensure_epoch(epoch).await?;
+        }
         {
             let mut state = self.0.state.lock().await;
             state.snapshot.directory_state = DirectoryState::Loading;
@@ -754,7 +780,11 @@ impl Handle {
         } else {
             DirectoryState::Ready
         };
-        state.snapshot.error_code = unknown.then(|| "COORDINATION_UNAVAILABLE".into());
+        state.snapshot.error_code = if unknown {
+            Some("COORDINATION_UNAVAILABLE".into())
+        } else {
+            state.profile_warning.clone()
+        };
         if unknown {
             state.lifetime.cancel();
         }
