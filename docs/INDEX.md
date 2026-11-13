@@ -1,5 +1,7 @@
 # Documentation index
 
+- [Android 原生 Rust/Tauri 2 客户端重构](android-account-entry.md)：[手机布局](mobile-client-layout.md)、[原生接口](mobile-native-contract.md)、[并行实施与验收](plan/tasks/android-native-client.md)；替代旧浏览器入口，完整界面随包、应用内登录与原生远程连接。
+
 - [网页当前用户名修复](plan/tasks/account-identity-visible.md)：2026-11-13 用户截图反馈；当前账号名称按已验证 profile/username/email 显示，保持 subject 隔离。
 
 - [Claude Code / Claude Desktop Code 接入](claude-integration.md)：[Desktop 连接与后续手测](claude-desktop-setup.md)、[第三方会话读取与接管研究](plan/analysis/claude-third-party.md)、[CLI 独立审查](plan/reviews/claude-backend-independent.md)、[网页独立审查](plan/reviews/claude-web-independent.md)；[CLI/服务接线](plan/tasks/claude-backend.md)、[桌面载体](plan/tasks/claude-desktop.md)、[网页任务](plan/tasks/claude-web.md)与[独立验收](plan/tasks/claude-verification.md)。

@@ -1,5 +1,9 @@
 # DeepSeek Harness delivery
 
+## Current Android client reconstruction
+
+用户要求完整 Rust/Tauri 2 Android 客户端、手机 UI/引导、修复网页用户名并在完成后更新 GitHub。[Android 任务](tasks/android-native-client.md)划分账号、transport、壳/系统/构建、手机界面和独立验收；[产品契约](../android-account-entry.md)替代旧 Custom Tab 入口。凭据只在原生内存，业务界面随包，不以移动网页测试代替 APK 验收。此前 Claude Desktop 真机测试仍按用户安排后置。
+
 ## Claude Code / Desktop Code
 
 当前用户目标是完成两种 Claude 后端支持并更新网页介绍。[调研](analysis/claude.md)、[产品契约](../claude-integration.md)、[后端任务](tasks/claude-backend.md)与[网页任务](tasks/claude-web.md)记录实现和独立验收。保持原生会话身份，区分被动历史、独立恢复与原桌面共享执行；不修改既有原生会话进行测试。
