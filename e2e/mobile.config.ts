@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 export default defineConfig({
   testDir: ".",
-  testMatch: "mobile-native.spec.ts",
+  testMatch: ["mobile-native.spec.ts", "mobile-contrast.spec.ts"],
   workers: 1,
   timeout: 30000,
   outputDir:

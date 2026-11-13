@@ -24,12 +24,16 @@ import {
   type ApprovalAction,
 } from "../requests";
 import "./requests.css";
+import { isNativeClient } from "../platform";
+import { useUncertainSend, isDefinitelyNotSent } from "../mobile/uncertainSend";
+import ReceiptNotice from "../mobile/ReceiptNotice";
 
 interface RequestCardProps {
   event: AgentEvent;
   api: Api;
   onError: (e: unknown) => void;
   relatedEvents?: AgentEvent[];
+  onRefresh?: () => void;
 }
 
 // A reused numeric request ID in another session must start a fresh UI lifetime.
@@ -89,7 +93,20 @@ function RequestCardContent({
   api,
   onError,
   relatedEvents = [],
+  onRefresh,
 }: RequestCardProps) {
+  const native = isNativeClient();
+  const receipt = useUncertainSend(
+    native,
+    api.connection.scope ?? api.connection.url,
+    JSON.stringify([
+      event.session_id,
+      event.method,
+      event.request_id,
+      event.seq,
+    ]),
+    "response",
+  );
   const [answers, setAnswers] = useState<Record<string, string[]>>({}),
     [json, setJson] = useState("{}"),
     [busy, setBusy] = useState(false),
@@ -182,21 +199,25 @@ function RequestCardContent({
     }
   }
   async function reply(data: Record<string, unknown>) {
-    if (inFlight.current || submitted) return;
+    if (inFlight.current || submitted || receipt.blocked) return;
     inFlight.current = true;
     setBusy(true);
     setError("");
     const version = lifetime.current;
+    let ticket: string | undefined;
     try {
+      if (native) ticket = receipt.begin();
       await api.post(`/sessions/${event.session_id}/respond`, {
         request_id: event.request_id,
         ...data,
       });
+      receipt.settle(ticket);
       if (version === lifetime.current) setSubmitted(true);
     } catch (e) {
+      if (isDefinitelyNotSent(e)) receipt.settle(ticket);
       if (version === lifetime.current) {
         setError(e instanceof Error ? e.message : String(e));
-        onError(e);
+        if (!native || !ticket || isDefinitelyNotSent(e)) onError(e);
       }
     } finally {
       if (version === lifetime.current) {
@@ -205,7 +226,7 @@ function RequestCardContent({
       }
     }
   }
-  const disabled = busy || submitted;
+  const disabled = busy || submitted || receipt.blocked;
   const closeOptions = (restoreFocus = false) => {
     setOptionsOpen(false);
     if (restoreFocus) optionsButton.current?.focus({ preventScroll: true });
@@ -756,7 +777,13 @@ function RequestCardContent({
           </div>,
           document.body,
         )}
-      {error && (
+      <ReceiptNotice
+        receipt={receipt}
+        busy={busy}
+        responding
+        onRefresh={onRefresh ?? (() => location.reload())}
+      />
+      {error && !receipt.blocked && (
         <p className="request-error" role="alert">
           {error}。请重试。
         </p>

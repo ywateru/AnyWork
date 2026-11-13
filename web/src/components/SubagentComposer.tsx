@@ -8,6 +8,9 @@ import MessageQueue, { type QueuedMessage } from "./conversation/MessageQueue";
 import type { PromptEditorHandle } from "./conversation/PromptEditor";
 
 import type { ComposerAttachment as Attachment } from "../imageAnnotations";
+import { isNativeClient } from "../platform";
+import { useUncertainSend, isDefinitelyNotSent } from "../mobile/uncertainSend";
+import ReceiptNotice from "../mobile/ReceiptNotice";
 type Queue = {
   items: QueuedMessage[];
   paused: boolean;
@@ -29,6 +32,12 @@ export default function SubagentComposer({
   name: string;
   onChanged: () => void;
 }) {
+  const native = isNativeClient();
+  const receipt = useUncertainSend(
+    native,
+    api.connection.scope ?? api.connection.url,
+    session.id,
+  );
   const [draft, setDraft] = useSessionDraft(
     api.connection.scope ?? api.connection.url,
     session.id,
@@ -173,7 +182,12 @@ export default function SubagentComposer({
     mode?: "steer" | "queue",
     submission?: ComposerSubmission,
   ) {
-    if (working.current || uploading || attachments.some((a) => a.pending))
+    if (
+      working.current ||
+      receipt.blocked ||
+      uploading ||
+      attachments.some((a) => a.pending)
+    )
       return;
     const text = submission?.text ?? draft;
     if (!text.trim() && !attachments.length) {
@@ -185,6 +199,7 @@ export default function SubagentComposer({
     revision.current++;
     setSending(true);
     setError("");
+    let ticket: string | undefined;
     try {
       const body = {
         text,
@@ -192,6 +207,7 @@ export default function SubagentComposer({
         attachments: attachments.map((a) => a.path),
         goal: (submission?.goal ?? goalMode) || undefined,
       };
+      if (native) ticket = receipt.begin();
       const next = editing
         ? await api.post<Queue>(`/sessions/${session.id}/queue`, {
             action: "replace",
@@ -203,6 +219,7 @@ export default function SubagentComposer({
             mode: mode ?? (busy && queueing ? "queue" : "steer"),
             queue_if_busy: mode == null && queueing,
           });
+      receipt.settle(ticket);
       if (!alive.current) return;
       if (Array.isArray(next.items)) setQueue(next);
       setDraft("");
@@ -212,6 +229,7 @@ export default function SubagentComposer({
       setControlsRevision((v) => v + 1);
       onChanged();
     } catch (e) {
+      if (isDefinitelyNotSent(e)) receipt.settle(ticket);
       fail(e);
     } finally {
       working.current = false;
@@ -269,11 +287,12 @@ export default function SubagentComposer({
       className="subagent-composer-area composer-area"
       aria-label={`子 Agent 输入：${name}`}
     >
-      {error && (
+      {error && !receipt.blocked && (
         <div className="history-error" role="alert">
           {error}
         </div>
       )}
+      <ReceiptNotice receipt={receipt} busy={sending} onRefresh={onChanged} />
       <Composer
         api={api}
         session={session}
@@ -282,6 +301,7 @@ export default function SubagentComposer({
         models={[]}
         busy={busy}
         sending={sending}
+        sendBlocked={receipt.blocked}
         uploading={uploading}
         draft={draft}
         setDraft={setDraft}

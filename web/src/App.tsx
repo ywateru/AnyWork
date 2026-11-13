@@ -1,5 +1,6 @@
 import MobileWorkspaceHeader from "./mobile/WorkspaceHeader";
 import { useUncertainSend } from "./mobile/uncertainSend";
+import ReceiptNotice from "./mobile/ReceiptNotice";
 import { saveBlob, confirmPlatform, promptPlatform } from "./platform";
 import AccountEntry from "./components/AccountEntry";
 import {
@@ -1986,32 +1987,14 @@ export default function App({
                       </div>
                     </div>
                     <ComposerAccess session={session}>
-                      {uncertainSend.blocked && !sending && (
-                        <div className="mobile-send-uncertain" role="alert">
-                          <p>
-                            上次发送结果未知，电脑可能已经收到。请核对会话记录，避免重复发送。
-                          </p>
-                          <button
-                            onClick={() => {
-                              historyCache?.refresh(session.id);
-                              void reload().catch(fail);
-                            }}
-                          >
-                            刷新会话记录
-                          </button>
-                          <button
-                            onClick={() => {
-                              void confirmPlatform(
-                                "已核对电脑上的会话记录，允许再次手动发送？这可能产生重复消息。",
-                              ).then((ok) => {
-                                if (ok) uncertainSend.clear();
-                              });
-                            }}
-                          >
-                            已核对，解除发送保护
-                          </button>
-                        </div>
-                      )}
+                      <ReceiptNotice
+                        receipt={uncertainSend}
+                        busy={sending}
+                        onRefresh={() => {
+                          historyCache?.refresh(session.id);
+                          void reload().catch(fail);
+                        }}
+                      />
                       <div
                         className="composer-requests"
                         aria-label="待处理请求"
@@ -2023,6 +2006,10 @@ export default function App({
                             relatedEvents={events}
                             api={api}
                             onError={fail}
+                            onRefresh={() => {
+                              historyCache?.refresh(session.id, true);
+                              void reload().catch(fail);
+                            }}
                           />
                         ))}
                       </div>

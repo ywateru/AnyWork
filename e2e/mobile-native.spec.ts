@@ -12,6 +12,8 @@ async function fixture(
     holdSave?: boolean;
     unknownSend?: boolean;
     approval?: boolean;
+    question?: boolean;
+    subagent?: boolean;
   } = {},
 ) {
   await page.addInitScript((options) => {
@@ -73,12 +75,19 @@ async function fixture(
       agent: "fixture",
       model: "fixture-model",
       policy: "manual",
-      status: options.approval ? "waiting" : "idle",
+      status: options.approval || options.question ? "waiting" : "idle",
       archived: false,
       created_at: Date.now(),
       updated_at: Date.now(),
     };
     let file = "# 合成文档\n\n只用于移动端验收。";
+    const child = {
+      ...session,
+      id: "child-session",
+      thread_id: "child-thread",
+      title: "Child worker",
+      status: "idle",
+    };
     let fileRevision = "sha256:" + "a".repeat(64);
     const history = [
       {
@@ -115,6 +124,46 @@ async function fixture(
           reason: "运行合成测试",
         },
       } as any);
+    if (options.question)
+      history.push({
+        seq: 3,
+        session_id: session.id,
+        request_id: 18,
+        method: "item/tool/requestUserInput",
+        created_at: Date.now(),
+        params: {
+          questions: [
+            {
+              id: "scope",
+              header: "实施范围",
+              question: "本次选择哪个范围？",
+              options: [{ label: "移动端", description: "只实施手机界面" }],
+              isOther: true,
+              isSecret: false,
+            },
+          ],
+        },
+      } as any);
+    if (options.subagent)
+      history.push({
+        seq: 3,
+        session_id: session.id,
+        method: "item/completed",
+        created_at: Date.now(),
+        params: {
+          item: {
+            id: "child-activity",
+            type: "collabAgentToolCall",
+            tool: "spawnAgent",
+            status: "completed",
+            receiverThreadIds: [child.thread_id],
+            receiverThreads: [
+              { threadId: child.thread_id, thread: { title: "Child worker" } },
+            ],
+            agentsStates: { [child.thread_id]: { status: "running" } },
+          },
+        },
+      } as any);
     function response(path: string, method: string, body: Uint8Array) {
       const url = new URL(path, "https://tauri.localhost");
       if (url.pathname === "/api/info")
@@ -148,7 +197,10 @@ async function fixture(
             { path: session.cwd, name: "any-work", root: true, sessions: 1 },
           ],
         };
-      if (url.pathname === "/api/sessions") return { sessions: [session] };
+      if (url.pathname === "/api/sessions")
+        return { sessions: options.subagent ? [session, child] : [session] };
+      if (url.pathname === `/api/sessions/${child.id}`)
+        return { session: child };
       if (url.pathname === `/api/sessions/${session.id}`) return { session };
       if (url.pathname.endsWith("/files")) {
         if (method === "PUT") {
@@ -179,7 +231,13 @@ async function fixture(
       if (url.pathname.endsWith("/document"))
         return new Blob(["%PDF-1.4"], { type: "application/pdf" });
       if (url.pathname.endsWith("/history"))
-        return { events: history, cursor: null, has_more: false };
+        return {
+          events: url.pathname.includes(`/sessions/${child.id}/`)
+            ? []
+            : history,
+          cursor: null,
+          has_more: false,
+        };
       if (url.pathname.endsWith("/export")) return { session, events: history };
       if (url.pathname.endsWith("/poll"))
         return { events: [], cursor: 2, has_more: false };
@@ -1160,4 +1218,162 @@ test("system bar appearance follows resolved app theme instead of OS theme", asy
           ?.request,
     )
     .toEqual({ dark: false });
+});
+
+for (const exit of ["typed-unknown", "native-close", "reload"] as const)
+  test(`approval ${exit} preserves exact request receipt and does not replay`, async ({
+    page,
+  }) => {
+    await fixture(page, { signedIn: true, approval: true });
+    await connect(page);
+    await page.evaluate((exit) => {
+      const api = (window as any).__TAURI__.core,
+        f = (window as any).mobileFixture;
+      const original = api.invoke.bind(api);
+      api.invoke = async (command: string, args: any) => {
+        if (
+          command === "mobile_transport_http_finish" &&
+          f.operations.get(args.request.operationId)?.path.endsWith("/respond")
+        ) {
+          f.heldResponse = true;
+          if (exit === "typed-unknown")
+            throw { code: "CONNECTION_LOST", delivery: "outcome_unknown" };
+          return new Promise(() => {});
+        }
+        return original(command, args);
+      };
+    }, exit);
+    await page.getByRole("button", { name: "允许一次", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as any).mobileFixture.heldResponse),
+      )
+      .toBe(true);
+    if (exit === "reload") {
+      await page.reload();
+      await connect(page);
+    } else if (exit === "native-close") {
+      await page.evaluate(() =>
+        (window as any).mobileFixture.emit("mobile-transport-closed", {
+          connection: { connectionId: "fixture-connection", generation: 1 },
+          code: "CONNECTION_CLOSED",
+        }),
+      );
+      await expect(
+        page.getByRole("heading", { name: "我的设备", exact: true }),
+      ).toBeVisible();
+      await connect(page);
+    }
+    await expect(
+      page.getByText(
+        "上次回应结果未知，电脑可能已经收到。请先核对审批或问题状态，避免重复回应。",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "允许一次", exact: true }),
+    ).toBeDisabled();
+    const writes = async () =>
+      (await calls(page, "mobile_transport_http_begin")).filter((c: any) =>
+        c.request.path.endsWith("/respond"),
+      ).length;
+    const before = await writes();
+    await page
+      .getByRole("button", { name: "刷新会话记录", exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        "上次回应结果未知，电脑可能已经收到。请先核对审批或问题状态，避免重复回应。",
+      ),
+    ).toBeVisible();
+    expect(await writes()).toBe(before);
+    await page
+      .getByRole("button", { name: "已核对，解除回应保护", exact: true })
+      .click();
+    await page.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "允许一次", exact: true }),
+    ).toBeDisabled();
+  });
+
+test("native question response returns exact answers to its original tool request", async ({
+  page,
+}) => {
+  await fixture(page, { signedIn: true, question: true });
+  await connect(page);
+  await page
+    .getByRole("button", { name: "移动端 只实施手机界面", exact: true })
+    .click();
+  await page.getByRole("button", { name: "提交回答", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        [...(window as any).mobileFixture.operations.values()]
+          .filter((op: any) => op.path.endsWith("/respond"))
+          .map((op: any) => JSON.parse(new TextDecoder().decode(op.body))),
+      ),
+    )
+    .toEqual([
+      {
+        request_id: 18,
+        result: { answers: { scope: { answers: ["移动端"] } } },
+      },
+    ]);
+  await expect(
+    page.getByRole("button", { name: "已提交", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      Object.keys(sessionStorage).filter((k) =>
+        k.includes("mobile-uncertain-response"),
+      ),
+    ),
+  ).toHaveLength(0);
+});
+
+test("native child composer shares the session receipt guard", async ({
+  page,
+}) => {
+  await fixture(page, { signedIn: true, subagent: true });
+  await connect(page);
+  await page.locator('summary[aria-label="更多会话工具"]').click();
+  await page.getByRole("button", { name: "子 Agent", exact: true }).click();
+  await page
+    .getByRole("button", { name: "查看子 Agent：Child worker", exact: true })
+    .click();
+  const region = page.getByRole("region", {
+    name: "子 Agent 会话：Child worker",
+    exact: true,
+  });
+  await page.evaluate(() => {
+    const api = (window as any).__TAURI__.core,
+      f = (window as any).mobileFixture;
+    const original = api.invoke.bind(api);
+    api.invoke = async (command: string, args: any) => {
+      if (
+        command === "mobile_transport_http_finish" &&
+        f.operations.get(args.request.operationId)?.path ===
+          "/api/sessions/child-session/messages"
+      )
+        throw { code: "CONNECTION_LOST", delivery: "outcome_unknown" };
+      return original(command, args);
+    };
+  });
+  await region
+    .getByRole("textbox", { name: "给 Child worker 发送消息", exact: true })
+    .fill("only child draft");
+  await region.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(
+    region.getByText(
+      "上次发送结果未知，电脑可能已经收到。请核对会话记录，避免重复发送。",
+    ),
+  ).toBeVisible();
+  await expect(
+    region.getByRole("button", { name: "发送", exact: true }),
+  ).toBeDisabled();
+  const writes = await page.evaluate(() =>
+    [...(window as any).mobileFixture.operations.values()]
+      .filter((op: any) => op.path.endsWith("/messages"))
+      .map((op: any) => op.path),
+  );
+  expect(writes).toEqual(["/api/sessions/child-session/messages"]);
 });

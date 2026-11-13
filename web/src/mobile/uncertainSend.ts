@@ -9,8 +9,21 @@ function stored(key: string) {
     return pending.get(key);
   }
 }
-export function useUncertainSend(enabled: boolean, scope: string, id: string) {
-  const key = JSON.stringify(["mobile-uncertain-send", scope, id]);
+export function isDefinitelyNotSent(error: unknown) {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    "delivery" in error &&
+    error.delivery === "not_sent"
+  );
+}
+export function useUncertainSend(
+  enabled: boolean,
+  scope: string,
+  id: string,
+  kind = "send",
+) {
+  const key = JSON.stringify([`mobile-uncertain-${kind}`, scope, id]);
   const [, render] = useState(0);
   const receipt = stored(key);
   const settle = (ticket: string | undefined) => {

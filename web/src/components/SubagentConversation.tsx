@@ -173,6 +173,7 @@ export default function SubagentConversation({
                   relatedEvents={[...events, ...controls]}
                   api={api}
                   onError={(e) => setError(String(e))}
+                  onRefresh={() => cache.refresh(child.id, true)}
                 />
               ))}
             </div>

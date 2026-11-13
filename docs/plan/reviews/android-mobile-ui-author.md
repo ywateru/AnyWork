@@ -64,3 +64,25 @@ Verification on final source: TypeScript and mobile build pass; shared 7 files /
 ## System bar appearance handshake
 
 UI now invokes `plugin:mobile-system|appearance_set` with `{request:{dark:boolean}}` on initialization and resolved `data-theme` changes. Responses must confirm `{dark:boolean}`. Calls are serialized so theme toggles cannot reorder native icon state. Native owner Boole implements both status/navigation icon contrast and reapplies it on resume; the app's resolved theme, rather than OS-only night mode, is authoritative. The final full mobile browser suite passes **19/19**, including OS-light/app-dark and return to system appearance; TypeScript and the transport adapter harness (7 checks) pass. This is bridge evidence only: actual system-bar pixels and SDK/IME overlays remain an Android runtime gate.
+
+## Approval/child receipt and destructive contrast closure
+
+This followup is limited to the known native approval/child-composer unknown-result P2 and account-screen contrast. The separately reported image-viewer/editor portal inset P2 remains open and is excluded from this commit by the coordinator's narrowed scope.
+
+`RequestCard` now persists a receipt before POST, scoped to the native connection identity and exact session/method/request_id/sequence. Native unknown delivery, close, abort and reload leave actions protected and show that the computer may have received the response. Refresh reads history/catalog only; it never replies. Explicitly unlocking requires confirmation and never sends by itself. A trusted completed call or definite `not_sent` settles only its ticket. Ordinary Web retry semantics remain enabled. `SubagentComposer` reuses the same session receipt protection as the main composer. The shared notice does not fork the App/controller.
+
+The two failing author fixtures were corrected without removing assertions: question success now waits for the actual submitted state before asserting receipt removal; the child fixture now represents a real spawned, interactive child instead of a read-only activity. Successful question bytes are asserted as the original request_id plus exact answers result.
+
+Dangerous account actions/errors use `--mobile-destructive`, with light `#b42318` and dark `#ff8a80`, rather than one color for both backgrounds. On the actual account screen, WCAG text contrast is 6.57:1 on the light page / 6.03:1 on its surface, and 7.85:1 on the dark page / 6.71:1 on its surface. Opposite custom content backgrounds do not override the account screen's theme background; all four combinations exceed 4.5:1. The synthetic dark/custom screenshot was visually inspected at `/tmp/anywork-mobile-ui-e2e/mobile-contrast-mobile-des-66abb-contrast-dark-custom-ffffff/dark-destructive-custom-background.png`.
+
+Final-source checks:
+
+- `PLAYWRIGHT_CHANNEL=chrome npx playwright test --config e2e/mobile.config.ts`: **24 Mobile cases + 4 contrast cases = 28/28 pass**, including all prior P1 trigger regressions and typed-unknown/close/reload approval receipts, query without replay, original-tool question response, and child-only message dispatch protection.
+- TypeScript, mobile assets and existing Web production build: pass. Targeted requests/sessionHistory/subagents unit tests: **3 files / 51 pass**.
+- Existing Web PDF fixture: **desktop + android-web 2/2 pass**. Its test covers draft restore, authenticated PDF, download-link semantics and keyboard split persistence. Additional affected shared-component Web cases cover approval error retry and child lifecycle/send isolation: **desktop + android-web 4/4 pass**.
+
+For the Web checks only, the existing service executable was copied to the private path `/tmp/anywork-mobile-ui-web-receipt/anywork` before use; SHA256 `8a861fdcc8f0ed59598c6ee85cc0687ed8c41a7a6282380256c8f7fc4a418cbe`. It was not rebuilt or represented as a Rust candidate from this UI lane. Tests use the script's isolated fake-agent workspace and private port 3268; no existing real sessions or accounts are used.
+
+Exact Web PDF command: `PLAYWRIGHT_CHANNEL=chrome ANYWORK_E2E_BINARY=/tmp/anywork-mobile-ui-web-receipt/anywork ANYWORK_E2E_PORT=3268 ANYWORK_E2E_OUTPUT_DIR=/tmp/anywork-mobile-ui-web-receipt/results npx playwright test e2e/conversation.spec.ts --grep 'previews authenticated PDF'`.
+
+Dependencies remain those above, plus native `appearance_set` registration/ACL/Kotlin/resume candidate `260c14a` for UI `74698d2`. No package/lock/Cargo/username files are changed. This is source/browser evidence, not APK login, chooser, IME, system-bar pixel or lifecycle acceptance. Mendel receives the stable followup directly for independent re-review; the open portal P2 and native runtime gates must remain explicit in the final independent report.

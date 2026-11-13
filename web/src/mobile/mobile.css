@@ -15,6 +15,7 @@
   --mobile-secondary: #737373;
   --mobile-line: #e5e5e5;
   --mobile-surface: #f5f5f5;
+  --mobile-destructive: #b42318;
 }
 :root[data-theme="dark"] {
   --mobile-bg: #171717;
@@ -22,6 +23,7 @@
   --mobile-secondary: #b5b5b5;
   --mobile-line: #424242;
   --mobile-surface: #252525;
+  --mobile-destructive: #ff8a80;
 }
 html,
 body,
@@ -392,14 +394,14 @@ body {
   border-top: 1px solid var(--mobile-line);
 }
 .mobile-client .mobile-danger-button {
-  color: #b42318;
+  color: var(--mobile-destructive);
   display: flex;
   width: 100%;
   margin-top: 28px;
   border: 1px solid var(--mobile-line);
 }
 .mobile-danger {
-  color: #b42318;
+  color: var(--mobile-destructive);
 }
 .mobile-alert,
 .mobile-status {
@@ -415,7 +417,7 @@ body {
   overflow-wrap: anywhere;
 }
 .mobile-alert {
-  color: #b42318;
+  color: var(--mobile-destructive);
 }
 .mobile-alert button,
 .mobile-status button {
