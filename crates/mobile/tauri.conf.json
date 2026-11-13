@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AnyWork",
+  "version": "0.1.30",
+  "identifier": "dev.remoteagent.app",
+  "build": {
+    "frontendDist": "../../web/dist-mobile",
+    "beforeBuildCommand": "npm run build:mobile-ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "AnyWork",
+        "url": "mobile.html",
+        "useHttpsScheme": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost https://ipc.localhost; object-src blob:; frame-src blob:; base-uri 'self'; form-action 'none'",
+      "capabilities": [
+        "mobile-main"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "android": {
+      "minSdkVersion": 26,
+      "versionCode": 32,
+      "autoIncrementVersionCode": false
+    },
+    "icon": [
+      "../../desktop/icon.png"
+    ]
+  }
+}

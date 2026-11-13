@@ -100,3 +100,12 @@ Thumbs.db
 # Verified product identification marks (exact public assets).
 !/web/public/agents/codex-light.png
 !/web/public/agents/codex-dark.png
+
+# Tauri mobile local assets and generated build outputs
+/web/dist-mobile/
+/crates/mobile/gen/schemas/
+/crates/mobile/gen/android/.gradle/
+/crates/mobile/gen/android/.kotlin/
+/crates/mobile/gen/android/local.properties
+/crates/mobile/gen/android/**/build/
+/crates/tauri-plugin-mobile-*/android/build/

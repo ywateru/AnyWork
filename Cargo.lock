@@ -202,6 +202,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "anywork-mobile"
+version = "0.1.30"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "futures-util",
+ "percent-encoding",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "snow",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-mobile-system",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "anywork-remote"
 version = "0.1.30"
 dependencies = [
@@ -6597,6 +6624,18 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-mobile-system"
+version = "0.1.30"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "url",
 ]
 
 [[package]]

@@ -1,0 +1,16 @@
+[package]
+name = "tauri-plugin-mobile-system"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+links = "tauri-plugin-mobile-system"
+
+[dependencies]
+tauri = { version = "=2.12.5", default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+url = "2"
+base64 = "0.22"
+
+[build-dependencies]
+tauri-plugin = { version = "=2.7.2", features = ["build"] }

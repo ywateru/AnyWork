@@ -1,0 +1,12 @@
+{
+  "identifier": "mobile-main",
+  "description": "Only the bundled business window; no remote URL grants.",
+  "local": true,
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}
