@@ -28,4 +28,12 @@ system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_p
 
 首个完整 patched 候选 `cb20de40` 包含 core、receipt、portal 与系统取消/关闭修复，但与主线后续用户名代码存在差异，因此仅作为构建证据；交付 APK 另从主线完整产品源码增量重建。编译、lint、单测和包内容验证与实际运行验收分别记录，不把旧基包或浏览器手机仿真视为最终 APK 验收。
 
+主线产品候选由 `1ebe60ae63bd7be8c88e250f53a771332cf134bf` 构建，主线 `5487218` 与其产品代码零差异（文档可不同）；包含 `ea7b3c1` 的用户名与 WorkspaceContext 更新，以及移除不支持 TV 声明的 lint 修复。canonical Android Rust 编译与 assemble/lint/unit/checker 均通过。候选为 arm64 debug、117054564 bytes，保留在 ignored `artifacts/anywork-android-native-candidate.apk`，SHA-256：
+
+```text
+0c24ca3d01738e85ab3397555fc65fbd401b577f0f5891612948b34f77b75f51
+```
+
+该候选用于隔离 APK 运行检查；正式四 ABI、发行签名与版本递增由精确源码 GitHub Checks 和 Release 工作流完成，不将 debug 候选当正式下载包。
+
 transport 的显式 ring Connector 在双 provider、未初始化 global provider 的独立进程中通过6项真实 loopback WSS测试，包括可信CA exchange、生产WebPKI拒绝未知CA、可信CA但主机名错误拒绝。shell 在原生入口安装 ring 默认 provider 保护其它SDK调用；transport 不依赖该全局初始化。没有禁用证书或主机名验证。
