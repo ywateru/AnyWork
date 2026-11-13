@@ -1093,7 +1093,7 @@ fn fatal(e: &TransportError) -> bool {
         "CONNECTION_CLOSED"
             | "AUTHORIZATION_EXPIRED"
             | "IDENTITY_CHANGED"
-            | "SEND_TIMEOUT"
+            | "TIMEOUT"
             | "PROTOCOL_ERROR"
             | "BRIDGE_CLOSED"
     )

@@ -175,6 +175,12 @@ pub struct TransportError {
 }
 impl TransportError {
     pub(super) fn new(code: &'static str, delivery: Delivery) -> Self {
+        let code = match code {
+            "REQUEST_TIMEOUT" | "SEND_TIMEOUT" | "HANDSHAKE_TIMEOUT" => "TIMEOUT",
+            "CONNECTION_LIMIT" | "REQUEST_LIMIT" | "OPERATION_LIMIT" | "RESPONSE_LIMIT"
+            | "PTY_LIMIT" => "LIMIT_EXCEEDED",
+            code => code,
+        };
         Self { code, delivery }
     }
     pub(super) fn invalid() -> Self {

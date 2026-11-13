@@ -126,7 +126,7 @@ async fn expired_finish_cancels_without_submitting_end() {
     let (reply, receive) = oneshot::channel();
     a.command(Command::Finish(op, reply)).await.unwrap();
     let error = receive.await.unwrap().unwrap_err();
-    assert_eq!(error.code, "REQUEST_TIMEOUT");
+    assert_eq!(error.code, "TIMEOUT");
     assert_eq!(error.delivery, Delivery::NotSent);
     assert_eq!(
         remote_frame(&mut remote, &mut noise).await["type"],
@@ -157,7 +157,7 @@ async fn expired_read_cannot_deliver_retained_body() {
     let (reply, receive) = oneshot::channel();
     a.command(Command::Read(op, reply)).await.unwrap();
     let error = receive.await.unwrap().unwrap_err();
-    assert_eq!(error.code, "REQUEST_TIMEOUT");
+    assert_eq!(error.code, "TIMEOUT");
     assert_eq!(error.delivery, Delivery::ResponseComplete);
     assert_eq!(
         remote_frame(&mut remote, &mut noise).await["type"],
@@ -192,7 +192,7 @@ async fn expired_upload_cannot_send_another_chunk() {
     ))
     .await
     .unwrap();
-    assert_eq!(receive.await.unwrap().unwrap_err().code, "REQUEST_TIMEOUT");
+    assert_eq!(receive.await.unwrap().unwrap_err().code, "TIMEOUT");
     assert_eq!(
         remote_frame(&mut remote, &mut noise).await["type"],
         "cancel"
@@ -227,7 +227,7 @@ async fn expired_inbound_end_does_not_escape_as_success() {
     let wire = h.wire.clone();
     a.frame(Frame::End { id: wire }).await.unwrap();
     let error = receive.await.unwrap().unwrap_err();
-    assert_eq!(error.code, "REQUEST_TIMEOUT");
+    assert_eq!(error.code, "TIMEOUT");
     assert_eq!(error.delivery, Delivery::OutcomeUnknown);
     assert_eq!(
         remote_frame(&mut remote, &mut noise).await["type"],

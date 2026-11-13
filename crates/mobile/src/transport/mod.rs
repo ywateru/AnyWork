@@ -103,12 +103,13 @@ impl TransportService {
     }
     async fn peer(&self, reference: &ConnectionRef) -> Result<Peer> {
         let registry = self.registry.lock().await;
-        registry
-            .peers
-            .get(&reference.connection_id)
-            .filter(|p| p.reference() == reference && !p.is_closed())
-            .cloned()
-            .ok_or_else(|| TransportError::new("CONNECTION_CLOSED", Delivery::NotSent))
+        match registry.peers.get(&reference.connection_id) {
+            Some(peer) if peer.reference() != reference => {
+                Err(TransportError::new("STALE_CONNECTION", Delivery::NotSent))
+            }
+            Some(peer) if !peer.is_closed() => Ok(peer.clone()),
+            _ => Err(TransportError::new("CONNECTION_CLOSED", Delivery::NotSent)),
+        }
     }
     async fn call<T>(
         &self,

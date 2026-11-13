@@ -296,7 +296,10 @@ async fn cancel_before_begin_is_a_tombstone_and_stale_generation_cannot_cancel()
     assert_eq!(f.calls.load(Ordering::SeqCst), 0);
     let mut stale = op;
     stale.connection.generation += 1;
-    assert!(f.service.cancel(stale).await.is_err());
+    assert_eq!(
+        f.service.cancel(stale).await.unwrap_err().code,
+        "STALE_CONNECTION"
+    );
     f.service.close_all().await;
 }
 #[tokio::test]
