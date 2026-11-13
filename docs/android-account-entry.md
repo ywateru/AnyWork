@@ -17,7 +17,7 @@
 
 使用内嵌登录能力的官方 Logto Android SDK 2.0.3；3.x 已改用 Custom Tabs，不能静默升级。原生层为唯一 grant owner，显式设置 usingPersistStorage=false，应用 token 与协调材料仅保留于内存；这不表示 IdP SSO cookie 也只存内存。SDK/Android WebView 管理授权页 cookie，可能跨进程保留，显式注销走 SDK 的 cookie 清理；进程重启不能据 cookie 自动恢复应用 grant，仍回到登录入口。不读取、迁移或删除旧 Android 加密文件及 KeyStore。信任与偏好可保存非秘密资料，必须按 issuer、subject、设备及密钥版本隔离。授权开始前提示固定登录站点来源，SDK 登录窗口使用系统返回取消，不承诺 SDK 不提供的来源顶栏。登录/注册、取消、失败重试均有应用内路径；第三方身份提供者拒绝嵌入时准确报告，不绕过其限制。
 
-固定产品配置、Native client、合法已注册回调及 PKCE/state，由原生授权 owner 核验。账号名称使用当前已验证 subject 的 name、username/preferred_username、email，绝不以 subject 或设备名代替。前端不接触 access/refresh token、授权 code、PKCE verifier 或设备私钥。
+固定产品配置、Native client、合法已注册回调及 PKCE/state，由原生授权 owner 核验。移动端复用该 Native client 既有的 `http://127.0.0.1:17897/callback`，由 SDK 登录 WebView 截获，不启动手机 loopback listener，不为该导航开放任意明文流量或新 deep link。精确匹配与 state/PKCE 仍须验证；不能仅凭 Android manifest 认定新 URI 已在授权服务器注册。账号名称使用当前已验证 subject 的 name、username/preferred_username、email，绝不以 subject 或设备名代替。前端不接触 access/refresh token、授权 code、PKCE verifier 或设备私钥。
 
 每次登录、退出、连接和目录修订都有 epoch/generation 栅栏。退出先阻止新操作并取消 HTTP/轮询/PTY；已开始的 token rotation 由唯一 owner 收尾，未知结果不重用旧 grant。旧异步响应不能恢复账号或写入新账号页面。恢复前台重新核验授权和连接期限；重新连接不重放业务写入、审批或终端输入。需要重新登录时保留身份隔离的草稿，显示准确状态。
 
