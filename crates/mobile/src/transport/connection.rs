@@ -913,10 +913,10 @@ impl Actor {
             if n.is_none() || format!("r{}", n.unwrap()) != *wire {
                 return Err(error("INVALID_FRAME"));
             }
-            if let Some(id) = self.http_id(wire) {
-                if self.expire_http(&id).await?.is_some() {
-                    return Ok(());
-                }
+            if let Some(id) = self.http_id(wire)
+                && self.expire_http(&id).await?.is_some()
+            {
+                return Ok(());
             }
         }
         match frame {

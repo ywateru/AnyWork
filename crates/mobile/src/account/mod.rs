@@ -2,7 +2,6 @@
 //! requests and account epochs. No refresh/ID token is accepted by this module.
 use anyhow::{Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -218,10 +217,9 @@ impl Handle {
             if slot
                 .as_ref()
                 .is_some_and(|directory| directory.epoch() < epoch)
+                && let Some(directory) = slot.take()
             {
-                if let Some(directory) = slot.take() {
-                    directory.close().await;
-                }
+                directory.close().await;
             }
         });
     }
@@ -463,10 +461,8 @@ impl Handle {
                 true
             }
         };
-        if !cleanup_confirmed {
-            if let Ok(snapshot) = &mut native {
-                snapshot.error_code = Some("MOBILE_REVOCATION_UNCONFIRMED".into());
-            }
+        if !cleanup_confirmed && let Ok(snapshot) = &mut native {
+            snapshot.error_code = Some("MOBILE_REVOCATION_UNCONFIRMED".into());
         }
         match native {
             Ok(native) => self.apply(epoch, native).await,
@@ -1068,6 +1064,8 @@ impl crate::transport::Authorization for AccountAuthorization {
     }
 }
 
+// The Android native directory and host conformance tests share these parsers.
+#[cfg(any(target_os = "android", test))]
 fn timestamp(value: &str) -> Result<u64> {
     chrono::DateTime::parse_from_rfc3339(value)
         .ok()
@@ -1075,16 +1073,19 @@ fn timestamp(value: &str) -> Result<u64> {
         .ok_or_else(|| anyhow::anyhow!("MOBILE_INVALID_RESPONSE"))
 }
 
-#[derive(Deserialize)]
+#[cfg(any(target_os = "android", test))]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Provider {
     id: String,
     origins: Vec<String>,
     paths: Vec<String>,
 }
+#[cfg(any(target_os = "android", test))]
 struct EndpointPolicy {
     providers: Vec<Provider>,
 }
+#[cfg(any(target_os = "android", test))]
 impl EndpointPolicy {
     fn parse(value: &Value, config: &Config) -> Result<Self> {
         ensure!(
@@ -1261,6 +1262,7 @@ struct GridDevice {
     online: bool,
     gateway: Option<String>,
 }
+#[cfg(any(target_os = "android", test))]
 impl GridDevice {
     fn parse(value: &Value, policy: &EndpointPolicy) -> Result<Vec<Self>> {
         let devices = value["devices"]
