@@ -11,19 +11,31 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
 };
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::{Mutex, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct TransportService {
-    peers: Arc<Mutex<HashMap<String, Peer>>>,
+    registry: Arc<Mutex<Registry>>,
     generation: Arc<AtomicU64>,
     slots: Arc<tokio::sync::Semaphore>,
+}
+#[derive(Default)]
+struct Registry {
+    peers: HashMap<String, Peer>,
+    attempts: HashMap<String, watch::Receiver<bool>>,
+    lifetime: CancellationToken,
+}
+struct Attempt(watch::Sender<bool>);
+impl Drop for Attempt {
+    fn drop(&mut self) {
+        let _ = self.0.send(true);
+    }
 }
 impl Default for TransportService {
     fn default() -> Self {
         Self {
-            peers: Default::default(),
+            registry: Default::default(),
             generation: Default::default(),
             slots: Arc::new(tokio::sync::Semaphore::new(2)),
         }
@@ -43,10 +55,9 @@ impl TransportService {
     ) -> Result<ConnectionInfo> {
         // Retire old sockets before allocating another; the shell also calls
         // close_all immediately when account ownership changes.
-        self.peers.lock().await.retain(|_, p| !p.is_closed());
-        if self.peers.lock().await.len() >= 2 {
-            return Err(TransportError::new("CONNECTION_LIMIT", Delivery::NotSent));
-        }
+        let mut registry = self.registry.lock().await;
+        registry.peers.retain(|_, peer| !peer.is_closed());
+        registry.attempts.retain(|_, done| !*done.borrow());
         let slot = self
             .slots
             .clone()
@@ -61,18 +72,39 @@ impl TransportService {
             connection: connection.clone(),
             scope_id: target.scope_id.clone(),
         };
-        let peer = Peer::connect(connection, target, auth, cancel, events, slot).await?;
-        let mut peers = self.peers.lock().await;
-        if peers.len() >= 2 {
-            peer.stop();
-            return Err(TransportError::new("CONNECTION_LIMIT", Delivery::NotSent));
+        let (done, finished) = watch::channel(false);
+        registry
+            .attempts
+            .insert(connection.connection_id.clone(), finished);
+        let service_lifetime = registry.lifetime.child_token();
+        let _attempt = Attempt(done);
+        drop(registry);
+        let peer = Peer::connect(
+            connection,
+            target,
+            auth,
+            cancel,
+            service_lifetime.clone(),
+            events,
+            slot,
+        )
+        .await?;
+        // Install atomically with respect to close_all retiring this generation.
+        let mut registry = self.registry.lock().await;
+        if service_lifetime.is_cancelled() || peer.is_closed() {
+            drop(registry);
+            peer.close().await;
+            return Err(TransportError::new("CONNECTION_CLOSED", Delivery::NotSent));
         }
-        peers.insert(info.connection.connection_id.clone(), peer);
+        registry
+            .peers
+            .insert(info.connection.connection_id.clone(), peer);
         Ok(info)
     }
     async fn peer(&self, reference: &ConnectionRef) -> Result<Peer> {
-        let peers = self.peers.lock().await;
-        peers
+        let registry = self.registry.lock().await;
+        registry
+            .peers
             .get(&reference.connection_id)
             .filter(|p| p.reference() == reference && !p.is_closed())
             .cloned()
@@ -131,9 +163,10 @@ impl TransportService {
     /// never reconnects, replays an operation, or extends an authenticated lease.
     pub async fn foreground_validate(&self) -> Result<()> {
         let references: Vec<_> = self
-            .peers
+            .registry
             .lock()
             .await
+            .peers
             .values()
             .map(|peer| peer.reference().clone())
             .collect();
@@ -148,12 +181,13 @@ impl TransportService {
     }
     pub async fn close(&self, reference: ConnectionRef) -> CleanupState {
         let peer = {
-            let mut peers = self.peers.lock().await;
-            if peers
+            let mut registry = self.registry.lock().await;
+            if registry
+                .peers
                 .get(&reference.connection_id)
                 .is_some_and(|p| p.reference() == &reference)
             {
-                peers.remove(&reference.connection_id)
+                registry.peers.remove(&reference.connection_id)
             } else {
                 None
             }
@@ -166,14 +200,36 @@ impl TransportService {
         }
     }
     pub async fn close_all(&self) -> CleanupState {
-        let peers = std::mem::take(&mut *self.peers.lock().await);
+        let (peers, attempts) = {
+            let mut registry = self.registry.lock().await;
+            registry.lifetime.cancel();
+            registry.lifetime = CancellationToken::new();
+            (
+                std::mem::take(&mut registry.peers),
+                std::mem::take(&mut registry.attempts),
+            )
+        };
         for peer in peers.values() {
             peer.stop();
         }
-        let mut pending = false;
-        for peer in peers.into_values() {
-            pending |= peer.close().await.cleanup_pending;
-        }
+        let pending = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            let closed = futures_util::future::join_all(
+                peers
+                    .into_values()
+                    .map(|peer| async move { peer.close().await.cleanup_pending }),
+            )
+            .await;
+            for mut finished in attempts.into_values() {
+                while !*finished.borrow_and_update() {
+                    if finished.changed().await.is_err() {
+                        break;
+                    }
+                }
+            }
+            closed.into_iter().any(|pending| pending)
+        })
+        .await
+        .unwrap_or(true);
         CleanupState {
             cleanup_pending: pending,
         }

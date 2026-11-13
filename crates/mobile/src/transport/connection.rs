@@ -44,6 +44,7 @@ pub(super) struct Peer {
     auth: Arc<dyn Authorization>,
     epoch: u64,
     lifetime: CancellationToken,
+    service_lifetime: CancellationToken,
     _slot: Arc<tokio::sync::OwnedSemaphorePermit>,
     _owner: Arc<PeerOwner>,
 }
@@ -58,7 +59,9 @@ impl Peer {
         &self.reference
     }
     pub fn is_closed(&self) -> bool {
-        self.stop.is_cancelled() || self.lifetime.is_cancelled()
+        self.stop.is_cancelled()
+            || self.lifetime.is_cancelled()
+            || self.service_lifetime.is_cancelled()
     }
     pub fn stop(&self) {
         self.stop.cancel();
@@ -106,6 +109,7 @@ impl Peer {
         target: VerifiedTarget,
         auth: Arc<dyn Authorization>,
         cancel: CancellationToken,
+        service_lifetime: CancellationToken,
         events: EventSink,
         slot: tokio::sync::OwnedSemaphorePermit,
     ) -> Result<Self> {
@@ -223,9 +227,10 @@ impl Peer {
         let (socket, noise, ready, deadline, token) = tokio::select! { biased;
             _ = stop.cancelled() => return Err(error("CANCELLED")),
             _ = lifetime.cancelled() => return Err(error("IDENTITY_CHANGED")),
+            _ = service_lifetime.cancelled() => return Err(error("CONNECTION_CLOSED")),
             result = tokio::time::timeout(Duration::from_secs(15), operation) => result.map_err(|_|error("HANDSHAKE_TIMEOUT"))??,
         };
-        if stop.is_cancelled() || lifetime.is_cancelled() {
+        if stop.is_cancelled() || lifetime.is_cancelled() || service_lifetime.is_cancelled() {
             return Err(error("CANCELLED"));
         }
         let (sender, receiver) = mpsc::channel(32);
@@ -234,6 +239,7 @@ impl Peer {
         let peer = Self {
             _owner: Arc::new(PeerOwner(stop.clone())),
             lifetime: lifetime.clone(),
+            service_lifetime: service_lifetime.clone(),
             _slot: slot.clone(),
             reference: reference.clone(),
             sender: sender.clone(),
@@ -252,6 +258,7 @@ impl Peer {
                 events,
                 stop: stop.clone(),
                 lifetime,
+                service_lifetime,
                 sender,
                 receiver,
                 used: HashSet::new(),
@@ -364,6 +371,7 @@ struct Actor {
     events: EventSink,
     stop: CancellationToken,
     lifetime: CancellationToken,
+    service_lifetime: CancellationToken,
     sender: mpsc::Sender<Command>,
     receiver: mpsc::Receiver<Command>,
     used: HashSet<String>,
@@ -382,7 +390,10 @@ struct Actor {
 }
 impl Actor {
     async fn check(&self) -> Result<()> {
-        if self.stop.is_cancelled() || self.lifetime.is_cancelled() {
+        if self.stop.is_cancelled()
+            || self.lifetime.is_cancelled()
+            || self.service_lifetime.is_cancelled()
+        {
             return Err(error("CONNECTION_CLOSED"));
         }
         if now() >= self.expires || Instant::now() >= self.deadline {
@@ -392,7 +403,10 @@ impl Actor {
             .ensure_epoch(self.epoch)
             .await
             .map_err(|_| error("IDENTITY_CHANGED"))?;
-        if self.stop.is_cancelled() || self.lifetime.is_cancelled() {
+        if self.stop.is_cancelled()
+            || self.lifetime.is_cancelled()
+            || self.service_lifetime.is_cancelled()
+        {
             return Err(error("CONNECTION_CLOSED"));
         }
         if now() >= self.expires || Instant::now() >= self.deadline {
@@ -401,7 +415,18 @@ impl Actor {
         Ok(())
     }
     async fn send(&mut self, value: Value) -> Result<()> {
+        self.send_until(value, self.deadline).await
+    }
+    async fn send_until(&mut self, value: Value, operation_deadline: Instant) -> Result<()> {
         self.check().await?;
+        let (deadline, expired) = if operation_deadline < self.deadline {
+            (operation_deadline, "REQUEST_TIMEOUT")
+        } else {
+            (self.deadline, "AUTHORIZATION_EXPIRED")
+        };
+        if Instant::now() >= deadline {
+            return Err(error(expired));
+        }
         let plain = serde_json::to_vec(&value).map_err(|_| error("INVALID_REQUEST"))?;
         if plain.len() > 65_519 {
             return Err(error("INVALID_REQUEST"));
@@ -413,7 +438,9 @@ impl Actor {
             .map_err(|_| error("PROTOCOL_ERROR"))?;
         tokio::select! { biased;
             _ = self.stop.cancelled() => return Err(error("CONNECTION_CLOSED")),
-            _ = tokio::time::sleep_until(self.deadline) => return Err(error("AUTHORIZATION_EXPIRED")),
+            _ = self.service_lifetime.cancelled() => return Err(error("CONNECTION_CLOSED")),
+            _ = self.lifetime.cancelled() => return Err(error("IDENTITY_CHANGED")),
+            _ = tokio::time::sleep_until(deadline) => return Err(error(expired)),
             result = tokio::time::timeout(Duration::from_secs(10),self.socket.send(Message::Binary(buf[..n].to_vec().into()))) => {
                 result.map_err(|_|error("SEND_TIMEOUT"))?.map_err(|_|error("CONNECTION_CLOSED"))?;
             }
@@ -452,6 +479,23 @@ impl Actor {
         self.response_bytes -= h.body.len();
         Some(h)
     }
+    async fn expire_http(&mut self, id: &str) -> Result<Option<TransportError>> {
+        let expired = self.http.get(id).is_some_and(|h| {
+            Instant::now() >= h.deadline
+                || h.write
+                    .as_ref()
+                    .is_some_and(|(_, _, deadline)| Instant::now() >= *deadline)
+        });
+        if !expired {
+            return Ok(None);
+        }
+        let h = self.remove_http(id).unwrap();
+        let error = TransportError::new("REQUEST_TIMEOUT", h.delivery());
+        let wire = h.wire.clone();
+        h.fail("REQUEST_TIMEOUT");
+        self.send(json!({"type":"cancel","id":wire})).await?;
+        Ok(Some(error))
+    }
     fn http_id(&self, wire: &str) -> Option<String> {
         self.http
             .iter()
@@ -470,6 +514,7 @@ impl Actor {
             tokio::select! {
                 _ = self.stop.cancelled() => return Ok(()),
                 _ = self.lifetime.cancelled() => return Err(error("IDENTITY_CHANGED")),
+                _ = self.service_lifetime.cancelled() => return Ok(()),
                 _ = tokio::time::sleep_until(self.deadline) => return Err(error("AUTHORIZATION_EXPIRED")),
                 command = self.receiver.recv() => match command { Some(c) => self.command(c).await?, None => return Ok(()) },
                 message = self.socket.next() => {
@@ -563,6 +608,10 @@ impl Actor {
             }
             Command::Write(req, reply) => {
                 let id = &req.operation.operation_id;
+                if let Some(error) = self.expire_http(id).await? {
+                    let _ = reply.send(Err(error));
+                    return Ok(());
+                }
                 let bytes = match decode(&req.base64) {
                     Ok(v) if !v.is_empty() => v,
                     _ => {
@@ -583,15 +632,23 @@ impl Actor {
                     return Ok(());
                 }
                 let wire = h.wire.clone();
+                let deadline = h.deadline;
                 h.write = Some((
                     h.written + bytes.len(),
                     reply,
                     Instant::now() + Duration::from_secs(15),
                 ));
-                self.send(json!({"type":"chunk","id":wire,"data":req.base64}))
-                    .await?;
+                self.send_until(
+                    json!({"type":"chunk","id":wire,"data":req.base64}),
+                    deadline,
+                )
+                .await?;
             }
             Command::Finish(req, reply) => {
+                if let Some(error) = self.expire_http(&req.operation_id).await? {
+                    let _ = reply.send(Err(error));
+                    return Ok(());
+                }
                 let Some(h) = self.http.get_mut(&req.operation_id) else {
                     let _ = reply.send(Err(error("OPERATION_RETIRED")));
                     return Ok(());
@@ -603,9 +660,15 @@ impl Actor {
                 h.submitted = true;
                 h.finish = Some(reply);
                 let wire = h.wire.clone();
-                self.send(json!({"type":"end","id":wire})).await?;
+                let deadline = h.deadline;
+                self.send_until(json!({"type":"end","id":wire}), deadline)
+                    .await?;
             }
             Command::Read(req, reply) => {
+                if let Some(error) = self.expire_http(&req.operation_id).await? {
+                    let _ = reply.send(Err(error));
+                    return Ok(());
+                }
                 let result = match self.http.get_mut(&req.operation_id) {
                     Some(h) if h.complete => {
                         let end = (h.read + CHUNK).min(h.body.len());
@@ -658,6 +721,7 @@ impl Actor {
                     let grant = tokio::select! { biased;
                         _ = self.stop.cancelled() => return Err(error("CONNECTION_CLOSED")),
                         _ = self.lifetime.cancelled() => return Err(error("IDENTITY_CHANGED")),
+                        _ = self.service_lifetime.cancelled() => return Err(error("CONNECTION_CLOSED")),
                         _ = tokio::time::sleep_until(self.deadline) => return Err(error("AUTHORIZATION_EXPIRED")),
                         result = tokio::time::timeout(Duration::from_secs(15), self.auth.token(false, 60)) =>
                             result.map_err(|_| error("LOGIN_REQUIRED"))?
@@ -843,6 +907,11 @@ impl Actor {
                 .filter(|n| *n > 0 && *n <= self.next);
             if n.is_none() || format!("r{}", n.unwrap()) != *wire {
                 return Err(error("INVALID_FRAME"));
+            }
+            if let Some(id) = self.http_id(wire) {
+                if self.expire_http(&id).await?.is_some() {
+                    return Ok(());
+                }
             }
         }
         match frame {
@@ -1094,3 +1163,7 @@ fn address(raw: &str) -> Result<String> {
 pub(super) fn test_address(raw: &str) -> Result<String> {
     address(raw)
 }
+
+#[cfg(test)]
+#[path = "connection_tests.rs"]
+mod tests;

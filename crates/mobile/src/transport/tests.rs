@@ -627,3 +627,88 @@ async fn foreground_revoked_grant_closes_peer_without_reconnection() {
     assert_eq!(f.calls.load(Ordering::SeqCst), 0);
     assert!(!f.service.close_all().await.cleanup_pending);
 }
+
+struct DelayedAuth {
+    started: tokio::sync::Notify,
+    proceed: tokio::sync::Notify,
+}
+impl Authorization for DelayedAuth {
+    fn token(&self, _: bool, _: u64) -> AuthFuture<'_, AccessGrant> {
+        Box::pin(async move {
+            self.started.notify_one();
+            self.proceed.notified().await;
+            Ok(AccessGrant {
+                access_token: "fixture-delayed".into(),
+                expires_at: now() + 300,
+                epoch: 1,
+            })
+        })
+    }
+    fn ensure_epoch(&self, _: u64) -> AuthFuture<'_, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+#[tokio::test]
+async fn close_all_fences_pending_handshake_and_waits_for_its_cleanup() {
+    let keys = snow::Builder::new(NOISE_SUITE.parse().unwrap())
+        .generate_keypair()
+        .unwrap();
+    let mut gateway = Gateway::start(GatewayConfig {
+        installation_id: "fixture-installation".into(),
+        private_key: keys.private.try_into().unwrap(),
+        allowed_origins: vec![MOBILE_ORIGIN.into()],
+        local_port: 1,
+        local_token: "fixture".into(),
+        verifier: Arc::new(Verifier { short: false }),
+    })
+    .await
+    .unwrap();
+    let target = || VerifiedTarget {
+        gateway_url: format!("http://127.0.0.1:{}/", gateway.port),
+        installation_id: "fixture-installation".into(),
+        public_key: URL_SAFE_NO_PAD.encode(&keys.public),
+        account_epoch: 1,
+        scope_id: "fixture-scope".into(),
+        lifetime: CancellationToken::new(),
+    };
+    let service = TransportService::new();
+    let auth = Arc::new(DelayedAuth {
+        started: Default::default(),
+        proceed: Default::default(),
+    });
+    let task = {
+        let service = service.clone();
+        let auth = auth.clone();
+        let target = target();
+        tokio::spawn(async move {
+            service
+                .connect(target, auth, CancellationToken::new(), Arc::new(|_| true))
+                .await
+        })
+    };
+    auth.started.notified().await;
+    let cleanup = tokio::time::timeout(Duration::from_secs(2), service.close_all())
+        .await
+        .unwrap();
+    assert!(!cleanup.cleanup_pending);
+    auth.proceed.notify_one();
+    assert_eq!(task.await.unwrap().unwrap_err().code, "CONNECTION_CLOSED");
+    assert!(service.registry.lock().await.peers.is_empty());
+    // A later explicitly requested connection belongs to a new service lifetime.
+    service
+        .connect(
+            target(),
+            Arc::new(Auth {
+                epoch: AtomicU64::new(1),
+                tokens: AtomicUsize::new(0),
+                denied: AtomicBool::new(false),
+            }),
+            CancellationToken::new(),
+            Arc::new(|_| true),
+        )
+        .await
+        .unwrap();
+    assert!(!service.close_all().await.cleanup_pending);
+    gateway.close().await;
+}
