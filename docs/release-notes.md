@@ -20,6 +20,10 @@ File drafts retain their original revision for conflict checks. Unknown message,
 
 文件草稿保留原始版本用于冲突检测；消息、审批及子会话操作结果未知时，断线或重新加载后仍保留核对提示，不自动重放。Claude Desktop 原生桥连接与写入/控制真机测试继续留待用户手动执行。
 
+Validation includes 376 Rust tests, 440 Web tests, mobile browser integration, Android compilation/lint/unit/package checks and actual APK operation in an isolated API35 guest. The APK check covers bundled offline startup, embedded public sign-in/cancellation and Android system bridges; real-account authentication and remote-computer business flows remain untested in that guest. See the [merged validation record](https://github.com/ywateru/AnyWork/blob/main/docs/plan/reviews/android-native-merged.md).
+
+验证覆盖376项Rust测试、440项Web测试、手机浏览器集成、Android编译/lint/单测/包检查，以及隔离API35模拟器内的实际APK运行。APK实测包含随包离线启动、应用内公开登录页与取消、Android系统能力；该模拟器未进行真实账号认证与远程电脑业务联调，详见[合并验收记录](https://github.com/ywateru/AnyWork/blob/main/docs/plan/reviews/android-native-merged.md)。
+
 **Previous release 0.1.30 / 上一版本**
 
 Claude Code CLI now supports passive session discovery and paginated history, original-ID resumption, new sessions, text/image transport, streamed replies/thinking/tools, one-time approvals, open questions, cancellation and model selection. It reuses native local sign-in and prevents a second writer from taking over a busy native session. Real CLI acceptance covered isolated text streaming, tool approval, questions, cancellation, model changes and same-ID restart/resumption; it does not imply every model, Windows runtime or real image understanding has been tested.

@@ -1,6 +1,6 @@
 # Android shell 与构建
 
-唯一移动包为 `crates/mobile`（library `anywork_mobile`），工程为 `crates/mobile/gen/android`。旧 Java Custom Tab 工程已从当前源树移除，Git旧tag仍完整保留，发布守卫仅在新路径404时读取旧tag Gradle versionCode。applicationId固定 `dev.remoteagent.app`、minSdk26，versionName暂为0.1.30、versionCode32；发布时由版本脚本同步更新，不能复用31。
+唯一移动包为 `crates/mobile`（library `anywork_mobile`），工程为 `crates/mobile/gen/android`。旧 Java Custom Tab 工程已从当前源树移除，Git旧tag仍完整保留，发布守卫仅在新路径404时读取旧tag Gradle versionCode。applicationId固定 `dev.remoteagent.app`、minSdk26，版本由 `tauri.conf.json` 和发布版本脚本同步管理；Android versionCode必须高于旧公开 APK 的31与本轮debug候选的32。
 
 ```sh
 npm ci
@@ -35,5 +35,7 @@ system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_p
 ```
 
 该候选用于隔离 APK 运行检查；正式四 ABI、发行签名与版本递增由精确源码 GitHub Checks 和 Release 工作流完成，不将 debug 候选当正式下载包。
+
+[最终无账号 APK 独立运行验收](plan/reviews/mobile-apk-runtime-independent.md)已通过，实际安装字节与该 hash一致。API35官方fresh guest验证真实Origin/IPC/ACL、离线启动、保存读回与取消、分享面板、图片选择器、IME/insets、Back、系统栏、外链、公开内嵌登录及取消、强停后重启。未使用真实账号，实际登录/refresh、设备目录、真实远程电脑工作区、实体中文IME及发行覆盖安装仍不作已测声明。临时镜像/SDK/AVD、emulator及其overlay已回收。
 
 transport 的显式 ring Connector 在双 provider、未初始化 global provider 的独立进程中通过6项真实 loopback WSS测试，包括可信CA exchange、生产WebPKI拒绝未知CA、可信CA但主机名错误拒绝。shell 在原生入口安装 ring 默认 provider 保护其它SDK调用；transport 不依赖该全局初始化。没有禁用证书或主机名验证。

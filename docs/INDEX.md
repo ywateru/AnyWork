@@ -1,6 +1,6 @@
 # Documentation index
 
-- [Android 原生 Rust/Tauri 2 客户端重构](android-account-entry.md)：[手机布局](mobile-client-layout.md)、[原生接口](mobile-native-contract.md)、[并行实施与验收](plan/tasks/android-native-client.md)；替代旧浏览器入口，完整界面随包、应用内登录与原生远程连接。
+- [Android 原生 Rust/Tauri 2 客户端重构](android-account-entry.md)：[手机布局](mobile-client-layout.md)、[原生接口](mobile-native-contract.md)、[实施任务](plan/tasks/android-native-client.md)、[合并验收](plan/reviews/android-native-merged.md)；替代旧浏览器入口，完整界面随包、应用内登录与原生远程连接。
 
 - [网页当前用户名修复](plan/tasks/account-identity-visible.md)：2026-11-13 用户截图反馈；当前账号名称按已验证 profile/username/email 显示，保持 subject 隔离。
 

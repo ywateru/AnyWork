@@ -2,7 +2,7 @@
 
 ## Current Android client reconstruction
 
-用户要求完整 Rust/Tauri 2 Android 客户端、手机 UI/引导、修复网页用户名并在完成后更新 GitHub。[Android 任务](tasks/android-native-client.md)划分账号、transport、壳/系统/构建、手机界面和独立验收；[产品契约](../android-account-entry.md)替代旧 Custom Tab 入口。凭据只在原生内存，业务界面随包，不以移动网页测试代替 APK 验收。此前 Claude Desktop 真机测试仍按用户安排后置。
+用户要求完整 Rust/Tauri 2 Android 客户端、手机 UI/引导、修复网页用户名并在完成后更新 GitHub。[Android 任务](tasks/android-native-client.md)划分账号、transport、壳/系统/构建、手机界面和独立验收；[产品契约](../android-account-entry.md)替代旧 Custom Tab 入口，[合并验收](reviews/android-native-merged.md)汇总实际检查与边界。凭据只在原生内存，业务界面随包，不以移动网页测试代替 APK 验收。此前 Claude Desktop 真机测试仍按用户安排后置。
 
 ## Claude Code / Desktop Code
 
