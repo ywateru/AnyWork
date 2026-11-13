@@ -755,3 +755,27 @@ body {
   padding: 8px;
   text-decoration: underline;
 }
+
+/* Image dialogs portal to body, outside .mobile-client's native inset padding.
+   Use the same revision-checked CSS-pixel insets, leaving themed system bands. */
+html[data-mobile-client] .image-viewer,
+html[data-mobile-client] .image-editor {
+  inset: var(--mobile-top) var(--mobile-right)
+    max(var(--mobile-bottom), var(--mobile-ime)) var(--mobile-left);
+  box-sizing: border-box;
+  overflow: auto;
+}
+html[data-mobile-client] .image-viewer header {
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+html[data-mobile-client] .image-viewer footer,
+html[data-mobile-client] .image-editor-footer {
+  padding: 8px 12px 12px;
+  flex-shrink: 0;
+}
+html[data-mobile-client] .image-editor-header,
+html[data-mobile-client] .image-editor-tools,
+html[data-mobile-client] .image-editor-text {
+  flex-shrink: 0;
+}

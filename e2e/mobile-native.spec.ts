@@ -1377,3 +1377,177 @@ test("native child composer shares the session receipt guard", async ({
   );
   expect(writes).toEqual(["/api/sessions/child-session/messages"]);
 });
+
+for (const mode of ["light", "dark"] as const) {
+  test(`mobile image portal respects ${mode} native bands through rotation, IME and rerenders`, async ({
+    page,
+  }, testInfo) => {
+    await page.addInitScript((mode) => {
+      localStorage.setItem(
+        "ra.appearance-v1",
+        JSON.stringify({
+          mode,
+          background: mode === "dark" ? "#ffffff" : "#171717",
+        }),
+      );
+    }, mode);
+    await fixture(page, { signedIn: true });
+    await connect(page);
+    const emitInsets = async (
+      revision: number,
+      landscape = false,
+      keyboard = false,
+    ) => {
+      await page.evaluate(
+        ({ revision, landscape, keyboard }) => {
+          const f = (window as any).mobileFixture;
+          f.emit("mobile-system-insets", {
+            ...f.insets,
+            revision,
+            systemBars: landscape
+              ? { top: 18, right: 0, bottom: 16, left: 0 }
+              : { top: 28, right: 16, bottom: 32, left: 12 },
+            cutout: landscape
+              ? { top: 0, right: 20, bottom: 0, left: 32 }
+              : f.insets.cutout,
+            ime: { top: 0, right: 0, bottom: keyboard ? 180 : 0, left: 0 },
+            imeVisible: keyboard,
+          });
+        },
+        { revision, landscape, keyboard },
+      );
+    };
+    const checkBounds = async (
+      selector: string,
+      landscape = false,
+      keyboard = false,
+    ) => {
+      await expect
+        .poll(() =>
+          page.locator(selector).evaluate((el) => {
+            const b = el.getBoundingClientRect();
+            return {
+              top: b.top,
+              right: innerWidth - b.right,
+              bottom: innerHeight - b.bottom,
+              left: b.left,
+              topCovered: !!document
+                .elementFromPoint(innerWidth / 2, 5)
+                ?.closest(".image-viewer,.image-editor"),
+              bottomCovered: !!document
+                .elementFromPoint(innerWidth / 2, innerHeight - 5)
+                ?.closest(".image-viewer,.image-editor"),
+              band: getComputedStyle(document.querySelector(".mobile-client")!)
+                .backgroundColor,
+              portalled: el.parentElement === document.body,
+            };
+          }),
+        )
+        .toEqual({
+          top: landscape ? 18 : 28,
+          right: landscape ? 20 : 16,
+          bottom: keyboard ? 180 : landscape ? 16 : 32,
+          left: landscape ? 32 : 12,
+          topCovered: false,
+          bottomCovered: false,
+          band: mode === "dark" ? "rgb(23, 23, 23)" : "rgb(255, 255, 255)",
+          portalled: true,
+        });
+    };
+    const reachable = async (name: string) => {
+      const control = page.getByRole("button", { name, exact: true });
+      await control.scrollIntoViewIfNeeded();
+      expect(
+        await control.evaluate((el) => {
+          const b = el.getBoundingClientRect();
+          const dialog = el.closest("[role=dialog]")!.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            b.x + b.width / 2,
+            b.y + b.height / 2,
+          );
+          return (
+            b.top >= dialog.top &&
+            b.bottom <= dialog.bottom &&
+            b.left >= dialog.left &&
+            b.right <= dialog.right &&
+            !!hit &&
+            el.contains(hit)
+          );
+        }),
+      ).toBe(true);
+    };
+    await emitInsets(100);
+    // A real local image attachment opens the shared viewer/editor, not a mocked dialog.
+    const image = await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 160;
+      canvas.height = 120;
+      canvas.getContext("2d")!.fillStyle = "#b5b5b5";
+      canvas.getContext("2d")!.fillRect(0, 0, 160, 120);
+      return canvas.toDataURL("image/png").split(",")[1];
+    });
+    await page
+      .locator("input[type=file]")
+      .first()
+      .setInputFiles({
+        name: "fixture.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(image, "base64"),
+      });
+    await expect(page.locator(".upload-status")).toHaveCount(0);
+    await page.getByRole("button", { name: "查看图片", exact: true }).click();
+    await checkBounds(".image-viewer");
+    await reachable("关闭图片查看器");
+    await reachable("下载图片");
+    await page.getByRole("button", { name: "放大图片", exact: true }).click();
+    await expect(page.getByLabel("图片缩放比例", { exact: true })).toHaveText(
+      "125%",
+    );
+    await checkBounds(".image-viewer");
+
+    await page.setViewportSize({ width: 852, height: 393 });
+    await emitInsets(101, true);
+    await checkBounds(".image-viewer", true);
+    await reachable("关闭图片查看器");
+    await emitInsets(102, true, true);
+    await checkBounds(".image-viewer", true, true);
+    await reachable("适应窗口");
+    await reachable("编辑图片");
+    await page.getByRole("button", { name: "编辑图片", exact: true }).click();
+    await checkBounds(".image-editor", true, true);
+    await reachable("取消编辑");
+    await reachable("画笔");
+    await page.getByRole("button", { name: "画笔", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "画笔", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    // Old orientation/keyboard snapshots must not undo the current bounds on rerender.
+    await emitInsets(101);
+    await checkBounds(".image-editor", true, true);
+    await reachable("放大画布");
+    await reachable("完成");
+    await reachable("取消编辑");
+    await page.screenshot({
+      path: testInfo.outputPath("image-editor-landscape-ime.png"),
+    });
+    await page.getByRole("button", { name: "取消编辑", exact: true }).click();
+    await expect(
+      page.getByRole("dialog", { name: "编辑图片", exact: true }),
+    ).toHaveCount(0);
+
+    await page.setViewportSize({ width: 393, height: 851 });
+    await emitInsets(103);
+    await page.getByRole("button", { name: "查看图片", exact: true }).click();
+    await checkBounds(".image-viewer");
+    await emitInsets(102, true, true);
+    await page.getByRole("button", { name: "适应窗口", exact: true }).click();
+    await checkBounds(".image-viewer");
+    await reachable("关闭图片查看器");
+    await page
+      .getByRole("button", { name: "关闭图片查看器", exact: true })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: "图片查看器", exact: true }),
+    ).toHaveCount(0);
+  });
+}
