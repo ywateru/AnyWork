@@ -148,7 +148,9 @@ async function switchOwner(page, claims, extra = {}) {
 try {
   for (const width of [1440, 390])
     for (const locale of ["zh-CN", "en"]) {
-      const fullName = (locale === "en" ? "Synthetic identity " : "合成账号名称🌊")
+      const fullName = (
+        locale === "en" ? "Synthetic identity " : "合成账号名称🌊"
+      )
         .repeat(18)
         .trim();
       const email = "synthetic-person@example.test";
