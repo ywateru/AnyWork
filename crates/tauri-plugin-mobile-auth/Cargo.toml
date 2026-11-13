@@ -12,3 +12,6 @@ tauri = { version = "=2.12.5" }
 
 [build-dependencies]
 tauri-plugin = { version = "2", features = ["build"] }
+
+[dev-dependencies]
+tauri = { version = "=2.12.5", default-features = false, features = ["test"] }

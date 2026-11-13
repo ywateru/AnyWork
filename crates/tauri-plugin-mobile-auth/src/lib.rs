@@ -1,5 +1,7 @@
 //! Android owns the only Logto client. Refresh and ID tokens never cross JNI.
-use anyhow::{Result, bail};
+use anyhow::Result;
+#[cfg(not(target_os = "android"))]
+use anyhow::bail;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, Runtime, plugin::TauriPlugin};
 
@@ -146,4 +148,48 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             Ok(())
         })
         .build()
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    #[test]
+    fn guest_cannot_invoke_native_auth_or_credential_methods() {
+        let app = tauri::test::mock_builder()
+            .plugin(super::init())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        for origin in [
+            "https://tauri.localhost",
+            "https://auth.x.aixgg.com",
+            "https://untrusted.example.invalid",
+        ] {
+            for method in [
+                "configure",
+                "signIn",
+                "snapshot",
+                "profile",
+                "token",
+                "logout",
+                "get",
+                "credentials",
+            ] {
+                let response = tauri::test::get_ipc_response(
+                    &webview,
+                    tauri::webview::InvokeRequest {
+                        cmd: format!("plugin:mobile-auth|{method}"),
+                        callback: tauri::ipc::CallbackFn(0),
+                        error: tauri::ipc::CallbackFn(1),
+                        url: origin.parse().unwrap(),
+                        body: tauri::ipc::InvokeBody::default(),
+                        headers: Default::default(),
+                        invoke_key: tauri::test::INVOKE_KEY.into(),
+                    },
+                );
+                assert!(response.is_err(), "guest auth method unexpectedly exposed");
+            }
+        }
+    }
 }

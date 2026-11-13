@@ -36,6 +36,26 @@ restored Activity: an SDK login restored without an in-memory attempt is closed.
 No reflection or SDK private manager access is used. This matters because SDK
 2.0.3's `onDestroy` cancels its process-global current authorization session.
 
+## Unresolved SDK transport constraint
+
+The SDK's Kotlin core uses a public, immutable lazy `httpClient = OkHttpClient()`
+with no configuration injection on `LogtoConfig` or `LogtoClient`. The pinned
+source depends on OkHttp 4.11.0. Its default connection-retry/follow-up policy can
+resend a replayable form POST after some recoverable I/O failures (and specific
+HTTP follow-up responses). Refresh requests use ordinary `FormBody`; they are
+not marked one-shot. Our native mutex and final-error fence prevent application
+retries after an unknown rotation, but **do not disable SDK-internal retries**.
+Strict single-dispatch rotation is therefore an unresolved acceptance condition,
+not a property of this implementation. No real refresh-loss experiment was run.
+Do not resolve this by reflection, field replacement or a hidden SDK patch. A
+reviewed upstream public transport policy, or an explicitly revised contract, is
+needed before claiming that stronger guarantee.
+
+Source: [Logto HTTP implementation](https://github.com/logto-io/kotlin/blob/3efc22a59ecd9f020bf6af58bd47d6a4f292b140/kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/http/HttpRequest.kt),
+[Logto Core form requests](https://github.com/logto-io/kotlin/blob/3efc22a59ecd9f020bf6af58bd47d6a4f292b140/kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/Core.kt),
+[pinned dependencies](https://github.com/logto-io/kotlin/blob/3efc22a59ecd9f020bf6af58bd47d6a4f292b140/gradle/libs.versions.toml),
+[OkHttp retry interceptor](https://github.com/square/okhttp/blob/parent-4.11.0/okhttp/src/main/kotlin/okhttp3/internal/http/RetryAndFollowUpInterceptor.kt).
+
 ## Pinned official evidence
 
 SDK 2.0.3 source commit: `3efc22a59ecd9f020bf6af58bd47d6a4f292b140`.

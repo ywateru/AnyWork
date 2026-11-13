@@ -243,6 +243,7 @@ impl Handle {
     ) -> Self {
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never())
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()
@@ -1258,7 +1259,6 @@ impl EndpointPolicy {
 struct GridDevice {
     id: String,
     online: bool,
-    last_seen: String,
     gateway: Option<String>,
 }
 impl GridDevice {
@@ -1308,7 +1308,6 @@ impl GridDevice {
                 Ok(Self {
                     id,
                     online,
-                    last_seen,
                     gateway,
                 })
             })
