@@ -5,6 +5,10 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
+# jose4j uses SLF4J 1.7, which catches a missing optional binding and falls back
+# to its NOP logger. Keep that supported path when shrinking the release APK.
+-dontwarn org.slf4j.impl.StaticLoggerBinder
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:
