@@ -1,5 +1,4 @@
 import LogtoClient, {
-  BrowserStorage,
   UserScope,
   decodeAccessToken,
   type LogtoConfig,
@@ -11,6 +10,7 @@ import {
   type AccountConfig,
 } from "./accountConfig";
 import type { AccessTokenRequest } from "./vendor/cybergrid";
+import { AccountGrantStorage } from "./accountGrantStorage";
 
 // The SDK already includes profile by default. Declare it explicitly for the
 // name/username display contract; email is needed for the final fallback.
@@ -61,6 +61,7 @@ export class AccountLogtoClient extends LogtoClient {
   private tokenTail: Promise<void> = Promise.resolve();
   private accountEpoch = 0;
   private tokenAccessBlocked = false;
+  private readonly grantStorage: AccountGrantStorage;
   private readonly gridBinding: Pick<
     AccountConfig,
     "issuer" | "appId" | "resource"
@@ -79,7 +80,10 @@ export class AccountLogtoClient extends LogtoClient {
     };
     // Official client defers persisted token reads to first use, explicitly allowing
     // subclasses to replace adapter.storage in their constructor.
-    this.adapter.storage = new BrowserStorage(accountStorageNamespace(account));
+    this.grantStorage = new AccountGrantStorage(
+      accountStorageNamespace(account),
+    );
+    this.adapter.storage = this.grantStorage;
   }
   private serialize<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.tokenTail.then(operation);
@@ -89,6 +93,14 @@ export class AccountLogtoClient extends LogtoClient {
     );
     return result;
   }
+  /** Retire immediately, then drain the old refresh owner without signing out or
+   * clearing storage: those tokens may already belong to a different tab. */
+  retireAccountOwner(): Promise<void> {
+    ++this.accountEpoch;
+    this.tokenAccessBlocked = true;
+    this.grantStorage.retire();
+    return this.tokenTail;
+  }
   /** All opaque/resource requests share one refresh-token owner, including renewals. */
   getAccountAccessToken(resource?: string, fresh = false): Promise<string> {
     return this.accountToken(resource, fresh);
@@ -97,6 +109,7 @@ export class AccountLogtoClient extends LogtoClient {
     const epoch = this.accountEpoch;
     const current = () => {
       signal.throwIfAborted();
+      this.grantStorage.assertCurrent();
       if (epoch !== this.accountEpoch || this.tokenAccessBlocked)
         throw new AccountError("IDENTITY_CHANGED");
     };
@@ -149,6 +162,7 @@ export class AccountLogtoClient extends LogtoClient {
     return this.serialize(async () => {
       const current = () => {
         request?.signal.throwIfAborted();
+        this.grantStorage.assertCurrent();
         if (epoch !== this.accountEpoch || this.tokenAccessBlocked)
           throw new Error("ACCOUNT_REAUTH_REQUIRED");
       };

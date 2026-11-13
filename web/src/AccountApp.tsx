@@ -65,6 +65,7 @@ const LogtoContext = createContext<{
   isAuthenticated: boolean;
   isLoading: boolean;
   setIsAuthenticated: (value: boolean) => void;
+  replaceAccountOwner: () => void;
 } | null>(null);
 function AccountProvider({
   config,
@@ -72,6 +73,23 @@ function AccountProvider({
 }: {
   config: AccountConfig;
   children: React.ReactNode;
+}) {
+  const [generation, setGeneration] = useState(0);
+  const replaced = useCallback(() => setGeneration((value) => value + 1), []);
+  return (
+    <AccountOwner key={generation} config={config} onReplaced={replaced}>
+      {children}
+    </AccountOwner>
+  );
+}
+function AccountOwner({
+  config,
+  children,
+  onReplaced,
+}: {
+  config: AccountConfig;
+  children: React.ReactNode;
+  onReplaced: () => void;
 }) {
   const client = useMemo(
     () =>
@@ -89,18 +107,41 @@ function AccountProvider({
   );
   const [isAuthenticated, setIsAuthenticated] = useState(false),
     [isLoading, setIsLoading] = useState(true);
+  const active = useRef(true),
+    replacing = useRef(false);
+  const replaceAccountOwner = useCallback(() => {
+    if (replacing.current) return;
+    replacing.current = true;
+    const drained = client.retireAccountOwner();
+    setIsAuthenticated(false);
+    setIsLoading(true);
+    void drained.then(() => {
+      if (active.current) onReplaced();
+    });
+  }, [client, onReplaced]);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      // React StrictMode replays setup/cleanup for the same owner. Retire only
+      // after a real unmount; a storage replacement retires synchronously above.
+      queueMicrotask(() => {
+        if (!active.current) void client.retireAccountOwner();
+      });
+    };
+  }, [client]);
   useEffect(() => {
     let active = true;
     void client
       .isAuthenticated()
       .then((value) => {
-        if (active) setIsAuthenticated(value);
+        if (active && !replacing.current) setIsAuthenticated(value);
       })
       .catch(() => {
-        if (active) setIsAuthenticated(false);
+        if (active && !replacing.current) setIsAuthenticated(false);
       })
       .finally(() => {
-        if (active) setIsLoading(false);
+        if (active && !replacing.current) setIsLoading(false);
       });
     return () => {
       active = false;
@@ -113,6 +154,7 @@ function AccountProvider({
         isAuthenticated,
         isLoading,
         setIsAuthenticated,
+        replaceAccountOwner,
       }}
     >
       {children}
@@ -316,6 +358,7 @@ function useAccountAuth() {
     isAuthenticated: context.isAuthenticated,
     isLoading: context.isLoading,
     setIsAuthenticated: context.setIsAuthenticated,
+    replaceAccountOwner: context.replaceAccountOwner,
   };
 }
 function Callback() {
@@ -365,6 +408,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
     getIdTokenClaims,
     getAccountUserInfo,
     setIsAuthenticated,
+    replaceAccountOwner,
   } = useAccountAuth();
   const [locale, setLocale] = useState<"zh-CN" | "en">(initialLocale),
     t = locale === "zh-CN" ? zh : en;
@@ -525,7 +569,10 @@ function AccountHome({ config }: { config: AccountConfig }) {
         if (controller.signal.aborted || subjectRef.current !== subject) return;
         setDisplayIdentity(undefined);
         setIdentityStatus("error");
-        if (error instanceof AccountError && error.code === "IDENTITY_CHANGED") {
+        if (
+          error instanceof AccountError &&
+          error.code === "IDENTITY_CHANGED"
+        ) {
           life.current.abort();
           subjectRef.current = undefined;
           setSubject(undefined);
@@ -681,12 +728,12 @@ function AccountHome({ config }: { config: AccountConfig }) {
         setDevices([]);
         closeConnection();
         void gridRef.current?.disconnect();
-        setSubjectRevision((value) => value + 1);
+        replaceAccountOwner();
       }
     };
     window.addEventListener("storage", listener);
     return () => window.removeEventListener("storage", listener);
-  }, [config.appId, config.issuer, closeConnection]);
+  }, [config.appId, config.issuer, closeConnection, replaceAccountOwner]);
   const signupStarted = useRef(false);
   useEffect(() => {
     if (
