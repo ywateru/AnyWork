@@ -52,4 +52,4 @@ Blob 下载链接与会话/Markdown/图片/文档/主题导出均接原生保存
 
 保持 applicationId `dev.remoteagent.app`、minSdk 26 与既有签名 alias；显式维护 versionCode 并大于已发布的 31。`scripts/build-android.sh` 默认 debug/aarch64，支持 release 与目标 ABI，构建随包 mobile assets，运行对应 lint/unit，稳定输出 `artifacts/anywork-android-debug.apk` 或 `release/anywork-android.apk`。CI/release 使用同一入口，保留签名 secrets 与 source archive 对应源码能力。
 
-验收分三层：Rust 对隔离真实 gateway、完整 React/IPC 浏览器集成、实际 Android APK。网页移动仿真不能冒充 Android 实测；不操作用户真实账号或现有会话。优先使用现成模拟器，不下载新镜像、不复制依赖和 target；清理本任务可重建缓存/临时产物，保留源码、凭据及他人工作区。完成后记录准确源码、构建、测试和未覆盖边界，再更新 GitHub。
+验收分三层：Rust 对隔离真实 gateway、完整 React/IPC 浏览器集成、实际 Android APK。网页移动仿真不能冒充 Android 实测；不操作用户真实账号或现有会话。优先使用现成镜像和全新临时 userdata，不读取旧 AVD 数据、不复制依赖和 target。若既有镜像有已定位的冷启动环境故障，可在本任务独立临时目录安装一个官方兼容镜像，先核算下载/解压峰值并保持至少8GiB可用空间；不改旧 AVD、锁、SDK组件，验收后删除自有镜像/临时盘并回收。清理本任务可重建缓存/临时产物，保留源码、凭据及他人工作区。完成后记录准确源码、构建、测试和未覆盖边界，再更新 GitHub。
