@@ -35,6 +35,6 @@ status: in-progress
 
 网页账号修复已独立接受并合入，包含真实 SDK 跨标签旧 owner 缓存与迟到刷新写入的 P1 闭环。Android 分层实现已形成独立候选，尚在合并前审查与 APK 构建，不把已有提交视为完整验收。独立设计审查已明确 Native 同产品设备会话、SDK cookie/授权桥边界与已注册回调；见[设计证据](../analysis/android-native-client.md)。
 
-Transport 独立审查覆盖真实隔离 Snow/Gateway 与 JS Request/Response/FormData 联合调用，已发现并修复总时限、pending connect 关停和超大正文编码前拒绝，WSS TLS provider 的复测仍是门槛。手机 UI 独立审查发现文件草稿基线恢复与发送等待回执时断线的 P1，作者已提交 follow-up，须待非作者复审关闭再合入。报告保留发现和闭环，不以删除失败断言或仅运行作者夹具替代复测。
+Transport 独立审查覆盖真实隔离 Snow/Gateway 与 JS Request/Response/FormData 联合调用，已发现并修复总时限、pending connect 关停和超大正文编码前拒绝；WSS TLS provider P1 已经独立进程复测关闭，相关源码及[最终报告](../reviews/mobile-native-transport-independent.md)已合入主线。手机 UI 独立审查发现文件草稿基线恢复与发送等待回执时断线的 P1，作者已提交 follow-up，须待非作者复审关闭再合入。报告保留发现和闭环，不以删除失败断言或仅运行作者夹具替代复测。
 
 账号 lane 发现原始 Logto JVM core 的内层 OkHttp POST follow-up 不受外层 owner fence 控制；采用固定上游 core 源码的公开、小范围 HTTP 策略 patch，保留原版 Android UI 和 OAuth/验证流程。此为完成原有不重放契约所必需的实现修正，不降级为“记录限制后默认通过”；源文件摘要/patch、single-attempt 网络回归与最终 Android 依赖解析均须核验。
