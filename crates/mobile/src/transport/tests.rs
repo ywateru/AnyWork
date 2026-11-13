@@ -17,7 +17,7 @@ use serde_json::json;
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -31,10 +31,12 @@ fn now() -> u64 {
 struct Auth {
     epoch: AtomicU64,
     tokens: AtomicUsize,
+    denied: AtomicBool,
 }
 impl Authorization for Auth {
     fn token(&self, _: bool, _: u64) -> AuthFuture<'_, AccessGrant> {
         Box::pin(async move {
+            anyhow::ensure!(!self.denied.load(Ordering::SeqCst), "fixture logged out");
             let n = self.tokens.fetch_add(1, Ordering::SeqCst);
             Ok(AccessGrant {
                 access_token: format!("fixture-{n}"),
@@ -151,6 +153,7 @@ impl Fixture {
         let auth = Arc::new(Auth {
             epoch: AtomicU64::new(1),
             tokens: AtomicUsize::new(0),
+            denied: AtomicBool::new(false),
         });
         let service = TransportService::new();
         let (tx, events) = mpsc::unbounded_channel();
@@ -576,5 +579,51 @@ async fn eof_after_submission_is_unknown_and_closes_pending_operations() {
     f.gateway.close().await;
     let error = task.await.unwrap().unwrap_err();
     assert_eq!(error.delivery, Delivery::OutcomeUnknown);
+    assert!(!f.service.close_all().await.cleanup_pending);
+}
+
+#[tokio::test]
+async fn foreground_checks_native_authorization_and_preserves_valid_connection() {
+    let f = Fixture::new(false).await;
+    f.service.foreground_validate().await.unwrap();
+    assert_eq!(f.auth.tokens.load(Ordering::SeqCst), 2);
+    let (head, body) = f.request("after-foreground", "GET", "/api/info", &[]).await;
+    assert_eq!(head.status, 200);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+        json!({"fixture":true})
+    );
+    assert!(!f.service.close_all().await.cleanup_pending);
+}
+
+#[tokio::test]
+async fn foreground_revoked_grant_closes_peer_without_reconnection() {
+    let mut f = Fixture::new(false).await;
+    f.auth.denied.store(true, Ordering::SeqCst);
+    assert!(f.service.foreground_validate().await.is_err());
+    let event = tokio::time::timeout(Duration::from_secs(2), f.events.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        event,
+        TransportEvent::Closed {
+            code: "LOGIN_REQUIRED",
+            ..
+        }
+    ));
+    assert!(
+        f.service
+            .http_begin(HttpBegin {
+                operation: f.op("revoked"),
+                method: "POST".into(),
+                path: "/api/sessions/test/messages".into(),
+                content_type: None,
+                size: 0,
+            })
+            .await
+            .is_err()
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 0);
     assert!(!f.service.close_all().await.cleanup_pending);
 }

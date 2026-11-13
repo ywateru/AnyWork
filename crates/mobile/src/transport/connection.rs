@@ -32,6 +32,7 @@ pub(super) enum Command {
     Read(OperationRef, Reply<ResponseChunk>),
     Cancel(OperationRef, Reply<()>),
     Pty(PtyCommand, Reply<()>),
+    Foreground(Reply<()>),
     Renew(anyhow::Result<AccessGrant>),
 }
 #[derive(Clone)]
@@ -647,6 +648,37 @@ impl Actor {
             Command::Pty(req, reply) => {
                 let result = self.pty(req).await;
                 let reason = result.as_ref().err().filter(|e| fatal(e)).cloned();
+                let _ = reply.send(result);
+                if let Some(reason) = reason {
+                    return Err(reason);
+                }
+            }
+            Command::Foreground(reply) => {
+                let result = async {
+                    let grant = tokio::select! { biased;
+                        _ = self.stop.cancelled() => return Err(error("CONNECTION_CLOSED")),
+                        _ = self.lifetime.cancelled() => return Err(error("IDENTITY_CHANGED")),
+                        _ = tokio::time::sleep_until(self.deadline) => return Err(error("AUTHORIZATION_EXPIRED")),
+                        result = tokio::time::timeout(Duration::from_secs(15), self.auth.token(false, 60)) =>
+                            result.map_err(|_| error("LOGIN_REQUIRED"))?
+                                .map_err(|_| error("LOGIN_REQUIRED"))?,
+                    };
+                    self.check().await?;
+                    if grant.epoch != self.epoch {
+                        return Err(error("IDENTITY_CHANGED"));
+                    }
+                    if grant.expires_at.saturating_sub(now()) < 60
+                        || grant.access_token.is_empty()
+                        || grant.access_token.len() > 16_384
+                    {
+                        return Err(error("LOGIN_REQUIRED"));
+                    }
+                    // A token is only evidence of current account authorization.
+                    // Only an authenticated auth.renewed frame changes the lease.
+                    Ok(())
+                }
+                .await;
+                let reason = result.as_ref().err().cloned();
                 let _ = reply.send(result);
                 if let Some(reason) = reason {
                     return Err(reason);

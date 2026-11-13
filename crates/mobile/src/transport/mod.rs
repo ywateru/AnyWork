@@ -127,6 +127,25 @@ impl TransportService {
         self.call(&reference, |reply| Command::Pty(req, reply))
             .await
     }
+    /// Revalidate existing connections after application foregrounding. This
+    /// never reconnects, replays an operation, or extends an authenticated lease.
+    pub async fn foreground_validate(&self) -> Result<()> {
+        let references: Vec<_> = self
+            .peers
+            .lock()
+            .await
+            .values()
+            .map(|peer| peer.reference().clone())
+            .collect();
+        let results = futures_util::future::join_all(
+            references
+                .iter()
+                .map(|reference| self.call(reference, Command::Foreground)),
+        )
+        .await;
+        // Check every connection even when one of them has already expired.
+        results.into_iter().collect()
+    }
     pub async fn close(&self, reference: ConnectionRef) -> CleanupState {
         let peer = {
             let mut peers = self.peers.lock().await;
