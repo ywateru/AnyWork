@@ -57,7 +57,7 @@ PTY send delivery 的初步源码疑点已撤回：外层 call 在 peer 结束�
 
 ## 初次独立验证
 
-先询问 Boole，收到共享 target 已释放后才执行 Cargo；后续明确把窗口交回 Planck。只使用既有依赖，初始 core/Gateway Cargo 命令均 offline + locked，`CARGO_INCREMENTAL=0`、`CARGO_PROFILE_DEV_DEBUG=0`、`CARGO_TARGET_DIR=/Users/water/work/2026/any-work/target`。未进行大型 workspace/native build、依赖安装、node_modules/target 复制。
+先询问 Boole，收到共享 target 已释放后才执行 Cargo；后续明确把窗口交回 Planck。只使用既有依赖，初始 core/Gateway Cargo 命令均 offline + locked，`CARGO_INCREMENTAL=0`、`CARGO_PROFILE_DEV_DEBUG=0`，`CARGO_TARGET_DIR` 指向协调者主检出的共享 target。未进行大型 workspace/native build、依赖安装、node_modules/target 复制。
 
 临时 manifest 从作者最小 harness 复制并把 lib、remote 路径全部改为本审查工作树，增加空 `[workspace]` 隔离，不改变仓库 manifest。下列相对命令均在本审查 WT 执行：
 

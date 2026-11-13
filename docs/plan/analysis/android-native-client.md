@@ -93,12 +93,12 @@ SDK 登录 Activity 设置 `LOAD_NO_CACHE`，没有因此关闭 cookie；[LogtoC
 
 只读检查配置、镜像文件及已运行进程的 executable 名称，没有执行 `adb devices`、启动 emulator、安装 APK 或改变账号。宿主为 arm64；四个 AVD 都配置 Pixel 4、Android 11/API 30 Google APIs、同一 ABI、2 GiB RAM、6 GiB data 分区。共享系统镜像目录存在，`kernel-ranchu/system.img/userdata.img/ramdisk.img` 及 package 元数据均存在，镜像实际分配约 **3.13 GiB**，不需要下载。
 
-| AVD 本机配置名 | 数据目录实际分配 | quickboot snapshot | 备注 |
+| AVD 候选（本机名称不公开） | 数据目录实际分配 | quickboot snapshot | 备注 |
 | --- | ---: | --- | --- |
-| fitting_mirror_demo | 3.16 GiB | 有 | 其他用途，不优先占用 |
-| hgdj_capture | 1.09 GiB | 有 | 其他用途，不优先占用 |
-| nuva_mirror_isolated | 2.84 GiB | 有 | 名称含 isolated 不构成空账号证明 |
-| v4_mirror_verify_1014 | 0.57 GiB | 无 | 空间上首选候选，仍需确认所有权与数据隔离 |
+| A | 3.16 GiB | 有 | 其他用途，不优先占用 |
+| B | 1.09 GiB | 有 | 其他用途，不优先占用 |
+| C | 2.84 GiB | 有 | 配置名称不构成空账号证明 |
+| D | 0.57 GiB | 无 | 空间上首选候选，仍需确认所有权与数据隔离 |
 
 所有配置均有 lock 文件；盘点时没有运行中的 qemu/emulator executable，但有既存 adb 进程。不能仅据此删除 lock 或断定 AVD 无账号。建议 shell owner 先协调候选 AVD 的归属并确认无真实在线账号，然后对最后一个使用不载入/保存快照的隔离运行，必要时使用 emulator 支持的 read-only 数据 overlay；本轮未启动、未 wipe-data、未复制 AVD、未修改任何 lock。只安装授权候选 debug APK，测试后卸载/清理本任务数据与产物，保留他人数据。
 
