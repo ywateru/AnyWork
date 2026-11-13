@@ -4,11 +4,13 @@
 
 用户要求完整 Rust/Tauri 2 Android 客户端、手机 UI/引导、修复网页用户名并在完成后更新 GitHub。[Android 任务](tasks/android-native-client.md)划分账号、transport、壳/系统/构建、手机界面和独立验收；[产品契约](../android-account-entry.md)替代旧 Custom Tab 入口，[合并验收](reviews/android-native-merged.md)汇总实际检查与边界。凭据只在原生内存，业务界面随包，不以移动网页测试代替 APK 验收。此前 Claude Desktop 真机测试仍按用户安排后置。
 
+已正式发布[v0.1.34](https://github.com/ywateru/AnyWork/releases/tag/v0.1.34)：精确源码Checks、五桌面目标与四ABI Android Release通过，正式官网和20项附件经发布器只读核验。官网因CI部署令牌失效改用有效本机授权、同精确源码预构建恢复；原网站工作流未伪记成功，后续自动部署需更新令牌，详见[交付记录](reviews/android-native-merged.md)。临时运行环境与独立构建缓存已清理；连接新Android前先更新并重启电脑宿主。
+
 ## Claude Code / Desktop Code
 
 当前用户目标是完成两种 Claude 后端支持并更新网页介绍。[调研](analysis/claude.md)、[产品契约](../claude-integration.md)、[后端任务](tasks/claude-backend.md)与[网页任务](tasks/claude-web.md)记录实现和独立验收。保持原生会话身份，区分被动历史、独立恢复与原桌面共享执行；不修改既有原生会话进行测试。
 
-源码交付完成：CLI、Web、Desktop 固定载体与 App mapper/默认 profile 发现均已独立接受并合入 main，先前发现均已复核关闭。[主分支检查](reviews/claude-merged.md)记录 Rust 全工作区、401 项 Web 单测、API 与双语站点结果。[Desktop 映射审查](reviews/claude-desktop-mapper-independent.md)包含截图会话真实只读验证和去重修复。用户明确要求 Desktop 真机测试留待提交后手动执行，当前不继续原生桥测试；后续按[连接与手测指南](../claude-desktop-setup.md)操作，并继续保留实验和未真机验收声明。本轮不发布或部署。
+源码交付完成：CLI、Web、Desktop 固定载体与 App mapper/默认 profile 发现均已独立接受并合入 main，先前发现均已复核关闭。[主分支检查](reviews/claude-merged.md)记录 Rust 全工作区、401 项 Web 单测、API 与双语站点结果。[Desktop 映射审查](reviews/claude-desktop-mapper-independent.md)包含截图会话真实只读验证和去重修复。两个后端已随v0.1.30发布，本次v0.1.34继续保留。用户明确要求 Desktop 真机测试留待提交后手动执行，当前不继续原生桥测试；后续按[连接与手测指南](../claude-desktop-setup.md)操作，并继续保留实验和未真机验收声明。
 
 桌面控制：普通 CDP 启动被 5.11492.x 的厂商签名门禁拒绝，使用正常 DevTools outgoing loopback 桥方案。已用复制原包/临时 profile 打开真实 DevTools，未越过控制台人工“允许粘贴”确认。代码、夹具与独立审查已完成，具体操作已写入连接与手测指南；原生桥连接与写入测试按用户安排后置，当前不记为真机通过。
 

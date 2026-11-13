@@ -1,7 +1,7 @@
 ---
 id: account-identity-visible
 scope: Web current-account display and verified profile loading
-status: independently-accepted
+status: completed
 depends-on: []
 ---
 
@@ -34,3 +34,5 @@ depends-on: []
 ## Acceptance
 
 作者提交 `5462fe4` 与跨标签 owner 修正 `e501d22` 已通过[独立复审](../reviews/account-identity-visible-independent.md)并合入主分支。84 项定向测试、真实 SDK 多标签合成授权实验、中英文 1440/390px 组件浏览器检查通过。最初 P1 与关闭证据保留，不用 mock getter 替代真实 SDK 缓存验证。其他标签 grant rotation 会保守关闭当前 workspace 并重建 owner，不承诺无缝跨标签续连；真实账号登录、GitHub 发布和最终合并全量检查另记。
+
+已随[v0.1.34](https://github.com/ywateru/AnyWork/releases/tag/v0.1.34)发布，官网对应Web资产已部署。最终合并、精确源码Checks、完整Release与发布核验见[交付记录](../reviews/android-native-merged.md)。身份组件使用合成账号验收，未使用用户真实账号补测。

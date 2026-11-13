@@ -44,4 +44,6 @@ system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_p
 
 v0.1.32的实际Release发现可选SLF4J binding诊断，修复后v0.1.33已通过真实四ABI编译、R8与assemble，但后置脚本引用不存在的Release app unit任务。任务修复经真实Gradle枚举及双profile dry-run独立接受后，本机用临时测试签名实际跑通完整单arm64 canonical Release、Release lint/JVM与APK checker；证据见[合并记录](plan/reviews/android-native-merged.md)。测试签名包不作为公开发行；正式包仍须完整远端四ABI、发行证书与发布门禁通过。
 
+正式[v0.1.34](https://github.com/ywateru/AnyWork/releases/tag/v0.1.34)现已完成精确源码Checks和全部Release目标，Android四ABI、R8、Release lint/JVM及完整APK checker实际通过。公开APK为versionName0.1.34、versionCode36；下载、摘要和官网恢复证据见[最终交付记录](plan/reviews/android-native-merged.md)。这不扩大此前隔离候选的运行验收范围；真实账号业务和正式覆盖安装仍另行验收。
+
 transport 的显式 ring Connector 在双 provider、未初始化 global provider 的独立进程中通过6项真实 loopback WSS测试，包括可信CA exchange、生产WebPKI拒绝未知CA、可信CA但主机名错误拒绝。shell 在原生入口安装 ring 默认 provider 保护其它SDK调用；transport 不依赖该全局初始化。没有禁用证书或主机名验证。

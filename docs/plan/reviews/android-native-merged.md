@@ -74,3 +74,31 @@ CI接线修复`a116f31`（主线`b484b52`）经非作者独立复审通过：普
 修复源`44eab4c981a62f61cb252f7b219b1c91c6551bc5`与主线`a77af19`产品代码零差异。本机使用新建的临时测试keystore运行`build-android.sh --release --target aarch64`，实际完成Rust Android release、R8/assemble、Release lint、App Debug JVM任务及system/auth/core回归，最后APK checker通过版本/本地资产/原生库/测试签名证书及ELF/ZIP16KiB验证。App unit为NO-SOURCE，不把空任务记作测试用例；未删除任何现有JVM测试。后置Gradle实际205任务（100 executed、105 up-to-date），无额外Rust编译。
 
 测试APK SHA-256为`6d8870644fd807ea6a8505916d594cfb18e1981da23ba7e318fedccee685f47a`。这是单arm64、临时测试签名的Release验证，不使用生产签名、真实账号或设备，不安装、不上传为正式发布。日志保留于ignored `artifacts/release-android-failure/v34-canonical-aarch64-release.log`。正式四ABI与既有生产签名仍由新版本精确源码Checks和Release工作流验证，不改动旧失败tag。
+
+## v0.1.34 正式发行与官网恢复
+
+正式源码为`fa166c41bcf9a30fc6027947e884802f4a6d06f8`。[v0.1.34](https://github.com/ywateru/AnyWork/releases/tag/v0.1.34)已于2026-11-13发布，五个桌面平台、Android、Web与对应源码全部完成，后续网站文案及验收文档提交不改变该tag与已有附件。
+
+[Checks 43438472684](https://github.com/ywateru/AnyWork/actions/runs/43438472684)五项最终全部成功。首轮普通Web为678通过、1既有跳过、1失败；真实trace证明第二条消息在首轮执行未结束时进入队列，方向键按产品契约优先召回排队消息，测试却假定已经进入历史导航。测试缺少无待处理队列的前提等待，相关产品和用例源码与此前成功版本相同。保留现场后仅重试失败job一次，同一精确源码的[attempt 2](https://github.com/ywateru/AnyWork/actions/runs/43438472684/attempts/2)实际普通Web679通过、1既有跳过，mobile30通过，format和双语site检查均成功。非作者核对了原始trace与成功日志；不将首轮记为全部通过，也未修改或放宽断言。证据保留于ignored `artifacts/release-android-failure/v34-prompt-history-review/`。
+
+[Release 43447612870](https://github.com/ywateru/AnyWork/actions/runs/43447612870)全部成功。Android非作者核对四ABI的实际Release库、R8/assemble、Release lint、system/auth/core三个JVM任务、App Debug unit的预期NO-SOURCE和正式artifact上传。三个JVM任务本次均实际执行成功；26项规模依据相同测试源码和此前实际JUnit XML，远端日志未逐项输出计数。APK checker明确通过身份、随包UI、原生库、签名及ELF/ZIP16KiB检查（4ABI）。正式包为`dev.remoteagent.app`、versionName0.1.34、versionCode36、minSdk26；[正式APK](https://github.com/ywateru/AnyWork/releases/download/v0.1.34/anywork-android.apk)为204082412 bytes，GitHub SHA-256为：
+
+```text
+3d5f47736b953e12a8d7423af60fb1cc34c7c0232a673f7b3557d8783854ea74
+```
+
+正式Android日志与独立摘要保留于ignored `artifacts/release-android-failure/v34-release-independent/`，不以此前debug候选冒充正式包的设备运行验收。连接新Android前应先更新并重启电脑宿主，使其支持移动Native client授权。
+
+自动官网运行[43452349567](https://github.com/ywateru/AnyWork/actions/runs/43452349567)在`vercel pull`因GitHub中的`VERCEL_TOKEN`失效失败。普通gh/git授权与发布器授权不同：前者无此仓库的secret管理及推送权限，发布器的既有授权具备相应权限，主线推送继续使用发布器的安全认证方法。本机Vercel登录为短期OAuth授权，未将它复制为长期CI secret；没有改动GitHub secret、生产账号服务配置或已发布安装包。沿用有效的本机Vercel CLI50.28.0登录，在隔离的精确源码工作树核对既有`anywork`项目；五项公开账号参数从该源码的`defaultAccountValues`提取，并与当时正式站公开JS逐项匹配，账号入口沿用已记录的正式URL。使用相同prepare-CSP、production prebuild和prebuilt deploy流程，不导出登录令牌。
+
+上传前核对源码标记、双语v34下载、20项附件、1017个源码归档Git blob、447个静态输出文件及无符号链接/凭据文件；部署[anywork-mr17ea1ci](https://anywork-mr17ea1ci-yywater68-1778s-projects.vercel.app)成功并绑定[正式官网](https://anywork.aixgg.com)。`python3 scripts/publish.py --verify-existing v0.1.34`随后返回`verified: true`，实际核对20附件、19校验项、5个更新目标的签名文件/清单版本绑定和官网版本/下载元数据；官网精确源码另由`build.json`独立读回核对。此为轻量发布核验，不是下载所有安装包后的实装升级测试。
+
+必须保留自动化恢复边界：GitHub网站工作流的失效令牌尚未更新，原发布器进度仍为`pages`，未手改为`complete`。本轮网站已通过本机授权恢复并完成只读发布核验；后续恢复自动网站部署前须更新仓库`VERCEL_TOKEN`。不把本机部署记为GitHub网站工作流成功，也不将此基础设施问题改写成产品测试失败。小型部署证据保留于ignored `artifacts/v34-site-recovery/`。
+
+### 最终官网文案与独立线上核验
+
+2026-11-14的最终轻验发现两个locale的四字段仍保留发行前“新版待验收／下载可能仍为旧入口”说明。原UI作者提交`5dea6fc216a1d46e11b8b49ba6fbcdcf9bccb447`仅更新这四字段，明确当前下载为Rust/Tauri 2客户端、无账号模拟器验收已通过，保留真实账号远程业务、实体设备和正式覆盖安装未测及先更新重启电脑宿主的提醒。站点构建、中英文各五视口、两文件格式检查通过，非作者复核接受；未修改产品源码、版本、tag或任何正式附件。
+
+该网站提交已推送main并从独立干净工作树按同一production prebuilt流程部署为[anywork-4c13a58z6](https://anywork-4c13a58z6-yywater68-1778s-projects.vercel.app)，正式域名已切换。非作者限定读回`build.json`与英中页面三个响应：version0.1.34、source精确为`5dea6fc…`，四字段逐字匹配接受提交、旧说明消失，每页10个版本固定的下载/校验链接保持v0.1.34。此前20项元数据及8项静态资源/CSP轻验保留，最终发布器`--verify-existing v0.1.34`再次返回`verified: true`。官网文案source为`5dea6fc…`，v34正式二进制/tag source仍为`fa166c41…`，不得混为同一提交，也不声称启用了GitHub不可变Release保护。
+
+最终部署与线上证据保留于ignored `artifacts/v34-site-final-deploy/`、`artifacts/v34-site-live-independent/`。两次部署临时工作树及其环境文件、构建输出、依赖链接均已移除；连同本轮模拟器/镜像/AVD、临时测试密钥和独立Android构建缓存清理，最终可用空间约22.96GiB。保留小型验收证据、明确标记的原debug候选及共享依赖缓存，不清理未知工作树或用户数据。产品交付与正式网站核验结束；真实账号、实体机/覆盖安装及Claude Desktop桥连接/写入仍按前述范围留待手测，CI部署令牌维护边界不变。
