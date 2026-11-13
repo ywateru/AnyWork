@@ -197,7 +197,7 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
         }
     }
 
-    private suspend fun readProfile(sdk: RamClient): ProfileResult {
+    private suspend fun readClaims(sdk: RamClient): JSONObject {
         val claims = suspendCancellableCoroutine<JSONObject> { continuation ->
             sdk.getIdTokenClaims { exception, value ->
                 if (continuation.isActive) {
@@ -206,6 +206,14 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                 }
             }
         }
+        check(claims.optString("iss") == configuration!!.endpoint + "/oidc")
+        check(claims.optString("aud") == configuration!!.clientId)
+        check(claims.optString("sub").isNotBlank())
+        return claims
+    }
+
+    private suspend fun readProfile(sdk: RamClient): ProfileResult {
+        val originalClaims = readClaims(sdk)
         val info = suspendCancellableCoroutine<JSONObject?> { continuation ->
             sdk.fetchUserInfo { exception, value ->
                 if (continuation.isActive) {
@@ -215,6 +223,10 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                 }
             }
         }
+        // fetchUserInfo may have refreshed the SDK grant internally. Bind its
+        // new verified ID claims to the same subject even on a pure GET error.
+        val claims = readClaims(sdk)
+        check(claims.optString("sub") == originalClaims.optString("sub"))
         return verifiedProfile(claims, info, profileValue)
     }
 
@@ -268,6 +280,9 @@ class MobileAuthPlugin(private val host: Activity) : Plugin(host) {
                     check(grant.expiresAt - System.currentTimeMillis() / 1000 >= args.minValidity)
                     check(grant.token.isNotEmpty() && grant.token.length <= 16384)
                     check(grant.scope.split(Regex("\\s+")).contains(if (args.resource) "connect" else "custom_data"))
+                    val claims = readClaims(sdk)
+                    requireOwner(args.generation)
+                    check(claims.optString("sub") == profileValue?.optString("subject"))
                     invoke.resolve(JSObject().apply {
                         put("accessToken", grant.token)
                         put("expiresAt", grant.expiresAt)
