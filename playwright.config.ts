@@ -2,6 +2,11 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL = `http://127.0.0.1:${process.env.ANYWORK_E2E_PORT || "3219"}`;
 export default defineConfig({
   testDir: "./e2e",
+  // Bundled native-client fixtures require mobile.html and their own Vite server.
+  testIgnore: [
+    "**/e2e/mobile-native.spec.ts",
+    "**/e2e/mobile-contrast.spec.ts",
+  ],
   outputDir: process.env.ANYWORK_E2E_OUTPUT_DIR || "test-results",
   timeout: 30000,
   fullyParallel: false,
