@@ -75,6 +75,7 @@ fn handle(config: Config) -> (Handle, Arc<Backend>) {
     )
 }
 async fn signed_in(handle: &Handle) {
+    handle.0.state.lock().await.snapshot.phase = Phase::SigningIn;
     handle.apply(0, native(7, "signedIn")).await.unwrap();
 }
 fn key(byte: u8) -> String {
@@ -142,6 +143,22 @@ async fn cancel_fences_late_login_result_and_does_not_restore_identity() {
     assert_eq!(
         runner.await.unwrap().err().unwrap().to_string(),
         "CANCELLED"
+    );
+    let state = handle.0.state.lock().await;
+    assert!(state.snapshot.phase == Phase::SignedOut);
+    assert!(state.snapshot.account.is_none());
+}
+
+#[tokio::test]
+async fn a_native_snapshot_cannot_reopen_a_locally_retired_owner() {
+    let (handle, _) = handle(Config::default());
+    signed_in(&handle).await;
+    let retired = handle.logout().await.unwrap();
+    assert!(
+        handle
+            .apply(retired.epoch, native(7, "signedIn"))
+            .await
+            .is_err()
     );
     let state = handle.0.state.lock().await;
     assert!(state.snapshot.phase == Phase::SignedOut);

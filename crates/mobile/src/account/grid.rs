@@ -14,9 +14,9 @@ impl NativeDirectory {
     pub fn epoch(&self) -> u64 {
         self.epoch
     }
-    pub async fn close(self) {
+    pub async fn close(self) -> bool {
         // close fences locally before attempting exact-session revocation.
-        let _ = self.client.close().await;
+        self.client.close().await.is_ok()
     }
 }
 

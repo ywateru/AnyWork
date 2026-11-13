@@ -27,7 +27,9 @@ mod grid {
         pub fn epoch(&self) -> u64 {
             0
         }
-        pub async fn close(self) {}
+        pub async fn close(self) -> bool {
+            true
+        }
     }
     pub(super) async fn devices(_: &Handle, _: u64, _: &str) -> Result<Vec<GridDevice>> {
         bail!("SYSTEM_UNAVAILABLE")
@@ -134,6 +136,7 @@ struct Inner {
     state: Mutex<State>,
     grid: Mutex<Option<grid::NativeDirectory>>,
     writes: Mutex<()>,
+    refreshes: Mutex<()>,
     trust: Mutex<std::result::Result<TrustStore, String>>,
     notify: Arc<dyn Fn(AccountSnapshot) + Send + Sync>,
     retire: std::sync::Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
@@ -250,6 +253,7 @@ impl Handle {
             configured: OnceCell::new(),
             grid: Mutex::new(None),
             writes: Mutex::new(()),
+            refreshes: Mutex::new(()),
             notify,
             retire: std::sync::Mutex::new(None),
             trust: Mutex::new(Ok(TrustStore::load(None).expect("memory store"))),
@@ -322,6 +326,13 @@ impl Handle {
         }
         let mut state = self.0.state.lock().await;
         ensure!(state.snapshot.epoch == epoch, "CANCELLED");
+        // A snapshot cannot reopen a locally retired owner while the native
+        // logout dispatch/rotation is still settling.
+        ensure!(
+            phase != Phase::SignedIn
+                || matches!(state.snapshot.phase, Phase::SigningIn | Phase::SignedIn),
+            "CANCELLED"
+        );
         let changed = state.snapshot.phase == Phase::SignedIn
             && (phase != Phase::SignedIn
                 || native.generation != state.native_generation
@@ -427,9 +438,26 @@ impl Handle {
         self.retired();
         (self.0.notify)(snapshot);
         // Native fencing begins immediately; started token rotation is never cancelled.
-        let native = self.0.backend.logout().await;
-        if let Some(directory) = self.0.grid.lock().await.take() {
-            directory.close().await;
+        let mut native = self.0.backend.logout().await;
+        let cleanup_confirmed = {
+            let mut slot = self.0.grid.lock().await;
+            if slot
+                .as_ref()
+                .is_some_and(|directory| directory.epoch() < epoch)
+            {
+                if let Some(directory) = slot.take() {
+                    directory.close().await
+                } else {
+                    true
+                }
+            } else {
+                true
+            }
+        };
+        if !cleanup_confirmed {
+            if let Ok(snapshot) = &mut native {
+                snapshot.error_code = Some("MOBILE_REVOCATION_UNCONFIRMED".into());
+            }
         }
         match native {
             Ok(native) => self.apply(epoch, native).await,
@@ -635,6 +663,7 @@ impl Handle {
             .collect()
     }
     pub async fn refresh(&self) -> Result<AccountSnapshot> {
+        let _refresh = self.0.refreshes.lock().await;
         let (epoch, _, subject) = self.owner().await?;
         {
             let mut state = self.0.state.lock().await;
@@ -895,6 +924,7 @@ impl Handle {
         );
         self.ensure_epoch(request.expected_epoch).await?;
         let _write = self.0.writes.lock().await;
+        let refresh_guard = self.0.refreshes.lock().await;
         let state = self.0.state.lock().await;
         ensure!(
             state.snapshot.revision == request.expected_revision,
@@ -965,8 +995,12 @@ impl Handle {
             "MOBILE_ACCOUNT_WRITE_REJECTED"
         );
         self.ensure_epoch(epoch).await?;
-        let after = self.account_read(epoch, &subject).await?;
+        let after = self
+            .account_read(epoch, &subject)
+            .await
+            .map_err(|_| anyhow::anyhow!("WRITE_OUTCOME_UNKNOWN"))?;
         ensure!(after["customData"] == custom, "DIRECTORY_CONFLICT");
+        drop(refresh_guard);
         self.refresh().await
     }
 }
