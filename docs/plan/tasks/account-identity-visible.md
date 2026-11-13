@@ -1,7 +1,7 @@
 ---
 id: account-identity-visible
 scope: Web current-account display and verified profile loading
-status: in-progress
+status: independently-accepted
 depends-on: []
 ---
 
@@ -30,3 +30,7 @@ depends-on: []
 ## verification
 
 覆盖 username-only、name、email、空白字段、UserInfo 回填、subject 不符、延迟请求与登出/账号切换、网络失败及长名称。通过类型检查、相关单测和使用合成身份的实际组件浏览器核验，不使用真实账号截图作公开测试资产。实现提交后由非作者独立审查。
+
+## Acceptance
+
+作者提交 `5462fe4` 与跨标签 owner 修正 `e501d22` 已通过[独立复审](../reviews/account-identity-visible-independent.md)并合入主分支。84 项定向测试、真实 SDK 多标签合成授权实验、中英文 1440/390px 组件浏览器检查通过。最初 P1 与关闭证据保留，不用 mock getter 替代真实 SDK 缓存验证。其他标签 grant rotation 会保守关闭当前 workspace 并重建 owner，不承诺无缝跨标签续连；真实账号登录、GitHub 发布和最终合并全量检查另记。
