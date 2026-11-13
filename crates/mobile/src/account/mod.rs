@@ -2,7 +2,7 @@
 //! requests and account epochs. No refresh/ID token is accepted by this module.
 use anyhow::{Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{

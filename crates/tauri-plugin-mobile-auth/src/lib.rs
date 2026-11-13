@@ -44,7 +44,7 @@ pub struct MobileAuth<R: Runtime> {
     #[cfg(target_os = "android")]
     handle: tauri::plugin::PluginHandle<R>,
     #[cfg(not(target_os = "android"))]
-    runtime: std::marker::PhantomData<R>,
+    runtime: std::marker::PhantomData<fn() -> R>,
 }
 
 impl<R: Runtime> MobileAuth<R> {
