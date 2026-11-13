@@ -152,6 +152,17 @@ impl App {
                     "thread/settings/updated" => {
                         if params["threadSettings"].is_object() {
                             *rt.settings.lock().await = params["threadSettings"].clone();
+                            if app
+                                .store
+                                .session(&id)
+                                .is_ok_and(|s| crate::claude::is_claude(&s.agent))
+                            {
+                                let _ = app.store.update(&id, |s| {
+                                    s.model = params["threadSettings"]["model"]
+                                        .as_str()
+                                        .map(str::to_string)
+                                });
+                            }
                         }
                     }
                     "turn/started" => {
@@ -209,6 +220,10 @@ impl App {
                     let policy = app.store.session(&id).map(|s| s.policy).unwrap_or_default();
                     let automatic = if policy == "auto"
                         && !app.store.session(&id).is_ok_and(|s| s.external)
+                        && !app
+                            .store
+                            .session(&id)
+                            .is_ok_and(|s| crate::claude::is_claude(&s.agent))
                         && method.ends_with("/requestApproval")
                     {
                         remote_agent_codex::approval_result(method, &params, true).ok()

@@ -17,6 +17,9 @@ python3 scripts/schema-recovery-test.py
 python3 scripts/file-consistency-test.py
 python3 scripts/service-control-test.py
 python3 scripts/shared-history-test.py
+python3 scripts/claude-integration-test.py
+python3 scripts/claude-desktop-launch-test.py
+python3 scripts/claude-desktop-adapter-test.py
 python3 scripts/workbuddy-launch-test.py
 python3 scripts/editing-test.py
 python3 scripts/discovery-test.py

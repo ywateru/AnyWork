@@ -8,12 +8,13 @@ import {
   Plus,
 } from "lucide-react";
 import type { GroupMode } from "./NavigationHeader";
-import type { Session, WorkspaceInfo } from "../types";
+import type { Plugin, Session, WorkspaceInfo } from "../types";
 import { agentName, sidebarSessions } from "../sidebarAgents";
 import AgentIcon from "./AgentIcon";
 
 export default function SessionSidebar({
   sessions,
+  plugins = [],
   loading = false,
   loadError = false,
   onRetry,
@@ -29,6 +30,7 @@ export default function SessionSidebar({
   onCreate,
 }: {
   sessions: Session[];
+  plugins?: Plugin[];
   loading?: boolean;
   loadError?: boolean;
   onRetry?: () => void;
@@ -72,14 +74,14 @@ export default function SessionSidebar({
       <button
         key={s.id}
         className={`session-row${s.id === selected ? " active" : ""}`}
-        title={`${s.title} · ${agentName(s.agent)} · ${s.cwd} · ${statusText(s.status)}`}
+        title={`${s.title} · ${agentName(s.agent, plugins)} · ${s.cwd} · ${statusText(s.status)}`}
         aria-label={s.title}
         aria-current={s.id === selected ? "page" : undefined}
         onClick={() => onSelect(s.id)}
       >
         <AgentIcon agent={s.agent} />
         <span className="sr-only">
-          {agentName(s.agent)} · {statusText(s.status)}
+          {agentName(s.agent, plugins)} · {statusText(s.status)}
         </span>
         <span className="session-info">
           <strong>{s.title}</strong>

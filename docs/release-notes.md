@@ -1,8 +1,26 @@
-AnyWork brings local Codex and DeepSeek Harness workspaces to browsers and Android, with a Rust desktop manager for hosting and connectivity.
+AnyWork brings local coding-agent workspaces to browsers and Android, with a Rust desktop manager for hosting and connectivity. Current built-in backends are Codex, Claude Code, Claude Desktop Code, DeepSeek Harness and WorkBuddy; each has its own connection and capability requirements.
 
-AnyWork 将本机 Codex 和 DeepSeek Harness 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。
+AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.29 / 本次更新**
+**New in 0.1.30 / 本次更新**
+
+Claude Code CLI now supports passive session discovery and paginated history, original-ID resumption, new sessions, text/image transport, streamed replies/thinking/tools, one-time approvals, open questions, cancellation and model selection. It reuses native local sign-in and prevents a second writer from taking over a busy native session. Real CLI acceptance covered isolated text streaming, tool approval, questions, cancellation, model changes and same-ID restart/resumption; it does not imply every model, Windows runtime or real image understanding has been tested.
+
+新增 Claude Code CLI 后端，支持被动发现会话与历史分页、原 ID 恢复、新建会话、文本/图片传输、流式正文/思考/工具、一次性审批、开放问答、取消和模型选择。复用本机原生登录，已有原生会话忙碌时不启动第二个 writer。真实 CLI 已验证隔离会话的文本流、工具审批、问答、取消、模型切换和原 ID 重启恢复；不扩大为全部模型、Windows 运行或真实图片理解已验收。
+
+Claude Desktop Code adds passive local-history discovery for Claude and Claude-3p profiles, session identity mapping and an experimental native DevTools loopback bridge. The bridge and control adapter have passed source review and protocol fixtures. **Native bridge connection and Desktop write/control testing are deferred to later manual testing and have not passed real-device acceptance.** Without a valid bridge, supported history remains readable. The macOS bridge launcher currently accepts reviewed Desktop versions 5.11492.0 and 5.11492.2. See the [connection and manual test guide](https://github.com/ywateru/AnyWork/blob/main/docs/claude-desktop-setup.md).
+
+新增 Claude Desktop Code 本地历史发现，覆盖 Claude 与 Claude-3p profile，保留原生会话身份，并提供实验性的正常 DevTools 本机桥接。原生桥与控制适配已通过源码审查和协议夹具验证；**原生桥连接及 Desktop 写入/控制真机测试留待后续手动执行，尚未完成真机验收**。没有有效桥时仍可读取受支持的历史。macOS 桥接工具当前仅接受已核对的 Desktop 5.11492.0、5.11492.2，详见[连接与手测指南](https://github.com/ywateru/AnyWork/blob/main/docs/claude-desktop-setup.md)。
+
+The website and Agent selector now show both Claude backends separately and describe all supported Agents in Chinese and English. Controls follow actual backend/session capabilities. AnyWork does not auto-answer Claude approval requests; importing or bridging an existing Desktop session preserves its native permission mode. Unknown send outcomes are not automatically replayed. A CLI resume or visible history is distinct from attachment to the original Desktop owner.
+
+官网和 Agent 选择器分别展示两个 Claude 后端，并以中英文说明当前支持的全部 Agent。界面按实际后端/会话能力显示操作。AnyWork 不自动代答 Claude 审批请求，已有 Desktop 会话保留其原生权限模式；结果未知的发送不自动重放。CLI 恢复、历史可见与连接原桌面执行者分别处理。
+
+Merged source validation passed 335 Rust tests (8 ignored), 401 Web unit tests, API and bridge fixtures, production builds and bilingual responsive-site checks. See the [validation record](https://github.com/ywateru/AnyWork/blob/main/docs/plan/reviews/claude-merged.md) for evidence and limits.
+
+合并源码通过 335 项 Rust 测试（8 项忽略）、401 项 Web 单测、API 与桥接夹具、生产构建及双语响应式网页检查，证据与边界见[验收记录](https://github.com/ywateru/AnyWork/blob/main/docs/plan/reviews/claude-merged.md)。
+
+**Previous release 0.1.29 / 上一版本**
 
 The website and clients now clearly state that both the server and clients are open source, with GitHub links for reviewing the code and understanding data security and privacy boundaries. This release makes small interface and copy changes.
 
@@ -210,9 +228,9 @@ Checksums are provided in `SHA256SUMS`. Desktop packages include the correspondi
 
 **Scope / 能力边界**
 
-Codex is included; DeepSeek Harness uses the official 0.2.2-rc.1 loopback HTTP carrier. Harness goal/plan, fork and message editing are not supported, and independent TUI processes without a shared carrier cannot be controlled. Codex desktop hot attach depends on compatible Unix sharing interfaces; Windows uses CLI-backed chats. Full goal operations need a compatible shared engine; the desktop follower supports reading/pausing. Voice and closed-browser push are not included.
+Codex is included; DeepSeek Harness uses the official 0.2.2-rc.1 loopback HTTP carrier. Harness goal/plan, fork and message editing are not supported, and independent TUI processes without a shared carrier cannot be controlled. Claude CLI and local Desktop Code use separate adapters; Claude does not inherit Codex goal/edit/fork or service-tier capabilities, and Desktop live control remains experimental without completed native acceptance. WorkBuddy requires its compatible native connection. Codex desktop hot attach depends on compatible Unix sharing interfaces; Windows uses CLI-backed chats. Full goal operations need a compatible shared engine; the desktop follower supports reading/pausing. Voice and closed-browser push are not included.
 
-内置 Codex，并新增官方 0.2.2-rc.1 本机 HTTP 共享主机的 DeepSeek Harness 接入。Harness 暂不支持目标/计划、分叉和消息编辑，也不能控制没有共享入口的独立 TUI。Codex 桌面热接入依赖兼容的 Unix 共享入口；Windows 使用 CLI 会话。完整目标操作需兼容共享引擎，follower 支持读取/暂停。暂不含语音与关闭浏览器后的推送。
+内置 Codex，并提供官方 0.2.2-rc.1 本机 HTTP 共享主机的 DeepSeek Harness 接入。Harness 暂不支持目标/计划、分叉和消息编辑，也不能控制没有共享入口的独立 TUI。Claude CLI 与本地 Desktop Code 分别适配，不继承 Codex 的目标/编辑/分叉或服务等级能力，Desktop 实时控制仍为未完成原生验收的实验功能；WorkBuddy 需兼容的原生连接。Codex 桌面热接入依赖兼容的 Unix 共享入口；Windows 使用 CLI 会话。完整目标操作需兼容共享引擎，follower 支持读取/暂停。暂不含语音与关闭浏览器后的推送。
 
 Independent open-source project, not affiliated with OpenAI. AGPL-3.0-only; see NOTICE for third-party acknowledgements.
 

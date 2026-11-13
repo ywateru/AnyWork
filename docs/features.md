@@ -8,7 +8,9 @@
 | Codex 真实适配 | 已实现，使用官方 app-server；本机真实会话/模型列表/回答联调通过 |
 | DeepSeek Harness | 已接入受支持的共享 gateway 与持久历史；版本、功能和实际 upstream 验收见支持矩阵 |
 | WorkBuddy | 已有被动历史与正文修复；共享写入仍为实验，真实原生写入验收未闭环 |
-| Claude Code / Cursor | 有插件扩展边界，未内置生产适配器 |
+| Claude Code | 内置 CLI stream-json 适配器，原会话恢复和本机持久历史；具体功能与验收见[接入契约](claude-integration.md)、支持矩阵 |
+| Claude Desktop Code | 独立 Agent 身份、本地 Code 历史与原桌面 LocalSessions 控制桥；需显式连接入口，普通聊天/Cowork/云端不作为本地 Code 接管 |
+| Cursor | 有插件扩展边界，未内置生产适配器 |
 | 会话 CRUD、搜索、归档、JSON 导出 | 已实现；搜索标题与工作目录 |
 | 工作目录与会话分组 | 已实现；从真实会话 cwd 去重分组，支持填写路径新建、折叠、展开及搜索；无会话目录不显示 |
 | 本机 Codex 会话发现 | 已实现；分页读取当前用户的工作区内会话，含归档、历史查看及原会话直接续聊/补充/停止/审批 |
@@ -39,8 +41,8 @@
 | 浏览器完成通知 | 已实现，受浏览器权限及后台策略限制 |
 | 原生 Android FCM 推送 | 未实现；后台任务继续运行，回到前台恢复事件流 |
 | 多机器集中 Hub + 出站 Runner | 未实现；当前每台开发机器部署一套服务端，客户端切换服务器连接 |
-| 原生客户端与远程协作 | 按拓扑受限：Codex 共享入口、Harness gateway、WorkBuddy 实验桥分别支持；无共享入口的独立 TUI 不承诺热接管 |
-| 历史发现与搜索 | Codex/dsh/WorkBuddy 本机历史已接入；不承诺跨厂商会话合并、跨主机目录、历史全文搜索或无共享入口控制 |
+| 原生客户端与远程协作 | 按拓扑受限：Codex 共享入口、Claude Desktop Code 本地桥、Harness gateway、WorkBuddy 实验桥分别支持；无共享入口的独立 TUI 不承诺热接管 |
+| 历史发现与搜索 | Codex/Claude Code/Claude Desktop Code/dsh/WorkBuddy 本机历史接入；不承诺跨厂商会话合并、跨主机目录、历史全文搜索或无共享入口控制 |
 | Telegram、语音通话/转写、工作图、计划调度 | 未移植 |
 | 端到端加密 Relay/穿透 | 未实现；通过 HTTPS/VPN 连接服务端 |
 | 多用户 RBAC、审计治理 | 未实现；当前为可信个人工作空间 |

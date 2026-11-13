@@ -107,6 +107,8 @@ describe("sidebar Agent projection", () => {
       { id: "codex", name: "Codex", present: false },
       { id: "deepseek-harness", name: "DeepSeek Harness", present: false },
       { id: "workbuddy", name: "WorkBuddy", present: false },
+      { id: "claude-code", name: "Claude Code", present: false },
+      { id: "claude-desktop", name: "Claude Desktop Code", present: false },
     ]);
   });
   it("scopes persistence to each server and preserves missing plugin selections", () => {
@@ -154,5 +156,39 @@ describe("sidebar Agent projection", () => {
     expect(sessions.some((session) => session.agent === "workbuddy")).toBe(
       false,
     );
+  });
+  it("keeps CLI and desktop Claude identities separate, including history-only and unavailable entries", () => {
+    const plugins = [
+      { id: "claude-code", name: "Wrong CLI label", available: true },
+      { id: "claude-desktop", name: "Wrong desktop label", available: false },
+      { id: "future-agent", name: "Future Agent", available: true },
+    ] as Plugin[];
+    const history = [
+      s("cli", "claude-code", "/a", 1),
+      s("desktop", "claude-desktop", "/b", 2),
+    ];
+    expect(agentName("claude-code", plugins)).toBe("Claude Code");
+    expect(agentName("claude-desktop", plugins)).toBe("Claude Desktop Code");
+    expect(
+      sidebarSessions(history, { ...filter, agent: "claude-code" }).map(
+        (s) => s.id,
+      ),
+    ).toEqual(["cli"]);
+    expect(
+      sidebarSessions(history, { ...filter, agent: "claude-desktop" }).map(
+        (s) => s.id,
+      ),
+    ).toEqual(["desktop"]);
+    expect(sidebarAgentOptions(plugins, history, "")).toContainEqual({
+      id: "future-agent",
+      name: "Future Agent",
+      present: true,
+    });
+    expect(sidebarAgentOptions([], history, "")).toContainEqual({
+      id: "claude-desktop",
+      name: "Claude Desktop Code",
+      present: true,
+    });
+    expect(agentName("constructor")).toBe("constructor");
   });
 });

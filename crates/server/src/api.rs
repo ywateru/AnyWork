@@ -23,6 +23,9 @@ pub async fn plugins(State(app): State<Arc<App>>) -> Json<Value> {
     Json(json!({"plugins": plugins.into_iter().map(|p| {
         let available = crate::shared_host::available(&app, &p.id);
         let setup_hint = match (p.id.as_str(), available) {
+            (crate::claude::CODE, false) => Some("请安装 Claude Code 并在本机登录；可通过 ANYWORK_CLAUDE_BIN 指定可执行文件，ANYWORK_CLAUDE_HISTORY_ROOT 指定 Claude 配置目录。"),
+            (crate::claude::CODE, true) => Some("已发现 Claude Code 可执行入口；登录、模型访问和会话 writer 状态将在连接时检查。"),
+            (crate::claude::DESKTOP, false) => Some(crate::claude::DESKTOP_REASON),
             (crate::harness::AGENT, false) => Some("DeepSeek Harness 插件已启用。请在本机启动 Harness 并启用 discovery 配套插件，然后点击“重新检查连接”。"),
             (crate::workbuddy::AGENT, false) => Some("WorkBuddy 插件已启用。请通过 AnyWork 的 WorkBuddy 引导程序启动桌面应用，然后点击“重新检查连接”。"),
             _ => None,
@@ -176,6 +179,12 @@ pub async fn create(
     if !app.plugins.contains_key(&agent) {
         return Err(anyhow::anyhow!("Plugin is not installed").into());
     }
+    if crate::claude::is_claude(&agent) && body.policy.as_deref().is_some_and(|p| p != "manual") {
+        return Err(anyhow::anyhow!(
+            "Claude supports manual approvals only; automatic approval policy was not applied"
+        )
+        .into());
+    }
     if crate::shared_host::is_shared(&agent) {
         let session = crate::shared_host::create(
             &app,
@@ -247,6 +256,27 @@ pub async fn update(
     }
     if let Some(policy) = &body.policy {
         validate_policy(policy)?;
+        if crate::claude::is_claude(&current.agent) && policy != "manual" {
+            return Err(anyhow::anyhow!(
+                "Claude supports manual approvals only; automatic approval policy was not applied"
+            )
+            .into());
+        }
+    }
+    if crate::claude::is_claude(&current.agent)
+        && let Some(model) = &body.model
+    {
+        let rt = app.ensure_runtime(&current).await?;
+        let thread = current
+            .thread_id
+            .as_deref()
+            .context("Missing Claude session ID")?;
+        if crate::runtime::session_state(&rt, thread).await?["status"] != "idle" {
+            return Err(anyhow::anyhow!("Claude is busy; model was not changed").into());
+        }
+        rt.rpc
+            .call("thread/settings/update", json!({"model":model}))
+            .await?;
     }
     let s = app.store.update(&id, |s| {
         if let Some(t) = body.title {
@@ -353,7 +383,11 @@ pub async fn message(
         return Ok(Json(result));
     }
     if body.queue_if_busy {
-        body.mode = Some("steer".into());
+        body.mode = if crate::claude::is_claude(&app.session(&id)?.agent) {
+            None
+        } else {
+            Some("steer".into())
+        };
     }
     deliver(&app, &id, body).await
 }
@@ -370,6 +404,14 @@ fn validate_message(app: &App, id: &str, body: &Message) -> Result<()> {
     }
     let session = app.session(id)?;
     anyhow::ensure!(
+        !crate::claude::is_claude(&session.agent) || session.policy == "manual",
+        "Claude supports manual approvals only; switch this session policy to manual before sending"
+    );
+    anyhow::ensure!(
+        !crate::claude::is_claude(&session.agent) || body.mode.as_deref() != Some("steer"),
+        "Claude concurrent steering is not supported; queue explicitly, wait, or cancel before sending"
+    );
+    anyhow::ensure!(
         !(session.agent == crate::workbuddy::AGENT && session.auxiliary),
         "WorkBuddy child conversations are read-only"
     );
@@ -384,7 +426,7 @@ fn validate_message(app: &App, id: &str, body: &Message) -> Result<()> {
 }
 // Uploaded files remain session-scoped; remote files must be inside this
 // session's actual cwd. Canonicalization enforces the same symlink boundary.
-fn attachment_path(app: &App, session: &Session, path: &str) -> Result<PathBuf> {
+pub(crate) fn attachment_path(app: &App, session: &Session, path: &str) -> Result<PathBuf> {
     let root = PathBuf::from(&session.cwd);
     let path = root.join(path).canonicalize()?;
     let uploads = app.data_dir.join("uploads");
@@ -542,7 +584,7 @@ pub(crate) async fn deliver(
                 )
                 .await?
         };
-        if !s.external {
+        if !s.external && !crate::claude::is_claude(&s.agent) {
             app.emit(id, "user/message", echo, None);
         }
         return Ok(Json(
@@ -555,7 +597,9 @@ pub(crate) async fn deliver(
             s.title = body.text.chars().take(42).collect();
         }
     })?;
-    app.emit(id, "user/message", echo, None);
+    if !crate::claude::is_claude(&s.agent) {
+        app.emit(id, "user/message", echo, None);
+    }
     let mut params = json!({"threadId":s.thread_id,"input":input,"approvalPolicy":if s.policy=="auto"{"never"}else{"on-request"}});
     if let Some(model) = s.model {
         params["model"] = json!(model);
@@ -684,10 +728,13 @@ pub async fn connect(
         Err(error) if session.external => {
             tracing::debug!(session_id = %id, %error, "External conversation is available as history");
             let owner_unavailable = error.is::<crate::control::OwnerUnavailable>();
-            let reason = if owner_unavailable {
+            let reason = if crate::claude::is_claude(&session.agent) {
+                error.to_string()
+            } else if owner_unavailable {
                 "已加载会话历史。此会话仍由独立 Codex 进程执行，暂时无法连接原执行入口。可重试连接，输入内容已保留。"
+                    .into()
             } else {
-                "已加载会话历史，可继续查看消息。暂时无法连接此会话的执行进程。"
+                "已加载会话历史，可继续查看消息。暂时无法连接此会话的执行进程。".into()
             };
             Ok(Json(
                 json!({"ok":true,"connected":false,"mode":"history","reason":reason,"code":if owner_unavailable {"owner_unavailable"}else{"control_unavailable"}}),

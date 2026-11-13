@@ -465,3 +465,20 @@ body[data-lang=zh] .manager-title h2 { font-size: 20px; }
 
 .open-source-note { max-width: 500px; margin-top: 16px; color: var(--muted); font-size: 12px; line-height: 1.8; }
 .open-source-note a { color: var(--ink); text-decoration: underline; white-space: nowrap; }
+
+/* Backend support follows the existing section typography and neutral palette. */
+.agents-section { padding-block: 60px; }
+.agents-section .section-heading { margin-bottom: 28px; }
+.agent-support-list { border-top: 1px solid var(--line); }
+.agent-support-list article { display: grid; grid-template-columns: minmax(180px, 1fr) 2fr; gap: 32px; padding-block: 22px; border-bottom: 1px solid var(--line); }
+.agent-support-list p, .agents-note { color: var(--muted); font-size: 14px; max-width: 72ch; }
+.agents-note { margin-top: 24px; }
+.agents-links { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-top: 18px; font-size: 14px; }
+.agents-links a { text-decoration: underline; text-underline-offset: 4px; }
+@media (max-width: 600px) {
+  .agents-section { padding-block: 40px; }
+  .agent-support-list article { grid-template-columns: 1fr; gap: 8px; }
+}
+
+.agents-install { margin-top: 28px; max-width: 76ch; }
+.agents-install p { margin-top: 12px; font-size: 14px; color: var(--muted); }

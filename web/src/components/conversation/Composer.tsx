@@ -38,6 +38,7 @@ import type {
 interface ComposerProps {
   api: Api;
   session: Session;
+  manualApprovalsOnly: boolean;
   models: { model: string; displayName?: string; isDefault?: boolean }[];
   busy: boolean;
   sending: boolean;
@@ -74,6 +75,7 @@ interface ComposerProps {
 export default function Composer({
   api,
   session,
+  manualApprovalsOnly,
   models,
   busy,
   sending,
@@ -188,8 +190,10 @@ export default function Composer({
   }, [focusRequest]);
   const isImage = (attachment: Attachment) =>
     !!attachment.preview || /\.(png|jpe?g|webp|gif)$/i.test(attachment.path);
+  const invalidAutoPolicy = manualApprovalsOnly && session.policy === "auto";
   const submit = (mode?: "steer" | "queue") => {
     if (
+      invalidAutoPolicy ||
       attachments.some((a) => a.pending) ||
       (goalMode && goalCapabilities?.create === false)
     )
@@ -310,6 +314,12 @@ export default function Composer({
               "当前连接不支持新建目标，输入内容已保留"}
           </p>
         )}
+        {invalidAutoPolicy && (
+          <p className="composer-add-error" role="status">
+            当前 Agent
+            不支持自动批准，请先将审批模式切回“沿用原生权限”。输入内容已保留。
+          </p>
+        )}
         <PromptEditor
           key={session.id}
           ref={composerInput}
@@ -383,22 +393,50 @@ export default function Composer({
             <span className="composer-divider" />
             <span
               className="composer-permissions"
-              title={session.policy === "auto" ? "自动批准" : "逐次审批"}
+              title={
+                manualApprovalsOnly
+                  ? "AnyWork 不自动代答审批请求，原生权限模式由宿主管理"
+                  : session.policy === "auto"
+                    ? "自动批准"
+                    : "逐次审批"
+              }
             >
               <ShieldCheck size={15} />
               <select
                 aria-label="审批模式"
                 title="审批模式"
-                disabled={session.external}
+                disabled={
+                  session.external ||
+                  (manualApprovalsOnly && !invalidAutoPolicy)
+                }
                 value={session.policy}
-                onChange={(e) => patch({ policy: e.target.value })}
+                onChange={(e) => {
+                  if (!manualApprovalsOnly || e.target.value === "manual")
+                    void patch({ policy: e.target.value });
+                }}
               >
                 <option value="manual">
-                  {session.external ? "沿用原会话权限" : "逐次审批"}
+                  {manualApprovalsOnly
+                    ? "沿用原生权限"
+                    : session.external
+                      ? "沿用原会话权限"
+                      : "逐次审批"}
                 </option>
-                <option value="auto">自动批准</option>
+                {(!manualApprovalsOnly || invalidAutoPolicy) && (
+                  <option value="auto" disabled={manualApprovalsOnly}>
+                    {invalidAutoPolicy ? "旧自动审批不可用" : "自动批准"}
+                  </option>
+                )}
               </select>
             </span>
+            {manualApprovalsOnly && (
+              <small
+                className="muted"
+                title="AnyWork 不自动代答审批请求，原生权限模式由宿主管理"
+              >
+                沿用原生权限
+              </small>
+            )}
             {goalMode && (
               <>
                 <span className="composer-divider" />
@@ -444,6 +482,7 @@ export default function Composer({
               title="发送"
               disabled={
                 sending ||
+                invalidAutoPolicy ||
                 (goalMode && goalCapabilities?.create === false) ||
                 uploading > 0 ||
                 attachments.some((a) => a.pending) ||

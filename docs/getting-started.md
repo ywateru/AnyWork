@@ -17,7 +17,7 @@ Automatic desktop updates are available from 0.1.1. Use the Windows per-user ins
 
 ## Start the host
 
-Install and sign into Codex first. Verify `codex login status` in the host user's shell. If Codex is not on the desktop application's PATH, set `CODEX_BIN` to its absolute executable path before launching AnyWork. Your model account and AnyWork device account serve different purposes; model calls continue to use your existing account.
+Set up the backend you intend to use; see [Choose a backend agent](#choose-a-backend-agent) below. For Codex, verify `codex login status` in the host user's shell; set `CODEX_BIN` to the absolute executable path if the desktop application cannot find it. Your model account and AnyWork device account serve different purposes; model calls continue to use your existing account.
 
 Open AnyWork, select the allowed workspace if needed, and click **Open workspace**. The desktop prepares the local service and opens the same workspace in your browser without a copied key. Local use does not require a cloud account and remains available when cloud services are unavailable.
 
@@ -34,6 +34,50 @@ Keep the host awake and connected. Native account credentials and endpoint keys 
 
 Standalone anonymous/named tunnels, WireGuard and manual address/key connections are retired from the new user flow. Old settings are retained for explicit rollback, without automatically running them. See [desktop and Android behavior](desktop-manager.md) for handoff, authorization and migration boundaries.
 
+## Choose a backend agent
+
+The following describes the current source integration, not a promise that every published package includes it. Check the [support and acceptance matrix](support-matrix.md) for topology-specific evidence. The Web client loads the host's `/plugins` catalog; **New chat → Agent** and **Settings → Agents** use that list, availability and setup hints. A sidebar filter can include historical or unavailable Agents without making them executable.
+
+| Backend | Setup and scope |
+| --- | --- |
+| Codex | Install and sign in to [Codex CLI](https://github.com/openai/codex) as the host user. Set `CODEX_BIN` if the GUI cannot find it. Existing desktop control needs a compatible [sharing interface](desktop-shared-start.md). |
+| Claude Code (`claude-code`) | Install [Claude Code CLI](https://code.claude.com/docs/en/setup) and complete its native sign-in under the same host user. Confirm `claude --version` works in the service environment. Choose **Claude Code** when the host catalog reports it available; use **Recheck connection** after setup. Existing sessions retain their native IDs for history and explicit resumption. |
+| Claude Desktop Code (`claude-desktop`) | Use the **local Code** section of Claude Desktop, with a workspace prepared in that app. Ordinary Claude chat, Cowork and cloud sessions are separate. Select **Claude Desktop Code** in the sidebar to find discovered local history. Writing requires **a valid native bridge allowed by organization policy**. A usable desktop control path has not yet been confirmed. Without that endpoint, supported persisted history remains readable. Follow the host's setup hint; visible history, a desktop deep link or independent CLI resumption does not prove attachment to the original desktop execution process. Live desktop control acceptance is pending. |
+| DeepSeek Harness | Connect the official 0.2.2-rc.1 gateway or discovery companion: [setup guide](harness-setup.md). Independent TUI processes without a shared endpoint cannot be controlled. |
+| WorkBuddy | Supported persisted history is readable; [shared execution setup](workbuddy-launcher.md) is experimental. Real writing, approval and cancellation acceptance remains limited. |
+
+Claude Code's integration scope includes text/images, streamed replies/thinking/tools, approval and open questions, cancellation and model selection. Native initialization with CLI 2.1.323 and candidate `e70c8a5`'s isolated service API send/text stream, one-time tool approval, open question, owned cancellation, model change and same-UUID restart/resume have [passed independent acceptance](plan/reviews/claude-backend-independent.md). This covers the current source, without implying release availability or acceptance of Windows runtime, real image understanding, background subtasks, every model or Desktop control. The UI must use actual backend/session capabilities. Codex-style goals, message editing, service tiers and fork must not be inferred from the Claude name. `manual-approvals-only` means AnyWork does not auto-answer approval requests; only decisions offered by the original request may be sent. AnyWork starts new CLI runtimes with `--permission-mode manual`. An existing Desktop session's native `permissionMode`, including `auto`, remains owned by the original host; history import and bridge connection do not reset it. AnyWork session policy and native permission mode are managed separately, without extending Codex sandbox guarantees to Claude.
+
+### Install Claude CLI and Desktop
+
+Install the terminal CLI following the [official Claude Code setup instructions](https://code.claude.com/docs/en/setup) for your OS, then run `claude` and complete the native sign-in. Run `claude --version` under the same system user and PATH used by AnyWork. Set `ANYWORK_CLAUDE_BIN` in the service environment if the executable is elsewhere. `ANYWORK_CLAUDE_HISTORY_ROOT` selects the Claude configuration root containing `projects` / `sessions` and takes precedence over `CLAUDE_CONFIG_DIR`; if neither is set, the default is `~/.claude`. On Windows, use the native `claude.exe`; `.cmd` / `.bat` wrappers are unsupported. No model credentials should be copied into AnyWork's device account settings.
+
+For the desktop path, follow the [official Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart): install Claude Desktop, sign in, select **Code**, and open a **local** project folder. Desktop and the terminal CLI use the same underlying engine and share project configuration/memory, but keep their own session lists. Desktop runs and updates its own copy of Claude Code; updating one does not update the other. Check Desktop's own update menu and start a new session to use its newer engine.
+
+Live writes require a valid native bridge allowed by organization policy. A usable control path for Claude Desktop 5.11492.x has not yet been confirmed: ordinary CDP startup requires a vendor-signed authorization profile. A local script, including `scripts/claude-desktop-launch.py`, cannot independently enable that endpoint. Signing in, reading persisted history or finding a descriptor does not establish control. Keep supported history read-only when no valid bridge is available; do not restart the app, bypass native authorization or start a second writer to force a connection. Real writing, approval, cancellation and reconnection acceptance remains separate from identifying native methods.
+
+The normal DevTools outgoing loopback bridge is a separate **experimental connection path without completed native acceptance**; it does not rely on CDP startup flags. In this approach, a local tool generates a fixed bridge script for the user to review and explicitly connect from the original app's local Code renderer DevTools. Native developer-mode, HIPAA and organization-policy restrictions still apply. Manual actions required by native safeguards, including self-XSS protection, must be completed by the user in the original app; AnyWork does not disable or bypass them. Bridge source and fixture validation are recorded separately. The native probe, connection procedure and full write path still await acceptance. Running the tool, generating a script or passing carrier tests does not establish control of the original desktop. The connection uses neither AnyWork's general access token nor model credentials. Reloads or disconnects require a fresh valid connection; requests with unknown outcomes are not automatically replayed.
+
+The implementation and source review are complete. At the user's request, native Desktop bridge and write tests are deferred to manual testing after the commits. See the [Desktop connection and manual test guide (Chinese)](claude-desktop-setup.md) for the reviewed launcher command, private descriptor setup, disconnection and acceptance checklist. Desktop control remains experimental and has not passed real-device acceptance.
+
+The accepted source passively scans the known Claude and Claude-3p profiles' `claude-code-sessions` roots when no override is set. Default discovery and the actual Claude-3p session's read-only history have [passed independent review](plan/reviews/claude-desktop-mapper-independent.md); this does not imply release availability or native bridge acceptance. Both profiles use the same platform parent directory:
+
+| Platform | Default discovery roots |
+| --- | --- |
+| macOS | `~/Library/Application Support/Claude/claude-code-sessions` and `~/Library/Application Support/Claude-3p/claude-code-sessions` |
+| Windows | `%APPDATA%/Claude/claude-code-sessions` and `%APPDATA%/Claude-3p/claude-code-sessions`; the parent falls back to the user's home if `APPDATA` is absent |
+| Linux | `$XDG_CONFIG_HOME/Claude/claude-code-sessions` and `$XDG_CONFIG_HOME/Claude-3p/claude-code-sessions`; the parent defaults to `~/.config` |
+
+Explicitly setting `ANYWORK_CLAUDE_DESKTOP_HISTORY_ROOT` **replaces both defaults with one root**, rather than adding another root. Set it in the AnyWork service environment to the absolute path of the actual `claude-code-sessions` directory, rather than an account/organization subdirectory or bridge descriptor file. Discovery observations retain metadata provenance. If a native session ID matches multiple metadata files, discovery reports ambiguity instead of silently choosing a profile. Third-party record formats still require separate checks; a screenshot or directory name does not establish compatibility. This configures discovery of supported history formats, without establishing a live bridge.
+
+The local bridge descriptor defaults to `~/.anywork/claude-desktop/host.json`. Set `ANYWORK_CLAUDE_DESKTOP_DESCRIPTOR` in the AnyWork service environment to use a different descriptor. This is a local discovery entry, not model credentials or proof that a desktop is controllable.
+
+Desktop's initial model list contains only models observed in local desktop sessions and reports `catalogComplete: false`. It is not a complete model catalog; an unlisted model is not proof that Claude itself lacks it. Available model operations still follow the current backend/session response.
+
+The official [Desktop reference](https://code.claude.com/docs/en/desktop#coming-from-the-cli) documents explicit handoff. `/desktop` saves the terminal session, opens it in Desktop and exits the CLI. From the shell, `claude --desktop` opens Desktop directly; `claude --desktop --resume <session-id>` hands over an existing CLI session by ID. These shell flags require Claude Code **2.1.285+**; the handoff requires macOS or x64 Windows and a Claude subscription login, not API key or third-party provider authentication. A session still open in another terminal or running in the background is not moved. This native handoff is not an AnyWork desktop control API and does not establish arbitrary live desktop control.
+
+Discovery is passive: reading history does not start inference or acquire a writer, and the last historical event does not establish current running state. For cross-project discovery use `--agent-scope all`; the legacy `--codex-scope all` only affects Codex. Never force a second writer into a locked or busy native session, and check history before resending an operation with an unknown outcome. Restarting AnyWork does not authorize replaying a request. Cancellation can only affect execution owned by the adapter, not terminate the Claude Desktop app. Attach files through the session upload/file picker; an arbitrary local path does not grant attachment access.
+
 ## Command-line service
 
 From a source checkout:
@@ -41,7 +85,7 @@ From a source checkout:
 ```bash
 ./target/release/anywork \
   --workspace /absolute/path/to/projects \
-  --codex-scope all
+  --agent-scope all
 ```
 
 From an extracted portable package, enter `resources` (macOS: `AnyWork.app/Contents/Resources`) first:
@@ -58,7 +102,8 @@ The default token file is `.anywork/access-token`, relative to the working direc
 | --- | --- | --- |
 | `--bind` / `ANYWORK_BIND` | `127.0.0.1:3210` | Listening interface and port |
 | `--workspace` / `ANYWORK_WORKSPACE` | Current directory | Allowed workspace root |
-| `--codex-scope` / `ANYWORK_CODEX_SCOPE` | `workspace` | Use `all` to discover all local projects |
+| `--agent-scope` / `ANYWORK_AGENT_SCOPE` | `workspace` | Use `all` for supported Agents across projects |
+| `--codex-scope` / `ANYWORK_CODEX_SCOPE` | `workspace` | Legacy Codex-only discovery scope |
 | `--data-dir` / `ANYWORK_DATA` | `.anywork` | Token, database, uploads |
 | `--web-dir` / `ANYWORK_WEB` | `web/dist` | Static Web client |
 | `ANYWORK_TOKEN` | Generated | Explicit key, at least 16 characters |
@@ -69,7 +114,7 @@ The CLI bearer remains for internal desktop/API authentication; the Web UI does 
 
 ## Capabilities and limits
 
-- Supported Codex and Harness topologies, WorkBuddy passive history and experimental writing are distinguished in the [support and acceptance matrix](support-matrix.md). No Claude Code or Cursor implementation is implied by the plugin interface.
+- Codex, Claude Code CLI, local Claude Desktop Code, Harness and WorkBuddy have different topology and acceptance limits; see the [support and acceptance matrix](support-matrix.md). Cursor and other plugins are not implied to have built-in adapters.
 - Desktop collaboration uses local version-dependent Unix interfaces. A discovered historical chat is not proof that the live process has a controllable endpoint. The UI must respect the reported capabilities. Do not force a second writer into an executing chat.
 - The desktop follower path can read/pause a goal. Creating, resuming, editing or deleting goals requires a compatible shared engine. See [shared engine setup](desktop-shared-start.md) and [adapter reference](desktop-adapter.md) (Chinese).
 - Queued messages belong to AnyWork; native desktop queue migration is not claimed. Voice dictation/read-aloud and FCM/server push after the browser closes are not included.

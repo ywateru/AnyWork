@@ -6,7 +6,7 @@
 
 **任何时候、任何地方，完成任何工作。**
 
-从浏览器和 Android 手机继续本机的 Codex 或 DeepSeek Harness 会话。<br />工作目录和 Agent 执行进程，始终留在自己的电脑上。
+从浏览器和 Android 手机访问本机 Agent 会话。<br />工作目录和 Agent 执行进程，始终留在自己的电脑上。
 
 [产品官网](https://anywork.aixgg.com/zh/) · [我的设备](https://anywork.aixgg.com/app/) · [下载](https://github.com/ywateru/AnyWork/releases/latest) · [English](README.md) · [使用指南](docs/getting-started.zh-CN.md)
 
@@ -25,6 +25,18 @@ Rust 桌面应用负责启动本地工作区，一键在浏览器打开。需要
 也可接入已有 DeepSeek Harness Web/桌面主机，与 Codex 并列使用，保留同一原生会话：[共享主机接入与验证](docs/harness-setup.md)。
 
 现可与 Codex 一同浏览已有 dsh 和 WorkBuddy 历史，主机未连接时也能查看已保存的对话和工具结果。桌面管理器默认开启跨项目发现；命令行可设置 `--agent-scope all`。WorkBuddy 桌面共享执行仍为实验功能，详见[接入及当前验收范围](docs/workbuddy-launcher.md)与[历史／同步说明](docs/workbuddy-transcript-updates.md)。
+
+### 当前后端 Agent
+
+| 后端 | 接入范围 |
+| --- | --- |
+| Codex | CLI 与兼容共享引擎；桌面共享受版本、平台与拓扑限制。 |
+| Claude Code CLI | Web 显示 **Claude Code**（`claude-code`），复用本机登录与原生会话 ID；实际操作以宿主能力报告为准，真实模型验收单独记录。 |
+| Claude Desktop Code | `claude-desktop`，仅指**本地 Code**；无控制入口时仍可读受支持持久历史；写入需要组织政策允许的有效原生桥，当前可用桌面控制路径尚未确证，实时控制仍待验收。普通聊天、Cowork 和云会话不在此身份下混用。 |
+| DeepSeek Harness | 官方 0.2.2-rc.1 gateway 与原生会话，见[设置指南](docs/harness-setup.md)。 |
+| WorkBuddy | 持久历史与**实验共享执行**；真实写入、审批和取消仍有验收缺口。 |
+
+以上为当前源码范围，发布包以发行说明为准。[Agent 设置指南](docs/getting-started.zh-CN.md#选择后端-agent)说明本机登录、历史发现与重新检查连接；[支持与验收矩阵](docs/support-matrix.md)区分历史、原生控制和真实模型证据。Web 的选择、就绪提示和会话能力由服务 API 提供；侧栏有某个 Agent 不代表它可执行。
 
 ### 可以完成哪些工作
 
@@ -46,7 +58,7 @@ Rust 桌面应用负责启动本地工作区，一键在浏览器打开。需要
 | Android | `.apk` 账号入口 | Android 8.0+、较新的 HTTPS 浏览器；优先使用 Custom Tabs |
 | Web / 源码 | `.tar.gz` | 自托管部署 / 开发 |
 
-1. 在**执行工作的电脑**配置 [Codex CLI](https://github.com/openai/codex)，或已有的[兼容 Harness 主机](docs/harness-setup.md)，执行期间保持电脑唤醒。
+1. 在**执行工作的电脑**按[Agent 设置指南](docs/getting-started.zh-CN.md#选择后端-agent)配置所选后端，执行期间保持电脑唤醒。
 2. 打开 AnyWork，按需选择工作目录，点击“打开工作区”进入本地浏览器。本地使用不要求云端账号。
 3. 需要远程访问时，在电脑端注册或登录，开启“允许我的其他设备访问”。其他电脑或手机打开[我的设备](https://anywork.aixgg.com/app/)，登录同一账号、核对电脑身份并打开工作区。
 
@@ -70,7 +82,7 @@ cargo build --locked --release -p anywork
 ./target/release/anywork --workspace /absolute/path/to/projects
 ```
 
-服务监听 `http://127.0.0.1:3210`，内部bearer保存在 `.anywork/access-token`，用于桌面与API鉴权。桌面应用选择匹配的数据目录后，通过一次性票据和HttpOnly本机会话打开Web，无需手动填写地址或密钥。添加 `--codex-scope all` 显示所有本机项目；远程工作使用同账号加密连接。
+服务监听 `http://127.0.0.1:3210`，内部bearer保存在 `.anywork/access-token`，用于桌面与API鉴权。桌面应用选择匹配的数据目录后，通过一次性票据和HttpOnly本机会话打开Web，无需手动填写地址或密钥。添加 `--agent-scope all` 显示所有本机项目；远程工作使用同账号加密连接。
 
 ```bash
 # 桌面管理器：先构建 Web 界面
@@ -102,7 +114,7 @@ AnyWork 面向个人与可信设备，使用宿主系统用户的文件和终端
 
 Agent、版本、连接拓扑及平台的当前证据统一见[支持与验收矩阵](docs/support-matrix.md)，明确区分被动历史、夹具验证与原生写入验收。
 
-Agent 适配器支持 **Codex** 和官方 **DeepSeek Harness 0.2.2-rc.1** 本机 HTTP gateway。Harness 沿用原有主机和原生会话，安装配套发现插件或显式配置主机地址即可接入。Harness 暂不支持目标/计划、分叉及消息编辑，也无法控制没有共享入口的独立 TUI。详见 [Harness 接入与验收范围](docs/harness-setup.md)。
+Codex、Claude Code CLI、本地 Claude Desktop Code、DeepSeek Harness 和 WorkBuddy 的范围见上表及支持矩阵。**DeepSeek Harness 0.2.2-rc.1** 使用本机 HTTP gateway。Harness 沿用原有主机和原生会话，安装配套发现插件或显式配置主机地址即可接入。Harness 暂不支持目标/计划、分叉及消息编辑，也无法控制没有共享入口的独立 TUI。详见 [Harness 接入与验收范围](docs/harness-setup.md)。
 
 Codex 已有桌面的共享协作依赖版本相关的 Unix 本地接口，已验证 Codex CLI 0.163/0.164 及调研记录中的桌面版本；Windows 不支持桌面热接入，可使用 CLI 会话。
 

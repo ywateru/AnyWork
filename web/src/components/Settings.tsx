@@ -535,15 +535,19 @@ export function Settings({ appearance, onChange, onClose, children }: Props) {
               <div className="appearance-group">
                 <div className="appearance-row">
                   <span>Agent</span>
-                  <strong>Codex</strong>
+                  <strong>由当前服务提供</strong>
                 </div>
                 <div className="appearance-row">
                   <span>连接方式</span>
                   <span>当前服务</span>
                 </div>
                 <p className="settings-description">
-                  使用当前服务已配置的 Codex
-                  账户。连接与插件设置可在常规中管理。
+                  可用 Agent 与连接状态由当前服务提供，可在常规中查看 Agent
+                  清单和设置提示。
+                </p>
+                <p className="settings-description">
+                  Claude Code 使用宿主上的 CLI 原生登录。Claude Desktop Code
+                  使用桌面端登录，实时操作还需组织政策允许的有效原生桥接入口；仅有历史记录时保持只读。
                 </p>
                 <button
                   type="button"

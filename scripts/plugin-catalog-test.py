@@ -31,6 +31,9 @@ class DefaultPlugins(unittest.TestCase):
                    if not key.startswith(('ANYWORK_', 'REMOTE_AGENT_')) and key not in ('HOME', 'USERPROFILE')}
             if with_home:
                 env['HOME'] = str(root)
+            env['ANYWORK_CLAUDE_HISTORY_ROOT'] = str(root / 'isolated-claude')
+            env['ANYWORK_CLAUDE_DESKTOP_HISTORY_ROOT'] = str(root / 'isolated-desktop')
+            env['ANYWORK_CLAUDE_DESKTOP_DESCRIPTOR'] = str(root / 'no-desktop-bridge.json')
             binary = os.environ.get('ANYWORK_BINARY', str(ROOT / 'target/debug/anywork'))
             with (root / 'server.log').open('w+') as log:
                 process = subprocess.Popen([binary, '--codex-discovery', 'false',
@@ -55,8 +58,8 @@ class DefaultPlugins(unittest.TestCase):
                             time.sleep(.05)
                     rows = request('plugins')['plugins']
                     by_id = {row['id']: row for row in rows}
-                    self.assertEqual(set(by_id), {'codex', 'deepseek-harness', 'workbuddy'})
-                    self.assertEqual(len(rows), 3)
+                    self.assertEqual(set(by_id), {'codex', 'deepseek-harness', 'workbuddy', 'claude-code', 'claude-desktop'})
+                    self.assertEqual(len(rows), 5)
                     self.assertTrue(by_id['codex']['available'])
                     for agent in ('deepseek-harness', 'workbuddy'):
                         self.assertFalse(by_id[agent]['available'])

@@ -1,5 +1,7 @@
 # Documentation index
 
+- [Claude Code / Claude Desktop Code 接入](claude-integration.md)：[Desktop 连接与后续手测](claude-desktop-setup.md)、[第三方会话读取与接管研究](plan/analysis/claude-third-party.md)、[CLI 独立审查](plan/reviews/claude-backend-independent.md)、[网页独立审查](plan/reviews/claude-web-independent.md)；[CLI/服务接线](plan/tasks/claude-backend.md)、[桌面载体](plan/tasks/claude-desktop.md)、[网页任务](plan/tasks/claude-web.md)与[独立验收](plan/tasks/claude-verification.md)。
+
 - [开源说明与正式域名](plan/tasks/open-source-ui.md)：已随 v0.1.29 发布；官网、Web 与桌面补充服务端和客户端开源说明及 GitHub，默认入口统一为 `https://anywork.aixgg.com`，[最终独立验收](plan/reviews/open-source-release.md)通过。
 
 - [CyberGrid v0.8.0 集成更新](plan/tasks/cybergrid-v080.md)：官方 Rust/JS SDK 与宿主远程门禁、令牌新鲜度适配已随 v0.1.28 交付；[最终独立验收](plan/reviews/ui-login-cybergrid-v28-release.md)通过，服务端迁移另行验证。

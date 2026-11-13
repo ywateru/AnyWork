@@ -19,11 +19,13 @@ const emptyQueue: Queue = { items: [], paused: false };
 export default function SubagentComposer({
   api,
   session,
+  manualApprovalsOnly,
   name,
   onChanged,
 }: {
   api: Api;
   session: Session;
+  manualApprovalsOnly: boolean;
   name: string;
   onChanged: () => void;
 }) {
@@ -275,6 +277,7 @@ export default function SubagentComposer({
       <Composer
         api={api}
         session={session}
+        manualApprovalsOnly={manualApprovalsOnly}
         inputLabel={`给 ${name} 发送消息`}
         models={[]}
         busy={busy}

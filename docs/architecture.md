@@ -1,6 +1,6 @@
 # AnyWork 系统架构
 
-AnyWork 的 Web/PWA/Android 连接运行在用户机器上的 Rust 服务，由所选原生 Agent 执行工作。当前包括 Codex、受支持的 Harness gateway，以及 WorkBuddy 被动历史/实验共享执行。拓扑、版本及实际验收范围见[支持矩阵](support-matrix.md)。会话内容、附件、审批与文件在客户端和该服务之间传输，不依赖 AnyWork 云端中转；用户可选第三方隧道有独立信任边界。Agent 继续使用原生账号和模型服务，不表示模型推理离线。
+AnyWork 的 Web/PWA/Android 连接运行在用户机器上的 Rust 服务，由所选原生 Agent 执行工作。当前接入范围包括 Codex、Claude Code CLI、本地 Claude Desktop Code、受支持的 Harness gateway，以及 WorkBuddy 被动历史/实验共享执行。Claude 原生执行和真实模型验收另记，不将 Web 接入视为后端验收。拓扑、版本及实际验收范围见[支持矩阵](support-matrix.md)。会话内容、附件、审批与文件在客户端和该服务之间传输，不依赖 AnyWork 云端中转；用户可选第三方隧道有独立信任边界。Agent 继续使用原生账号和模型服务，不表示模型推理离线。
 
 ```mermaid
 flowchart LR
@@ -11,6 +11,8 @@ flowchart LR
   R -->|JSON-RPC stdio| C[独立 Codex app-server]
   R -->|Unix socket| S[已有 Codex 共享执行进程]
   R -->|受验证的本地 gateway / bridge| G[Harness / WorkBuddy 原主机]
+  R -->|原生会话 ID / 流式协议| CC[Claude Code CLI]
+  R -->|本地 Code 历史 / 经确认的原生入口| CD[Claude Desktop Code]
   R -->|适配器协议| P[其他 Agent 插件]
   H --> F[本机文件 / 图片 / 文档 / Git]
 ```
@@ -32,6 +34,12 @@ Rust workspace 包含 `agent-sdk`、`agent-codex`、`server` 与 `desktop`。公
 `serialize_text` 对应 YEe，普通 Codex 新发送、引导及队列在 deliver 时转换 library 链接，存储 UTF-8 span 与原 Markdown placeholder；本地回显以实际 wire 首文本作身份匹配，转换前草稿另存 submitted_text。非 Codex 插件保持原文字。`rebuild_context_input` 对应 rDe，保留已验证的新 prepared context-only envelope，目前仅作独立 helper 保留，不用于历史编辑。28 个隔离原纯函数样例记录于测试 fixture；使用替代 CommonMark parser，未执行原应用或整个原模块。
 
 `composer.rs` 将读取模型/思考强度/服务速度、修改线程设置、目标和计划模式封装为会话 composer API。目标调用 `thread/goal/get`、`set`、`clear`；用户修改使用明确动作，接口失败直接返回错误。浏览器只有在服务确认后才更新已保存设置；滑杆拖动预览与已保存值分离，按顺序合并待提交的最终选择，切换会话后忽略旧结果。服务速度由原模型目录和 `configRequirements/read` 共同约束，原生 start/resume/settings 通知是当前值来源；不另设覆盖原客户端的本地速度偏好。
+
+## Agent 身份与能力投影
+
+Claude Code 使用 `claude-code`，Claude Desktop Code 使用 `claude-desktop`；后者仅指本地 Code，不混入普通聊天、Cowork 或云会话。Web 的名称/本地图标注册表只负责品牌投影，不注册执行器、不授予能力。`/plugins` 的真实清单提供新建选项、`available` 和 `setup_hint`；侧栏将其与已有会话及保留的筛选值合并，未知 Agent 保留原 ID/名称与通用图标。历史存在和插件启用都不证明当前可写。
+
+模型、目标/计划与服务等级读取会话 composer API，消息编辑同时依赖插件 `message-edit` 声明与实时查询；不能按 Claude 或其他品牌名预设可用能力。Claude 发现过程应只读，不启动推理或抢占 writer；恢复保留原生身份，原宿主不可达时不静默切换执行器。Claude Desktop Code 写入要求组织政策允许的有效原生桥，当前可用桌面控制路径尚未确证，5.11492.x 的普通 CDP 启动受厂商签名授权限制，本地脚本不能自行开启；无入口时仍可读受支持持久历史，不代表任意已打开应用自动可控。正常 DevTools outgoing loopback 桥是独立于 CDP 启动的实验连接路径，仍待原生防护的用户手动步骤及真实连接验收；不修改开发者模式、HIPAA 或组织策略，载体测试不等于原桌面完整控制。桥接描述符默认 `~/.anywork/claude-desktop/host.json`，由 `ANYWORK_CLAUDE_DESKTOP_DESCRIPTOR` 覆盖；Desktop 初版模型仅投影已观测本地会话，`catalogComplete:false` 不代表完整目录。桌面原生控制与真实模型验收按支持矩阵单独维护，历史流的最后一条事件不代表当前运行状态。
 
 ## 会话界面与状态
 
@@ -65,7 +73,7 @@ SQLite 使用 WAL、外键和 busy timeout。`sessions` 保存元数据，`event
 
 同一 AnyWork 会话的编辑通过操作锁串行化，并在原生变更前复查消息指纹及当前尾部。原生 app-server 没有比较并交换（CAS）的编辑事务；原生桌面端、CLI 或其他外部控制者仍可能在复查和变更之间修改同一个 thread。回退与重发也不是原子事务，后者失败不会自动恢复旧历史；这些是实际边界，不应表述为跨客户端无竞争的编辑。
 
-审批保留原始服务端 request ID，在输入框上方停靠。已解决、任务结束或连接中断后不能回应旧审批；自动批准策略只处理权限申请，开放问答仍由用户回答。卡片按自身容器宽度调整按钮，明确区分一次批准、会话缓存、permissions 的回合/会话权限和原提案规则。`validate_approval_result` 以记录的原请求校验结果与精确决定白名单，拒绝篡改提案、扩权、未知或混用字段；错误不消费待审批，成功后的重复/过期回复为409。自动与手动回复共用会话锁；自动模式只尝试一次批准/回合权限，白名单不含该动作时保留等待，不自行选择更广范围。只有唯一待处理审批且无编辑、输入法或弹层时才响应 Enter/Escape。长内容独立滚动，操作区保持可见。
+审批选项按 `/plugins.capabilities` 投影；`manual-approvals-only` 表示 AnyWork 不自动代答审批请求。AnyWork 的会话策略字段创建不提交 auto，旧 auto 须显式切回 manual 才能发送；这不等于修改原生权限模式。新建 Claude CLI 运行时以 `--permission-mode manual` 启动，已有 Desktop 原生 `permissionMode`（包括 `auto`）由原宿主管理，历史导入与桥接不重置；不把 Codex 沙箱边界推广到其他 Agent。审批保留原始服务端 request ID，在输入框上方停靠。已解决、任务结束或连接中断后不能回应旧审批；自动批准策略只处理权限申请，开放问答仍由用户回答。卡片按自身容器宽度调整按钮，明确区分一次批准、会话缓存、permissions 的回合/会话权限和原提案规则。`validate_approval_result` 以记录的原请求校验结果与精确决定白名单，拒绝篡改提案、扩权、未知或混用字段；错误不消费待审批，成功后的重复/过期回复为409。自动与手动回复共用会话锁；自动模式只尝试一次批准/回合权限，白名单不含该动作时保留等待，不自行选择更广范围。只有唯一待处理审批且无编辑、输入法或弹层时才响应 Enter/Escape。长内容独立滚动，操作区保持可见。
 
 ## 文件与鉴权
 

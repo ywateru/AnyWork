@@ -1,6 +1,7 @@
 mod api;
 mod capabilities;
 mod catalog;
+mod claude;
 mod clients;
 mod composer;
 mod control;
@@ -194,8 +195,10 @@ impl App {
     }
     fn history_all(&self, agent: &str) -> bool {
         (agent == "codex" && self.codex_scope == CodexScope::All)
-            || (matches!(agent, "codex" | "deepseek-harness" | "workbuddy")
-                && self.agent_scope == CodexScope::All)
+            || (matches!(
+                agent,
+                "codex" | "deepseek-harness" | "workbuddy" | "claude-code" | "claude-desktop"
+            ) && self.agent_scope == CodexScope::All)
     }
     fn session_in_scope(&self, cwd: &str, agent: &str) -> Result<PathBuf> {
         self.scoped_directory(cwd, self.history_all(agent))
@@ -345,6 +348,9 @@ async fn main() -> Result<()> {
     )?;
     let workbuddy = workbuddy::Config::configured(args.workbuddy_discovery_file)?;
     let mut plugins = HashMap::new();
+    for manifest in claude::manifests() {
+        plugins.insert(manifest.id.clone(), manifest);
+    }
     let manifest = workbuddy.manifest();
     plugins.insert(manifest.id.clone(), manifest);
     let manifest = harness::Config::manifest();

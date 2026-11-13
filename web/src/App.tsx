@@ -29,6 +29,7 @@ import { agentName } from "./sidebarAgents";
 import {
   sessionAgentAvailable,
   sessionAgentSelection,
+  sessionManualApprovalsOnly,
 } from "./sessionAgentSelection";
 import { useSessionDraft } from "./hooks/useSessionDraft";
 import { useGoalComposerMode } from "./hooks/useGoalComposerMode";
@@ -1309,6 +1310,7 @@ export default function App({
               onClose={() => setSidebar(false)}
             />
             <SessionSidebar
+              plugins={pluginsLoadedFor === api ? plugins : []}
               sessions={sessionsLoadedFor === api ? sessions : []}
               loading={sessionsLoadedFor !== api && sessionsErrorFor !== api}
               loadError={sessionsLoadedFor !== api && sessionsErrorFor === api}
@@ -1585,6 +1587,7 @@ export default function App({
                         ])}
                         api={api}
                         agent={selectedSubagent}
+                        plugins={pluginsLoadedFor === api ? plugins : []}
                         cache={historyCache!}
                         sessions={sessions}
                         onBack={() => setSubagentSelection(null)}
@@ -1905,6 +1908,13 @@ export default function App({
                       <Composer
                         api={api}
                         session={session}
+                        manualApprovalsOnly={sessionManualApprovalsOnly(
+                          pluginsLoadedFor === api
+                            ? plugins.find(
+                                (plugin) => plugin.id === session.agent,
+                              )
+                            : undefined,
+                        )}
                         goalRevision={goalRevision}
                         controlsRevision={
                           controlsRevision + cachedHistory.settingsVersion
@@ -2001,10 +2011,13 @@ export default function App({
                     <AgentIcon agent={p.id} />
                   </div>
                   <div>
-                    <strong>{p.name}</strong>
+                    <strong>{agentName(p.id, plugins)}</strong>
                     <small>
                       协议 v{p.protocol_version} · {p.capabilities.join(" · ")}
                     </small>
+                    {p.setup_hint && (
+                      <small role="status">{p.setup_hint}</small>
+                    )}
                   </div>
                   <span className="plugin-installed">
                     <Check size={12} />
@@ -2013,8 +2026,22 @@ export default function App({
                 </div>
               ))}
               <p className="hint">
-                DeepSeek Harness 通过本机共享入口连接原有会话。连接设置及其他
-                Agent 的适配规范见项目文档。
+                可操作能力以当前会话的后端报告为准；历史可读不代表可发送。
+                <a
+                  href="https://github.com/ywateru/AnyWork/blob/main/docs/getting-started.zh-CN.md#选择后端-agent"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Agent 设置指南
+                </a>
+                {" · "}
+                <a
+                  href="https://github.com/ywateru/AnyWork/blob/main/docs/support-matrix.md"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  支持与验收矩阵
+                </a>
               </p>
               <div className="settings-row">
                 <span>完成、权限与确认通知</span>
@@ -2176,11 +2203,19 @@ function CreateSession({
   const selectedPlugin = plugins.find((plugin) => plugin.id === agent);
   const available =
     pluginsState === "ready" && sessionAgentAvailable(agent, plugins);
+  const manualApprovalsOnly = sessionManualApprovalsOnly(selectedPlugin);
+  useEffect(() => {
+    if (manualApprovalsOnly) setPolicy("manual");
+  }, [manualApprovalsOnly]);
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
         if (!available || checking) return;
+        if (manualApprovalsOnly && policy !== "manual") {
+          onError(new Error("当前 Agent 仅支持原生权限审批，请确认后重新创建"));
+          return;
+        }
         setBusy(true);
         try {
           const data = await api.post("/sessions", {
@@ -2223,7 +2258,7 @@ function CreateSession({
             )}
             {plugins.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {agentName(p.id, plugins)}
                 {p.available === false ? "（待连接）" : ""}
               </option>
             ))}
@@ -2251,7 +2286,7 @@ function CreateSession({
       {selectedPlugin?.available === false && (
         <p className="hint" role="status">
           {selectedPlugin.setup_hint ||
-            `${selectedPlugin.name} 插件已启用，本机共享入口尚未就绪。请完成连接设置后点击“重新检查连接”。`}
+            `${agentName(selectedPlugin.id, plugins)} 插件已启用，本机共享入口尚未就绪。请完成连接设置后点击“重新检查连接”。`}
         </p>
       )}
       <label>
@@ -2282,10 +2317,24 @@ function CreateSession({
       </label>
       <label>
         审批模式
-        <select value={policy} onChange={(e) => setPolicy(e.target.value)}>
-          <option value="manual">逐次审批 — 远程确认操作</option>
-          <option value="auto">自动批准 — 在工作区内自动执行</option>
+        <select
+          aria-label="审批模式"
+          value={manualApprovalsOnly ? "manual" : policy}
+          disabled={manualApprovalsOnly}
+          onChange={(e) => {
+            if (!manualApprovalsOnly) setPolicy(e.target.value);
+          }}
+        >
+          <option value="manual">
+            {manualApprovalsOnly ? "沿用原生权限" : "逐次审批 — 远程确认操作"}
+          </option>
+          {!manualApprovalsOnly && (
+            <option value="auto">自动批准 — 由当前服务处理权限请求</option>
+          )}
         </select>
+        {manualApprovalsOnly && (
+          <small>AnyWork 不自动代答审批请求，原生权限模式由宿主管理。</small>
+        )}
       </label>
       <Button disabled={busy || checking || !available} className="full-width">
         {busy ? "正在启动 Agent…" : "创建会话"}

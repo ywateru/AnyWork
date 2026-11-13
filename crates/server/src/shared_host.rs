@@ -7,10 +7,18 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 pub fn is_shared(agent: &str) -> bool {
-    matches!(agent, crate::harness::AGENT | crate::workbuddy::AGENT)
+    matches!(
+        agent,
+        crate::harness::AGENT
+            | crate::workbuddy::AGENT
+            | crate::claude::CODE
+            | crate::claude::DESKTOP
+    )
 }
 pub fn available(app: &App, agent: &str) -> bool {
     match agent {
+        crate::claude::CODE => crate::claude::Config::from_env().available(),
+        crate::claude::DESKTOP => crate::claude::desktop_available(),
         crate::harness::AGENT => app.harness.as_ref().is_some_and(|c| c.available()),
         crate::workbuddy::AGENT => app.workbuddy.available(),
         _ => true,
@@ -25,6 +33,9 @@ pub async fn sync(app: &Arc<App>) -> Vec<String> {
     if let Err(e) = workbuddy {
         errors.push(format!("WorkBuddy 会话同步失败：{e}"));
     }
+    if let Err(e) = crate::claude::sync(app).await {
+        errors.push(format!("Claude 会话同步失败：{e}"));
+    }
     errors
 }
 pub async fn create(
@@ -35,6 +46,9 @@ pub async fn create(
     model: Option<String>,
 ) -> Result<Session> {
     let s = match agent {
+        crate::claude::CODE | crate::claude::DESKTOP => {
+            crate::claude::create(app, agent, cwd, title, model.clone()).await?
+        }
         crate::harness::AGENT => crate::harness::create(app, cwd, title).await?,
         crate::workbuddy::AGENT => crate::workbuddy::create(app, cwd, title, model.clone()).await?,
         _ => anyhow::bail!("Unsupported shared host"),
@@ -54,6 +68,7 @@ pub async fn attach(
     s: &Session,
 ) -> Result<(Arc<RpcProcess>, mpsc::UnboundedReceiver<Value>, bool)> {
     match s.agent.as_str() {
+        crate::claude::CODE | crate::claude::DESKTOP => crate::claude::attach(app, s).await,
         crate::harness::AGENT => crate::harness::attach(app, s).await,
         crate::workbuddy::AGENT => crate::workbuddy::attach(app, s).await,
         _ => anyhow::bail!("Unsupported shared host"),
@@ -70,6 +85,9 @@ pub fn settings_method(agent: &str) -> &'static str {
 /// Persisted reads never acquire a thread writer or wait for a live host.
 pub async fn read_persisted_history(app: &Arc<App>, s: &Session) -> Result<(bool, Option<String>)> {
     match s.agent.as_str() {
+        crate::claude::CODE | crate::claude::DESKTOP => {
+            crate::claude::read_persisted_history(app, s).await
+        }
         crate::harness::AGENT => {
             let app = app.clone();
             let s = s.clone();

@@ -653,7 +653,10 @@ pub async fn read_history(
         let saved = !app.store.events(&id, 0, 1)?.is_empty();
         match crate::shared_host::read_persisted_history(&app, &s).await {
             Ok((true, notice)) => persisted_notice = notice,
-            Ok((false, _)) if saved => {}
+            Ok((false, notice)) if saved => persisted_notice = notice,
+            Ok((false, _)) if crate::claude::is_claude(&s.agent) => {
+                persisted_notice = Some("Claude 原生历史尚未落盘；未启动执行进程".into());
+            }
             Ok((false, _)) => {
                 let gate = app.gate(&id).await;
                 let _lock = gate.lock().await;

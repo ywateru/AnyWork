@@ -1,5 +1,15 @@
 # DeepSeek Harness delivery
 
+## Claude Code / Desktop Code
+
+当前用户目标是完成两种 Claude 后端支持并更新网页介绍。[调研](analysis/claude.md)、[产品契约](../claude-integration.md)、[后端任务](tasks/claude-backend.md)与[网页任务](tasks/claude-web.md)记录实现和独立验收。保持原生会话身份，区分被动历史、独立恢复与原桌面共享执行；不修改既有原生会话进行测试。
+
+源码交付完成：CLI、Web、Desktop 固定载体与 App mapper/默认 profile 发现均已独立接受并合入 main，先前发现均已复核关闭。[主分支检查](reviews/claude-merged.md)记录 Rust 全工作区、401 项 Web 单测、API 与双语站点结果。[Desktop 映射审查](reviews/claude-desktop-mapper-independent.md)包含截图会话真实只读验证和去重修复。用户明确要求 Desktop 真机测试留待提交后手动执行，当前不继续原生桥测试；后续按[连接与手测指南](../claude-desktop-setup.md)操作，并继续保留实验和未真机验收声明。本轮不发布或部署。
+
+桌面控制：普通 CDP 启动被 5.11492.x 的厂商签名门禁拒绝，使用正常 DevTools outgoing loopback 桥方案。已用复制原包/临时 profile 打开真实 DevTools，未越过控制台人工“允许粘贴”确认。代码、夹具与独立审查已完成，具体操作已写入连接与手测指南；原生桥连接与写入测试按用户安排后置，当前不记为真机通过。
+
+用户追加截图中的“用户指定的截图会话”作为真实会话识别目标，并要求参考第三方工程的读取/接管机制。该目标仅只读定位；独立研究对比第三方的 JSONL 读取、resume、远程 relay 与原执行器 attach，证据用于校正最终接入声明。
+
 - [开源说明与正式域名](tasks/open-source-ui.md)：已发布 v0.1.29，官网、Web 和桌面补充 GitHub 及服务端/客户端开源说明，默认入口统一为 `https://anywork.aixgg.com`；[两阶段独立线上验收](reviews/open-source-release.md)通过。
 
 - [CyberGrid v0.8.0](tasks/cybergrid-v080.md)：必要 SDK/宿主适配已随 v0.1.28 发布；登录设备修订、SDK 和发行测试修正均独立接受，精确源码 CI、全部发行构建与[两阶段线上独立验收](reviews/ui-login-cybergrid-v28-release.md)通过。v0.1.27 失败历史保留于合并记录。当前固定客户端配置下保留协调服务，服务端迁移另行验证。

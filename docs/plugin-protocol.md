@@ -55,12 +55,16 @@ turn 结束状态为 `completed`、`interrupted`、`failed`。结束时清理未
 - `item/tool/requestUserInput`：参数 `questions:[{id,header,question,options:[{label,description}]}]`，结果 `{answers:{问题ID:{answers:[文本]}}}`。
 - 其他服务端请求可在界面查看原始 JSON 并提交对应 JSON 结果；原型表单不尝试猜测任意厂商 schema。
 
-自动模式将 thread/turn 的 `approvalPolicy` 设为 `never`，并自动处理仍出现的 `requestApproval`。保留 workspace-write。问答不会代填。
+自动模式将适配后 thread/turn 的 `approvalPolicy` 设为 `never`，并自动处理仍出现的 `requestApproval`。Codex 保留 workspace-write；其他适配器按原生权限规则映射，不得据此自动启用 Claude `bypassPermissions`。问答不会代填。
 
-## 后续厂商适配
+## 内置与后续厂商适配
 
-DeepSeek Harness、Claude Code、Cursor 的适配器负责将各自 CLI/ACP/SDK 的会话、turn、工具、审批转换为上述协议。能力清单用于描述能力；v1 的基础客户端假定核心方法存在，未实现的方法应返回明确错误，不能虚报已支持。
+DeepSeek Harness、WorkBuddy、Claude Code 与 Claude Desktop Code 的内置适配器将各自的会话、turn、工具、审批转换为上述协议。Claude Code 原生 stream-json 使用 `control_request` / `control_response`，不是直接输出本文的 JSON-RPC envelope；由内置 bridge 完成转换。Claude Desktop Code 通过原桌面 LocalSessions 接口连接，不把 CLI `--resume` 作为桌面共享通道。具体接入和验收见 [Claude 契约](claude-integration.md)与[支持矩阵](support-matrix.md)。
+
+Cursor 等其他厂商可按此协议扩展。能力清单用于描述能力；v1 的基础客户端假定核心方法存在，未实现的方法应返回明确错误，不能虚报已支持。`chat` / `resume` 等声明不代表所有拓扑均有可用 writer，就绪与控制能力仍需按当前会话投影。
 
 可用 `scripts/fake-agent.py` 阅读完整协议交互，用 `scripts/integration-test.py` 作为契约验证样例。该脚本只是假 Agent 测试夹具，不是任何真实厂商适配器。
 
 Codex 官方参考：[Codex App Server](https://developers.openai.com/codex/app-server)。首版已与本机 Codex CLI 0.163.0 实际联调。
+
+Claude 参考：[官方 Agent SDK](https://github.com/anthropics/claude-agent-sdk-python)、[Desktop Code](https://code.claude.com/docs/en/desktop)。SDK 原生协议与本文的适配后协议属于不同层级。

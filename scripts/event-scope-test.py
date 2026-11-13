@@ -15,7 +15,7 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TOKEN = 'isolated-event-scope-token'
-AGENTS = ('codex', 'deepseek-harness', 'workbuddy')
+AGENTS = ('codex', 'deepseek-harness', 'workbuddy', 'claude-code', 'claude-desktop')
 
 
 class EventScope(unittest.TestCase):

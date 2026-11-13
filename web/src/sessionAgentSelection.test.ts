@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   sessionAgentAvailable,
   sessionAgentSelection,
+  sessionManualApprovalsOnly,
 } from "./sessionAgentSelection";
 import type { Plugin } from "./types";
 const plugin = (id: string): Plugin => ({
@@ -42,5 +43,30 @@ describe("new conversation Agent ownership", () => {
     expect(
       sessionAgentSelection("custom", [plugin("codex"), plugin("workbuddy")]),
     ).toBe("custom");
+  });
+  it("takes Claude and future agents from the API catalog without a client allowlist", () => {
+    for (const id of ["claude-code", "claude-desktop", "future-agent"]) {
+      const catalog = [{ ...plugin(id), available: true }];
+      expect(sessionAgentSelection("", catalog)).toBe(id);
+      expect(sessionAgentAvailable(id, catalog)).toBe(true);
+      expect(sessionAgentAvailable(id, [])).toBe(false);
+      expect(
+        sessionAgentAvailable(id, [{ ...plugin(id), available: false }]),
+      ).toBe(false);
+      expect(sessionAgentSelection(id, [])).toBe(id);
+    }
+  });
+  it("uses service approval capabilities for Claude and future agents, retaining old catalog behavior", () => {
+    expect(sessionManualApprovalsOnly(undefined)).toBe(true);
+    for (const id of ["claude-code", "claude-desktop", "future-agent"]) {
+      expect(
+        sessionManualApprovalsOnly({
+          ...plugin(id),
+          capabilities: ["chat", "manual-approvals-only"],
+        }),
+      ).toBe(true);
+    }
+    expect(sessionManualApprovalsOnly(plugin("codex"))).toBe(false);
+    expect(sessionManualApprovalsOnly(plugin("future-agent"))).toBe(false);
   });
 });

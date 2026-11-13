@@ -1,13 +1,11 @@
 import type { Plugin, Session } from "./types";
 
+import { agentIdentities, agentIdentity } from "./agentIdentity";
+
 export const agentName = (id: string, plugins: Plugin[] = []) =>
-  id === "codex"
-    ? "Codex"
-    : id === "deepseek-harness"
-      ? "DeepSeek Harness"
-      : id === "workbuddy"
-        ? "WorkBuddy"
-        : plugins.find((plugin) => plugin.id === id)?.name || id;
+  agentIdentity(id)?.name ||
+  plugins.find((plugin) => plugin.id === id)?.name ||
+  id;
 
 export function sidebarAgentOptions(
   plugins: Plugin[],
@@ -18,16 +16,13 @@ export function sidebarAgentOptions(
     ...plugins.map((plugin) => plugin.id),
     ...sessions.map((session) => session.agent),
   ]);
-  const ids = new Set(["codex", "deepseek-harness", "workbuddy", ...present]);
+  const standardIds = Object.keys(agentIdentities);
+  const ids = new Set([...standardIds, ...present]);
   if (selected) ids.add(selected);
-  const rank = (id: string) =>
-    id === "codex"
-      ? 0
-      : id === "deepseek-harness"
-        ? 1
-        : id === "workbuddy"
-          ? 2
-          : 3;
+  const rank = (id: string) => {
+    const index = standardIds.indexOf(id);
+    return index < 0 ? standardIds.length : index;
+  };
   return [...ids]
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
     .map((id) => ({

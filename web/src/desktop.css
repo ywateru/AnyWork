@@ -1632,3 +1632,18 @@ html:has(.codex-shell) {
 .login-form h2.manual-connect-title {
   font-size: 18px;
 }
+
+.agent-mark {
+  position: relative;
+}
+.agent-mark .agent-mark-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: 2px;
+  stroke-width: 2;
+}

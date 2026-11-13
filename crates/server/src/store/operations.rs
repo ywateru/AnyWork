@@ -360,7 +360,11 @@ impl Binding {
                     s.external && s.agent == "codex"
                 }
                 Topology::SharedHost => {
-                    s.external && matches!(s.agent.as_str(), "deepseek-harness" | "workbuddy")
+                    s.external
+                        && matches!(
+                            s.agent.as_str(),
+                            "deepseek-harness" | "workbuddy" | "claude-code" | "claude-desktop"
+                        )
                 }
                 Topology::Owned => !s.external,
                 Topology::Unknown => true,

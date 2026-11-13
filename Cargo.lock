@@ -142,6 +142,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "fs2",
  "futures-util",
  "libc",
  "portable-pty",

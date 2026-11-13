@@ -29,6 +29,8 @@ enum Topology {
     CodexExternalUnknown,
     HarnessGateway,
     WorkbuddyDesktop,
+    ClaudeCli,
+    ClaudeDesktop,
     CustomUnknown,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -246,6 +248,14 @@ fn evidence(agent: &str) -> Evidence {
             Some("Harness 0.2.2-rc.1 gateway adapter policy; native version unobserved"),
         ),
         "codex" => ("topology_and_version_bounded", None),
+        crate::claude::CODE => (
+            "version_bounded",
+            Some("Claude Code stream-json 2.1.323; owned CLI and inactive native history only"),
+        ),
+        crate::claude::DESKTOP => (
+            "unverified",
+            Some("Claude Desktop Code 5.11492.0; native renderer executor required"),
+        ),
         _ => ("unverified", None),
     };
     Evidence {
@@ -288,6 +298,8 @@ fn topology(s: &Session) -> Topology {
         ("codex", true) => Topology::CodexExternalUnknown,
         (crate::harness::AGENT, _) => Topology::HarnessGateway,
         (crate::workbuddy::AGENT, _) => Topology::WorkbuddyDesktop,
+        (crate::claude::CODE, _) => Topology::ClaudeCli,
+        (crate::claude::DESKTOP, _) => Topology::ClaudeDesktop,
         _ => Topology::CustomUnknown,
     }
 }
@@ -299,6 +311,28 @@ fn is_local(action: Action) -> bool {
 }
 fn support(action: Action, topology: Topology) -> Support {
     use Action::*;
+    if matches!(topology, Topology::ClaudeCli | Topology::ClaudeDesktop) {
+        return if matches!(
+            action,
+            SessionFork
+                | MessageEdit
+                | MessageSteer
+                | QueueSteer
+                | TierSet
+                | PlanSet
+                | EffortSet
+                | GoalGet
+                | GoalCreate
+                | GoalEdit
+                | GoalPause
+                | GoalResume
+                | GoalClear
+        ) {
+            Support::No
+        } else {
+            Support::Yes
+        };
+    }
     if matches!(
         action,
         HistoryRead
@@ -315,7 +349,10 @@ fn support(action: Action, topology: Topology) -> Support {
         return Support::No;
     }
     match topology {
-        Topology::CustomUnknown | Topology::CodexExternalUnknown => Support::Unknown,
+        Topology::CustomUnknown
+        | Topology::CodexExternalUnknown
+        | Topology::ClaudeCli
+        | Topology::ClaudeDesktop => Support::Unknown,
         Topology::HarnessGateway | Topology::WorkbuddyDesktop => {
             if matches!(
                 action,

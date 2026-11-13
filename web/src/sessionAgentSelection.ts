@@ -16,3 +16,9 @@ export function sessionAgentAvailable(agent: string, plugins: Plugin[]) {
   const plugin = plugins.find((entry) => entry.id === agent);
   return !!plugin && plugin.available !== false;
 }
+
+/** Approval behavior is declared by the service, independently of branding.
+ * An absent/late catalog cannot authorize automatic approval. */
+export function sessionManualApprovalsOnly(plugin: Plugin | undefined) {
+  return !plugin || plugin.capabilities.includes("manual-approvals-only");
+}

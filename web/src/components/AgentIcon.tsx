@@ -1,33 +1,35 @@
-import { Bot } from "lucide-react";
+import { Bot, Monitor, Terminal } from "lucide-react";
+import { agentIdentity } from "../agentIdentity";
 
 export default function AgentIcon({ agent }: { agent: string }) {
-  if (agent === "workbuddy")
-    return (
-      <span className="agent-mark" aria-hidden="true" data-agent-icon={agent}>
-        <img src={`${import.meta.env.BASE_URL}agents/workbuddy.svg`} alt="" />
-      </span>
-    );
-  const basename =
-    agent === "codex"
-      ? "codex"
-      : agent === "deepseek-harness"
-        ? agent
-        : undefined;
-  if (!basename)
-    return <Bot size={17} className="agent-mark" aria-hidden="true" />;
-  const extension = agent === "codex" ? "png" : "svg";
+  const identity = agentIdentity(agent);
+  const Badge =
+    agent === "claude-code"
+      ? Terminal
+      : agent === "claude-desktop"
+        ? Monitor
+        : null;
   return (
     <span className="agent-mark" aria-hidden="true" data-agent-icon={agent}>
-      <img
-        className="agent-mark-light"
-        src={`${import.meta.env.BASE_URL}agents/${basename}-light.${extension}`}
-        alt=""
-      />
-      <img
-        className="agent-mark-dark"
-        src={`${import.meta.env.BASE_URL}agents/${basename}-dark.${extension}`}
-        alt=""
-      />
+      {identity ? (
+        identity.images.map((image, index) => (
+          <img
+            key={image}
+            className={
+              identity.images.length === 2
+                ? index === 0
+                  ? "agent-mark-light"
+                  : "agent-mark-dark"
+                : undefined
+            }
+            src={`${import.meta.env.BASE_URL}agents/${image}`}
+            alt=""
+          />
+        ))
+      ) : (
+        <Bot size={17} />
+      )}
+      {Badge && <Badge className="agent-mark-badge" size={10} />}
     </span>
   );
 }

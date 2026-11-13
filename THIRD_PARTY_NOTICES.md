@@ -1,5 +1,9 @@
 # Third-party notices
 
+## Claude Agent SDK protocol and history behavior
+
+The Rust Claude adapter in `crates/server/src/claude/` follows the stream control protocol and adapts conversation-chain and parallel-tool history reconstruction behavior from [Anthropic's Claude Agent SDK for Python](https://github.com/anthropics/claude-agent-sdk-python), commit `22b8eb9c19adfa78759b79e22bd664a57843bb06`, particularly `_internal/query.py`, `_internal/sessions.py`, and `_internal/transport/subprocess_cli.py`. Copyright (c) 2025 Anthropic, PBC. The upstream MIT license is included in [licenses/claude-agent-sdk-MIT.txt](licenses/claude-agent-sdk-MIT.txt). Claude product names identify the native integrations; no endorsement is implied.
+
 ## DeepSeek Harness conversation UI
 
 Portions of `web/src/components/harness/` are extracted or adapted from [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness), commit `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`. See [the extraction record](docs/harness-ui-provenance.md) for exact source files and adaptations.

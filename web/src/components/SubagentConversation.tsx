@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowLeft, ExternalLink, RefreshCw } from "lucide-react";
 import type { Api } from "../api";
-import type { Session } from "../types";
+import type { Plugin, Session } from "../types";
+import { sessionManualApprovalsOnly } from "../sessionAgentSelection";
 import type { SubagentEntry } from "../subagents";
 import { emptyHistory, type SessionHistoryCache } from "../sessionHistory";
 import type { FileTarget } from "../fileLinks";
@@ -17,6 +18,7 @@ import "./SubagentConversation.css";
 export default function SubagentConversation({
   api,
   agent,
+  plugins,
   cache,
   sessions,
   onBack,
@@ -25,6 +27,7 @@ export default function SubagentConversation({
 }: {
   api: Api;
   agent: SubagentEntry;
+  plugins: Plugin[];
   cache: SessionHistoryCache;
   sessions: Session[];
   onBack: () => void;
@@ -177,6 +180,9 @@ export default function SubagentConversation({
           <SubagentComposer
             api={api}
             session={child}
+            manualApprovalsOnly={sessionManualApprovalsOnly(
+              plugins.find((plugin) => plugin.id === child.agent),
+            )}
             name={agent.name}
             onChanged={refresh}
           />

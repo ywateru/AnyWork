@@ -4,7 +4,7 @@
 
 AnyWork 将开发机器上的编程 Agent 接入 Web/PWA 和 Android，任务继续在开发机器运行。服务端使用 Rust，界面采用 React + TypeScript，Android 使用原生 WebView 宿主复用 Web 构建。
 
-当前已接入 Codex、受支持的 DeepSeek Harness gateway 与本机历史；WorkBuddy 历史可读，共享写入仍属实验。Claude Code、Cursor 尚无内置生产适配器。版本、拓扑和原生验收边界统一见[支持矩阵](support-matrix.md)。服务面向个人或可信设备，不提供多租户权限隔离。
+当前后端包括 Codex、Claude Code CLI、Claude Desktop Code、受支持的 DeepSeek Harness gateway 与本机历史；WorkBuddy 历史可读，共享写入仍属实验。Claude 接入范围与连接前提见[原生接入契约](claude-integration.md)；Cursor 仍通过插件扩展。版本、拓扑和原生验收边界统一见[支持矩阵](support-matrix.md)。服务面向个人或可信设备，不提供多租户权限隔离。
 
 ## 主要能力
 

@@ -212,6 +212,17 @@ pub async fn read(
         *rt.settings.lock().await = settings.clone();
         let catalog = models(&rt).await?;
         let mut result = controls(&settings, &catalog, true, None, &Value::Null, None);
+        if s.agent == crate::claude::DESKTOP {
+            result["model_catalog_complete"] = json!(false);
+            result["settings_notice"] =
+                json!("模型列表仅包含本机 Desktop Code 会话中已观察到的模型，并非完整模型目录");
+        }
+        if s.agent == crate::claude::CODE && !catalog.is_empty() {
+            // Claude's native initialization returns a catalog but may not
+            // reveal the effective default model until its first system/init.
+            // Selection is still supported; never guess the first catalog row.
+            result["settings_available"] = json!(true);
+        }
         result["plan_available"] = json!(false);
         result["goal"] = Value::Null;
         result["goal_capabilities"] = json!({"create":false,"edit":false,"resume":false,"clear":false,"pause":false,"reason":"当前 Agent 目标控制暂未接入"});

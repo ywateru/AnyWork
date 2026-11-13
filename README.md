@@ -6,7 +6,7 @@
 
 **Your local agents. Anywhere.**
 
-Continue Codex or DeepSeek Harness from your browser or Android phone.<br />Your workspace and agent process stay on your own computer.
+Access local agent conversations from your browser or Android phone.<br />Your workspace and agent process stay on your own computer.
 
 [Website](https://anywork.aixgg.com/en/) · [My devices](https://anywork.aixgg.com/app/) · [Download](https://github.com/ywateru/AnyWork/releases/latest) · [中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md)
 
@@ -25,6 +25,18 @@ The Rust desktop app starts your local workspace and opens it in your browser. F
 DeepSeek Harness is also available through its existing local Web/Desktop host: [shared-host setup and verification](docs/harness-setup.md). It preserves native session ownership and keeps Codex available alongside it.
 
 Existing dsh and WorkBuddy histories can be browsed alongside Codex, including saved tool results while their host is disconnected. Desktop-managed services enable cross-project discovery; CLI users can set `--agent-scope all`. WorkBuddy shared desktop execution is experimental: see [setup and current acceptance limits](docs/workbuddy-launcher.md) and [history/synchronization details](docs/workbuddy-transcript-updates.md).
+
+### Current backend agents
+
+| Backend | Integration scope |
+| --- | --- |
+| Codex | CLI and compatible shared engines; desktop sharing depends on version, platform and topology. |
+| Claude Code CLI | Shown as **Claude Code** (`claude-code`); uses local sign-in and native session IDs. Actions follow the host capability report; real model acceptance is recorded separately. |
+| Claude Desktop Code | `claude-desktop`, for **local Code** only. Supported persisted history remains readable without a control endpoint. Writing requires a valid native bridge allowed by organization policy; a usable desktop control path has not yet been confirmed; live control acceptance is pending. Ordinary chat, Cowork and cloud sessions are separate identities. |
+| DeepSeek Harness | Official 0.2.2-rc.1 gateway and original native sessions; see the [setup guide](docs/harness-setup.md). |
+| WorkBuddy | Persisted history and **experimental shared execution**; real writing, approval and cancellation still have acceptance gaps. |
+
+This is the current source scope; published packages follow their release notes. The [Agent setup guide](docs/getting-started.md#choose-a-backend-agent) covers native sign-in, history discovery and connection rechecks. The [support and acceptance matrix](docs/support-matrix.md) separates history, native control and real model evidence. Web selection, readiness hints and session controls come from the service API; a sidebar entry does not make an Agent executable.
 
 ### What you can do
 
@@ -46,7 +58,7 @@ Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases
 | Android | `.apk` account launcher | Android 8.0+, a current HTTPS browser; Custom Tabs when available |
 | Web / source | `.tar.gz` | Self-hosted deployment / development |
 
-1. Set up the [Codex CLI](https://github.com/openai/codex) or an existing [supported Harness host](docs/harness-setup.md) **on the host computer**. Keep that computer awake while tasks run.
+1. Set up your chosen backend using the [Agent setup guide](docs/getting-started.md#choose-a-backend-agent) **on the host computer**. Keep that computer awake while tasks run.
 2. Open AnyWork, choose your workspace if needed, and click **Open workspace** for local browser access. Local use does not require a cloud account.
 3. To connect remotely, register or sign in on the host and enable **Allow my other devices to access**. Open [My devices](https://anywork.aixgg.com/app/) on another computer or phone, sign in to the same account, verify the host identity and open its workspace.
 
@@ -70,7 +82,7 @@ cargo build --locked --release -p anywork
 ./target/release/anywork --workspace /absolute/path/to/projects
 ```
 
-The service listens on `http://127.0.0.1:3210`; its internal bearer remains in `.anywork/access-token` for desktop/API authentication. Use the desktop app with the matching data directory to open the local Web workspace through a one-time ticket and HttpOnly local session. The Web UI does not offer a manual address/key form. Add `--codex-scope all` to discover all local projects. Use account-authorized encrypted connections for remote work.
+The service listens on `http://127.0.0.1:3210`; its internal bearer remains in `.anywork/access-token` for desktop/API authentication. Use the desktop app with the matching data directory to open the local Web workspace through a one-time ticket and HttpOnly local session. The Web UI does not offer a manual address/key form. Add `--agent-scope all` to discover all local projects. Use account-authorized encrypted connections for remote work.
 
 ```bash
 # Desktop manager (build the Web client first)
@@ -102,7 +114,7 @@ AnyWork is a personal, trusted-device tool with the host user's file and termina
 
 See the [support and acceptance matrix](docs/support-matrix.md) for the current Agent/version/topology and platform evidence. Passive history, simulated tests and native writing acceptance are listed separately.
 
-Agent adapters support **Codex** and the official **DeepSeek Harness 0.2.2-rc.1** loopback HTTP gateway. Harness shares the original native host/session; install its optional discovery companion or configure the host address explicitly. Goal/plan, fork and message editing are not supported for Harness, and independent TUI processes without a shared carrier cannot be controlled. See [Harness setup and tested scope](docs/harness-setup.md).
+Codex, Claude Code CLI, local Claude Desktop Code, DeepSeek Harness and WorkBuddy have the scopes listed above and in the matrix. **DeepSeek Harness 0.2.2-rc.1** uses the loopback HTTP gateway. Harness shares the original native host/session; install its optional discovery companion or configure the host address explicitly. Goal/plan, fork and message editing are not supported for Harness, and independent TUI processes without a shared carrier cannot be controlled. See [Harness setup and tested scope](docs/harness-setup.md).
 
 Codex desktop sharing relies on version-dependent Unix interfaces, tested against Codex CLI 0.163/0.164 and the desktop versions recorded in the research notes; Windows desktop hot attach is not supported. CLI-backed work is available separately.
 
