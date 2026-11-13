@@ -13,6 +13,8 @@ bash scripts/build-android.sh --release --target aarch64,armv7,i686,x86_64
 
 Tauri CLI2.12.4构建先执行 `npm run build:mobile-ui`；真实 `web/mobile.html` 经Vite到 `web/dist-mobile`，由Tauri macro嵌入Rust库。`scripts/check.sh`及Checks workspace前置也构建mobile assets，host插件明确报SYSTEM_UNAVAILABLE，不伪造Android成功。Android build后运行当前variant lint/unit及 system/auth plugin 单元测试，不重复启动设备。稳定debug输出为 `artifacts/anywork-android-debug.apk`，Checks成功后公开CI artifact保留7天；release为 `release/anywork-android.apk`。
 
+浏览器回归使用两个明确服务：普通 Web 配置由 `scripts/e2e-server.py` 提供 `web/dist`；手机专项配置 `e2e/mobile.config.ts` 启动 mobile Vite 入口。普通配置必须精确排除两份手机 spec，完整检查脚本再显式执行手机专项全部用例。不能把 `/mobile.html` 用例交给没有该入口的普通 Web 服务，也不能仅排除而漏掉 CI 中的手机回归。
+
 签名兼容旧应用：release要求 ANYWORK_ANDROID_KEYSTORE、ANYWORK_ANDROID_STORE_PASSWORD、ANYWORK_ANDROID_KEY_PASSWORD，alias默认为anywork，可用 ANYWORK_ANDROID_KEY_ALIAS覆盖。凭据仅由环境交Gradle，不写入仓库。APK验证工具检查package/version/minSdk、Rust native lib与所有已构建HTML/JS/CSS资产key、签名证书、ELF PT_LOAD 16KiB及zipalign16KiB。release证书必须与配置keystore一致；是否与历史已安装包同证书还需核对历史APK证书，不能单凭applicationId宣称可升级。
 
 system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_path生成Cargo links元数据，再由tauri-build写入tauri.settings.gradle / tauri.build.gradle.kts合并Android library。生成source/template/wrapper受版本控制；本机路径、generated JNI/Kotlin、.so、Gradle/Rust缓存、tauri.properties和动态Gradle include文件不归档。source archive包含插件源码、manifest、license说明和Gradle wrapper，排除dist-mobile及产物；无需依赖作者未跟踪文件。
