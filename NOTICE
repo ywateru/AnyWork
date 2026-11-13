@@ -13,8 +13,10 @@ Reused sources:
 - web/src/components/QuickKeys.tsx from HAPI web/src/components/QuickKeys/QuickKeys.tsx
   (import path adjusted)
 - web/src/theme.css from HAPI web/src/index.css (light/dark theme variables)
-- android/gradlew, android/gradlew.bat, android/gradle/wrapper/* from HAPI Android
-  (Gradle wrapper is separately licensed Apache-2.0 by Gradle contributors)
+- Historical android/gradlew, android/gradlew.bat, android/gradle/wrapper/* from
+  HAPI Android (Gradle wrapper is separately licensed Apache-2.0 by Gradle
+  contributors); the Rust/Tauri mobile project uses the official generated
+  Android project and retains Gradle's wrapper license notices.
 
 The Rust server, protocol transport, Codex adapter, application shell, and Android
 host application are new implementations. HAPI's TypeScript Hub is not required.
@@ -38,10 +40,13 @@ from the user-supplied local Codex desktop reference; original compiled app
 modules are excluded from source and release archives. The reference bundle's
 exact Pierre package version has not been established.
 
-AnyWork desktop can bundle cloudflared (Cloudflare, Apache-2.0) and tunwg
-(Nitin Jain and contributors, MIT). Android uses the official WireGuard tunnel
-library 1.0.20260102 (WireGuard LLC, Apache-2.0; embedded wireguard-go components
-retain their MIT notices). See licenses/ and docs/desktop-manager.md.
+AnyWork desktop can bundle cloudflared (Cloudflare, Apache-2.0). Historical
+packages used tunwg (Nitin Jain and contributors, MIT) and the Android
+WireGuard library (WireGuard LLC, Apache-2.0; embedded wireguard-go components
+retain their MIT notices); those Android dependencies are retired in the
+current native client. The Android embedded authorization uses Logto
+Kotlin/Android SDK 2.0.3, Copyright (c) 2022 Silverhand Inc., MIT. See
+licenses/logto-kotlin-MIT.txt, THIRD_PARTY_NOTICES.md and docs/desktop-manager.md.
 
 The Rust/Tauri desktop manager bundles Noto Sans SC Regular from the official
 Noto CJK subset distribution. Copyright and SIL Open Font License 1.1 are
