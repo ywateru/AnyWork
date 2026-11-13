@@ -4,8 +4,12 @@ AnyWork 的 Web/PWA/Android 连接运行在用户机器上的 Rust 服务，由�
 
 ```mermaid
 flowchart LR
-  W[Web / PWA / Android Web 宿主] -->|Bearer REST + 游标 SSE| H[AnyWork · Rust Axum]
+  W[本机 Web / PWA] -->|本机会话 REST + 游标 SSE| H[AnyWork · Rust Axum]
   W -->|首帧鉴权 WebSocket| T[本机 PTY]
+  M[Android Rust / Tauri 2] -->|Native 账号证明 + Noise 加密 HTTP / PTY| N[账号远程网关]
+  B[远程 Web / PWA] -->|SPA 账号证明 + Noise 加密 HTTP / PTY| N
+  N -->|本机认证 REST / 事件轮询| H
+  N --> T
   H --> D[(SQLite WAL)]
   H --> R[会话运行时与插件注册表]
   R -->|JSON-RPC stdio| C[独立 Codex app-server]
@@ -19,7 +23,7 @@ flowchart LR
 
 ## 服务与引擎边界
 
-Rust workspace 包含 `agent-sdk`、`agent-codex`、`server` 与 `desktop`。公开服务程序名称为 `anywork`；内部 SDK crate 名称保留兼容。前端只使用服务 API，不直接调用厂商 CLI。`AgentPlugin` 提供启动清单，外部插件通过受信任管理员安装的 JSON 清单接入；内置共享主机适配器通过窄 bridge 保留原生进程所有权。
+Rust workspace 包含 `agent-sdk`、`agent-codex`、`server`、`desktop`、`remote` 与 Android `mobile`。公开服务程序名称为 `anywork`；内部 SDK crate 名称保留兼容。前端只使用服务 API，不直接调用厂商 CLI。`AgentPlugin` 提供启动清单，外部插件通过受信任管理员安装的 JSON 清单接入；内置共享主机适配器通过窄 bridge 保留原生进程所有权。
 
 普通会话通过独立插件进程运行；发现的已有 Codex 会话在支持的平台通过 Unix socket 接回共享执行进程，以原 thread 继续工作。共享通知必须匹配会话 thread 后才能写入历史。未能连接原进程时返回错误，不静默另建进程或分支。
 
@@ -89,7 +93,7 @@ Git 禁用外部 diff/textconv。PTY 使用运行服务的系统用户权限；�
 
 新安装使用 `.anywork/`，仅存在旧 `.remote-agent/` 时默认复用其令牌、数据库和附件；数据库名称继续为 `remote-agent.sqlite`。配置优先级为命令行、`ANYWORK_*`、对应旧 `REMOTE_AGENT_*`、默认值，旧浏览器偏好继续迁移和读取。
 
-Android 宿主继续使用 Java Activity 加内置 Web 资源，系统浏览器处理外链，固定 HTTPS 资源域提供页面；浏览器与宿主共用会话状态机。本轮没有新增原生手机界面，移动浏览器验证不等同于 Android 安装验收。
+Android 使用独立 Rust/Tauri 2 客户端、随包手机界面与内嵌授权 WebView。原生 owner 管理账号、目录与 Noise/HTTP/PTY，完整 React 会话组件通过有界 IPC 访问业务；系统保存分享采用临时句柄与 Android 文档选择器。账号凭据不返回 JS，登录窗口没有业务 IPC 权限。见 [Android 契约](android-account-entry.md)与[接口](mobile-native-contract.md)；移动浏览器验证不等同于 Android 安装验收。
 
 ## 重建依据与当前范围
 

@@ -11,7 +11,7 @@ Download from [GitHub Releases](https://github.com/ywateru/AnyWork/releases/late
 - **macOS 14+:** choose `macos-arm64` for Apple Silicon or `macos-x86_64` for Intel, open the `.dmg` and drag `AnyWork.app` into Applications. Read `INSTALL-macOS.txt` in the disk image; before opening the installed app, run `sudo xattr -cr "/Applications/AnyWork.app"` in Terminal. Run the copy in Applications so automatic updates can replace it. The app is ad-hoc signed, not Apple notarized. After checking its source and checksum, use Privacy & Security → Open Anyway if Gatekeeper blocks it.
 - **Windows 10/11 x64:** use the per-user `-setup.exe` installer for automatic updates. For the portable ZIP, unzip and keep `anywork-desktop.exe` beside `resources`. Install [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) if absent. The binary has no publisher certificate. This release does not hot-attach to the Windows Codex desktop process; use the Codex CLI adapter.
 - **Linux:** use a writable AppImage for automatic updates (`chmod +x anywork-linux-*.AppImage`). For portable archives, extract and run `./anywork-desktop`. x64 is built on Ubuntu 22.04 (glibc 2.35+); ARM64 on Ubuntu 24.04 (glibc 2.39+). Install runtime libraries: `sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 libsecret-1-0`. Other distributions need equivalent packages.
-- **Android 8+:** install the APK from the applicable release, or open [My devices](https://anywork.aixgg.com/app/) in your phone browser. The new account launcher uses browser Custom Tabs when available, without stored host addresses or shared keys. If signatures differ, use a matching package instead of uninstalling and deleting old data. Keep your browser up to date.
+- **Android 8+:** install the APK from the applicable release. The current source provides a Rust/Tauri 2 client with bundled pages, in-app sign-in and a complete remote workspace. Keep Android System WebView up to date. Older APKs retain their release-specific browser launcher behavior; check the release notes. If signatures differ, use a matching package instead of uninstalling and deleting old data. A phone browser can also open [My devices](https://anywork.aixgg.com/app/).
 
 Automatic desktop updates are available from 0.1.1. Use the Windows per-user installer or Linux AppImage to enable them. Keep AppImages writable (on recent Ubuntu, install `libfuse2t64`, or use `--appimage-extract-and-run` if FUSE is unavailable). Version 0.1.0 needs one manual upgrade. [Update behavior and supported packages](updates.md).
 
@@ -26,7 +26,7 @@ An independently started service is reused after identity verification; select i
 ## Continue on the website or phone
 
 1. Register or sign in on the host computer, then explicitly enable **Allow my other devices to access**.
-2. Open [My devices](https://anywork.aixgg.com/app/) on another computer or phone and sign in to the same account. The Android launcher opens this same HTTPS account flow; no VPN configuration or pairing link is required.
+2. Open [My devices](https://anywork.aixgg.com/app/) on another computer or phone and sign in to the same account. In the Android client, sign in inside the app and select **My devices**. No VPN configuration or pairing link is required.
 3. Select a ready computer. For a first connection or changed key, verify its identity against the host before opening the workspace.
 4. Return to **My devices** to choose another computer. Signing out remotely ends that remote connection. Disabling remote access on the host leaves local work available.
 
@@ -110,7 +110,7 @@ The default token file is `.anywork/access-token`, relative to the working direc
 | `CODEX_BIN` | `codex` | Codex executable path |
 | `--origins` / `ANYWORK_ORIGINS` | Local dev and Android origins | Custom cross-origin allowlist |
 
-The CLI bearer remains for internal desktop/API authentication; the Web UI does not offer a key-pasting form. Android uses the hosted HTTPS frontend and no longer needs the old appassets origin for local business APIs. Legacy `REMOTE_AGENT_*` environment variables remain supported, with `ANYWORK_*` taking precedence. An existing `.remote-agent` directory is reused when no new data directory is specified.
+The CLI bearer remains for internal desktop/API authentication; the Web UI does not offer a key-pasting form. Android uses bundled pages and a Rust encrypted connection instead of accessing host APIs from the legacy appassets origin. Legacy `REMOTE_AGENT_*` environment variables remain supported, with `ANYWORK_*` taking precedence. An existing `.remote-agent` directory is reused when no new data directory is specified.
 
 ## Capabilities and limits
 
@@ -129,7 +129,7 @@ The CLI bearer remains for internal desktop/API authentication; the Web UI does 
 
 **Remote access cannot start:** inspect the fixed failure stage on the host. Check local service readiness, authorization and networking. Temporary service failures can be retried; a binding mismatch needs configuration correction, without bypassing verification.
 
-**The phone cannot find the host:** confirm the same account, a running host and enabled remote access. Coordination failures may show an unknown status. Android opens the account page through a browser and does not bypass TLS errors or import old VPN settings.
+**The phone cannot find the host:** confirm the same account, a running host and enabled remote access. Coordination failures may show an unknown status. Refresh devices inside Android; older hosts need an update for Native mobile authorization. Sign in again after an app process restart. Do not bypass TLS errors or import old VPN settings.
 
 **A local browser session ended:** click **Open workspace** in the desktop app to create a new local session. No service key entry is needed. Restarting the service invalidates its old local sessions.
 

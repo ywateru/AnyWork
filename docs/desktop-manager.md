@@ -36,9 +36,9 @@
 
 ## 手机入口
 
-手机浏览器和PWA使用同一个正式HTTPS账号页。Android新版App提供注册、登录/我的设备入口，通过系统浏览器Custom Tabs运行同一账号流程；没有Custom Tabs支持时打开同一固定地址的系统浏览器。无浏览器则明确提示安装，不使用不安全WebView或旧手动连接回退。
+手机浏览器和 PWA 使用同一个正式 HTTPS 账号页。Android 当前源码重构为独立 Rust/Tauri 2 客户端，随包手机界面、独立内嵌登录 WebView、原生账号/目录/加密连接和系统保存分享；不以远程网页作为主界面。旧 APK 保留对应发行记录中的 Custom Tab 行为，源码与实际验收见 [Android 契约](android-account-entry.md)。
 
-Android不再导入地址、令牌、配对链接或WireGuard配置，不读取/迁移旧凭据，不添加业务页面Native桥。旧本地配置不自动删除。手机上不运行Codex或复制桌面业务历史到云端。iOS可使用浏览器，尚不宣称原生iOS应用或锁屏后台持续在线。
+Android 不导入地址、令牌、配对链接或 WireGuard 配置，不读取/迁移旧凭据；当前原生桥仅授予随包业务窗口，登录窗口没有业务 IPC 权限。旧本地配置不自动删除。账号凭据只存原生内存，进程重启重新登录。手机上不运行 Agent 或复制桌面业务历史到云端。iOS 可使用浏览器，尚不宣称原生 iOS 应用或锁屏后台持续在线。
 
 ## 升级现有安装
 
@@ -57,7 +57,7 @@ bash scripts/build-desktop.sh
 open artifacts/AnyWork.app
 ```
 
-Android构建需要JDK17和Android SDK36：
+Android 构建需要 JDK 17、Android SDK/NDK 和 Rust Android target；脚本构建随包手机界面，再调用 Tauri Android：
 
 ```sh
 bash scripts/build-android.sh

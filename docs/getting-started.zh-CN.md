@@ -11,7 +11,7 @@
 - **macOS 14+：** Apple Silicon 选 `macos-arm64`，Intel 选 `macos-x86_64`。打开 `.dmg`，将 `AnyWork.app` 拖入 Applications（应用程序）。磁盘映像内附 `INSTALL-macOS.txt` 中英文说明；打开安装后的应用前，在终端执行 `sudo xattr -cr "/Applications/AnyWork.app"`。请从应用程序目录运行，便于后续自动更新。目前是临时签名，尚未经过 Apple 公证。核对来源和校验值后，如被 Gatekeeper 拦截，可前往“隐私与安全性 → 仍要打开”。
 - **Windows 10/11 x64：** 推荐使用当前用户 `-setup.exe` 安装版以支持自动更新。便携版需解压并保持 `anywork-desktop.exe` 和 `resources` 在同一目录。如缺少则安装 [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)。程序尚无发行商证书。本版不支持 Windows Codex 桌面进程热接入，可使用 Codex CLI 会话。
 - **Linux：** 推荐从可写位置运行 AppImage 以支持自动更新（`chmod +x anywork-linux-*.AppImage`）。便携包解压后运行 `./anywork-desktop`。x64 基于 Ubuntu 22.04（glibc 2.35+），ARM64 基于 Ubuntu 24.04（glibc 2.39+）。安装运行库：`sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 libsecret-1-0`。其他发行版使用等价软件包。
-- **Android 8+：** 安装适用发行版的APK，或直接用手机浏览器打开[我的设备](https://anywork.aixgg.com/app/)。新版Android账号入口优先使用系统浏览器Custom Tabs，不保存桌面地址/访问密钥。签名不兼容时不要自行卸载以免删除旧数据，应使用匹配签名的安装包。保持浏览器更新。
+- **Android 8+：** 安装适用发行版的 APK。当前源码提供 Rust/Tauri 2 客户端，页面随包、应用内登录并使用完整远程工作区；请保持 Android System WebView 更新。旧 APK 的浏览器入口行为以对应发行记录为准。签名不兼容时不要自行卸载以免删除旧数据，应使用匹配签名的安装包。也可以直接用手机浏览器打开[我的设备](https://anywork.aixgg.com/app/)。
 
 0.1.1 起支持桌面自动更新。Windows 推荐当前用户安装版，Linux 推荐 AppImage，并放在可写位置。较新 Ubuntu 可安装 `libfuse2t64`；无 FUSE 时可尝试 `--appimage-extract-and-run`。0.1.0 需先手动升级一次。[更新行为与支持的安装方式](updates.md)。
 
@@ -26,7 +26,7 @@
 ## 从网页或手机继续
 
 1. 在工作电脑的AnyWork中注册或登录，明确开启“允许我的其他设备访问”。
-2. 在其他电脑或手机打开[我的设备](https://anywork.aixgg.com/app/)，登录同一账号。Android App打开同一个正式HTTPS账号入口，无需配置VPN或导入配对链接。
+2. 在其他电脑或手机打开[我的设备](https://anywork.aixgg.com/app/)，登录同一账号。Android 客户端在应用内登录后进入“我的设备”，无需配置 VPN 或导入配对链接。
 3. 选择已就绪的电脑。首次连接或公钥变化时，与工作电脑核对设备身份，确认后打开工作区。
 4. 返回“我的设备”可以切换电脑；退出远程账号会结束当前远程连接。关闭工作电脑的远程访问后，本地仍可继续使用。
 
@@ -110,7 +110,7 @@ Desktop 初版模型列表仅包含已观测本地桌面会话使用的模型，
 | `CODEX_BIN` | `codex` | Codex 可执行文件路径 |
 | `--origins` / `ANYWORK_ORIGINS` | 本地开发与 Android 来源 | 自定义跨域白名单 |
 
-CLI bearer供内部桌面/API认证使用，Web不再提供粘贴密钥表单。Android账号入口使用正式HTTPS前端，不需要旧appassets来源访问本地业务API。兼容旧 `REMOTE_AGENT_*` 环境变量，新 `ANYWORK_*` 优先。未指定新数据目录、仅存在 `.remote-agent` 时继续复用旧目录。
+CLI bearer 供内部桌面/API认证使用，Web 不再提供粘贴密钥表单。Android 客户端使用随包界面和 Rust 加密连接，不直接以旧 appassets 来源访问电脑业务 API。兼容旧 `REMOTE_AGENT_*` 环境变量，新 `ANYWORK_*` 优先。未指定新数据目录、仅存在 `.remote-agent` 时继续复用旧目录。
 
 ## 功能与限制
 
@@ -129,7 +129,7 @@ CLI bearer供内部桌面/API认证使用，Web不再提供粘贴密钥表单。
 
 **远程访问无法开启：** 查看电脑端固定的失败阶段提示，确认本地服务已就绪、账号有效和网络正常。暂时服务故障可重试，配置绑定错误需维护者修正，不能跳过验证。
 
-**手机看不到电脑：** 确认同一账号、电脑端仍在运行且远程已开启；协调故障可能显示状态暂时未知。Android优先通过系统浏览器打开账号页，不忽略TLS错误，不导入旧WireGuard配置。
+**手机看不到电脑：** 确认同一账号、电脑端仍在运行且远程已开启；协调故障可能显示状态暂时未知。Android 在应用内刷新设备列表；旧电脑客户端需要升级以支持 Native 移动授权。应用进程重启后重新登录，不忽略 TLS 错误，不导入旧 WireGuard 配置。
 
 **本地浏览器会话已结束：** 回到桌面点击“打开工作区”重新建立本机会话；无需输入服务令牌。服务重启后旧本机会话失效。
 

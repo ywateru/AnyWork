@@ -43,7 +43,7 @@ This is the current source scope; published packages follow their release notes.
 - **Continue the conversation.** Discover local Codex history, group chats by project, cache conversations and reconnect event streams. Attach to supported desktop sharing interfaces without starting a second execution engine.
 - **Stay involved while work runs.** Queue or steer messages, see tool and subagent activity, answer approval requests, and receive browser completion and attention notifications.
 - **Work with the output.** Browse files, preview documents and images, annotate image attachments, inspect Git diffs, and open a PTY terminal beside the chat.
-- **Move between screens.** Use the same account and device list in a desktop browser, mobile browser/PWA or the Android account launcher.
+- **Move between screens.** Use the same account and device list in a desktop browser, mobile browser/PWA or the Rust/Tauri 2 Android client with its bundled workspace and in-app sign-in.
 - **Open your workspace.** Open locally from the desktop app, or select an authorized computer after signing in remotely. No server address, shared access key or tunnel selection is required in the user flow.
 
 ## Download and connect
@@ -55,7 +55,7 @@ Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases
 | macOS Apple Silicon / Intel | `.dmg` installer; drag `AnyWork.app` into Applications | macOS 14+; ad-hoc signed, not notarized |
 | Windows x64 | Per-user installer or portable `.zip` | Windows 10/11, Microsoft Edge WebView2; unsigned |
 | Linux x64 / ARM64 | AppImage or portable `.tar.gz` | GTK 3, WebKitGTK 4.1; x64 built on Ubuntu 22.04, ARM64 on Ubuntu 24.04 |
-| Android | `.apk` account launcher | Android 8.0+, a current HTTPS browser; Custom Tabs when available |
+| Android | Rust/Tauri 2 `.apk` client | Android 8.0+, current Android System WebView; in-app sign-in and bundled workspace |
 | Web / source | `.tar.gz` | Self-hosted deployment / development |
 
 1. Set up your chosen backend using the [Agent setup guide](docs/getting-started.md#choose-a-backend-agent) **on the host computer**. Keep that computer awake while tasks run.
@@ -66,7 +66,7 @@ Native account credentials and endpoint keys stay in process memory. After exiti
 
 Desktop 0.1.1+ quietly checks and downloads updates, then installs only after confirmation. Use the Windows installer or Linux AppImage for automatic updates; portable directories update manually. Version 0.1.0 requires one manual upgrade. [Update guide](docs/updates.md).
 
-The Android app connects to your host; it does not run Codex on the phone. Linux/Windows portable executables must remain beside their `resources` directory. macOS may require **System Settings → Privacy & Security → Open Anyway** after you verify the download. See the [installation and connection guide](docs/getting-started.md) for dependencies, CLI usage and troubleshooting.
+The Android app connects to your host; it does not run Agents on the phone. Its local interface uses a Rust account and encrypted transport core, with Android system save/share dialogs for exports. Native credentials stay in memory, so a process restart requires sign-in. The host must support the Native mobile client authorization; upgrade older hosts before connecting. See the [Android contract and acceptance](docs/android-account-entry.md). Linux/Windows portable executables must remain beside their `resources` directory. macOS may require **System Settings → Privacy & Security → Open Anyway** after you verify the download. See the [installation and connection guide](docs/getting-started.md) for dependencies, CLI usage and troubleshooting.
 
 ## Run from source
 
@@ -89,7 +89,7 @@ The service listens on `http://127.0.0.1:3210`; its internal bearer remains in `
 cargo fetch --locked
 bash scripts/build-desktop.sh
 
-# Android debug build: JDK 17, Android SDK 36, Build Tools 36.0.0
+# Android debug build: JDK 17, Android SDK/NDK and Rust Android target
 bash scripts/build-android.sh
 ```
 
@@ -142,7 +142,8 @@ Tests use isolated fixtures and temporary services; they do not send tasks to yo
 | Agent protocol and Codex adapter | `crates/agent-sdk/`, `crates/agent-codex/` |
 | Harness shared-host adapter and discovery companion | `crates/server/src/harness.rs`, `integrations/harness-discovery/` |
 | Rust/Tauri desktop manager | `crates/desktop/`, `desktop/ui/` |
-| Shared browser / Android interface | `web/`, `android/` |
+| Browser / bundled mobile interface | `web/`, `web/src/mobile/` |
+| Android Rust/Tauri client and platform integration | `crates/mobile/` |
 | Bilingual product website | `site/`, `scripts/build-site.py` |
 
 [Getting started](docs/getting-started.md) · [Architecture](docs/architecture.md) · [API](docs/api.md) · [Plugin protocol](docs/plugin-protocol.md) · [Release process](docs/releasing.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)

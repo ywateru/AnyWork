@@ -37,7 +37,7 @@ Claude Desktop 的实现与独立源码审查已完成；用户明确将真机�
 | macOS arm64 / Intel | macOS 14+，Rust/Tauri，DMG 与更新包内容/架构检查，版本绑定更新签名 | 当前 ad-hoc 签名，未 Apple 公证；完整慢网络下载安装验收未闭环，不将资产核验视为实装升级 |
 | Windows x64 | Windows 10/11 + WebView2，安装版/便携包，已有原生 release 构建与测试 | 无发行商签名；便携包不自动替换；不支持 Codex 桌面 Unix 热接入 |
 | Linux x64 / arm64 | AppImage/便携包；GTK3/WebKitGTK4.1；基于 Ubuntu 22.04 / 24.04 的不同架构构建 | 实际发行版/桌面环境矩阵未穷尽；glib 告警和可达性风险见[安全说明](../SECURITY.md) |
-| Android | Android 8.0+；当前源码改为固定HTTPS账号入口的Custom Tabs宿主，系统浏览器回退；不再使用旧WebView业务桥、WireGuard或手动连接配置 | 新构建/验收见统一体验任务；build/lint/unit与手机浏览器验证不替代实体设备；后台持续连接不作承诺。旧公开APK能力以对应发行记录为准 |
+| Android | Android 8.0+；Rust/Tauri 2 客户端、随包手机界面、独立内嵌登录 WebView、原生 Noise/HTTP/PTY 和系统保存/分享；不使用手动地址/密钥配置 | 当前重构状态与实际 APK 证据见 [Android 任务](plan/tasks/android-native-client.md)；build/lint/unit与手机浏览器验证不替代实体设备；后台持续连接不作承诺。旧公开 APK 能力以对应发行记录为准 |
 | Docker | 仅构建服务端；Linux x64 CI 已实测干净镜像、非 root、认证、源码绑定 Web/完整文件摘要与持久化 | [精确提交 `aacaa19` 实际容器验收](https://github.com/ywateru/AnyWork/actions/runs/42376388458/job/128414728192)通过，包含 I05a schema 与 I07a 纯读取模块；不等同其他架构、原生登录/模型或宿主桌面共享验收；本机 daemon 仍不可用 |
 
 平台依赖与安装步骤见[中文指南](getting-started.zh-CN.md) / [English guide](getting-started.md)。Android applicationId 和既有内部名称保留兼容，不能为了品牌改名破坏覆盖升级和数据。
@@ -60,7 +60,7 @@ Claude Desktop 的实现与独立源码审查已完成；用户明确将真机�
 | macOS 桌面账号宿主 | 官方 Native 注册/登录、账号令牌及私钥仅进程内存、本机显式开启、独立加密入口 | 内存实现与真实自部署重启换钥已通过；进程退出后重新登录及开启，不自动恢复授权；注册入口到达托管用户名表单，未验证邮件投递 |
 | Linux 桌面账号宿主 | 新账号路径不使用系统 Secret Service，授权和密钥只在进程内存 | 编译/运行及上游provider矩阵待验证，不据macOS验收声称所有发行版支持 |
 | Windows 桌面账号宿主 | 上游 Rust SDK 凭据模块当前依赖 Unix；账号远程访问明确不可用 | 本地工作仍可用；不以恢复旧手动入口假装平台支持完成，SDK支持另立阶段 |
-| Android 账号入口 | 当前源码使用Custom Tabs/系统浏览器打开与Web/PWA相同的正式账号页；原生传输SDK接入另立阶段 | 旧手动连接、WireGuard及WebView桥退役；新APK/实际手机证据见统一入口任务。网页支持目标包含iOS浏览器，不等于新增原生iOS客户端；Safari/手机验证另记 |
+| Android 原生客户端 | 当前源码重构为应用内登录、账号/目录和业务连接的原生 owner；页面随包，完整工作区在应用内使用，进程重启重新登录 | [契约与验收](android-account-entry.md)区分源码、隔离互通、浏览器与真实 APK；电脑端需支持移动 Native client。网页支持目标包含 iOS 浏览器，不等于新增原生 iOS 客户端 |
 | 当前账号云服务 | 最新配置已改自部署Logto default业务租户，独立CyberGrid项目/Upstash namespace；旧Cloud Development资源保留 | 新应用/权限/Account API已配置并独立读回；协调服务与正式主页READY；真实CORS/Redis/Native-Web加密链通过，本机更新见[当前记录](plan/reviews/account-selfhost-cutover-01.md)；无Cloud付费升级 |
 
 账号数据与最少配置在 Logto，Upstash 仅作 CyberGrid 协调；业务正文和端到端私钥留在用户两端。HTTPS 本身不等于端到端加密。首次公钥目录、浏览器托管代码及终端仍是信任边界，详情见[方案](account-device-cloud-review.md)。
