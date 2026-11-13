@@ -11,11 +11,11 @@
 - `mobile-system`：系统保存、分享、受控外链、安全区、键盘和返回事件。
 - `mobile` UI：手机引导、设备/账号页与现有完整会话功能；所有业务 API 经过原生 transport。
 
-业务 WebView 仅加载随包本地资产，登录 WebView 无 Tauri IPC 权限。远程内容不能导航业务 WebView 到任意站点并保留原生权限。使用公开 Tauri API，不依赖 `__TAURI_INTERNALS__`。
+业务 WebView 仅加载随包本地资产，登录 WebView 无 Tauri IPC 权限。官方登录 SDK 自带的剪贴板 polyfill 与 social connector 桥属于 SDK 的授权页面信任边界，不是 AnyWork 业务桥，不授予 token、文件或 transport 访问。远程内容不能导航业务 WebView 到任意站点并保留原生权限。使用公开 Tauri API，不依赖 `__TAURI_INTERNALS__`。
 
 ## 账号与生命周期
 
-使用内嵌登录能力的官方 Logto Android SDK 2.0.3；3.x 已改用 Custom Tabs，不能静默升级。原生层为唯一 grant owner，关闭 SDK 凭据持久化，凭据与协调材料仅保留于内存。进程重启回到登录入口，不读取、迁移或删除旧 Android 加密文件及 KeyStore。信任与偏好可保存非秘密资料，必须按 issuer、subject、设备及密钥版本隔离。登录/注册、取消、失败重试均有应用内路径；第三方身份提供者拒绝嵌入时准确报告，不绕过其限制。
+使用内嵌登录能力的官方 Logto Android SDK 2.0.3；3.x 已改用 Custom Tabs，不能静默升级。原生层为唯一 grant owner，显式设置 usingPersistStorage=false，应用 token 与协调材料仅保留于内存；这不表示 IdP SSO cookie 也只存内存。SDK/Android WebView 管理授权页 cookie，可能跨进程保留，显式注销走 SDK 的 cookie 清理；进程重启不能据 cookie 自动恢复应用 grant，仍回到登录入口。不读取、迁移或删除旧 Android 加密文件及 KeyStore。信任与偏好可保存非秘密资料，必须按 issuer、subject、设备及密钥版本隔离。授权开始前提示固定登录站点来源，SDK 登录窗口使用系统返回取消，不承诺 SDK 不提供的来源顶栏。登录/注册、取消、失败重试均有应用内路径；第三方身份提供者拒绝嵌入时准确报告，不绕过其限制。
 
 固定产品配置、Native client、合法已注册回调及 PKCE/state，由原生授权 owner 核验。账号名称使用当前已验证 subject 的 name、username/preferred_username、email，绝不以 subject 或设备名代替。前端不接触 access/refresh token、授权 code、PKCE verifier 或设备私钥。
 
@@ -23,7 +23,14 @@
 
 ## 设备和远程协议
 
-目录合并 Logto customData 中的安装身份、公钥及 CyberGrid 在线/端口资料；离线、目录未知与空列表分开显示。目录 schema、大小上限与保留未知字段行为沿用 Web 契约。修改名称/移除目录记录必须核对写后结果，移除记录不等于撤销电脑远程权限。
+目录合并 Logto customData 中的安装身份、公钥及 CyberGrid 在线/端口资料；离线、目录未知与空列表分开显示。当前部署采用与电脑相同的既有 Native client，通过 Native registration/device session 获取同应用设备；不得把 Native token 发往仅支持 SPA 的 console exchange，也不得假设有未部署的跨产品映射。注册/admission、RAM registrationKey、heartbeat 与协调 epoch 恢复必须完整实现。目录 schema、大小上限与保留未知字段行为沿用 Web 契约。修改名称/移除目录记录必须核对写后结果，移除记录不等于撤销电脑远程权限。
+
+| 用途 | 原生授权边界 |
+| --- | --- |
+| 登录与账号资料 | 固定 issuer 与现有 Native client；openid/profile/email/custom_data，SDK PKCE/state 与已注册 callback |
+| Account API customData | 不带 resource 的 Account API token；固定 issuer 的 /api/my-account；subject 与当前 epoch 栅栏 |
+| CyberGrid/电脑业务证明 | 固定 resource 的 connect JWT；Native session 和短期 gateway 授权，不使用 SPA client 冒充 |
+| 本地业务 Origin | Tauri useHttpsScheme=true 对应 https://tauri.localhost；Rust wire Origin 同值，可信常量，不来自 JS |
 
 首次公钥和密钥变化均需明确核验；确认绑定账号、设备、目录 revision 与公钥快照，成功握手后才保存信任。Rust 从已核验目录构造连接目标，JS 不提供任意 URL/token。网关精确增加配置中的 Native client 与本地可信 Origin，仍校验签名、issuer、audience、scope、owner、期限及 client；不删除 Origin/client 检查。协议继续使用[remote v1](account-remote-protocol.md)。旧版电脑需要升级后才能接受移动 Native client。
 

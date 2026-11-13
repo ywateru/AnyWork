@@ -12,7 +12,7 @@
 - `mobile_account_device_update({deviceRef,expectedRevision,label?,remove?})`：保留未知 customData，写后核对；冲突显式失败。
 - `mobile_transport_connect({deviceRef,expectedRevision,keyConfirmation?})`：账号层构造内部 `VerifiedTarget`，确认绑定当前 epoch/revision/publicKey，成功后保存信任。
 
-AccountService 为 transport 提供 `VerifiedTarget {url,installation_id,public_key:[u8;32],scope_id,lifetime:CancellationToken}` 与 `Arc<dyn TransportAuthorization>`，二者不 Serialize。授权 trait `token(force_refresh,min_validity_secs)` 返回仅原生可见的 token。目录目标解析、信任接受和 connect 的具体方法由 account/transport 两位作者协同冻结，shell 仅转发。
+AccountService 为 transport 提供 `VerifiedTarget {url,installation_id,public_key:[u8;32],scope_id,lifetime:CancellationToken}` 与 `Arc<dyn TransportAuthorization>`，二者不 Serialize。授权 trait `token(force_refresh,min_validity_secs)` 返回仅原生可见的 token。目录目标解析、信任接受和 connect 的具体方法由 account/transport 两位作者协同冻结，shell 仅转发。当前部署使用电脑既有 Native client 的 Native device session，不调用 SPA console 路由。应用 grant 仅内存，IdP SSO cookie 另由官方 SDK/WebView 管理；进程重启不自动恢复 grant。stable scopeId 由 issuer/subject 确定，epoch 只作异步栅栏，不充当草稿命名空间。
 
 ## Transport
 
