@@ -1,3 +1,4 @@
+import { openPlatformLink } from "../platform";
 import {
   createContext,
   useContext,
@@ -108,7 +109,7 @@ export default function ThreadLinkNavigation(props: {
     if (event.shiftKey || threadLinkNewTab(event, navigator.platform)) {
       const url = new URL(location.href);
       url.hash = threadLinkRoute(target);
-      window.open(url.href, "_blank", "noopener,noreferrer");
+      openPlatformLink(url.href);
       return;
     }
     void resolve(target);

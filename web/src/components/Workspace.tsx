@@ -1,3 +1,10 @@
+import {
+  isNativeClient,
+  saveBlob,
+  shareBlob,
+  confirmPlatform,
+  platformError,
+} from "../platform";
 import { useEffect, useRef, useState } from "react";
 import {
   Folder,
@@ -190,6 +197,26 @@ export default function Workspace({
   const preview = useRef<HTMLDivElement>(null),
     editor = useRef<HTMLTextAreaElement>(null);
   const selectFile = (next: FileTarget, notify = true) => {
+    const nextPath = next.path.startsWith("/")
+      ? next.path
+      : `${cwd}/${next.path}`;
+    if (notify && file?.path === nextPath && file?.line === next.line) return;
+    if (
+      isNativeClient() &&
+      notify &&
+      content !== null &&
+      content !== original
+    ) {
+      void confirmPlatform(
+        "当前文件尚未保存到电脑。保留手机草稿并打开其他文件？",
+      ).then((confirmed) => {
+        if (confirmed) {
+          selectFile(next, false);
+          onSelectFile?.(next);
+        }
+      });
+      return;
+    }
     setFile({
       ...next,
       path: next.path.startsWith("/") ? next.path : `${cwd}/${next.path}`,
@@ -213,6 +240,33 @@ export default function Workspace({
     }
   }, [target, id]);
   const path = file?.path || "";
+  const loadedPath = useRef("");
+  const fileDraftKey = JSON.stringify([
+    "mobile-file-draft",
+    api.connection.scope,
+    id,
+    path,
+  ]);
+  useEffect(() => {
+    if (
+      !isNativeClient() ||
+      !path ||
+      content === null ||
+      loadedPath.current !== path
+    )
+      return;
+    try {
+      if (content !== original)
+        sessionStorage.setItem(
+          fileDraftKey,
+          JSON.stringify({ content, revision }),
+        );
+      else sessionStorage.removeItem(fileDraftKey);
+    } catch {
+      /* The dirty editor stays mounted if storage is unavailable. */
+    }
+  }, [fileDraftKey, path, content, original, revision]);
+
   const owner = useRef({ api, id, path, tab, changes, refresh });
   if (
     owner.current.api !== api ||
@@ -306,7 +360,19 @@ export default function Workspace({
           { signal: controller.signal },
         );
         if (!controller.signal.aborted) {
-          setContent(data.content ?? null);
+          let restored: string | null = null;
+          if (isNativeClient()) {
+            try {
+              const draft = JSON.parse(
+                sessionStorage.getItem(fileDraftKey) || "null",
+              );
+              if (typeof draft?.content === "string") restored = draft.content;
+            } catch {
+              /* Ignore malformed optional draft. */
+            }
+          }
+          loadedPath.current = path;
+          setContent(restored ?? data.content ?? null);
           setOriginal(data.content ?? "");
           setRevision(isFileRevision(data.revision) ? data.revision : null);
         }
@@ -348,7 +414,14 @@ export default function Workspace({
     ? path.slice(cwd.length + 1)
     : path;
   return (
-    <div className="workspace-panel codex-file-panel">
+    <div
+      className="workspace-panel codex-file-panel"
+      data-native-unsaved={
+        isNativeClient() && content !== null && content !== original
+          ? "true"
+          : undefined
+      }
+    >
       <div className="document-toolbar">
         <div className="document-breadcrumb" title={path || cwd}>
           {(path.startsWith(cwd + "/")
@@ -391,10 +464,40 @@ export default function Workspace({
                 <RefreshCw size={15} />
                 刷新文件
               </button>
+              {isNativeClient() && content !== null && path && (
+                <>
+                  <button
+                    onClick={() =>
+                      void saveBlob(
+                        new Blob([content], {
+                          type: "text/plain;charset=utf-8",
+                        }),
+                        path.split("/").pop() || "file.txt",
+                      ).catch(platformError)
+                    }
+                  >
+                    保存到手机
+                  </button>
+                  <button
+                    onClick={() =>
+                      void shareBlob(
+                        new Blob([content], {
+                          type: "text/plain;charset=utf-8",
+                        }),
+                        path.split("/").pop() || "file.txt",
+                      ).catch(platformError)
+                    }
+                  >
+                    分享文件
+                  </button>
+                </>
+              )}
               {path && (
                 <button
                   onClick={() =>
-                    navigator.clipboard.writeText(path).catch(onError)
+                    Promise.resolve()
+                      .then(() => navigator.clipboard.writeText(path))
+                      .catch(onError)
                   }
                 >
                   <Copy size={15} />
@@ -481,7 +584,9 @@ export default function Workspace({
                   title="复制文件内容"
                   aria-label="复制文件内容"
                   onClick={() =>
-                    navigator.clipboard.writeText(content).catch(onError)
+                    Promise.resolve()
+                      .then(() => navigator.clipboard.writeText(content))
+                      .catch(onError)
                   }
                 >
                   <Copy size={15} />
@@ -523,7 +628,9 @@ export default function Workspace({
                   </button>
                   <button
                     onClick={() =>
-                      navigator.clipboard.writeText(content).catch(onError)
+                      Promise.resolve()
+                        .then(() => navigator.clipboard.writeText(content))
+                        .catch(onError)
                     }
                   >
                     复制当前草稿

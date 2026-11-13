@@ -1,3 +1,4 @@
+import { openPlatformLink } from "../../platform";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { promptLinkIcons } from "../../promptLinkIcons";
@@ -208,7 +209,7 @@ export default function PromptLinkPopover({
             <button
               type="button"
               onClick={() => {
-                window.open(target.href, "_blank", "noopener,noreferrer");
+                openPlatformLink(target.href);
                 onClose();
               }}
             >

@@ -6,9 +6,11 @@ type Center = ReturnType<typeof useSessionNotifications>;
 export default function NotificationCenter({
   center,
   hasPendingRequest = false,
+  systemNotifications = true,
 }: {
   center: Center;
   hasPendingRequest?: boolean;
+  systemNotifications?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const surface = useRef<HTMLDivElement>(null);
@@ -74,22 +76,26 @@ export default function NotificationCenter({
               <X size={17} />
             </button>
           </header>
-          <div className="notification-preferences">
-            <span>完成、权限申请与确认</span>
-            <button
-              type="button"
-              onClick={() =>
-                center.enabled && center.permission === "granted"
-                  ? center.disable()
-                  : void center.enable()
-              }
-            >
-              {center.enabled && center.permission === "granted"
-                ? "关闭系统通知"
-                : "开启系统通知"}
-            </button>
-            {center.feedback && <small role="status">{center.feedback}</small>}
-          </div>
+          {systemNotifications && (
+            <div className="notification-preferences">
+              <span>完成、权限申请与确认</span>
+              <button
+                type="button"
+                onClick={() =>
+                  center.enabled && center.permission === "granted"
+                    ? center.disable()
+                    : void center.enable()
+                }
+              >
+                {center.enabled && center.permission === "granted"
+                  ? "关闭系统通知"
+                  : "开启系统通知"}
+              </button>
+              {center.feedback && (
+                <small role="status">{center.feedback}</small>
+              )}
+            </div>
+          )}
           <div className="notification-list">
             {center.notices.length ? (
               center.notices.map((n) => (

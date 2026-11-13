@@ -1,3 +1,4 @@
+import { saveBlob, platformError } from "../platform";
 import {
   useEffect,
   useRef,
@@ -144,12 +145,7 @@ export function Settings({ appearance, onChange, onClose, children }: Props) {
       [JSON.stringify({ version: 1, appearance }, null, 2)],
       { type: "application/json" },
     );
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "anywork-theme.json";
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    void saveBlob(blob, "anywork-theme.json").catch(platformError);
   };
   const entries = [
     { id: "general", label: "常规", icon: Settings2 },

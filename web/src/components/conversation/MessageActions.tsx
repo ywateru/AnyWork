@@ -1,4 +1,10 @@
 import {
+  saveBlob,
+  shareBlob,
+  isNativeClient,
+  platformError,
+} from "../../platform";
+import {
   useEffect,
   useId,
   useLayoutEffect,
@@ -336,16 +342,13 @@ export default function MessageActions({
     }
   }
   function download() {
-    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" }),
-      url = URL.createObjectURL(blob),
-      anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "AnyWork-answer.md";
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
     closeMenu(true);
-    setNotice("已下载回答");
+    void saveBlob(
+      new Blob([markdown], { type: "text/markdown;charset=utf-8" }),
+      "AnyWork-answer.md",
+    ).catch(platformError);
   }
+
   return (
     <>
       <div className="message-actions answer-actions" aria-label="回答操作">
@@ -479,6 +482,22 @@ export default function MessageActions({
                   <Download size={16} />
                   下载回答
                 </button>
+                {isNativeClient() && (
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      closeMenu(true);
+                      void shareBlob(
+                        new Blob([markdown], {
+                          type: "text/markdown;charset=utf-8",
+                        }),
+                        "AnyWork-answer.md",
+                      ).catch(platformError);
+                    }}
+                  >
+                    分享回答
+                  </button>
+                )}
                 {feedback && (
                   <>
                     <button

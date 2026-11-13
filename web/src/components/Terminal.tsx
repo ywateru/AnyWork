@@ -1,3 +1,4 @@
+import { isNativeClient, confirmPlatform, platformError } from "../platform";
 import { useEffect, useRef, useState } from "react";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -74,7 +75,23 @@ export default function Terminal({
       },
     });
     socket.current = ws;
-    const input = term.onData(keys.dispatch);
+    let pastePending = false;
+    const input = term.onData((data) => {
+      if (isNativeClient() && data.length > 1 && /[\r\n]/.test(data)) {
+        if (pastePending) return;
+        pastePending = true;
+        void confirmPlatform(
+          `向终端粘贴多行内容？这可能执行命令。\n\n${data.slice(0, 600)}`,
+        )
+          .then((ok) => {
+            if (ok && socket.current === ws) keys.dispatch(data);
+          })
+          .catch(platformError)
+          .finally(() => {
+            pastePending = false;
+          });
+      } else keys.dispatch(data);
+    });
     const observer = new ResizeObserver(() => {
       fit.fit();
       ws.resize(term.cols, term.rows);

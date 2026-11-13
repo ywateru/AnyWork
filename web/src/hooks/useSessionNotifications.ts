@@ -11,6 +11,7 @@ export function useSessionNotifications(
   sessions: Session[],
   selected: string,
   onSelect: (id: string) => void,
+  systemNotifications = true,
 ) {
   const [notices, setNotices] = useState<SessionNotice[]>([]);
   const latestNotices = useRef(notices);
@@ -26,8 +27,14 @@ export function useSessionNotifications(
     () => localStorage.getItem("anywork.notifications") !== "false",
   );
   const [feedback, setFeedback] = useState("");
-  const current = useRef({ scope, sessions, onSelect, enabled });
-  current.current = { scope, sessions, onSelect, enabled };
+  const current = useRef({
+    scope,
+    sessions,
+    onSelect,
+    enabled,
+    systemNotifications,
+  });
+  current.current = { scope, sessions, onSelect, enabled, systemNotifications };
   const seen = useRef(new Set<string>());
   const systems = useRef(new Map<string, Notification>());
   const generation = useRef(0);
@@ -73,6 +80,7 @@ export function useSessionNotifications(
         seen.current.delete(seen.current.values().next().value!);
       setNotices((old) => [notice, ...old].slice(0, 50));
       if (
+        !current.current.systemNotifications ||
         !current.current.enabled ||
         typeof Notification === "undefined" ||
         Notification.permission !== "granted" ||

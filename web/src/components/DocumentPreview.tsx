@@ -1,3 +1,9 @@
+import {
+  saveBlob,
+  shareBlob,
+  isNativeClient,
+  platformError,
+} from "../platform";
 import { useEffect, useState } from "react";
 import { Download, FileText, RefreshCw } from "lucide-react";
 import type { Api } from "../api";
@@ -19,6 +25,7 @@ export default function DocumentPreview({
     path: string;
     url: string;
     pdf: boolean;
+    blob: Blob;
   } | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -35,7 +42,7 @@ export default function DocumentPreview({
       .then((blob) => {
         if (controller.signal.aborted) return;
         url = URL.createObjectURL(blob);
-        setResource({ path, url, pdf: blob.type === "application/pdf" });
+        setResource({ path, url, pdf: blob.type === "application/pdf", blob });
       })
       .catch((e) => {
         if (!controller.signal.aborted)
@@ -70,12 +77,25 @@ export default function DocumentPreview({
           <FileText size={15} />
           {name}
         </span>
-        <a href={resource.url} download={name}>
+        <button
+          onClick={() =>
+            void saveBlob(resource.blob, name).catch(platformError)
+          }
+        >
           <Download size={15} />
-          下载文件
-        </a>
+          {isNativeClient() ? "保存到手机" : "下载文件"}
+        </button>
+        {isNativeClient() && (
+          <button
+            onClick={() =>
+              void shareBlob(resource.blob, name).catch(platformError)
+            }
+          >
+            分享文件
+          </button>
+        )}
       </div>
-      {resource.pdf ? (
+      {resource.pdf && !isNativeClient() ? (
         <iframe
           title={`PDF 预览：${name}`}
           src={resource.url}
@@ -85,10 +105,14 @@ export default function DocumentPreview({
         <div className="document-placeholder">
           <FileText size={32} />
           <p>{name}</p>
-          <p>下载后使用文档应用打开。</p>
-          <a href={resource.url} download={name}>
-            下载文档
-          </a>
+          <p>保存后使用文档应用打开，或通过分享选择应用。</p>
+          <button
+            onClick={() =>
+              void saveBlob(resource.blob, name).catch(platformError)
+            }
+          >
+            {isNativeClient() ? "保存到手机" : "下载文档"}
+          </button>
         </div>
       )}
     </div>

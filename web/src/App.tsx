@@ -1,3 +1,6 @@
+import MobileWorkspaceHeader from "./mobile/WorkspaceHeader";
+import { useUncertainSend } from "./mobile/uncertainSend";
+import { saveBlob, confirmPlatform, promptPlatform } from "./platform";
 import AccountEntry from "./components/AccountEntry";
 import {
   WorkspaceDevice,
@@ -145,6 +148,7 @@ export default function App({
   deviceLabel,
   accountLabel,
   disconnectLabel = "返回连接入口",
+  mobile = false,
 }: {
   initial?: Connection;
   onDisconnect?: () => void;
@@ -154,6 +158,7 @@ export default function App({
   deviceLabel?: string;
   accountLabel?: string;
   disconnectLabel?: string;
+  mobile?: boolean;
 } = {}) {
   const [connection, setConnection] = useState<Connection | null>(
       () => initial ?? null,
@@ -196,6 +201,7 @@ export default function App({
     [uploading, setUploading] = useState(0);
   const { appearance, setAppearance, theme, toggleTheme } = useAppearance();
   const serverKey = connection?.scope ?? connection?.url ?? "";
+  const uncertainSend = useUncertainSend(mobile, serverKey, selected);
   const [sidebarAgent, setSidebarAgent] = useSidebarAgent(serverKey);
   const panels = useConversationPanels(serverKey, selected);
   const { tab, setTab, fileTarget } = panels;
@@ -213,6 +219,7 @@ export default function App({
       setModal(null);
       panels.setTab("chat");
     },
+    !mobile,
   );
   const { cache: historyCache, snapshot: cachedHistory } = useSessionHistory(
     api,
@@ -575,6 +582,17 @@ export default function App({
       bottom.current?.scrollIntoView({ behavior: "instant" });
   }, [events, tab, historyLoading]);
   function select(id: string, review?: ReviewRequest) {
+    if (mobile && document.querySelector('[data-native-unsaved="true"]')) {
+      void confirmPlatform(
+        "文件修改尚未保存到电脑。保留手机草稿并切换会话？",
+      ).then((ok) => {
+        if (ok) selectNow(id, review);
+      });
+      return;
+    }
+    selectNow(id, review);
+  }
+  function selectNow(id: string, review?: ReviewRequest) {
     location.hash = sessionReviewRoute(id, review);
     setSelected(id);
     setSidebar(false);
@@ -909,6 +927,7 @@ export default function App({
       !session ||
       session.archived ||
       sending ||
+      uncertainSend.blocked ||
       sendInFlight.current ||
       messageEditing.submitting ||
       uploading > 0 ||
@@ -1060,6 +1079,14 @@ export default function App({
       historyCache?.refresh(sessionId);
       void reload().catch(() => {});
     } catch (e) {
+      if (
+        mobile &&
+        e &&
+        typeof e === "object" &&
+        "delivery" in e &&
+        e.delivery === "outcome_unknown"
+      )
+        uncertainSend.mark();
       if (queueScope.current === scope && selectedRef.current === sessionId)
         fail(e);
     } finally {
@@ -1130,14 +1157,7 @@ export default function App({
         ),
         text = JSON.stringify(data, null, 2),
         name = `anywork-${session.id}.json`;
-      const url = URL.createObjectURL(
-          new Blob([text], { type: "application/json" }),
-        ),
-        a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await saveBlob(new Blob([text], { type: "application/json" }), name);
     } catch (e) {
       fail(e);
     }
@@ -1184,6 +1204,27 @@ export default function App({
     session?.status,
     notifications.receive,
   ]);
+  useEffect(() => {
+    if (!mobile) return;
+    const back = (event: Event) => {
+      if (event.defaultPrevented) return;
+      if (modal) {
+        event.preventDefault();
+        setModal(null);
+      } else if (sidebar) {
+        event.preventDefault();
+        setSidebar(false);
+      } else if (tab !== "chat") {
+        event.preventDefault();
+        setTab("chat");
+      } else if (selected) {
+        event.preventDefault();
+        select("");
+      }
+    };
+    window.addEventListener("anywork-mobile-back", back);
+    return () => window.removeEventListener("anywork-mobile-back", back);
+  }, [mobile, modal, sidebar, tab, selected, setTab]);
   if (!connection || !api)
     return (
       <div className="account-loading">
@@ -1202,8 +1243,17 @@ export default function App({
     }
   };
   const openTool = (kind: string) => {
-    if (kind !== "git") leaveReviewRoute();
-    setTab(kind);
+    const open = () => {
+      if (kind !== "git") leaveReviewRoute();
+      setTab(kind);
+    };
+    if (mobile && document.querySelector('[data-native-unsaved="true"]'))
+      void confirmPlatform(
+        "文件修改尚未保存到电脑。保留手机草稿并切换工具？",
+      ).then((ok) => {
+        if (ok) open();
+      });
+    else open();
   };
   const panelLauncher = (
     <details className="panel-launcher header-tools-menu" data-floating-menu>
@@ -1235,6 +1285,83 @@ export default function App({
       </div>
     </details>
   );
+  const sessionActions = session ? (
+    <details className="session-menu" data-floating-menu>
+      <summary aria-label="会话操作">•••</summary>
+      <div>
+        <button
+          disabled={session.external}
+          onClick={async () => {
+            const title = await promptPlatform("重命名会话", session.title);
+            if (title?.trim()) patch({ title });
+          }}
+        >
+          重命名
+        </button>
+        <button
+          disabled={session.external}
+          onClick={() => patch({ archived: !session.archived })}
+        >
+          <Archive size={14} />
+          {session.archived ? "取消归档" : "归档会话"}
+        </button>
+        <button onClick={download}>
+          <Download size={14} />
+          导出会话
+        </button>
+        <button
+          className="danger"
+          disabled={session.external}
+          onClick={async () => {
+            if (await confirmPlatform("永久删除这个会话及其历史记录？")) {
+              try {
+                await api.request(`/sessions/${session.id}`, {
+                  method: "DELETE",
+                });
+                select("");
+                await reload();
+              } catch (e) {
+                fail(e);
+              }
+            }
+          }}
+        >
+          <Trash2 size={14} />
+          删除会话
+        </button>
+        <button
+          title="设置"
+          onClick={(event) => {
+            event.currentTarget.closest("details")?.removeAttribute("open");
+            setModal("settings");
+          }}
+        >
+          <Settings size={15} />
+          设置
+        </button>
+        <button
+          title="切换主题"
+          onClick={(event) => {
+            toggleTheme();
+            event.currentTarget.closest("details")?.removeAttribute("open");
+          }}
+        >
+          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          切换主题
+        </button>
+        <button
+          onClick={(event) => {
+            event.currentTarget.closest("details")?.removeAttribute("open");
+            setCreateCwd(session.cwd);
+            setModal("create");
+          }}
+        >
+          <Plus size={15} />
+          新建会话…
+        </button>
+      </div>
+    </details>
+  ) : null;
   const sessionTabs = session ? (
     <SessionTabs
       inPanel={tab !== "chat"}
@@ -1262,8 +1389,47 @@ export default function App({
         onError={fail}
       >
         <div
-          className={`app-shell codex-shell${sidebarPinned ? "" : " sidebar-collapsed"}`}
+          className={`app-shell codex-shell${sidebarPinned ? "" : " sidebar-collapsed"}${mobile ? ` mobile-workspace ${selected ? "mobile-session-mode" : "mobile-list-mode"}` : ""}`}
         >
+          {mobile && session && (
+            <MobileWorkspaceHeader
+              title={session.title}
+              context={`${deviceLabel || info.hostname} / ${session.cwd}`}
+              tab={tab}
+              onBack={() => select("")}
+              onTool={openTool}
+              actions={sessionActions}
+              notices={
+                <NotificationCenter
+                  center={notifications}
+                  hasPendingRequest={pendingRequests.length > 0}
+                  systemNotifications={false}
+                />
+              }
+            />
+          )}
+          {mobile && !selected && (
+            <MobileWorkspaceHeader
+              title="工作区"
+              context={deviceLabel || info.hostname}
+              onBack={() => onDevices?.()}
+              notices={
+                <NotificationCenter
+                  center={notifications}
+                  systemNotifications={false}
+                />
+              }
+              actions={
+                <button
+                  className="icon-button"
+                  aria-label="工作区设置"
+                  onClick={() => setModal("settings")}
+                >
+                  <Settings size={20} />
+                </button>
+              }
+            />
+          )}
           {sidebar && (
             <div className="sidebar-shade" onClick={() => setSidebar(false)} />
           )}
@@ -1418,138 +1584,54 @@ export default function App({
               <SplitPane
                 storageKey={JSON.stringify([serverKey, selected])}
                 header={
-                  <header className="topbar conversation-header">
-                    <button
-                      className="icon-button conversation-sidebar-toggle"
-                      aria-label="会话列表"
-                      title="会话列表"
-                      onClick={() => {
-                        if (window.matchMedia("(max-width: 720px)").matches)
-                          setSidebar(true);
-                        else {
-                          setSidebarPinned(!sidebarPinned);
-                          localStorage.setItem(
-                            "ra.sidebar-pinned",
-                            String(!sidebarPinned),
-                          );
-                        }
-                      }}
-                    >
-                      <PanelLeft size={17} />
-                    </button>
-                    <div
-                      className="session-header"
-                      title={`${session.cwd} · ${statusNames[session.status] || session.status} · ${session.agent}`}
-                    >
-                      {tab === "chat" ? (
-                        sessionTabs
-                      ) : (
-                        <button
-                          className="conversation-title"
-                          onClick={() => setTab("chat")}
-                          title={session.title}
-                        >
-                          <FolderOpen size={16} />
-                          <span>{session.title}</span>
-                        </button>
-                      )}
-                      <details className="session-menu" data-floating-menu>
-                        <summary aria-label="会话操作">•••</summary>
-                        <div>
+                  mobile ? null : (
+                    <header className="topbar conversation-header">
+                      <button
+                        className="icon-button conversation-sidebar-toggle"
+                        aria-label="会话列表"
+                        title="会话列表"
+                        onClick={() => {
+                          if (window.matchMedia("(max-width: 720px)").matches)
+                            setSidebar(true);
+                          else {
+                            setSidebarPinned(!sidebarPinned);
+                            localStorage.setItem(
+                              "ra.sidebar-pinned",
+                              String(!sidebarPinned),
+                            );
+                          }
+                        }}
+                      >
+                        <PanelLeft size={17} />
+                      </button>
+                      <div
+                        className="session-header"
+                        title={`${session.cwd} · ${statusNames[session.status] || session.status} · ${session.agent}`}
+                      >
+                        {tab === "chat" ? (
+                          sessionTabs
+                        ) : (
                           <button
-                            disabled={session.external}
-                            onClick={() => {
-                              const title = prompt("重命名会话", session.title);
-                              if (title?.trim()) patch({ title });
-                            }}
+                            className="conversation-title"
+                            onClick={() => setTab("chat")}
+                            title={session.title}
                           >
-                            重命名
+                            <FolderOpen size={16} />
+                            <span>{session.title}</span>
                           </button>
-                          <button
-                            disabled={session.external}
-                            onClick={() =>
-                              patch({ archived: !session.archived })
-                            }
-                          >
-                            <Archive size={14} />
-                            {session.archived ? "取消归档" : "归档会话"}
-                          </button>
-                          <button onClick={download}>
-                            <Download size={14} />
-                            导出会话
-                          </button>
-                          <button
-                            className="danger"
-                            disabled={session.external}
-                            onClick={async () => {
-                              if (confirm("永久删除这个会话及其历史记录？")) {
-                                try {
-                                  await api.request(`/sessions/${session.id}`, {
-                                    method: "DELETE",
-                                  });
-                                  select("");
-                                  await reload();
-                                } catch (e) {
-                                  fail(e);
-                                }
-                              }
-                            }}
-                          >
-                            <Trash2 size={14} />
-                            删除会话
-                          </button>
-                          <button
-                            title="设置"
-                            onClick={(event) => {
-                              event.currentTarget
-                                .closest("details")
-                                ?.removeAttribute("open");
-                              setModal("settings");
-                            }}
-                          >
-                            <Settings size={15} />
-                            设置
-                          </button>
-                          <button
-                            title="切换主题"
-                            onClick={(event) => {
-                              toggleTheme();
-                              event.currentTarget
-                                .closest("details")
-                                ?.removeAttribute("open");
-                            }}
-                          >
-                            {theme === "dark" ? (
-                              <Sun size={15} />
-                            ) : (
-                              <Moon size={15} />
-                            )}
-                            切换主题
-                          </button>
-                          <button
-                            onClick={(event) => {
-                              event.currentTarget
-                                .closest("details")
-                                ?.removeAttribute("open");
-                              setCreateCwd(session.cwd);
-                              setModal("create");
-                            }}
-                          >
-                            <Plus size={15} />
-                            新建会话…
-                          </button>
-                        </div>
-                      </details>
-                    </div>
-                    <span className="workspace-connection-status">
-                      {onDevices ? "已连接" : "本机连接"}
-                    </span>
-                    <NotificationCenter
-                      center={notifications}
-                      hasPendingRequest={pendingRequests.length > 0}
-                    />
-                    {tab === "chat" && panelLauncher}
-                  </header>
+                        )}
+                        {sessionActions}
+                      </div>
+                      <span className="workspace-connection-status">
+                        {onDevices ? "已连接" : "本机连接"}
+                      </span>
+                      <NotificationCenter
+                        center={notifications}
+                        hasPendingRequest={pendingRequests.length > 0}
+                      />
+                      {tab === "chat" && panelLauncher}
+                    </header>
+                  )
                 }
                 panelHeader={
                   <div className="panel-tabs" aria-label="当前子窗口">
@@ -1689,7 +1771,7 @@ export default function App({
                           : openFile(target)
                       }
                       onError={fail}
-                      onClose={() => setTab("chat")}
+                      onClose={() => openTool("chat")}
                     />
                   ) : null
                 }
@@ -1891,6 +1973,32 @@ export default function App({
                       </div>
                     </div>
                     <ComposerAccess session={session}>
+                      {uncertainSend.blocked && (
+                        <div className="mobile-send-uncertain" role="alert">
+                          <p>
+                            上次发送结果未知，电脑可能已经收到。请核对会话记录，避免重复发送。
+                          </p>
+                          <button
+                            onClick={() => {
+                              historyCache?.refresh(session.id);
+                              void reload().catch(fail);
+                            }}
+                          >
+                            刷新会话记录
+                          </button>
+                          <button
+                            onClick={() => {
+                              void confirmPlatform(
+                                "已核对电脑上的会话记录，允许再次手动发送？这可能产生重复消息。",
+                              ).then((ok) => {
+                                if (ok) uncertainSend.clear();
+                              });
+                            }}
+                          >
+                            已核对，解除发送保护
+                          </button>
+                        </div>
+                      )}
                       <div
                         className="composer-requests"
                         aria-label="待处理请求"
@@ -1934,6 +2042,7 @@ export default function App({
                         goalMode={goalMode}
                         setGoalMode={setGoalMode}
                         sending={sending || messageEditing.submitting}
+                        sendBlocked={uncertainSend.blocked}
                         uploading={uploading}
                         draft={draft}
                         inputRef={composerEditor}
@@ -2043,19 +2152,21 @@ export default function App({
                   支持与验收矩阵
                 </a>
               </p>
-              <div className="settings-row">
-                <span>完成、权限与确认通知</span>
-                <button onClick={() => void notifications.enable()}>
-                  <Bell size={14} />{" "}
-                  {notifications.permission === "granted" &&
-                  notifications.enabled
-                    ? "已开启"
-                    : "开启系统通知"}
-                </button>
-                {notifications.feedback && (
-                  <small role="status">{notifications.feedback}</small>
-                )}
-              </div>
+              {!mobile && (
+                <div className="settings-row">
+                  <span>完成、权限与确认通知</span>
+                  <button onClick={() => void notifications.enable()}>
+                    <Bell size={14} />{" "}
+                    {notifications.permission === "granted" &&
+                    notifications.enabled
+                      ? "已开启"
+                      : "开启系统通知"}
+                  </button>
+                  {notifications.feedback && (
+                    <small role="status">{notifications.feedback}</small>
+                  )}
+                </div>
+              )}
               <div className="settings-row">
                 <span>事件连接</span>
                 <button

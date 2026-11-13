@@ -42,6 +42,7 @@ interface ComposerProps {
   models: { model: string; displayName?: string; isDefault?: boolean }[];
   busy: boolean;
   sending: boolean;
+  sendBlocked?: boolean;
   uploading: number;
   draft: string;
   setDraft: (text: string) => void;
@@ -79,6 +80,7 @@ export default function Composer({
   models,
   busy,
   sending,
+  sendBlocked = false,
   uploading,
   draft,
   setDraft,
@@ -194,6 +196,7 @@ export default function Composer({
   const submit = (mode?: "steer" | "queue") => {
     if (
       invalidAutoPolicy ||
+      sendBlocked ||
       attachments.some((a) => a.pending) ||
       (goalMode && goalCapabilities?.create === false)
     )
@@ -482,6 +485,7 @@ export default function Composer({
               title="发送"
               disabled={
                 sending ||
+                sendBlocked ||
                 invalidAutoPolicy ||
                 (goalMode && goalCapabilities?.create === false) ||
                 uploading > 0 ||

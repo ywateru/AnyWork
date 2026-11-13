@@ -1,3 +1,4 @@
+import { saveBlob, platformError } from "../platform";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -337,10 +338,10 @@ export default function ImagePreview({
                 aria-label="下载图片"
                 disabled={!src}
                 onClick={() => {
-                  const link = document.createElement("a");
-                  link.href = src;
-                  link.download = viewerName;
-                  link.click();
+                  void fetch(src)
+                    .then((response) => response.blob())
+                    .then((blob) => saveBlob(blob, viewerName))
+                    .catch(platformError);
                 }}
               >
                 <Download size={20} />
