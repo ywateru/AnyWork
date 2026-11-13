@@ -44,7 +44,7 @@ project="$RA_PROJECT_ROOT/crates/mobile/gen/android"
 if [[ "$profile" == debug ]]; then variant=Debug; else variant=Release; fi
 (
     cd "$project"
-    "${ANYWORK_GRADLE_BIN:-./gradlew}" ":app:lintUniversal$variant" ":app:testUniversal${variant}UnitTest" ":tauri-plugin-mobile-system:testDebugUnitTest" -x "rustBuildUniversal$variant"
+    "${ANYWORK_GRADLE_BIN:-./gradlew}" ":app:lintUniversal$variant" ":app:testUniversal${variant}UnitTest" ":tauri-plugin-mobile-system:testDebugUnitTest" ":tauri-plugin-mobile-auth:testDebugUnitTest" -x "rustBuildUniversal$variant"
 )
 if [[ "$profile" == debug ]]; then output="$RA_PROJECT_ROOT/artifacts/anywork-android-debug.apk"; else output="$RA_PROJECT_ROOT/release/anywork-android.apk"; fi
 mkdir -p "$(dirname "$output")"

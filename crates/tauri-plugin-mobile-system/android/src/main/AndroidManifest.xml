@@ -2,7 +2,7 @@
     <application>
         <activity android:name="dev.remoteagent.app.system.ExportPickerActivity"
             android:exported="false" android:excludeFromRecents="true" />
-        <provider android:name="androidx.core.content.FileProvider"
+        <provider android:name="dev.remoteagent.app.system.ExportProvider"
             android:authorities="${applicationId}.mobile-system.exports"
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS"

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-export-abort"
+description = "Enables the export_abort command without any pre-configured scope."
+commands.allow = ["export_abort"]
+
+[[permission]]
+identifier = "deny-export-abort"
+description = "Denies the export_abort command without any pre-configured scope."
+commands.deny = ["export_abort"]

@@ -52,9 +52,12 @@ def main():
             raise ValueError('APK upgrade metadata mismatch: ' + expected)
     if config['bundle']['android']['versionCode'] <= 31:
         raise ValueError('APK cannot upgrade legacy versionCode 31')
-    ui_files = [p.relative_to(ROOT / 'web/dist-mobile').as_posix().encode() for p in (ROOT / 'web/dist-mobile').rglob('*') if p.is_file() and p.suffix in ['.html', '.js', '.css']]
+    ui_files = [p.relative_to(ROOT / 'web/dist-mobile').as_posix().encode() for p in (ROOT / 'web/dist-mobile').rglob('*') if p.is_file() and p.suffix in ['.html', '.js', '.css', '.txt']]
     if b'mobile.html' not in ui_files:
         raise ValueError('Bundled UI has not been built')
+    notice = ROOT / 'web/dist-mobile/THIRD_PARTY_NOTICES.txt'
+    if not notice.is_file() or 'Logto' not in notice.read_text():
+        raise ValueError('Mobile bundle lacks the Logto SDK third party notice')
     with zipfile.ZipFile(args.apk) as archive:
         libraries = [info for info in archive.infolist() if re.fullmatch(r'lib/[^/]+/libanywork_mobile.so', info.filename)]
         if not libraries:

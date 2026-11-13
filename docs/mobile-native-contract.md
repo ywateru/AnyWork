@@ -9,10 +9,10 @@
 - `mobile_account_login({signup})`：启动独立内嵌授权 Activity，完成返回新 snapshot；取消是独立结果。
 - `mobile_account_cancel`、`mobile_account_logout`：阻止迟到授权恢复，退出清理所有连接。
 - `mobile_account_refresh`：读目录并返回新 snapshot，不自动登录。
-- `mobile_account_device_update({deviceRef,expectedRevision,label?,remove?})`：保留未知 customData，写后核对；冲突显式失败。
-- `mobile_transport_connect({deviceRef,expectedRevision,keyConfirmation?})`：账号层构造内部 `VerifiedTarget`，确认绑定当前 epoch/revision/publicKey，成功后保存信任。
+- `mobile_account_device_update({deviceRef,expectedEpoch,expectedRevision,label?,remove?})`：保留未知 customData，写后核对；冲突显式失败。
+- `mobile_transport_connect({deviceRef,expectedEpoch,expectedRevision,keyConfirmation?})`：账号层构造内部 `VerifiedTarget`，确认绑定当前 epoch/revision/publicKey，成功后保存信任。
 
-AccountService 为 transport 提供 `VerifiedTarget {url,installation_id,public_key:[u8;32],scope_id,lifetime:CancellationToken}` 与 `Arc<dyn TransportAuthorization>`，二者不 Serialize。授权 trait `token(force_refresh,min_validity_secs)` 返回仅原生可见的 token。目录目标解析、信任接受和 connect 的具体方法由 account/transport 两位作者协同冻结，shell 仅转发。当前部署使用电脑既有 Native client 的 Native device session，不调用 SPA console 路由。应用 grant 仅内存，IdP SSO cookie 另由官方 SDK/WebView 管理；进程重启不自动恢复 grant。stable scopeId 由 issuer/subject 确定，epoch 只作异步栅栏，不充当草稿命名空间。
+AccountService 为 transport 提供 `VerifiedTarget {gateway_url,installation_id,public_key:base64url字符串,account_epoch,scope_id,lifetime:CancellationToken}` 与 `Arc<dyn TransportAuthorization>`，二者不 Serialize。授权 trait `token(force_refresh,min_validity_secs)` 返回仅原生可见的 token，并提供 ensure_epoch；公钥在握手前严格解码/校验32字节。目录目标解析、信任接受和 connect 的具体方法由 account/transport 两位作者协同冻结，shell 仅转发。当前部署使用电脑既有 Native client 的 Native device session，不调用 SPA console 路由。应用 grant 仅内存，IdP SSO cookie 另由官方 SDK/WebView 管理；进程重启不自动恢复 grant。stable scopeId 由 issuer/subject 确定，epoch 只作异步栅栏，不充当草稿命名空间。
 
 ## Transport
 
@@ -46,10 +46,12 @@ JS 使用公开 `window.__TAURI__.core.invoke(command, {request: DTO})`；无参
 
 随包入口 `https://tauri.localhost/mobile.html`、`frontendDist=../../web/dist-mobile`、`useHttpsScheme=true`。Rust WS 固定 Origin `https://tauri.localhost`，不接受 JS URL/Origin。业务 WebView 导航只接受此 origin；CSP 允许本地脚本、IPC、blob 图片/PDF，拒绝远程脚本、frame 及表单提交。外链通过 `plugin:mobile-system|open_external`，仅合法 HTTPS。
 
-系统命令为 `plugin:mobile-system|export_begin/export_write/export_finish/export_abort/open_external/back_set_state/insets_get`。`export_write.received` 是累计字节数；句柄10分钟期限、64KiB decoded chunk、22MiB文件、最多2个驻留句柄（含等待保存及分享保留文件）。保存 picker 由非导出 Activity 承载，取消/退出关闭自身 chooser，迟到结果不恢复句柄；分享仅返回 chooserOpened，退出/到期撤销临时 URI 授权并删除专属cache。进程重启清理专属 `anywork-exports` cache，绝不遍历或删除用户选择的目标文件。
+系统命令为 `plugin:mobile-system|export_begin/export_write/export_finish/export_abort/open_external/back_set_state/appearance_set/insets_get`。`export_write.received` 是累计字节数；句柄10分钟期限、64KiB decoded chunk、22MiB文件、最多2个驻留句柄（含等待保存及分享保留文件）。保存 picker 由非导出 Activity 承载，取消/退出关闭自身 chooser，迟到结果不恢复句柄；分享仅返回 chooserOpened，退出/到期撤销临时 URI 授权并删除专属cache。进程重启清理专属 `anywork-exports` cache，绝不遍历或删除用户选择的目标文件。
 
 事件通过公开 event.listen：`mobile-system-back` 返回 `{eventId,revision}`，单调eventId；UI处理后调用 back_set_state `{canGoBack,blocking,handledEventId}`，包括仍停留在脏编辑确认的情况。IME由原生先消费。1500ms未ACK不自动退出，下一次物理返回交系统；等待ACK期间的重复按键不重复派发。root原生结束当前 Activity，不走WebView URL历史。
 
 `mobile-system-insets` 和 `insets_get` 返回 `{unit:"cssPx",systemBars:{top,right,bottom,left},cutout:{...},ime:{...},imeVisible,revision}`。Android物理像素除实际WebView scale（含density/page scale，未就绪fallback density）转CSS px；UI不再按density乘除。main使用edge-to-edge、adjustNothing，不给WebView加原生padding；IME是完整遮挡高度，UI各边取systemBars/cutout的max、bottom再取IME的max，只应用一次。实际APK visualViewport/中文IME仍须独立验收，若WebView provider消耗部分遮挡则原生改报剩余overlap。
 
 `mobile-system-lifecycle` 返回 `{foreground,revision}`；前台核验授权和既有连接lease，不重新发送业务写入。上传沿用固定Wry onShowFileChooser系统选择器（multiple/ClipData/content URI/cancel）；文件大小在UI/transport请求边界继续校验，Android provider行为、中文名和宿主重建列入APK验收。
+
+系统主题同步使用 `plugin:mobile-system|appearance_set`，参数 `{request:{dark:boolean}}`，返回 `{dark:boolean}`。仅本地 main 获权；UI 挂载及实际 `data-theme` 变化时同步。原生按 UI 深浅设置状态栏和导航栏图标对比度，并在 resume 重用最近值；未收到 UI 值前使用 Android 系统默认。实际图标对比度仍须 APK 视觉验收。

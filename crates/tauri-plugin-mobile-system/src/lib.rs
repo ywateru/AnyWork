@@ -49,6 +49,11 @@ pub struct BackState {
     blocking: bool,
     handled_event_id: Option<u64>,
 }
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Appearance {
+    dark: bool,
+}
 
 #[cfg(target_os = "android")]
 struct Native<R: Runtime>(tauri::plugin::PluginHandle<R>);
@@ -103,6 +108,7 @@ forward!(export_write, "exportWrite", ExportWrite);
 forward!(export_finish, "exportFinish", ExportHandle);
 forward!(export_abort, "exportAbort", ExportHandle);
 forward!(back_set_state, "backSetState", BackState);
+forward!(appearance_set, "appearanceSet", Appearance);
 #[tauri::command]
 async fn open_external<R: Runtime>(
     app: AppHandle<R>,
@@ -128,6 +134,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             export_abort,
             open_external,
             back_set_state,
+            appearance_set,
             insets_get
         ])
         .setup(|app, api| {
@@ -153,7 +160,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                                             | "mobile-system-insets"
                                             | "mobile-system-lifecycle"
                                     ) {
-                                        event_app.emit_to("main", event, &value["payload"])?;
+                                        event_app.emit(event, &value["payload"])?;
                                     }
                                 }
                             }

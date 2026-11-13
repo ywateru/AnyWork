@@ -77,6 +77,28 @@ class SourceExport(unittest.TestCase):
             for name in private:
                 self.assertNotIn('anywork/' + name, archive.getnames())
 
+    def test_mobile_source_includes_plugins_and_wrapper_but_excludes_generated_cache(self):
+        public = ['crates/mobile/tauri.conf.json', 'crates/mobile/gen/android/gradle/wrapper/gradle-wrapper.jar',
+                  'crates/mobile/gen/android/NOTICE.md', 'crates/tauri-plugin-mobile-system/src/lib.rs',
+                  'crates/tauri-plugin-mobile-auth/README.md',
+                  'crates/tauri-plugin-mobile-auth/android/src/main/java/dev/anywork/auth/MobileAuthPlugin.kt']
+        private = ['web/dist-mobile/mobile.html', 'crates/mobile/gen/android/tauri.settings.gradle',
+                   'crates/mobile/gen/android/app/tauri.build.gradle.kts',
+                   'crates/mobile/gen/android/app/tauri.properties',
+                   'crates/mobile/gen/android/app/src/main/jniLibs/arm64-v8a/libanywork_mobile.so',
+                   'crates/mobile/gen/android/.tauri/options.json']
+        for name in public + private:
+            path = self.root / name
+            path.parent.mkdir(exist_ok=True, parents=True)
+            path.write_bytes(b'synthetic source or cache')
+            subprocess.run(['git', '-C', str(self.root), 'add', '-f', name], check=True)
+        self.export()
+        with tarfile.open(self.root / 'artifacts/anywork-source.tar.gz') as archive:
+            for name in public:
+                self.assertIn('anywork/' + name, archive.getnames())
+            for name in private:
+                self.assertNotIn('anywork/' + name, archive.getnames())
+
     def commit(self):
         subprocess.run(['git', '-C', str(self.root), '-c', 'user.name=Fixture', '-c',
                         'user.email=fixture@example.invalid', 'commit', '-qm', 'source'], check=True)

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mobile-transport-http-read"
+description = "Enables the mobile_transport_http_read command without any pre-configured scope."
+commands.allow = ["mobile_transport_http_read"]
+
+[[permission]]
+identifier = "deny-mobile-transport-http-read"
+description = "Denies the mobile_transport_http_read command without any pre-configured scope."
+commands.deny = ["mobile_transport_http_read"]

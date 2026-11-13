@@ -127,7 +127,7 @@ jobs:
         with:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
-      - run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0' 'ndk;27.2.12479018'
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;27.2.12479018'
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android

@@ -14,6 +14,21 @@
     "mobile-system:allow-export-abort",
     "mobile-system:allow-open-external",
     "mobile-system:allow-back-set-state",
-    "mobile-system:allow-insets-get"
+    "mobile-system:allow-appearance-set",
+    "mobile-system:allow-insets-get",
+    "allow-mobile-transport-http-begin",
+    "allow-mobile-transport-http-write",
+    "allow-mobile-transport-http-finish",
+    "allow-mobile-transport-http-read",
+    "allow-mobile-transport-cancel",
+    "allow-mobile-transport-close",
+    "allow-mobile-transport-pty",
+    "allow-mobile-account-snapshot",
+    "allow-mobile-account-login",
+    "allow-mobile-account-cancel",
+    "allow-mobile-account-logout",
+    "allow-mobile-account-refresh",
+    "allow-mobile-account-device-update",
+    "allow-mobile-transport-connect"
   ]
 }

@@ -45,6 +45,7 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
     @Volatile private var blocking = false
     @Volatile private var revision = 0L
     private var businessView: WebView? = null
+    private var appearanceDark: Boolean? = null // main-thread-only; follows the actual business UI theme
     private var pendingSave: Pair<Invoke, String>? = null // worker-only
     private var pickerGeneration = 0L
     private var backEventId = 0L
@@ -142,6 +143,24 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
         invoke.resolve()
     }
     @Command fun insetsGet(invoke: Invoke) = ui(invoke) { invoke.resolve(insets()) }
+    private fun applyAppearance() {
+        val dark = appearanceDark ?: return
+        val view = businessView ?: return
+        WindowInsetsControllerCompat(activity.window, view).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
+    }
+    @Command fun appearanceSet(invoke: Invoke) = ui(invoke) {
+        val args = invoke.getArgs()
+        if (!args.has("dark") || args.get("dark") !is Boolean) {
+            invoke.reject("Invalid appearance", "INVALID_REQUEST")
+            return@ui
+        }
+        appearanceDark = args.getBoolean("dark")
+        applyAppearance()
+        invoke.resolve(JSObject().put("dark", appearanceDark))
+    }
     @Command fun backSetState(invoke: Invoke) = ui(invoke) {
         val args = invoke.getArgs()
         if (args.has("handledEventId") && !args.isNull("handledEventId")) {
@@ -261,6 +280,7 @@ class MobileSystemPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
     override fun onResume(activity: AppCompatActivity) {
+        applyAppearance()
         revision++
         emit("mobile-system-lifecycle", JSObject().put("foreground", true).put("revision", revision))
     }

@@ -208,26 +208,32 @@ dependencies = [
  "anyhow",
  "anywork-remote",
  "async-trait",
+ "axum",
  "base64 0.22.1",
  "chrono",
  "cybergrid-sdk",
  "futures-util",
  "percent-encoding",
+ "rcgen 0.13.2",
  "reqwest 0.13.5",
+ "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "snow",
  "tauri",
  "tauri-build",
+ "tauri-plugin-mobile-auth",
  "tauri-plugin-mobile-system",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-rustls",
  "tokio-tungstenite",
  "tokio-util",
  "url",
  "uuid",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -6626,6 +6632,16 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-mobile-auth"
+version = "0.1.30"
+dependencies = [
+ "anyhow",
+ "serde",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

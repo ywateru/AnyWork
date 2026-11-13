@@ -7,7 +7,7 @@ import plistlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-WORKSPACE_PACKAGES = ('anywork', 'anywork-desktop', 'anywork-remote', 'remote-agent-sdk', 'remote-agent-codex', 'anywork-mobile', 'tauri-plugin-mobile-system')
+WORKSPACE_PACKAGES = ('anywork', 'anywork-desktop', 'anywork-remote', 'remote-agent-sdk', 'remote-agent-codex', 'anywork-mobile', 'tauri-plugin-mobile-system', 'tauri-plugin-mobile-auth')
 
 def current_version(root=ROOT):
     return re.search(r'\[workspace.package\]\s*version\s*=\s*"([^"]+)"', (root / 'Cargo.toml').read_text())[1]

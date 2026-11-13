@@ -109,3 +109,6 @@ Thumbs.db
 /crates/mobile/gen/android/local.properties
 /crates/mobile/gen/android/**/build/
 /crates/tauri-plugin-mobile-*/android/build/
+/crates/tauri-plugin-mobile-*/android/.tauri/
+/crates/tauri-plugin-mobile-*/permissions/schemas/
+/crates/mobile/permissions/schemas/

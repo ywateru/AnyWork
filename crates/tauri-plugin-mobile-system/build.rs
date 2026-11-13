@@ -6,6 +6,7 @@ fn main() {
         "export_abort",
         "open_external",
         "back_set_state",
+        "appearance_set",
         "insets_get",
     ])
     .android_path("android")

@@ -15,7 +15,7 @@ MANIFEST = 'SOURCE_MANIFEST.json'
 PRIVATE_PARTS = {
     '.git', '.anywork', '.remote-agent', '.codex', '.agents', '.aws', '.ssh',
     'node_modules', 'target', 'references', 'ref', '.worktrees', 'artifacts', 'dist', 'dist-mobile', 'build',
-    '.gradle', '.kotlin', '__pycache__', '.idea', '.vscode',
+    '.gradle', '.kotlin', '.tauri', '.cxx', '__pycache__', '.idea', '.vscode',
     'test-results', 'playwright-report', 'coverage', 'private', 'local',
     'backups', 'screenshots', 'captures', 'workspace',
 }
@@ -24,7 +24,7 @@ PRIVATE_NAMES = {'supervisord.conf', 'local.properties', 'auth.json',
                  'tauri.properties', 'key.properties', 'keystore.properties', MANIFEST}
 PRIVATE_SUFFIXES = ('.log', '.pid', '.sock', '.db', '.sqlite', '.sqlite3',
                     '.pem', '.key', '.p12', '.pfx', '.jks', '.keystore',
-                    '.apk', '.aab', '.zip', '.tar', '.tar.gz', '.tgz',
+                    '.apk', '.aab', '.so', '.class', '.dex', '.aar', '.zip', '.tar', '.tar.gz', '.tgz',
                     '.bundle', '.tmp', '.bak', '.orig', '.pyc',
                     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.webm')
 PUBLIC_IMAGES = {'web/public/icon-192.png', 'web/public/icon-512.png', 'desktop/icon.png', 'site/assets/social.png', 'web/public/agents/codex-light.png', 'web/public/agents/codex-dark.png'}

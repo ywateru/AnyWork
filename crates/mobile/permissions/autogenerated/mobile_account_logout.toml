@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mobile-account-logout"
+description = "Enables the mobile_account_logout command without any pre-configured scope."
+commands.allow = ["mobile_account_logout"]
+
+[[permission]]
+identifier = "deny-mobile-account-logout"
+description = "Denies the mobile_account_logout command without any pre-configured scope."
+commands.deny = ["mobile_account_logout"]

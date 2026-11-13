@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mobile-transport-connect"
+description = "Enables the mobile_transport_connect command without any pre-configured scope."
+commands.allow = ["mobile_transport_connect"]
+
+[[permission]]
+identifier = "deny-mobile-transport-connect"
+description = "Denies the mobile_transport_connect command without any pre-configured scope."
+commands.deny = ["mobile_transport_connect"]
