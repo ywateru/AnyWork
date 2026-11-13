@@ -36,20 +36,18 @@ restored Activity: an SDK login restored without an in-memory attempt is closed.
 No reflection or SDK private manager access is used. This matters because SDK
 2.0.3's `onDestroy` cancels its process-global current authorization session.
 
-## Unresolved SDK transport constraint
+## Explicit SDK transport policy
 
-The SDK's Kotlin core uses a public, immutable lazy `httpClient = OkHttpClient()`
-with no configuration injection on `LogtoConfig` or `LogtoClient`. The pinned
-source depends on OkHttp 4.11.0. Its default connection-retry/follow-up policy can
-resend a replayable form POST after some recoverable I/O failures (and specific
-HTTP follow-up responses). Refresh requests use ordinary `FormBody`; they are
-not marked one-shot. Our native mutex and final-error fence prevent application
-retries after an unknown rotation, but **do not disable SDK-internal retries**.
-Strict single-dispatch rotation is therefore an unresolved acceptance condition,
-not a property of this implementation. No real refresh-loss experiment was run.
-Do not resolve this by reflection, field replacement or a hidden SDK patch. A
-reviewed upstream public transport policy, or an explicitly revised contract, is
-needed before claiming that stronger guarantee.
+The original SDK core's default OkHttp can resend form POSTs after recoverable
+I/O or HTTP follow-ups. Under contract `7b10e1f`, the Android UI AAR stays original
+and its transitive JVM core is replaced by complete same-version pinned source
+in [android/logto-core](android/logto-core/README.md). The public HTTP-only patch
+disables connection retries and redirects, bounds timeouts, and marks POST bodies
+one-shot. The latter also blocks 503 Retry-After 0 and 421 follow-ups that a retry
+flag alone cannot cover. All OAuth/PKCE/state/ID-token logic remains upstream.
+The native mutex and final-error fence still retire an unknown rotating owner.
+Source hashes, upstream license, exact diff and single-attempt fixtures are included.
+This does not claim a successful real-account refresh-loss experiment.
 
 Source: [Logto HTTP implementation](https://github.com/logto-io/kotlin/blob/3efc22a59ecd9f020bf6af58bd47d6a4f292b140/kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/http/HttpRequest.kt),
 [Logto Core form requests](https://github.com/logto-io/kotlin/blob/3efc22a59ecd9f020bf6af58bd47d6a4f292b140/kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/Core.kt),

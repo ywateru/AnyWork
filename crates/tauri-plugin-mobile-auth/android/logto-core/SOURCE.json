@@ -1,0 +1,225 @@
+{
+  "repository": "https://github.com/logto-io/kotlin",
+  "revision": "3efc22a59ecd9f020bf6af58bd47d6a4f292b140",
+  "version": "2.0.3",
+  "license": "MIT (repository LICENSE); upstream Maven build declares MPL-2.0",
+  "archive_sha256": "070d90439ebd2f41f90b2c11d27ca9e5617c3fff267d9391b2281ff8573f387c",
+  "files": [
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/Core.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/Core.kt",
+      "upstream_sha256": "2d5ae79acdf2cdc3bb9133a7af9c84bc579136da1566e88048ae9a2cbc0a9d07",
+      "local_sha256": "2d5ae79acdf2cdc3bb9133a7af9c84bc579136da1566e88048ae9a2cbc0a9d07"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/ClaimName.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/ClaimName.kt",
+      "upstream_sha256": "d6a4d4779cc77a380053d1ea99d2dcb3c6f2fa4f331e4443a2e5a29457a57f9c",
+      "local_sha256": "d6a4d4779cc77a380053d1ea99d2dcb3c6f2fa4f331e4443a2e5a29457a57f9c"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/CodeChallengeMethod.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/CodeChallengeMethod.kt",
+      "upstream_sha256": "91b02cda393ec644998d4518975b0465e27836b5315fb1e719e45fd33a2c367a",
+      "local_sha256": "91b02cda393ec644998d4518975b0465e27836b5315fb1e719e45fd33a2c367a"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/DirectSignInMethod.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/DirectSignInMethod.kt",
+      "upstream_sha256": "cb5ddc83fafdbf7183c1c4f8030ab16d1f969fa294180055310d38431ea9ec65",
+      "local_sha256": "cb5ddc83fafdbf7183c1c4f8030ab16d1f969fa294180055310d38431ea9ec65"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/FirstScreen.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/FirstScreen.kt",
+      "upstream_sha256": "767f39a219d4139dec2faf8c9d7e4714704834c3cbeefdc4ebb91b3dda77eeb3",
+      "local_sha256": "767f39a219d4139dec2faf8c9d7e4714704834c3cbeefdc4ebb91b3dda77eeb3"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/GrantType.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/GrantType.kt",
+      "upstream_sha256": "ff31ec72a9e4b2ca4b5543a914f9b30988843aa516ea6e919eafe81eeca61326",
+      "local_sha256": "ff31ec72a9e4b2ca4b5543a914f9b30988843aa516ea6e919eafe81eeca61326"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/Identifier.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/Identifier.kt",
+      "upstream_sha256": "6f1db37a30220f0e496f0be470c9b1042a807c2bd1f9cdb7a152af7afd19beb9",
+      "local_sha256": "6f1db37a30220f0e496f0be470c9b1042a807c2bd1f9cdb7a152af7afd19beb9"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/PromptValue.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/PromptValue.kt",
+      "upstream_sha256": "bfe358ff943a5d7be9b1a23668bfa9ace6e83f4699ebd629a3b637efed2b33cf",
+      "local_sha256": "bfe358ff943a5d7be9b1a23668bfa9ace6e83f4699ebd629a3b637efed2b33cf"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/QueryKey.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/QueryKey.kt",
+      "upstream_sha256": "f570b81fc1b33e1071df39c36f5804918e422172dce3ce57f6a3156493f35012",
+      "local_sha256": "f570b81fc1b33e1071df39c36f5804918e422172dce3ce57f6a3156493f35012"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/ReservedResource.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/ReservedResource.kt",
+      "upstream_sha256": "c9d6de6e98f0bf5447c28118f27aae674a367c48ec7a1adc82db23d719f7e113",
+      "local_sha256": "c9d6de6e98f0bf5447c28118f27aae674a367c48ec7a1adc82db23d719f7e113"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/ReservedScope.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/ReservedScope.kt",
+      "upstream_sha256": "bb5b09600248a214f2a1c064b8b1a53b2280db3060553c4ba74604ad0c7e4c19",
+      "local_sha256": "bb5b09600248a214f2a1c064b8b1a53b2280db3060553c4ba74604ad0c7e4c19"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/ResponseType.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/ResponseType.kt",
+      "upstream_sha256": "086ca3890c0774384fd1f8875751a3c5532e0a922d43e163522ec09587f0a7c3",
+      "local_sha256": "086ca3890c0774384fd1f8875751a3c5532e0a922d43e163522ec09587f0a7c3"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/constant/UserScope.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/constant/UserScope.kt",
+      "upstream_sha256": "5eeda5fba9adb2356fef7e37b841e6da6dd8eb1a7c9385efb7e1efc0c11ec8c7",
+      "local_sha256": "5eeda5fba9adb2356fef7e37b841e6da6dd8eb1a7c9385efb7e1efc0c11ec8c7"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/exception/CallbackUriVerificationException.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/exception/CallbackUriVerificationException.kt",
+      "upstream_sha256": "12841605245190fc91e49c8ab1e4da1e41adc29f70f6f216e9e9ec00fe78d6fa",
+      "local_sha256": "12841605245190fc91e49c8ab1e4da1e41adc29f70f6f216e9e9ec00fe78d6fa"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/exception/ResponseException.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/exception/ResponseException.kt",
+      "upstream_sha256": "faea89d797324009fd2971893519974bcd000b45d3c7d7005c9337a2b26b636c",
+      "local_sha256": "faea89d797324009fd2971893519974bcd000b45d3c7d7005c9337a2b26b636c"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/exception/UriConstructionException.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/exception/UriConstructionException.kt",
+      "upstream_sha256": "599e689ebcb447d5bf2b72aa8eb7e91a60670a19c02b67ec281856cd3555b3f4",
+      "local_sha256": "599e689ebcb447d5bf2b72aa8eb7e91a60670a19c02b67ec281856cd3555b3f4"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/extension/JwtClaimsExt.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/extension/JwtClaimsExt.kt",
+      "upstream_sha256": "f9655d58bdc74e7cad63b97b3895b345ddec590cba7758ff2d461fae835f41ef",
+      "local_sha256": "f9655d58bdc74e7cad63b97b3895b345ddec590cba7758ff2d461fae835f41ef"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/http/HttpCompletion.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/http/HttpCompletion.kt",
+      "upstream_sha256": "100962780eb3d1cc0efbbead0aa083b563eb45cc35393659a0a60cfb17887b34",
+      "local_sha256": "100962780eb3d1cc0efbbead0aa083b563eb45cc35393659a0a60cfb17887b34"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/http/HttpGet.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/http/HttpGet.kt",
+      "upstream_sha256": "5db7892c50d7ae4eb62451b1df98d9be52c4a962e94aedb18f1b32a68ada7206",
+      "local_sha256": "5db7892c50d7ae4eb62451b1df98d9be52c4a962e94aedb18f1b32a68ada7206"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/http/HttpPost.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/http/HttpPost.kt",
+      "upstream_sha256": "698c9f8b21f9b33c2ddf6044eb53977fa77250d5bee82739c3318c066ddfe1e0",
+      "local_sha256": "698c9f8b21f9b33c2ddf6044eb53977fa77250d5bee82739c3318c066ddfe1e0"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/http/HttpRequest.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/http/HttpRequest.kt",
+      "upstream_sha256": "f0c2a17b5a96722e7e5f5337b8c9ec6080a5f9b71c4b29a92239b398e0bf7b91",
+      "local_sha256": "2c506afbef607dcc68c92a53dbe6c953807ce4c218eab3f34adfa8630e1f7b69"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/CodeTokenResponse.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/type/CodeTokenResponse.kt",
+      "upstream_sha256": "c6ac36082c364e06559a5f75455da971ba7aa88a0bf56f4330427a5cb36e8b6e",
+      "local_sha256": "c6ac36082c364e06559a5f75455da971ba7aa88a0bf56f4330427a5cb36e8b6e"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/DirectSignInOptions.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/type/DirectSignInOptions.kt",
+      "upstream_sha256": "e8256cda70533cfc968cc74ec4a9f53278839efc284e0301460189ae96e4ed6e",
+      "local_sha256": "e8256cda70533cfc968cc74ec4a9f53278839efc284e0301460189ae96e4ed6e"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/GenerateSignInUriOptions.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/type/GenerateSignInUriOptions.kt",
+      "upstream_sha256": "3a2f6de4043985b5016c0891cf9f8671866bbc5f948e87289ddcfbe8b1900f00",
+      "local_sha256": "3a2f6de4043985b5016c0891cf9f8671866bbc5f948e87289ddcfbe8b1900f00"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/IdTokenClaims.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/type/IdTokenClaims.kt",
+      "upstream_sha256": "bd2092a4b429505101f3ace41ece3a76d91e555e38552a4f6f35f6a50be99b13",
+      "local_sha256": "bd2092a4b429505101f3ace41ece3a76d91e555e38552a4f6f35f6a50be99b13"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/OidcConfigResponse.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/type/OidcConfigResponse.kt",
+      "upstream_sha256": "09eaaa5913263871df53c17cb87d7b38a0209da954251d3a5c0b532f9d037214",
+      "local_sha256": "09eaaa5913263871df53c17cb87d7b38a0209da954251d3a5c0b532f9d037214"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/Organization.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/type/Organization.kt",
+      "upstream_sha256": "213dce0cd41ed19dbae796fc0c07e1b7cf543a1924da13ecf4e92bb385f3a920",
+      "local_sha256": "213dce0cd41ed19dbae796fc0c07e1b7cf543a1924da13ecf4e92bb385f3a920"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/RefreshTokenTokenResponse.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/type/RefreshTokenTokenResponse.kt",
+      "upstream_sha256": "cc483ea2fe129ca4347eb03b11631680e2142175f1a8aa99b7be3cfb8122150c",
+      "local_sha256": "cc483ea2fe129ca4347eb03b11631680e2142175f1a8aa99b7be3cfb8122150c"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/UserInfoResponse.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/type/UserInfoResponse.kt",
+      "upstream_sha256": "dc69b23403f318b56ad95d5e36627b5d7e3b2bfd57619fbfeba6719593677c6b",
+      "local_sha256": "dc69b23403f318b56ad95d5e36627b5d7e3b2bfd57619fbfeba6719593677c6b"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/util/CallbackUriUtils.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/util/CallbackUriUtils.kt",
+      "upstream_sha256": "5ece201e19c7b664e36ea8e4e06ba46bef68773f815dd3c7d4005a2dc25d64d9",
+      "local_sha256": "5ece201e19c7b664e36ea8e4e06ba46bef68773f815dd3c7d4005a2dc25d64d9"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/util/GenerateUtils.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/util/GenerateUtils.kt",
+      "upstream_sha256": "0661ea203cea0f4e8a10b0daa67be2f7f1ce5a4a09d1cc44c4c11e70f5a4c883",
+      "local_sha256": "0661ea203cea0f4e8a10b0daa67be2f7f1ce5a4a09d1cc44c4c11e70f5a4c883"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/util/ScopeUtils.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/util/ScopeUtils.kt",
+      "upstream_sha256": "3553b795c9ecbaa6bc4005eac079773a5208b88df8560943689eab493d2c4747",
+      "local_sha256": "3553b795c9ecbaa6bc4005eac079773a5208b88df8560943689eab493d2c4747"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/util/TokenUtils.kt",
+      "local": "src/main/kotlin/io/logto/sdk/core/util/TokenUtils.kt",
+      "upstream_sha256": "fdc6ce03f88575b26b8010c2cb188a895c5d31a4b91e89befc53ec01374fe0be",
+      "local_sha256": "fdc6ce03f88575b26b8010c2cb188a895c5d31a4b91e89befc53ec01374fe0be"
+    },
+    {
+      "upstream": "LICENSE",
+      "local": "LICENSE",
+      "upstream_sha256": "b6d6c086ac4744bb39633e6dcc62f664347668dfce8e40cc7acca4856aac8281",
+      "local_sha256": "b6d6c086ac4744bb39633e6dcc62f664347668dfce8e40cc7acca4856aac8281"
+    },
+    {
+      "upstream": "gradle/libs.versions.toml",
+      "local": "upstream/libs.versions.toml",
+      "upstream_sha256": "00a898bcdf7ccd4acceacb0ed6752dabcf51fde3a875a910e14b6607dc03311a",
+      "local_sha256": "00a898bcdf7ccd4acceacb0ed6752dabcf51fde3a875a910e14b6607dc03311a"
+    },
+    {
+      "upstream": "kotlin-sdk/kotlin/build.gradle.kts",
+      "local": "upstream/build.gradle.kts",
+      "upstream_sha256": "d637634225072ae03eebfef89d0b69264c8df1ca995fa779e24e8ce3370e38ef",
+      "local_sha256": "d637634225072ae03eebfef89d0b69264c8df1ca995fa779e24e8ce3370e38ef"
+    }
+  ]
+}

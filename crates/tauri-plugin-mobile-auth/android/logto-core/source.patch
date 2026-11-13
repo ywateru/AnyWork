@@ -1,0 +1,49 @@
+--- a/src/main/kotlin/io/logto/sdk/core/http/HttpRequest.kt
++++ b/src/main/kotlin/io/logto/sdk/core/http/HttpRequest.kt
+@@ -10,13 +10,36 @@
+ import okhttp3.Request
+ import okhttp3.RequestBody
+ import okhttp3.Response
++import okio.BufferedSink
+ import java.io.IOException
++import java.util.concurrent.TimeUnit
+ 
+ val gson: Gson by lazy {
+     GsonBuilder().setFieldNamingStrategy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES).create()
+ }
+ 
+-val httpClient by lazy { OkHttpClient() }
++// Local transport policy: an unknown rotating-grant outcome must never replay.
++val httpClient by lazy {
++    OkHttpClient.Builder()
++        .retryOnConnectionFailure(false)
++        .followRedirects(false)
++        .followSslRedirects(false)
++        .connectTimeout(15, TimeUnit.SECONDS)
++        .readTimeout(30, TimeUnit.SECONDS)
++        .writeTimeout(30, TimeUnit.SECONDS)
++        .callTimeout(60, TimeUnit.SECONDS)
++        .build()
++}
++
++// OkHttp follow-ups (including 503/421) also consult this one-shot contract.
++// Delegate bytes and metadata unchanged; OAuth form construction stays upstream.
++private class OneShotBody(private val delegate: RequestBody) : RequestBody() {
++    override fun contentType() = delegate.contentType()
++    override fun contentLength() = delegate.contentLength()
++    override fun isDuplex() = delegate.isDuplex()
++    override fun isOneShot() = true
++    override fun writeTo(sink: BufferedSink) = delegate.writeTo(sink)
++}
+ 
+ fun makeRequest(
+     uri: String,
+@@ -87,7 +110,7 @@
+     responseCallback: Callback,
+ ) {
+     val request = Request.Builder().url(uri).apply {
+-        body?.let { post(it) }
++        body?.let { post(OneShotBody(it)) }
+         headers?.let {
+             for ((key, value) in it) {
+                 addHeader(key, value)
