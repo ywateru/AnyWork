@@ -45,3 +45,18 @@ Samsung API28 实际结果：
 后续最小定位需要受控刷新终态的安全投影，仅含 phase、directoryState、固定 errorCode 与 deviceCount；不能输出完整账号、设备标识、URL、凭据或服务响应。若需产品诊断改动，应由作者独立提交后审查，不以此次已接受 TLS 修复冒充端到端完成。
 
 运行小证据仍仅在根目录 ignored `artifacts/android-loading-independent/`：candidate-admission.json、candidate-start.png、candidate-directory-current.png、candidate-refresh.png、candidate-refresh-summary.json 及必要 UI dump。公开报告不包含账号/设备身份或原始私人日志。当前应用保持候选已登录的 Unknown 页面，ADB 测试命令均已结束；独占所有权保留至协调者明确接管。
+
+
+## 后续 Unknown 的有限无账号定位
+
+在协调者授权继续定位后，只检查了本应用现有调试入口和安全日志。候选 app PID 没有 WebView devtools socket；未访问其他应用的 socket、开启调试或读取进程内存。一次现有 UI 刷新窗口内，logcat 无固定 MOBILE 阶段码，也无 verifier panic/常见 TLS Java 异常标记；这不代表 SDK 请求成功，因为源码本来没有该阶段日志。未调用可能重置 errorCode 的 snapshot，也未输出完整 IPC/account/device/provider 响应。
+
+使用手机已有 curl 对公开配置做有限对照，无认证头或凭据，无设备/宿主网络配置变更：
+
+- 同手机登录域名的公开 OIDC discovery 经 IPv4 返回 HTTP 200，TLS 证书验证通过；连接约0.224秒，TLS约0.746秒。
+- coordination 公开 `/api/v1/auth/config` 使用锁定 SDK 实际参数名 `appId`。电脑端 HTTP 200 并返回配置，手机默认请求连接失败，IPv4/IPv6定向请求均超时。
+- 最后一次 IPv4 请求 DNS 约0.004秒完成，HTTP为000，TCP connect和TLS完成时间均为0，连接超时。说明这次失败发生在建立TCP连接之前，而不是已收到HTTP拒绝或证书校验错误。失败请求的 ssl_verify_result 默认值不能作为TLS验证通过证据。
+
+这组对照证明本次手机网络到 coordination 域名存在连接问题、同时登录域名可用；不把 shell curl 等同应用原生网络栈，不宣称已拿到 native stage/errorCode，亦不证明注册或 devices 请求曾成功。锁定 SDK 查询参数已按实际源码核对；此前使用 clientId 的初步请求不作为服务shape判断依据。
+
+安全小证据保存在原 ignored 目录的 public-network-summary.json、phone-public-network-family-summary.json、phone-coordination-final-summary.json 和 candidate-refresh-log-safe-summary.json；公开配置正文仅用于作者本地源码核对，不包含登录身份或认证头。后续作者将补固定码诊断，另行精确审查后才可获得原生终态依据。本轮有限网络探测已经结束。
