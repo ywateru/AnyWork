@@ -1,4 +1,10 @@
-import { expect, fetchLocalRoute, test, type Page } from "./local-fixture";
+import {
+  expect,
+  fetchLocalRoute,
+  test,
+  type APIResponse,
+  type Page,
+} from "./local-fixture";
 import { fillPromptText } from "./prompt-editor-helpers";
 const headers = { Authorization: "Bearer browser-integration-test-token" };
 async function fixture(
@@ -113,12 +119,45 @@ test("pending history survives an older completion and request replay without to
     await route.fulfill({ response });
   });
   try {
-    await fixture(page);
+    const { a } = await fixture(page);
     await expect.poll(() => blocked).toBe(true);
+    // A messages POST acknowledges turn/start before the fixture emits its
+    // output. With global polling held, an early history refresh cannot learn
+    // about those later events. Wait for the setup state in real history, then
+    // pass that original response to the UI without releasing the replay.
+    let historyReady: "completion" | "approval" | undefined = "completion";
+    await page.route(`**/api/sessions/${a.id}/history?*`, async (route) => {
+      const expected = historyReady;
+      if (!expected) return route.continue();
+      let response: APIResponse | undefined;
+      try {
+        await expect
+          .poll(
+            async () => {
+              await response?.dispose();
+              response = await fetchLocalRoute(route);
+              expect(response.ok()).toBe(true);
+              const body = await response.json();
+              return body.events.some(
+                (event: { method: string; request_id?: number }) =>
+                  expected === "completion"
+                    ? event.method === "turn/completed"
+                    : event.request_id === 700,
+              );
+            },
+            { message: `Real history contains setup ${expected}` },
+          )
+          .toBe(true);
+        await route.fulfill({ response });
+      } finally {
+        await response?.dispose();
+      }
+    });
     const editor = page.getByRole("textbox", { name: "消息", exact: true });
     await fillPromptText(editor, "hello");
     await page.getByTitle("发送", { exact: true }).click();
     await expect(page.getByText("你的远程工作空间已连接，")).toBeVisible();
+    historyReady = "approval";
     await fillPromptText(editor, "approval");
     await expect(page.getByTitle("发送", { exact: true })).toBeEnabled();
     await page.getByTitle("发送", { exact: true }).click();
@@ -126,6 +165,8 @@ test("pending history survives an older completion and request replay without to
     await expect(approve).toBeVisible();
     await expect(page).toHaveTitle("(1) AnyWork");
     await expect(toasts(page)).toHaveCount(0);
+    expect(replayed).toBe(false);
+    historyReady = undefined;
 
     // History has already restored turn B's pending request. Only now let the
     // global stream deliver turn A's completion followed by the same request.
