@@ -24,3 +24,5 @@ v0.1.35 准备源码 `ecbce9ba3b274c265f8deae553a9957cba416e60` 的 [Checks](htt
 v0.1.36 准备源码 `6552b19e814984f215851f9f95816677c62501c4` 的 [Checks](https://github.com/ywateru/AnyWork/actions/runs/43549455074)中，Windows、macOS、Android 与容器全部成功；server-web 已通过 Rust/clippy、Web 单测及多项集成后，在 publisher 测试失败。其当前版本 fixture 随源码升到新 23 附件契约，一条缺件错误断言仍写死 20。该遗漏在旧 0.1.34 基线上不会失败，因此此前本地 33 passed 未能覆盖。没有创建 v0.1.36 tag 或发行附件。
 
 修正仅调整测试：按 fixture tag 验证完整缺件错误，并在已有版本表中明确断言旧 20、新 23 两类缺件拒绝；不放宽生产附件、摘要或签名门禁。[作者验证](publisher-version-fixture.md)与[独立审查](publisher-version-fixture-independent.md)在真实 0.1.36 源码复现 before 唯一失败、after 33 passed；独立明确资产集合的额外探针拒绝全部 135 次缺件与 12 次错架构/重复附件。已接受 `e711994`，合入后开始新的精确源码 Checks。
+
+v0.1.37 准备源码 `f3ac0db041ffdaaeeca8397bb08b9c154c8cd468` 的 [Checks](https://github.com/ywateru/AnyWork/actions/runs/43551761469)中，Windows、macOS、Android、容器及 server-web 前置检查通过；最后普通浏览器回归为 677 passed、1 skipped、2 failed。两项失败来自同一通知历史回放场景，分别在 desktop 等待回复和 android-web 等待审批按钮时超时。发布器已停止，未推送 tag 或发行附件。下一步以失败 trace 判断测试同步或产品回归，修复须经作者验证与非作者审查后再进入新精确源码门禁。
