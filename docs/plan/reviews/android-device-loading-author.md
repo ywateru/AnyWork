@@ -29,3 +29,19 @@ Gradle 使用 `ValueSource` 从 workspace Cargo.lock 精确读取 `rustls-platfo
 固定候选源审查后，构建 owner 从该精确提交运行既有 Release workflow 的 `publish=false` 候选，不改 tag/版本；官方证书须与已安装包相同。必须检查最终 R8 后 verifier JNI 类、merged manifest、签名和原有 16 KiB/包内容门禁，再由 Hilbert 覆盖安装验证实际登录、目录返回及授权工作区连接。不卸载/清数据绕过签名，也不向 Agent 会话发送提示。原 v38 的 RAM 登录态和现场证据由独立 verifier 管理。
 
 当前修复针对已证实的未初始化 TLS panic，不把此前 Native refresh 缺陷、旧网页 unknown 截图、普通网络不通或未知 Android provider 版本归为同一根因；后续阶段仍按实际设备结果记录。
+
+## 实体候选结果与最小阶段诊断
+
+独立 verifier 已覆盖安装官方同证书候选 `b00464a6`（Release workflow `43570167244`，`publish=false`）。实际 API28 设备正常 SSO 后得到一条 Account API 记录，首次和手动刷新不再永久 loading，且未见 verifier 初始化 panic；两次均结束为 unknown，连接仍禁用。TLS panic 修复已获实机证据，presence 和工作区连接仍未通过。独立证据及边界在 verifier 报告提交 `6e6a331`、`c5e6620`；作者未操作 ADB。
+
+该 Release 无本应用 DevTools socket，原日志无 coordination 阶段码。此次增量只增加 unknown 卡片可展开的白名单错误码，以及当前 epoch 刷新 unknown 终态的固定码原生日志；未知值统一隐藏或记为 `MOBILE_OPERATION_FAILED`，不输出 raw SDK 错误、URL、响应、身份或授权材料。Tao 0.37.2 Android glue 将 stderr 管道转发到平台日志，使用现有路径，无新增调试接口。未改变设备状态、授权、自动登录、连接或重发策略。
+
+作者补充验证：
+
+- 显式运行 `public_native_configuration_sdk_roundtrip`：1 passed。以默认 Native Config 使用 pinned SDK 的实际 `/api/v1/auth/config?appId=…` 请求和内置校验，typed `AuthConfig` 经 serde 再进入生产 `EndpointPolicy::parse` 成功，`device_session()` 仍为空；未使用账号凭据、注册或读取设备。该测试默认 ignored，避免常规 CI 依赖外网。
+- 账号定向 Rust 回归：18 passed / 1 ignored / 0 failed；含真实 Native SDK fixture、会话到期、TLS 拒绝收敛及新增日志白名单测试。
+- Web typecheck、诊断白名单 Vitest（1 passed）通过。
+- Chrome 实际 MobileApp 组件两项定向 E2E：2 passed，覆盖 unknown 状态、固定阶段码、拒绝未知/私密文本，确认刷新可用、连接禁用且无 transport connect 调用。最长固定码允许换行，并补定向检查卡片无横向溢出；最终截图在 ignored `artifacts/android-loading/diagnostics-browser-final/` 对应用例的 `directory-diagnostic.png`。
+- Mobile all-targets 严格 Clippy、Rust/前端格式与 diff 检查通过。未重新构建 APK、跑完整产品套件或触发发布。
+
+主机真实 SDK roundtrip 成功排除当前公开配置的 host typed schema/绑定解析失败。Hilbert 有限手机网络对照中，OIDC IPv4 HTTP200/TLSverify0，而 coordination IPv4 DNS 0.004403 秒完成后、TCP 建立前超时（HTTP000、connect/appconnect=0）；IPv6 也超时。其小证据在主工作区 ignored `artifacts/android-loading-independent/phone-coordination-final-summary.json`。这支持网络可达性差异，不冒充应用 native 阶段确认；不由此修改 endpoint、DNS 或 TLS。下一候选的实际错误码和可达网络下的 presence/连接仍待独立实测。

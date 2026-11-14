@@ -554,6 +554,52 @@ test("directory unknown is not empty/offline; key change and clipboard error", a
   await expect(page.getByRole("button", { name: "打开工作区" })).toBeDisabled();
 });
 
+test("directory diagnostic details show only fixed codes and keep connection blocked", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, { signedIn: true, unknown: true });
+  await page.getByText("诊断详情", { exact: true }).click();
+  const details = page.locator(".mobile-directory-error details");
+  for (const code of [
+    "MOBILE_COORDINATION_CONFIG_FETCH_FAILED",
+    "MOBILE_COORDINATION_REGISTRATION_FAILED",
+    "MOBILE_INVALID_GATEWAY",
+    "MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED",
+  ]) {
+    await page.evaluate((errorCode) => {
+      const f = (window as any).mobileFixture;
+      f.setSnapshot({ ...f.snapshot(), errorCode });
+    }, code);
+    await expect(details.locator("code")).toHaveText(code);
+    expect(
+      await details.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    await expect(
+      page.getByRole("button", { name: "打开工作区" }),
+    ).toBeDisabled();
+    await expect(page.getByRole("button", { name: "刷新设备" })).toBeEnabled();
+  }
+  await page.screenshot({
+    path: testInfo.outputPath("directory-diagnostic.png"),
+  });
+  for (const errorCode of [
+    "MOBILE_NETWORK_ERROR\nprivate bearer token",
+    "https://private.invalid/?token=synthetic",
+    "UNREVIEWED_PRIVATE_VALUE",
+    null,
+  ]) {
+    await page.evaluate((errorCode) => {
+      const f = (window as any).mobileFixture;
+      f.setSnapshot({ ...f.snapshot(), errorCode });
+    }, errorCode);
+    await expect(details).toContainText("暂未记录可用的诊断码，请重新检查。");
+    await expect(details.locator("code")).toHaveCount(0);
+  }
+  expect(await calls(page, "mobile_transport_connect")).toHaveLength(0);
+});
+
 test("full App uses real native adapter; FormData, file save/share and one back consumption", async ({
   page,
 }, testInfo) => {
