@@ -52,16 +52,40 @@ function versionParts(tag) {
     ? tag.replace(/^v/, '').split('.').map(BigInt) : null;
 }
 let appliedVersion = versionParts(document.body.dataset.releaseVersion);
+function compareVersions(left, right) {
+  for (let index = 0; index < 3; index++) {
+    if (left[index] < right[index]) return -1;
+    if (left[index] > right[index]) return 1;
+  }
+  return 0;
+}
 function applyRelease(release) {
   if (!release || !Array.isArray(release.assets) || release.draft || release.prerelease) return;
   const version = versionParts(release.tag_name);
   if (!version) return;
-  if (appliedVersion) {
-    for (let index = 0; index < 3; index++) {
-      if (version[index] < appliedVersion[index]) return;
-      if (version[index] > appliedVersion[index]) break;
-    }
-  }
+  if (appliedVersion && compareVersions(version, appliedVersion) < 0) return;
+  const androidNames = compareVersions(version, [0n, 1n, 35n]) >= 0
+    ? ['arm64', 'armv7', 'x86', 'x86_64'].map(abi => `anywork-android-${abi}.apk`)
+    : ['anywork-android.apk'];
+  const androidAssets = release.assets.filter(asset => asset.name?.startsWith('anywork-android'));
+  const releaseBase = `https://github.com/ywateru/AnyWork/releases/download/${release.tag_name}/`;
+  // Never label a universal APK as a single ABI or apply a partial split release.
+  if (androidAssets.length !== androidNames.length ||
+      !androidNames.every(name => androidAssets.some(asset => asset.name === name && asset.browser_download_url === releaseBase + name))) return;
+  const labels = document.querySelector('[data-android-labels]');
+  const androidLabels = JSON.parse(labels.dataset.androidLabels);
+  const links = androidNames.map(name => {
+    const link = document.createElement('a');
+    link.dataset.asset = name;
+    link.dataset.label = androidLabels[name];
+    link.append(androidLabels[name] + ' ');
+    const arrow = document.createElement('span');
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = '↓';
+    link.append(arrow);
+    return link;
+  });
+  labels.parentElement.replaceChildren(labels, ...links);
   appliedVersion = version;
   const assets = new Map(release.assets.map(asset => [asset.name, asset]));
   for (const link of document.querySelectorAll('[data-asset]')) {

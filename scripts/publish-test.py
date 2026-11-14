@@ -8,9 +8,11 @@ import hashlib
 import importlib
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
+import textwrap
 import unittest
 import urllib.error
 from unittest import mock
@@ -75,15 +77,16 @@ class FakeGitHub:
                 'conclusion': conclusion, 'run_attempt': attempt,
                 'html_url': publish.WEB + '/actions/runs/100', 'created_at': '2026-11-07T10:01:00Z'}
 
-    def published(self, tag, source):
+    def published(self, tag, source, asset_names=None):
         base = publish.WEB + '/releases/download/' + tag + '/'
         signature = base64.b64encode(('untrusted comment: fixture\nabc\ntrusted comment: timestamp:1\tversion:' + tag[1:] + '\nabc\n').encode()).decode()
-        payloads = {name: ('fixture-' + name).encode() for name in publish.ASSETS}
+        expected = asset_names if asset_names is not None else publish.assets_for_tag(tag)
+        payloads = {name: ('fixture-' + name).encode() for name in expected}
         for name in publish.TARGETS.values(): payloads[name + '.sig'] = (signature + '\n').encode()
         payloads['latest.json'] = json.dumps({'version': tag[1:], 'platforms': {
             target: {'url': base + name, 'signature': signature} for target, name in publish.TARGETS.items()}}).encode()
         payloads['SHA256SUMS'] = ''.join(hashlib.sha256(payloads[name]).hexdigest() + '  ' + name + '\n'
-            for name in sorted(publish.ASSETS - {'SHA256SUMS'})).encode()
+            for name in sorted(expected - {'SHA256SUMS'})).encode()
         self.payloads = {base + name: body for name, body in payloads.items()}
         self.release = {'id': 55, 'tag_name': tag, 'draft': False, 'prerelease': False,
                         'html_url': publish.WEB + '/releases/tag/' + tag,
@@ -176,6 +179,7 @@ class PublisherTest(unittest.TestCase):
         original = publish.versions.current_version(self.root)
         state = self.pub.publish()
         self.assertEqual(state['phase'], 'complete')
+        self.assertEqual(state['verified'], {'assets': 23, 'checksums': 22, 'version_bound_signature_files': 5})
         self.assertEqual(len(self.api.pushed), 2)
         self.assertEqual(state['source'], self.run_git('rev-parse', 'HEAD'))
         self.assertEqual(self.run_git('rev-list', '-n', '1', state['tag']), state['source'])
@@ -395,6 +399,109 @@ class PublisherTest(unittest.TestCase):
         self.assertEqual(publish.versions.current_version(self.root), version)
         self.assertEqual(self.pub.state['phase'], 'complete')
 
+    def test_versioned_android_assets_checksums_and_website_recovery(self):
+        for tag, count in [('v0.1.13', 20), ('v0.1.34', 20), ('v0.1.35', 23), ('v0.1.100', 23), ('v0.2.0', 23), ('v1.0.0', 23)]:
+            with self.subTest(tag=tag):
+                self.api.published(tag, self.api.main)
+                self.pub.verify_release(tag)
+                self.pub.verify_site(self.api.release)
+                self.assertEqual(len(self.api.release['assets']), count)
+                sums = self.api.payloads[publish.WEB + '/releases/download/' + tag + '/SHA256SUMS']
+                self.assertEqual(len(sums.splitlines()), count - 1)
+                apks = {a['name'] for a in self.api.release['assets'] if a['name'].endswith('.apk')}
+                self.assertEqual(apks, publish.ANDROID_APKS if count == 23 else {'anywork-android.apk'})
+                self.pub.pages_only(tag)
+                self.assertEqual(self.api.pushed, [])
+
+    def test_split_release_rejects_missing_duplicate_mixed_or_legacy_apks(self):
+        tag = 'v0.1.35'
+        expected = publish.assets_for_tag(tag)
+        for damaged in [expected - {'anywork-android-x86.apk'},
+                        expected | {'anywork-android.apk'},
+                        expected | {'anywork-android-universal.apk'},
+                        (expected - publish.ANDROID_APKS) | {'anywork-android.apk'},
+                        (expected - {'anywork-android-arm64.apk'}) | {'anywork-android.apk'}]:
+            with self.subTest(assets=damaged):
+                self.api.published(tag, self.api.main, damaged)
+                with self.assertRaisesRegex(publish.Failure, '23 assets'):
+                    self.pub.verify_release(tag)
+        self.api.published(tag, self.api.main)
+        self.api.release['assets'].append(self.api.release['assets'][-1])
+        with self.assertRaisesRegex(publish.Failure, '23 assets'):
+            self.pub.verify_release(tag)
+        self.api.published('v0.1.34', self.api.main, expected)
+        with self.assertRaisesRegex(publish.Failure, '20 assets'):
+            self.pub.verify_release('v0.1.34')
+
+    def test_split_website_requires_every_abi_and_no_old_alias(self):
+        self.api.published('v0.1.35', self.api.main)
+        original = self.api.public
+        for damage in ['missing', 'alias']:
+            def page(url, method='GET'):
+                raw, headers = original(url, method)
+                if '/en/' in url or '/zh/' in url:
+                    if damage == 'missing':
+                        raw = raw.replace(b'data-asset="anywork-android-armv7.apk"', b'data-unused="anywork-android-armv7.apk"')
+                    else:
+                        raw += b'<a data-asset="anywork-android.apk" href="https://example.invalid/old.apk">Old</a>'
+                return raw, headers
+            self.api.public = page
+            with self.assertRaises(publish.Failure):
+                self.pub.verify_site(self.api.release)
+        self.api.public = original
+
+    def test_split_checksum_contract_rejects_missing_duplicate_and_universal_entries(self):
+        tag = 'v0.1.35'
+        base = publish.WEB + '/releases/download/' + tag + '/'
+        for damage in ['missing', 'duplicate', 'universal']:
+            self.api.published(tag, self.api.main)
+            lines = self.api.payloads[base + 'SHA256SUMS'].decode().splitlines()
+            if damage == 'missing':
+                lines = [line for line in lines if not line.endswith('anywork-android-armv7.apk')]
+            if damage == 'duplicate':
+                lines.append(lines[0])
+            if damage == 'universal':
+                lines.append('a' * 64 + '  anywork-android.apk')
+            raw = ('\n'.join(lines) + '\n').encode()
+            self.api.payloads[base + 'SHA256SUMS'] = raw
+            metadata = next(asset for asset in self.api.release['assets'] if asset['name'] == 'SHA256SUMS')
+            metadata.update(size=len(raw), digest='sha256:' + hashlib.sha256(raw).hexdigest())
+            with self.assertRaisesRegex(publish.Failure, 'checksum entry|22 checksum entries'):
+                self.pub.verify_release(tag)
+
+    def test_workflow_checks_exact_merged_files_before_checksumming_or_publishing(self):
+        workflow = (publish.ROOT / '.github/workflows/release.yml').read_text()
+        check = textwrap.dedent(workflow.split("          python3 - <<'PY'\n")[1].split('\n          PY')[0])
+        self.assertLess(workflow.index("import publish"), workflow.index('sha256sum anywork-*'))
+        self.assertIn('path: release/anywork-android-${{ matrix.abi }}.apk', workflow)
+        self.assertIn('--target ${{ matrix.target }}', workflow)
+        self.assertIn('name: android-${{ matrix.abi }}', workflow)
+        self.assertIn('merge-multiple: true', workflow)
+        android = workflow.split('  android:\n')[1].split('  source-web:\n')[0]
+        self.assertEqual(re.findall(r'          - abi: (\S+)\n            target: (\S+)\n            rust: (\S+)', android), [
+            ('arm64', 'aarch64', 'aarch64-linux-android'),
+            ('armv7', 'armv7', 'armv7-linux-androideabi'),
+            ('x86', 'i686', 'i686-linux-android'),
+            ('x86_64', 'x86_64', 'x86_64-linux-android')])
+        self.assertIn('targets: ${{ matrix.rust }}', android)
+        self.assertIn('key: android-${{ matrix.abi }}', android)
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / 'scripts').symlink_to(publish.ROOT / 'scripts', target_is_directory=True)
+            (root / 'package.json').write_text('{"version":"0.1.35"}')
+            files = root / 'release'
+            files.mkdir()
+            for name in publish.assets_for_tag('v0.1.35') - {'SHA256SUMS'}:
+                (files / name).write_bytes(b'fixture')
+            result = subprocess.run(['python3', '-c', check], cwd=files, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            for name in ['anywork-android.apk', 'anywork-android-universal.apk']:
+                (files / name).write_bytes(b'stale')
+                self.assertNotEqual(subprocess.run(['python3', '-c', check], cwd=files, capture_output=True).returncode, 0)
+                (files / name).unlink()
+            (files / 'anywork-android-x86.apk').unlink()
+            self.assertNotEqual(subprocess.run(['python3', '-c', check], cwd=files, capture_output=True).returncode, 0)
+
     def test_verification_rejects_digest_signature_site_and_missing_asset(self):
         tag = 'v' + publish.versions.current_version(self.root)
         self.api.published(tag, self.api.main)
@@ -439,13 +546,13 @@ class PublisherTest(unittest.TestCase):
                 self.api.payloads[base + publish.TARGETS[target] + '.sig'] = (wrong + '\n').encode()
             self.api.payloads[base + 'latest.json'] = json.dumps(manifest).encode()
             checks = ''.join(hashlib.sha256(self.api.payloads[base + name]).hexdigest() + '  ' + name + '\n'
-                             for name in sorted(publish.ASSETS - {'SHA256SUMS'})).encode()
+                             for name in sorted(publish.assets_for_tag(tag) - {'SHA256SUMS'})).encode()
             self.api.payloads[base + 'SHA256SUMS'] = checks
             for item in self.api.release['assets']:
                 body = self.api.payloads[base + item['name']]
                 item.update(size=len(body), digest='sha256:' + hashlib.sha256(body).hexdigest())
             with self.assertRaises(publish.Failure): self.pub.verify_release(tag)
-        installer_urls = {base + name for name in publish.INSTALLERS}
+        installer_urls = {base + name for name in publish.installers_for_tag(tag)}
         self.assertFalse(any(url in installer_urls and method == 'GET' for url, method in self.api.public_calls))
 
     def test_git_timeout_is_bounded_and_never_echoes_subprocess_output(self):
