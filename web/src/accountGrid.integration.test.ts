@@ -12,6 +12,7 @@ import {
 import { AccountLogtoClient, withAccountSubject } from "./accountAuth";
 import type { AccountConfig } from "./accountConfig";
 import { CyberGridClient, type AccessTokenRequest } from "./vendor/cybergrid";
+import { presenceFailure } from "./accountPresence";
 
 // Install the isolated OAuth grant provider before AccountLogtoClient captures
 // the SDK's memoized instance field. Spying on the public serialized wrapper
@@ -85,6 +86,7 @@ let calls: Call[],
 let onExchange:
   | ((call: Call, response: ServerResponse) => boolean | Promise<boolean>)
   | undefined;
+let onConfig: ((response: ServerResponse) => boolean) | undefined;
 let onDevices:
   ((response: ServerResponse) => boolean | Promise<boolean>) | undefined;
 const grids: CyberGridClient[] = [];
@@ -126,8 +128,10 @@ const server = createServer(async (request, response) => {
     epoch: request.headers["x-cybergrid-epoch"] as string | undefined,
   };
   calls.push(call);
-  if (call.path === "/api/v1/console/auth/config?clientId=" + account.appId)
+  if (call.path === "/api/v1/console/auth/config?clientId=" + account.appId) {
+    if (onConfig?.(response)) return;
     return send(response, 200, { ...authConfig, ...configExtra });
+  }
   if (call.path === "/api/v1/console/auth/exchange") {
     if (await onExchange?.(call, response)) return;
     return send(response, 200, session());
@@ -173,6 +177,7 @@ beforeEach(() => {
   devices = [structuredClone(device)];
   user = "fixture-owner";
   onExchange = undefined;
+  onConfig = undefined;
   onDevices = undefined;
 });
 afterEach(async () => {
@@ -201,6 +206,43 @@ function setup(timeoutMs = 1000) {
   return { owner, get, clear, provider, grid };
 }
 describe("official CyberGrid SDK through legacy HTTP", () => {
+  it("classifies unreachable configuration before any token or exchange", async () => {
+    const { grid, provider } = setup();
+    onConfig = (response) => {
+      response.destroy();
+      return true;
+    };
+    const failure = await grid
+      .connect()
+      .catch((error) => presenceFailure(error, "configuration"));
+    expect(failure).toEqual({ stage: "configuration", code: "NETWORK_ERROR" });
+    expect(provider).not.toHaveBeenCalled();
+    expect(calls.every((call) => call.method === "GET")).toBe(true);
+  });
+  it("classifies a configuration deadline without acquiring a token", async () => {
+    const { grid, provider } = setup(100);
+    onConfig = () => true;
+    expect(
+      await grid
+        .connect()
+        .catch((error) => presenceFailure(error, "configuration")),
+    ).toEqual({ stage: "configuration", code: "TIMEOUT" });
+    expect(provider).not.toHaveBeenCalled();
+  });
+  it("distinguishes a failed devices read from a failed console exchange", async () => {
+    const { grid } = setup();
+    await grid.connect();
+    onDevices = (response) => {
+      response.destroy();
+      return true;
+    };
+    expect(
+      await grid
+        .devices(account.nativeAppId)
+        .catch((error) => presenceFailure(error, "directory")),
+    ).toEqual({ stage: "directory", code: "NETWORK_ERROR" });
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(1);
+  });
   it("discovers the original port without policy, bridge, or directory migration", async () => {
     const { grid, provider, clear } = setup();
     await grid.connect();

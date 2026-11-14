@@ -5,6 +5,12 @@ import {
 } from "./accountAuth";
 import { readAccountIdentity, type AccountIdentity } from "./accountIdentity";
 import {
+  presenceFailure,
+  presenceStageLabel,
+  type PresenceFailure,
+  type PresenceStage,
+} from "./accountPresence";
+import {
   AccountIdentityContext,
   AccountIdentityDetails,
   type AccountIdentityView,
@@ -228,6 +234,10 @@ const zh = {
   offlineHint: "请确认电脑开机联网，并在桌面端开启远程访问。",
   error: "暂时无法完成操作。请刷新或稍后重试。",
   directoryError: "暂时无法确认设备状态，请刷新重试。",
+  presenceDetails: "查看状态查询详情",
+  presenceCheck: "检查公开状态服务是否可达",
+  presenceCheckHint:
+    "此检查不发送账号凭据，仅检查公网可达性，不代表账号授权已通过。",
   accountError: "无法读取账号配置，请重新登录或稍后重试。",
   conflict: "配置已被其他设备更改，请刷新后重试。",
   invalidConfig: "账号服务配置不完整，请联系应用维护者。",
@@ -300,6 +310,10 @@ const en: typeof zh = {
   error: "The operation could not be completed. Refresh or try again later.",
   directoryError:
     "Device status is temporarily unavailable. Refresh to try again.",
+  presenceDetails: "View status query details",
+  presenceCheck: "Check public presence service connectivity",
+  presenceCheckHint:
+    "This check sends no account credentials. Reachability does not confirm account authorization.",
   accountError: "Account settings are unavailable. Sign in again or try later.",
   conflict:
     "Another device changed these settings. Refresh before trying again.",
@@ -424,6 +438,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
     [directoryState, setDirectoryState] = useState<
       "loading" | "ready" | "error"
     >("loading"),
+    [directoryFailure, setDirectoryFailure] = useState<PresenceFailure>(),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
     [connection, setConnection] = useState<Connection | null>(null),
@@ -596,6 +611,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
     if (!identity) return;
     const controller = new AbortController();
     setDirectoryState("loading");
+    setDirectoryFailure(undefined);
     setError("");
     const grid = new CyberGridClient({
       baseUrl: config.gridUrl,
@@ -616,19 +632,26 @@ function AccountHome({ config }: { config: AccountConfig }) {
       });
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
+      let stage: PresenceStage = "account";
       try {
         const settings = await store.read(controller.signal);
         if (!controller.signal.aborted) setProfile(settings);
+        stage = "configuration";
         await grid.connect({ signal: controller.signal });
+        stage = "directory";
         const result = await grid.devices(config.nativeAppId, {
           signal: controller.signal,
         });
         if (!controller.signal.aborted) {
           setDevices(result);
           setDirectoryState("ready");
+          setDirectoryFailure(undefined);
         }
-      } catch {
-        if (!controller.signal.aborted) setDirectoryState("error");
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setDirectoryFailure(presenceFailure(error, stage));
+          setDirectoryState("error");
+        }
       } finally {
         if (!controller.signal.aborted) timer = setTimeout(refresh, 20000);
       }
@@ -1010,9 +1033,32 @@ function AccountHome({ config }: { config: AccountConfig }) {
                   </p>
                 )}
                 {directoryState === "error" && (
-                  <p role="status" className="account-warning">
-                    {t.directoryError}
-                  </p>
+                  <div role="status" className="account-warning">
+                    <p>{t.directoryError}</p>
+                    {directoryFailure && (
+                      <details>
+                        <summary>{t.presenceDetails}</summary>
+                        <p>
+                          {presenceStageLabel(directoryFailure.stage, locale)}
+                          {" · "}
+                          <code>
+                            {directoryFailure.code}
+                            {directoryFailure.status
+                              ? ` / HTTP ${directoryFailure.status}`
+                              : ""}
+                          </code>
+                        </p>
+                        <a
+                          href={`${config.gridUrl}/api/v1/console/auth/config?clientId=${encodeURIComponent(config.appId)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {t.presenceCheck}
+                        </a>
+                        <p>{t.presenceCheckHint}</p>
+                      </details>
+                    )}
+                  </div>
                 )}
                 {!profile && (error || directoryState === "error") ? (
                   <div className="account-empty">
