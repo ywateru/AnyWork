@@ -75,3 +75,16 @@ Samsung API28 实际结果：
 - 独立运行 `npm exec -w web -- vitest run src/mobile/account.test.ts`：1/1通过。独立Chrome运行 mobile E2E中“directory diagnostic details show only fixed codes and keep connection blocked”：1/1通过，验证固定码与未知私密值边界、最长码换行、刷新可用、连接禁用且无transport connect调用。未并发Cargo或重复公网探测。小型浏览器证据在根目录ignored android-loading-independent/diagnostic-source-browser/。
 
 第二个官方同签候选来源应为该精确提交；到达后保留数据覆盖安装，才能从终态UI/固定日志确认真实原生失败阶段。第一候选及上述TLS实体结论不受此诊断增量替代。
+
+
+## 第二候选：原生精确阶段确认
+
+第二次覆盖安装使用正式同签 ARM64 Release 候选，来源 `f5a0ae09aa2314e1519fcbb98ed7705c63200ee6`，CI [43573253953](https://github.com/ywateru/AnyWork/actions/runs/43573253953)，APK SHA256 `106be0556f7cdb6f81823375f0656b287a301037b6bb968f63d1402698b8c736`。独立重新计算哈希、apksigner验签并比对原正式包signer，通过后执行保留数据的 `adb install -r`，返回Success。版本仍为0.1.38/code40，未发布版本或tag。
+
+正常应用入口与现有SSO登录后，原生终态日志和展开的UI诊断详情均为 **MOBILE_COORDINATION_CONFIG_FETCH_FAILED**。首次终态日志为16:09:58.702，随后一次现有UI手动刷新在16:13:41.345再次以同码结束。独立计时最后一次未见终态的轮询为36.0秒，观测到新终态为36.6秒；该时长包含ADB输入、profile/Account API读取和轮询间隔，不视为SDK单次HTTP或TCP耗时。新进程未见verifier未初始化panic、启动初始化失败、Rust panic或Java fatal exception。
+
+`grid.rs::devices` 在 SDK `auth_config()` 返回错误时映射此码；这是其网络获取、响应反序列化和SDK自身配置校验的边界。该次失败先于应用EndpointPolicy解析、Native registration和SDK devices/presence调用，因此不能说这些后续环节已通过，也不能归因于workspace身份或连接握手。连接保持禁用，未绕过检查或向Agent发送提示。
+
+结合此前同手机公开请求的DNS成功而coordination TCP连接未建立、登录域名HTTP200/TLS验证成功，以及电脑端真实锁定SDK配置roundtrip通过，当前证据支持手机网络到coordination域名的连接问题，而不是再次出现原TLS初始化panic。安全固定码本身不区分TCP/DNS/TLS/HTTP/解析错误；shell curl与原生栈不同，未凭此宣称获知运营商或远端基础设施内部原因。既有Wi-Fi未自动连接，缺少另一条手机路线的成功对照。未切换域名、修改DNS、宿主、APN、代理或VPN；原Wi-Fi关闭状态仍保持。
+
+小型证据仍在根目录ignored `artifacts/android-loading-independent/`：stage-candidate-admission.json、stage-native-initial-summary.json、stage-runtime-final-summary.json、stage-final-details.png；stage-error-card-only.png仅保留固定错误卡片，去除了账号header和设备记录。未保存原始候选进程日志、读取hidden IPC或导出token。该轮ADB测试命令均已结束，手机保留第二候选已登录、诊断详情展开的Unknown页面；独占ADB所有权等待协调者接管。
