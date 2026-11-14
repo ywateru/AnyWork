@@ -12,6 +12,10 @@ Desktop remote access now ignores older readiness probes after successfully prep
 
 桌面端成功准备本地工作区后，会使较早的状态探测失效，避免迟到的失败结果覆盖刚验证成功的服务状态；开启远程时的前置失败也保留具体、安全的诊断码。协调 SDK 在会话恢复时要求的授权刷新不再被错误拒绝，账号身份和生命周期检查继续保留。
 
+The Web device page now offers collapsible, redacted presence-query details and an unauthenticated public connectivity check. It distinguishes account records, service configuration, authorization, session exchange and device-query failures while keeping unconfirmed devices unknown.
+
+网页设备页增加可展开的安全状态查询详情与不携带账号凭据的公开连通性检查，区分账号资料、服务配置、授权、会话交换和设备查询失败；无法确认的设备继续显示未知状态。
+
 These fixes address reproduced readiness and refresh defects. They do not establish the cause of every reported sign-in or phone presence failure; real-account and physical-device checks remain separate from the isolated regression evidence.
 
 以上修复针对已复现的就绪状态与刷新缺陷，不将其等同于所有登录或手机在线状态故障的根因；真实账号及实体设备验收仍与隔离回归证据分别记录。

@@ -2,7 +2,7 @@
 
 - [Android APK 体积优化](plan/tasks/android-apk-size.md)：针对 v0.1.34 的正式 APK 测量原生库与打包占用，保留完整功能和四 ABI 后优化，并独立验收实际 Release 产物。
 - [桌面首次登录后开启远程访问](plan/tasks/desktop-login-remote-first.md)：检查必须先在 Web 登录才能开启远程的初始化/授权差异，修复桌面独立登录流程。
-- [Android 设备状态与连接修复](plan/tasks/mobile-device-status.md)：修复同账号网页可访问、原生手机端设备状态未知的协调与连接差异。
+- [手机设备状态与连接调查](plan/tasks/mobile-device-status.md)：截图对应网页设备页；已修复独立的 Native 恢复缺陷，并补充安全阶段详情，现场失败根因待阶段码确认。
 
 - [Android 原生 Rust/Tauri 2 客户端重构](android-account-entry.md)：已发布[v0.1.34](https://github.com/ywateru/AnyWork/releases/tag/v0.1.34)；[手机布局](mobile-client-layout.md)、[原生接口](mobile-native-contract.md)、[实施任务](plan/tasks/android-native-client.md)、[合并验收与官网恢复](plan/reviews/android-native-merged.md)；完整界面随包、应用内登录与原生远程连接，连接前先更新电脑宿主。
 
