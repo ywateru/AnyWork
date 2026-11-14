@@ -41,7 +41,25 @@ canonical `scripts/build-android.sh --release` 在该进程及其 Tauri/Gradle/C
 | x86 | 54,073,036 | 41,894,076 |
 | x86_64 | 53,652,744 | 40,721,848 |
 
-本轮测量和测试签名候选仅保存在作者 worktree 的 ignored `artifacts/`；候选不公开、不覆盖旧 tag 或附件，不使用正式发行私钥或真实账号。实际四个独立ABI Release包的体积、签名身份/资产/对齐及测试结果在完成后补充。
+本轮测量和测试签名候选仅保存在作者 worktree 的 ignored `artifacts/` / `release/`；候选不公开、不覆盖旧 tag 或附件，不使用正式发行私钥或真实账号。
+
+2026-11-14 按协调者安排，以 main `acd16b6502e521685794fbfad6e10075950d3fd7` 合入 mobile SDK admission 恢复候选 `fa47cc5bb5a76c9889845af8d89d1bf3160cef49`，得到构建源码 `94609a70b0dd7d94101aa98f3cd3d5bdecca4b13`。实际执行 `bash scripts/build-android.sh --release --target aarch64`，398.19 秒退出 0，得到唯一的 `release/anywork-android-arm64.apk`：
+
+| 项目 | 实测结果 |
+| --- | --- |
+| APK bytes | 39,192,755；比 v34 四 ABI APK 减少 164,889,657 bytes（80.7956%） |
+| APK SHA-256 | `a155d3e53e4d0aca172d2bf6f040dd7404edc5b40ae48620ad4294e73365a0fd` |
+| ARM64 native bytes | 37,349,816；比 v34 同 ABI 库减少 16,844,352 bytes |
+| ELF 符号 | 无 `.symtab`、`.strtab`、`.debug_*`；保留基线全部 25 个动态导出名称 |
+| native 打包 | 唯一 ARM64 库、ZIP method=0、`extractNativeLibs=false`；ELF/ZIP 16 KiB 通过 |
+| 身份 | `dev.remoteagent.app`、versionName `0.1.34`、versionCode `36`、minSdk `26` |
+| R8 / lint | 实际 split assemble 生成 R8 9.3.16 mapping；ARM64 Release lint 0 error / 23 warning / 1 hint |
+| JVM | system 11、auth 8、patched core 7，共 26 tests / 0 failure / 0 error / 0 skipped；App UniversalDebug JVM 为 `NO-SOURCE` |
+| canonical APK checker | 精确 ARM64、身份、当前本地 UI asset keys/NOTICE、测试证书及 ELF/ZIP 16 KiB 全通过 |
+
+该 APK 使用新建 RSA2048 临时测试证书（SHA-256 `d0bf4441e55318f2a9e632f85e0f666b73412b1f0b015ddb313c4cb3a51e31da`），完成后已删除临时 keystore。未安装、上传或作为正式下载，未读生产私钥、真实账号或设备。保留的 0.1.34/code36 只是本次构建身份，不是新发行版本；测试证书不证明正式覆盖升级。
+
+原始日志 `artifacts/arm64-split-strip-release.log`、`arm64-build-status.json`、`arm64-release-verification.json` 和 `arm64-candidate/` 的 ELF/manifest/签名明细均为 ignored 证据。此体积下降包含按 ABI 分发和 strip 的共同收益，不能把单 ABI 下载包与四 ABI 安装占用混为一谈。该轮仅验证实际 ARM64 包，其他三 ABI、正式证书和最终版本由后续发行 matrix 分别构建与验收。本次 mobile 候选只修已复现的 SDK admission 恢复问题，不宣称已闭环用户首次 presence 状态未知或完成真实账号运行验收。
 
 system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_path生成Cargo links元数据，再由tauri-build写入tauri.settings.gradle / tauri.build.gradle.kts合并Android library。生成source/template/wrapper受版本控制；本机路径、generated JNI/Kotlin、.so、Gradle/Rust缓存、tauri.properties和动态Gradle include文件不归档。source archive包含插件源码、manifest、license说明和Gradle wrapper，排除dist-mobile及产物；无需依赖作者未跟踪文件。
 
