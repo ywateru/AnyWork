@@ -332,6 +332,9 @@ body {
   margin-bottom: 4px;
   font-size: 14px;
 }
+.mobile-directory-error code {
+  overflow-wrap: anywhere;
+}
 .mobile-empty {
   padding: 32px 8px;
   color: var(--mobile-secondary);

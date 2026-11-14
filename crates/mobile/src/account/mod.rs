@@ -731,6 +731,7 @@ impl Handle {
                 state.lifetime = CancellationToken::new();
                 state.snapshot.directory_state = DirectoryState::Unknown;
                 state.snapshot.error_code = Some(public_error(error));
+                log_directory_failure(state.snapshot.error_code.as_deref());
                 for device in &mut state.snapshot.devices {
                     device.online = None;
                 }
@@ -786,6 +787,7 @@ impl Handle {
         state.snapshot.error_code = failure.or_else(|| state.profile_warning.clone());
         if unknown {
             state.lifetime.cancel();
+            log_directory_failure(state.snapshot.error_code.as_deref());
         }
         let snapshot = state.snapshot.clone();
         drop(state);
@@ -1319,6 +1321,34 @@ impl GridDevice {
     }
 }
 
+fn directory_diagnostic_code(code: Option<&str>) -> &'static str {
+    match code {
+        Some("MOBILE_COORDINATION_CONFIG_FETCH_FAILED") => {
+            "MOBILE_COORDINATION_CONFIG_FETCH_FAILED"
+        }
+        Some("MOBILE_COORDINATION_CONFIGURATION") => "MOBILE_COORDINATION_CONFIGURATION",
+        Some("MOBILE_COORDINATION_REGISTRATION_FAILED") => {
+            "MOBILE_COORDINATION_REGISTRATION_FAILED"
+        }
+        Some("MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED") => {
+            "MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED"
+        }
+        Some("MOBILE_IDENTITY_MISMATCH") => "MOBILE_IDENTITY_MISMATCH",
+        Some("MOBILE_INVALID_ENDPOINT_POLICY") => "MOBILE_INVALID_ENDPOINT_POLICY",
+        Some("MOBILE_INVALID_DIRECTORY") => "MOBILE_INVALID_DIRECTORY",
+        Some("MOBILE_INVALID_GATEWAY") => "MOBILE_INVALID_GATEWAY",
+        Some("MOBILE_INVALID_RESPONSE") => "MOBILE_INVALID_RESPONSE",
+        Some("MOBILE_NETWORK_ERROR") => "MOBILE_NETWORK_ERROR",
+        Some("MOBILE_SERVICE_REJECTED") => "MOBILE_SERVICE_REJECTED",
+        Some("MOBILE_RESPONSE_TOO_LARGE") => "MOBILE_RESPONSE_TOO_LARGE",
+        _ => "MOBILE_OPERATION_FAILED",
+    }
+}
+fn log_directory_failure(code: Option<&str>) {
+    // Only constants above enter the platform log. Never format an SDK error,
+    // account, endpoint, request or response into this diagnostic.
+    eprintln!("AnyWorkDirectory: {}", directory_diagnostic_code(code));
+}
 fn public_error(error: anyhow::Error) -> String {
     let code = error.to_string();
     if code.len() <= 80

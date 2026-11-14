@@ -6,6 +6,8 @@
 
 `mobile_account_snapshot` 返回 `{protocolVersion:1, epoch, phase, account?, devices, directoryState, revision}`。phase 为 signedOut/signingIn/signedIn/reauthRequired，account 包含 `scopeId,label,email?`，不输出 subject。设备包含 `deviceRef,installationId,label,platform,publicKey,keyVersion,online`，online 可未知；snapshot 含可信 key 或确认状态供核验页使用。
 
+目录刷新以 unknown 结束时，设备页提供可展开的“诊断详情”，仅显示明确白名单内的 `snapshot.errorCode`；不显示未知字符串、SDK 错误、响应体、URL、账号身份或授权材料。无可用白名单码时提示重新检查，不据此推断失败阶段。原生在该次刷新仍属于当前 epoch 的 unknown 终态记录同一白名单码，固定前缀 `AnyWorkDirectory:`，其它错误统一为 `MOBILE_OPERATION_FAILED`。现有刷新返回值/终态事件为诊断依据；额外 `snapshot()` 会重新应用授权状态，不能用它保证读取上一轮 coordination 错误。诊断不将 unknown 变为 offline/online，不解禁连接，不自动登录或重放业务。
+
 - `mobile_account_login({signup})`：启动独立内嵌授权 Activity，完成返回新 snapshot；取消是独立结果。
 - `mobile_account_cancel`、`mobile_account_logout`：阻止迟到授权恢复，退出清理所有连接。
 - `mobile_account_refresh`：读目录并返回新 snapshot，不自动登录。

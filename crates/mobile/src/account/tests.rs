@@ -357,6 +357,27 @@ fn native_config() -> Value {
         "revocationEndpoint":format!("{}/token/revocation",config.issuer),"scope":"openid offline_access profile email connect",
         "coordination":{"protocol":"memory-v1","epoch":"00000000-0000-4000-8000-000000000001"}})
 }
+#[tokio::test]
+#[ignore = "Explicit public-service probe only; no credentials or device registration"]
+async fn public_native_configuration_sdk_roundtrip() {
+    let config = Config::default();
+    let client = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
+        base_url: config.grid_url.clone(),
+        app_id: config.client_id.clone(),
+        iroh_enabled: false,
+        stun_servers: vec![],
+        cloudflared: None,
+        ..Default::default()
+    })
+    .unwrap();
+    let typed = tokio::time::timeout(Duration::from_secs(20), client.auth_config())
+        .await
+        .expect("public Native configuration request timed out")
+        .expect("public Native configuration rejected by the pinned SDK");
+    EndpointPolicy::parse(&serde_json::to_value(&typed).unwrap(), &config)
+        .expect("typed Native configuration rejected by the mobile policy");
+    assert!(client.device_session().await.is_none());
+}
 #[test]
 fn native_configuration_requires_issuer_client_resource_and_no_console_fields() {
     let value = native_config();
@@ -561,6 +582,27 @@ async fn userinfo_warning_preserves_owner_and_retries_on_refresh() {
 
 #[path = "grid_tests.rs"]
 mod native_grid;
+
+#[test]
+fn directory_log_codes_never_include_unknown_or_private_error_values() {
+    for code in [
+        None,
+        Some("UNREVIEWED_PRIVATE_VALUE"),
+        Some("MOBILE_NETWORK_ERROR\nprivate bearer token"),
+        Some("https://private.invalid/?token=synthetic"),
+    ] {
+        assert_eq!(directory_diagnostic_code(code), "MOBILE_OPERATION_FAILED");
+    }
+    for code in [
+        "MOBILE_COORDINATION_CONFIG_FETCH_FAILED",
+        "MOBILE_COORDINATION_REGISTRATION_FAILED",
+        "MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED",
+        "MOBILE_INVALID_ENDPOINT_POLICY",
+        "MOBILE_NETWORK_ERROR",
+    ] {
+        assert_eq!(directory_diagnostic_code(Some(code)), code);
+    }
+}
 
 #[tokio::test]
 async fn account_tls_rejection_finishes_loading_and_allows_another_refresh() {

@@ -18,6 +18,7 @@ import { useAppearance } from "../appearance";
 import { platformError } from "../platform";
 import {
   accountCommand,
+  directoryDiagnosticCode,
   friendlyError,
   errorCode,
   type AccountSnapshot,
@@ -713,6 +714,17 @@ export default function MobileApp() {
               <button onClick={() => void refresh()} disabled={!!busy}>
                 重新检查
               </button>
+              <details>
+                <summary>诊断详情</summary>
+                {directoryDiagnosticCode(snapshot.errorCode) ? (
+                  <p>
+                    错误码：
+                    <code>{directoryDiagnosticCode(snapshot.errorCode)}</code>
+                  </p>
+                ) : (
+                  <p>暂未记录可用的诊断码，请重新检查。</p>
+                )}
+              </details>
             </div>
           )}
           {snapshot.directoryState === "loading" && (

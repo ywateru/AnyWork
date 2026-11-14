@@ -33,3 +33,11 @@
 [构建核验](../reviews/android-device-loading-build.md)和[独立实机记录](../reviews/android-device-loading-independent.md)已合入：同证书 `install -r` 成功，保留数据，正常 SSO 登录和 Account API 设备目录读取完成，手动刷新可用且能结束。旧 verifier panic、启动初始化失败、Java fatal 与 JNI 类错误均为 0。
 
 随后界面显示电脑记录但在线状态 Unknown，连接按钮为“等待状态确认”。没有绕过在线状态/身份门禁，也未建立工作区连接。作者继续定位 Native SDK 配置、注册、presence 阶段；这是永久 loading 解除后才可观测到的后续失败，不将其混写成第一修复失败或已完整恢复。
+
+## TLS 之后的 presence 阶段
+
+当前 Release 无本应用 DevTools socket，原生日志也未记录 coordination 阶段码；此前 UI 只显示通用 unknown，不能凭无日志或旧 fixture 通过断定真实失败原因。
+
+2026-11-14 父协调者授权最小安全诊断：先补契约，再在 unknown 卡片 details 中显示白名单固定错误码，并在原生刷新 unknown 终态记录固定码。不得记录 SDK 原始错误/响应/凭据，不增加调试桥、不启用 Release WebView debugging，不由作者操作 ADB；不先触发下一轮构建。当前公开 auth/config 主机侧只读检查 HTTP200、固定 issuer/client/resource/endpoints/scope/product/coordination 绑定一致，未提供 endpointPolicy 或 registrationAdmission，因此该服务当前走 SDK 旧 devices 路径；此公开检查不证明手机网络、账号授权或 Native registration 成功。
+
+后续显式 host 探针通过真实 pinned SDK `auth_config()` 校验、typed `AuthConfig` 序列化和生产 `EndpointPolicy::parse`，且未创建 device session；该外网测试默认 ignored，不给常规 CI 增加公开服务依赖。独立 verifier 的有限手机探针显示 OIDC IPv4 HTTP200/TLS 验证成功，而 coordination IPv4 DNS 已完成、TCP 建立前超时，IPv6 也超时；这是网络可达性差异证据，尚不是应用内部失败阶段的实测。后续用诊断候选确认 native 固定码，不修改基础设施、endpoint 或信任策略。

@@ -26,6 +26,26 @@ export function accountCommand(
 ) {
   return invoke<AccountSnapshot>(`mobile_account_${command}`, request);
 }
+const directoryDiagnosticCodes = new Set([
+  "MOBILE_COORDINATION_CONFIG_FETCH_FAILED",
+  "MOBILE_COORDINATION_CONFIGURATION",
+  "MOBILE_COORDINATION_REGISTRATION_FAILED",
+  "MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED",
+  "MOBILE_IDENTITY_MISMATCH",
+  "MOBILE_INVALID_ENDPOINT_POLICY",
+  "MOBILE_INVALID_DIRECTORY",
+  "MOBILE_INVALID_GATEWAY",
+  "MOBILE_INVALID_RESPONSE",
+  "MOBILE_NETWORK_ERROR",
+  "MOBILE_SERVICE_REJECTED",
+  "MOBILE_RESPONSE_TOO_LARGE",
+  "MOBILE_OPERATION_FAILED",
+]);
+export function directoryDiagnosticCode(value: unknown): string | null {
+  return typeof value === "string" && directoryDiagnosticCodes.has(value)
+    ? value
+    : null;
+}
 export function errorCode(error: unknown) {
   if (typeof error === "object" && error !== null && "code" in error)
     return String(error.code);
