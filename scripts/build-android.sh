@@ -29,6 +29,14 @@ if [[ "$profile" == release ]]; then
     : "${ANYWORK_ANDROID_KEY_PASSWORD:?Release signing key password is required}"
     export ANYWORK_ANDROID_KEY_ALIAS="${ANYWORK_ANDROID_KEY_ALIAS:-anywork}"
     export ANYWORK_ANDROID_KEYSTORE="$(cd "$(dirname "$ANYWORK_ANDROID_KEYSTORE")" && pwd)/$(basename "$ANYWORK_ANDROID_KEYSTORE")"
+    # Scope size optimization to this Android invocation (including Gradle's
+    # child Cargo builds), without changing desktop/workspace release profiles.
+    # Strip static symbols, preserving the dynamic JNI exports and unwind data.
+    export CARGO_PROFILE_RELEASE_DEBUG=0
+    export CARGO_PROFILE_RELEASE_STRIP=symbols
+    export CARGO_PROFILE_RELEASE_LTO=thin
+    export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+    echo 'Android release: debug=0, strip=symbols, lto=thin, codegen-units=1 (opt-level=3, panic=unwind)'
 fi
 cli="$RA_PROJECT_ROOT/node_modules/@tauri-apps/cli/tauri.js"
 [[ -f "$cli" ]] || { echo 'Run npm ci at the repository root first' >&2; exit 1; }

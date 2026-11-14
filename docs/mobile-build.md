@@ -19,6 +19,21 @@ Tauri CLI2.12.4构建先执行 `npm run build:mobile-ui`；真实 `web/mobile.ht
 
 Release启用R8优化。官方Logto Android AAR保留core.type的反射字段；jose4j经SLF4J1.7使用的可选StaticLoggerBinder缺失时，库本身回退NOP logger。应用规则仅精确忽略该可选类的缺失诊断，其他缺失类继续失败；不能用debug成功替代实际Release R8验证。v0.1.32曾在该步骤失败且未发布，详见[合并记录](plan/reviews/android-native-merged.md)。
 
+### Android Release 体积策略
+
+canonical `scripts/build-android.sh --release` 在该进程及其 Tauri/Gradle/Cargo 子进程内固定 `CARGO_PROFILE_RELEASE_DEBUG=0`、`CARGO_PROFILE_RELEASE_STRIP=symbols`、`CARGO_PROFILE_RELEASE_LTO=thin`、`CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`。保留 Cargo release 默认的 opt-level=3 与 panic=unwind，不改工作区/桌面的 release profile，也不改 debug 构建。直接运行 Gradle/Tauri 而绕过 canonical 入口不保证使用这一体积策略。四 ABI、JNI 动态导出、SDK/TLS 功能及 native 库未压缩的 16 KiB 对齐打包保持原有契约；不以压缩 ZIP 或删 ABI 代替库本身优化。优化会增加首次 release 的编译成本，仍须走完整 R8、lint/JVM 和 APK checker。
+
+公开 v0.1.34 APK 的实测基线为 204,082,412 bytes，SHA-256 `3d5f47736b953e12a8d7423af60fb1cc34c7c0232a673f7b3557d8783854ea74`。其中四 ABI `libanywork_mobile.so` 合计 202,223,752 bytes（99.09%），DEX 压缩后 925,494 bytes、APK assets 3,160 bytes（业务 UI 嵌入 Rust ELF）。四个 ELF 均还含 `.symtab`/`.strtab`，没有 `.debug_*`。对下载包的库副本执行 NDK27 `llvm-strip --strip-all`，合计减少 55,516,600 bytes，保留全部 25/24/24/24 个动态导出；这是离线实验，不能替代优化源码的实际成包结果。
+
+| ABI | v34 ELF bytes | 离线 strip 后 bytes |
+| --- | ---: | ---: |
+| arm64-v8a | 54,194,168 | 37,382,072 |
+| armeabi-v7a | 40,303,804 | 26,709,156 |
+| x86 | 54,073,036 | 41,894,076 |
+| x86_64 | 53,652,744 | 40,721,848 |
+
+本轮测量和测试签名候选仅保存在作者 worktree 的 ignored `artifacts/`；候选不公开、不覆盖旧 tag 或附件，不使用正式发行私钥或真实账号。实际四 ABI Release 构建后的体积、签名身份/资产/对齐及测试结果在完成后补充。
+
 system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_path生成Cargo links元数据，再由tauri-build写入tauri.settings.gradle / tauri.build.gradle.kts合并Android library。生成source/template/wrapper受版本控制；本机路径、generated JNI/Kotlin、.so、Gradle/Rust缓存、tauri.properties和动态Gradle include文件不归档。source archive包含插件源码、manifest、license说明和Gradle wrapper，排除dist-mobile及产物；无需依赖作者未跟踪文件。
 
 本地配置不设置devUrl，验证打包Origin固定为 https://tauri.localhost，入口mobile.html；Android真实WebView provider、选择器、分享接收者、中文IME、生命周期和隔离网关仍以APK独立验收为准。build/lint/unit成功不等于已执行这些运行验收。
