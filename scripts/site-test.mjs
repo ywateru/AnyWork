@@ -4,7 +4,6 @@ import { readFile, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-execFileSync('python3', ['scripts/build-site-test.py'], {stdio:'inherit'});
 const androidAPKs = ['arm64', 'armv7', 'x86', 'x86_64'].map(abi => `anywork-android-${abi}.apk`);
 function withAndroid(release) {
   const names = release.tag_name === 'v0.1.34' ? ['anywork-android.apk'] : androidAPKs;
