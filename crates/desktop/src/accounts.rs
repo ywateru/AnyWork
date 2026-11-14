@@ -2084,7 +2084,7 @@ pub async fn account_logout(state: tauri::State<'_, Handle>) -> Result<(), Strin
 }
 #[cfg(test)]
 #[path = "accounts_default_tests.rs"]
-mod default_tests;
+pub(crate) mod default_tests;
 #[cfg(test)]
 #[path = "accounts_experience_tests.rs"]
 mod experience_tests;

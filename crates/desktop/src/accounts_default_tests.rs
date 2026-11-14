@@ -219,6 +219,20 @@ impl Fixture {
     }
 }
 
+pub(crate) async fn assert_remote_enables_with_prepared_manager(manager: manager::Handle) {
+    let mut f = Fixture::new().await;
+    let fixture_provider = f.handle.0.manager.snapshot().config.cloudflared_binary;
+    manager.state.lock().unwrap().config.cloudflared_binary = fixture_provider;
+    Arc::get_mut(&mut f.handle.0).unwrap().manager = manager;
+    // The real enable path checks manager readiness before starting the owned
+    // provider, Native SDK registration and initial account-index publication.
+    f.handle.enable().await.unwrap();
+    assert!(f.handle.snapshot().await.enabled);
+    assert_eq!(f.calls("POST /api/v1/auth/exchange"), 1);
+    assert_eq!(f.calls("PATCH /api/my-account"), 1);
+    f.close().await;
+}
+
 #[tokio::test]
 async fn closed_gateway_identity_survives_its_port_being_reused() {
     let f = Fixture::new().await;
