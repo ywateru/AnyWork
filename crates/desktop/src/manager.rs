@@ -671,6 +671,10 @@ impl Worker {
             info.local_browser_session,
             "当前本地服务不支持安全浏览器交接，请先升级本地服务。不会退回访问密钥链接。"
         );
+        // This authenticated check supersedes polls begun before preparation.
+        // Even a completed poll can still have an event queued in run().
+        self.reset_probe();
+        self.last_probe = Instant::now();
         self.edit(|v| {
             v.authorized = true;
             v.service = Phase::Running;
@@ -825,6 +829,139 @@ pub fn manager_lock(support: &Path) -> Result<ManagerLock> {
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn workspace_preparation_fences_older_probe_results_before_remote_enable() {
+        use axum::{Json, Router, routing::get};
+
+        let dir = tempfile::tempdir().unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let healthy = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let health = healthy.clone();
+        let app = Router::new()
+            // A background poll saw a transient startup failure. Its event can
+            // already be queued when the explicit prepare command is selected.
+            .route(
+                "/api/health",
+                get(move || {
+                    let health = health.clone();
+                    async move {
+                        (
+                            if health.load(std::sync::atomic::Ordering::SeqCst) {
+                                axum::http::StatusCode::OK
+                            } else {
+                                axum::http::StatusCode::SERVICE_UNAVAILABLE
+                            },
+                            Json(serde_json::json!({"status":"ok"})),
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/api/info",
+                get(|headers: axum::http::HeaderMap| async move {
+                    assert_eq!(headers["authorization"], "Bearer fixture-local-bearer");
+                    Json(serde_json::json!({
+                        "hostname":"fixture", "product":"AnyWork",
+                        "workspace":"/isolated-workspace", "local_browser_session":true
+                    }))
+                }),
+            )
+            .route(
+                "/api/clients",
+                get(|| async { Json(serde_json::json!({"clients":[]})) }),
+            );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let config = Config {
+            workspace: dir.path().display().to_string(),
+            data_directory: dir.path().join("data").display().to_string(),
+            port,
+            ..Default::default()
+        };
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (event_tx, events) = mpsc::unbounded_channel();
+        let handle = Handle {
+            state: Arc::new(Mutex::new(Snapshot::new(
+                config,
+                "fixture-local-bearer".into(),
+            ))),
+            tx,
+        };
+        let mut worker = Worker {
+            handle: handle.clone(),
+            options: Options {
+                support: dir.path().into(),
+                resources: dir.path().into(),
+            },
+            http: Http::new().unwrap(),
+            rx,
+            events,
+            event_tx,
+            server: None,
+            server_started: None,
+            generation: 0,
+            probe: None,
+            last_probe: Instant::now() - Duration::from_secs(4),
+        };
+        worker.tick().await;
+        let stale = tokio::time::timeout(Duration::from_secs(3), worker.events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        // Exercise the real authenticated preparation, then the older HTTP
+        // poll event in the other valid order of the actor's select branches.
+        worker.prepare_workspace().await.unwrap();
+        assert!(handle.snapshot().authorized);
+        assert_eq!(handle.snapshot().service, Phase::Running);
+        worker.event(stale);
+        assert!(
+            handle.snapshot().authorized,
+            "an older probe erased successful workspace preparation"
+        );
+        assert_eq!(handle.snapshot().service, Phase::Running);
+        crate::accounts::default_tests::assert_remote_enables_with_prepared_manager(handle.clone())
+            .await;
+        // A newer failure must still close readiness; this is an ordering fence,
+        // not a permanent exemption from the normal background health checks.
+        worker.last_probe = Instant::now() - Duration::from_secs(4);
+        worker.tick().await;
+        let current = tokio::time::timeout(Duration::from_secs(3), worker.events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        worker.event(current);
+        assert!(!handle.snapshot().authorized);
+        assert_eq!(handle.snapshot().service, Phase::Off);
+        // A queued positive result from the old host cannot authorize a newly
+        // selected host either. Use a real successful HTTP poll as that event.
+        healthy.store(true, std::sync::atomic::Ordering::SeqCst);
+        worker.last_probe = Instant::now() - Duration::from_secs(4);
+        worker.tick().await;
+        let previous_host = tokio::time::timeout(Duration::from_secs(3), worker.events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let next_port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        worker
+            .save_service(Config {
+                port: next_port,
+                data_directory: dir.path().join("other-data").display().to_string(),
+                ..handle.snapshot().config
+            })
+            .await
+            .unwrap();
+        worker.event(previous_host);
+        assert!(!handle.snapshot().authorized);
+        assert_eq!(handle.snapshot().service, Phase::Checking);
+        assert_eq!(handle.snapshot().config.port, next_port);
+        worker.cleanup().await;
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn open_reuses_verified_external_service_and_hands_off_only_short_lived_ticket() {
         use axum::{
             Json, Router,
@@ -928,6 +1065,7 @@ mod tests {
                 "must reject {mode}"
             );
             assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 0);
+            assert!(!handle.snapshot().authorized);
             assert!(!handle.snapshot().owned);
             assert_eq!(
                 std::fs::read(dir.path().join("manager.json")).unwrap(),

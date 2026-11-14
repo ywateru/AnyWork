@@ -61,6 +61,14 @@ const invoke = <T,>(
     : Promise.reject(new Error("请从 AnyWork 桌面应用打开此页面。"));
 const message = "账号操作未完成，请检查登录状态和网络后重试。";
 const enableMessages: Record<string, string> = {
+  REMOTE_ENABLE_SIGN_IN_REQUIRED: "请先登录桌面账号，再开启远程访问。",
+  REMOTE_ENABLE_REAUTH_REQUIRED:
+    "本次账号授权已失效或结果未知，请结束本次授权后重新登录；不能重试旧令牌。",
+  REMOTE_ENABLE_LOCAL_SERVICE: "请先准备并连接本机工作区，再开启远程访问。",
+  REMOTE_ENABLE_CLEANUP_PENDING:
+    "本地远程入口已关闭，但上次协调登记或撤销结果尚未确认；恢复网络后请重试。",
+  REMOTE_ENABLE_CANCELLED: "本次远程操作已取消，请确认当前账号和远程状态。",
+  REMOTE_ENABLE_ALREADY_ENABLED: "远程访问已经开启，请刷新当前状态。",
   REMOTE_ENABLE_IDENTITY: "本机设备身份准备失败。",
   REMOTE_ENABLE_GATEWAY: "本机加密入口启动失败。",
   REMOTE_ENABLE_PROVIDER: "公网连接入口未就绪，请检查网络。",
@@ -549,7 +557,11 @@ export function AccountError({
         <details className="error-details">
           <summary>诊断详情</summary>
           <code>{code}</code>
-          <p className="hint">检查网络、账号与设备协调配置后，手动重试。</p>
+          <p className="hint">
+            {code === "REMOTE_ENABLE_REAUTH_REQUIRED"
+              ? "不要重试旧令牌；完成重新登录后再开启远程访问。"
+              : "检查网络、账号与设备协调配置后，手动重试。"}
+          </p>
         </details>
       )}
     </div>
