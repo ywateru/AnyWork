@@ -26,3 +26,5 @@ v0.1.36 准备源码 `6552b19e814984f215851f9f95816677c62501c4` 的 [Checks](htt
 修正仅调整测试：按 fixture tag 验证完整缺件错误，并在已有版本表中明确断言旧 20、新 23 两类缺件拒绝；不放宽生产附件、摘要或签名门禁。[作者验证](publisher-version-fixture.md)与[独立审查](publisher-version-fixture-independent.md)在真实 0.1.36 源码复现 before 唯一失败、after 33 passed；独立明确资产集合的额外探针拒绝全部 135 次缺件与 12 次错架构/重复附件。已接受 `e711994`，合入后开始新的精确源码 Checks。
 
 v0.1.37 准备源码 `f3ac0db041ffdaaeeca8397bb08b9c154c8cd468` 的 [Checks](https://github.com/ywateru/AnyWork/actions/runs/43551761469)中，Windows、macOS、Android、容器及 server-web 前置检查通过；最后普通浏览器回归为 677 passed、1 skipped、2 failed。两项失败来自同一通知历史回放场景，分别在 desktop 等待回复和 android-web 等待审批按钮时超时。发布器已停止，未推送 tag 或发行附件。下一步以失败 trace 判断测试同步或产品回归，修复须经作者验证与非作者审查后再进入新精确源码门禁。
+
+两份 trace 均确认用例 setup 在扣住 global poll 后读到了尚未包含目标事件的早期 history，因而在释放 poll 前等待其已扣住的输出。`a3ff87c` 仅为此测试加入真实 history 就绪屏障，透传原响应；不修改产品、夹具输出、超时或原有断言。[作者验证](notification-replay-setup.md)为两项目各 5 次通过，[独立审查](notification-replay-independent.md)为各 3 次通过，并复核新 pending 先恢复、不同旧 turn completion 后回放的顺序。修正已合入，新版本继续执行完整精确源码 CI。
