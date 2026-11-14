@@ -9,6 +9,9 @@
 # to its NOP logger. Keep that supported path when shrinking the release APK.
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 
+# Rust calls the Android system trust verifier through JNI, invisible to R8.
+-keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:

@@ -561,3 +561,67 @@ async fn userinfo_warning_preserves_owner_and_retries_on_refresh() {
 
 #[path = "grid_tests.rs"]
 mod native_grid;
+
+#[tokio::test]
+async fn account_tls_rejection_finishes_loading_and_allows_another_refresh() {
+    // Exercise the production reqwest/refresh path, not an injected HTTP error.
+    // A real TLS server presents a matching-hostname but untrusted certificate.
+    let generated = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+    let server = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_no_client_auth()
+    .with_single_cert(
+        vec![generated.cert.der().clone()],
+        rustls::pki_types::PrivatePkcs8KeyDer::from(generated.key_pair.serialize_der()).into(),
+    )
+    .unwrap();
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!(
+        "https://localhost:{}",
+        listener.local_addr().unwrap().port()
+    );
+    let server_task = tokio::spawn(async move {
+        for _ in 0..2 {
+            let (socket, _) = listener.accept().await.unwrap();
+            assert!(acceptor.accept(socket).await.is_err());
+        }
+    });
+    let states = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = states.clone();
+    let handle = Handle::with_backend(
+        Config {
+            endpoint,
+            ..Config::default()
+        },
+        Arc::new(Backend::default()),
+        Arc::new(move |snapshot| observed.lock().unwrap().push(snapshot)),
+    );
+    signed_in(&handle).await;
+    states.lock().unwrap().clear();
+    for _ in 0..2 {
+        let snapshot = tokio::time::timeout(Duration::from_secs(5), handle.refresh_inner(false))
+            .await
+            .expect("TLS failure must not strand the directory refresh")
+            .unwrap();
+        assert!(snapshot.phase == Phase::SignedIn);
+        assert!(snapshot.directory_state == DirectoryState::Unknown);
+        assert_eq!(snapshot.error_code.as_deref(), Some("MOBILE_NETWORK_ERROR"));
+        assert!(snapshot.devices.is_empty());
+    }
+    {
+        let observed = states.lock().unwrap();
+        assert_eq!(observed.len(), 4);
+        for pair in observed.chunks_exact(2) {
+            assert!(pair[0].directory_state == DirectoryState::Loading);
+            assert!(pair[1].directory_state == DirectoryState::Unknown);
+        }
+    }
+    tokio::time::timeout(Duration::from_secs(5), server_task)
+        .await
+        .unwrap()
+        .unwrap();
+}

@@ -9,6 +9,8 @@ use tauri::{
     ipc::{Channel, JavaScriptChannelId},
 };
 use tokio::sync::mpsc;
+#[cfg(target_os = "android")]
+mod android_tls;
 mod bridge_events;
 use transport::*;
 
@@ -254,6 +256,8 @@ pub fn run() {
     // infer a default when both are linked. Select one before any native I/O;
     // a repeated Android entry retains the already installed valid provider.
     let _ = rustls::crypto::ring::default_provider().install_default();
+    #[cfg(target_os = "android")]
+    android_tls::init().expect("Android TLS verifier initialization failed");
     tauri::Builder::default()
         .plugin(tauri_plugin_mobile_system::init())
         .plugin(tauri_plugin_mobile_auth::init())

@@ -39,6 +39,9 @@ tauri-build = { version = "=2.7.4", features = [] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 cybergrid-sdk = { git = "https://github.com/ywateru/CyberGrid.git", rev = "f2a3961536e5c69b13c7dbc661953d9243becbae" }
+jni = { version = "0.22", default-features = false }
+ndk-context = "0.1"
+rustls-platform-verifier = "0.7"
 
 [dev-dependencies]
 cybergrid-sdk = { git = "https://github.com/ywateru/CyberGrid.git", rev = "f2a3961536e5c69b13c7dbc661953d9243becbae" }
