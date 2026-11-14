@@ -11,7 +11,16 @@ bash scripts/build-android.sh --release --target aarch64,armv7,i686,x86_64
 
 统一入口不运行adb、安装或选择设备。NDK固定27.2.12479018（r27c），从ANDROID_HOME/ndk读取，覆盖可能指向未安装r28的继承NDK_HOME；Java17、SDK37.0/build-tools36、Rust Android target及根npm依赖需预装。默认本机SDK位置为 ~/Library/Android/sdk，Linux/CI应显式设ANDROID_HOME。不复制node_modules或target；worktree可链接主node_modules，Rust由协调者通过CARGO_TARGET_DIR共享主target、CARGO_INCREMENTAL=0复用。
 
-Tauri CLI2.12.4构建先执行 `npm run build:mobile-ui`；真实 `web/mobile.html` 经Vite到 `web/dist-mobile`，由Tauri macro嵌入Rust库。`scripts/check.sh`及Checks workspace前置也构建mobile assets，host插件明确报SYSTEM_UNAVAILABLE，不伪造Android成功。Android build后运行当前variant的lint，以及实际存在的App Debug JVM、system/auth Debug与core单元测试；优化Release不提供App Release UnitTest component，不能拼接不存在的任务名。后置检查排除两种profile的Rust构建任务，不重复编译原生库或启动设备。稳定debug输出为 `artifacts/anywork-android-debug.apk`，Checks成功后公开CI artifact保留7天；release为 `release/anywork-android.apk`。
+Tauri CLI2.12.4构建先执行 `npm run build:mobile-ui`；真实 `web/mobile.html` 经Vite到 `web/dist-mobile`，由Tauri macro嵌入Rust库。`scripts/check.sh`及Checks workspace前置也构建mobile assets，host插件明确报SYSTEM_UNAVAILABLE，不伪造Android成功。Android build后运行每个所选ABI flavor当前variant的lint，以及实际存在的App Debug JVM、system/auth Debug与core单元测试；优化Release不提供App Release UnitTest component，不能拼接不存在的任务名。后置检查排除两种profile的Rust构建任务，不重复编译原生库或启动设备。默认arm64 debug输出为 `artifacts/anywork-android-debug.apk`，Checks成功后公开CI artifact保留7天。构建统一使用Tauri CLI `--split-per-abi`，每个APK仅包含所选ABI对应的Rust库，不生成universal发行包。一次四target调用只执行一次前端构建，再由Gradle分别assemble四个ABI flavor。
+
+| CLI target | Android ABI | Gradle flavor | Release输出 |
+| --- | --- | --- | --- |
+| aarch64 | arm64-v8a | arm64 | `release/anywork-android-arm64.apk` |
+| armv7 | armeabi-v7a | arm | `release/anywork-android-armv7.apk` |
+| i686 | x86 | x86 | `release/anywork-android-x86.apk` |
+| x86_64 | x86_64 | x86_64 | `release/anywork-android-x86_64.apk` |
+
+单target调用仅交付该行的包；四target调用生成四包，不生成`anywork-android.apk`或重复alias。非arm64 debug包命名为`artifacts/anywork-android-{armv7,x86,x86_64}-debug.apk`。脚本逐包调用`check-android-apk.py --profile <profile> --abi <Android ABI>`，要求该包恰好包含对应的`libanywork_mobile.so`，所有native库均来自该ABI且ELF class/machine相符。即使本地JNI目录有其他ABI旧库，foreign ABI若进入APK也会使检查失败。
 
 浏览器回归使用两个明确服务：普通 Web 配置由 `scripts/e2e-server.py` 提供 `web/dist`；手机专项配置 `e2e/mobile.config.ts` 启动 mobile Vite 入口。普通配置必须精确排除两份手机 spec，完整检查脚本再显式执行手机专项全部用例。不能把 `/mobile.html` 用例交给没有该入口的普通 Web 服务，也不能仅排除而漏掉 CI 中的手机回归。
 
@@ -21,7 +30,7 @@ Release启用R8优化。官方Logto Android AAR保留core.type的反射字段；
 
 ### Android Release 体积策略
 
-canonical `scripts/build-android.sh --release` 在该进程及其 Tauri/Gradle/Cargo 子进程内固定 `CARGO_PROFILE_RELEASE_DEBUG=0`、`CARGO_PROFILE_RELEASE_STRIP=symbols`、`CARGO_PROFILE_RELEASE_LTO=thin`、`CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`。保留 Cargo release 默认的 opt-level=3 与 panic=unwind，不改工作区/桌面的 release profile，也不改 debug 构建。直接运行 Gradle/Tauri 而绕过 canonical 入口不保证使用这一体积策略。四 ABI、JNI 动态导出、SDK/TLS 功能及 native 库未压缩的 16 KiB 对齐打包保持原有契约；不以压缩 ZIP 或删 ABI 代替库本身优化。优化会增加首次 release 的编译成本，仍须走完整 R8、lint/JVM 和 APK checker。
+canonical `scripts/build-android.sh --release` 在该进程及其 Tauri/Gradle/Cargo 子进程内固定 `CARGO_PROFILE_RELEASE_DEBUG=0`、`CARGO_PROFILE_RELEASE_STRIP=symbols`。保留 Cargo release 默认的 opt-level=3 与 panic=unwind，不改工作区/桌面的 release profile，也不改 debug 构建。直接运行 Gradle/Tauri 而绕过 canonical 入口不保证使用这一体积策略。四 ABI、JNI 动态导出、SDK/TLS 功能及 native 库未压缩的 16 KiB 对齐打包保持原有契约；不以压缩 ZIP 或删 ABI 代替库本身优化。未启用额外LTO或改变codegen-units；仍须走完整 R8、lint/JVM 和 APK checker。
 
 公开 v0.1.34 APK 的实测基线为 204,082,412 bytes，SHA-256 `3d5f47736b953e12a8d7423af60fb1cc34c7c0232a673f7b3557d8783854ea74`。其中四 ABI `libanywork_mobile.so` 合计 202,223,752 bytes（99.09%），DEX 压缩后 925,494 bytes、APK assets 3,160 bytes（业务 UI 嵌入 Rust ELF）。四个 ELF 均还含 `.symtab`/`.strtab`，没有 `.debug_*`。对下载包的库副本执行 NDK27 `llvm-strip --strip-all`，合计减少 55,516,600 bytes，保留全部 25/24/24/24 个动态导出；这是离线实验，不能替代优化源码的实际成包结果。
 
@@ -32,7 +41,7 @@ canonical `scripts/build-android.sh --release` 在该进程及其 Tauri/Gradle/C
 | x86 | 54,073,036 | 41,894,076 |
 | x86_64 | 53,652,744 | 40,721,848 |
 
-本轮测量和测试签名候选仅保存在作者 worktree 的 ignored `artifacts/`；候选不公开、不覆盖旧 tag 或附件，不使用正式发行私钥或真实账号。实际四 ABI Release 构建后的体积、签名身份/资产/对齐及测试结果在完成后补充。
+本轮测量和测试签名候选仅保存在作者 worktree 的 ignored `artifacts/`；候选不公开、不覆盖旧 tag 或附件，不使用正式发行私钥或真实账号。实际四个独立ABI Release包的体积、签名身份/资产/对齐及测试结果在完成后补充。
 
 system/auth独立path插件通过各自build.rs的tauri-plugin Builder android_path生成Cargo links元数据，再由tauri-build写入tauri.settings.gradle / tauri.build.gradle.kts合并Android library。生成source/template/wrapper受版本控制；本机路径、generated JNI/Kotlin、.so、Gradle/Rust缓存、tauri.properties和动态Gradle include文件不归档。source archive包含插件源码、manifest、license说明和Gradle wrapper，排除dist-mobile及产物；无需依赖作者未跟踪文件。
 
