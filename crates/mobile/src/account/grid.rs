@@ -119,10 +119,9 @@ pub(super) async fn devices(handle: &Handle, epoch: u64, subject: &str) -> Resul
     if slot
         .as_ref()
         .is_some_and(|s| s.epoch != epoch || s.subject != subject)
+        && let Some(old) = slot.take()
     {
-        if let Some(old) = slot.take() {
-            old.close().await;
-        }
+        old.close().await;
     }
     if slot.is_none() {
         let client = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
