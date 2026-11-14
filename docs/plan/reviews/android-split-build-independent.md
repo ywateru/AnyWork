@@ -169,3 +169,73 @@ site/publisher 的初次测试在 `git archive 85764118` 的临时源码快照�
 4. 新版发行实际 23/22 和官网精确源码/下载链接验收，必须基于未来真实 release；目前只有新版本离线夹具与真实旧 v34 的只读兼容验证。
 
 结论：**两条精确源码 lane 独立审查 PASS；最终四 ABI 真包及新版本发行验收保持 BLOCK（有意后置，待统一构建），无未关闭源码阻塞发现。**
+
+## 2026-11-14 增量：实际 ARM64 Release 候选独立成包验收
+
+### 对象、范围与结论
+
+本节补充前述“尚无实际新包”的历史状态，不追溯覆盖此前未测声明。协调者已授权先做单 ARM64，其他三个 ABI 交后续 remote matrix，不要求本机重建四包。
+
+构建产品源码为 **`94609a70b0dd7d94101aa98f3cd3d5bdecca4b13`**：main `acd16b6502e521685794fbfad6e10075950d3fd7` 合入 mobile 候选 `fa47cc5bb5a76c9889845af8d89d1bf3160cef49`。本 reviewer 开始时 HEAD 为该候选；随后作者提交 `01a4f84bf0615acfdbdc3c4b529ee8b0a4944da6`，与候选仅有 `docs/mobile-build.md` 文档差异，产品源码未变。
+
+**PASS：这个精确 ARM64 临时测试签名 APK 的独立成包验收。** 未发现包内容、分 ABI、strip、导出、签名完整性、对齐或已有构建结果的 blocking 问题。本节只读检查现有 APK、共享 target 产物、日志和报告，不启动 Cargo/Gradle/build/unit tests，不占用共享 target 编译，也不启动设备或读取账号。
+
+**仍 BLOCK／待远端证据：其余三个 ABI 的正式包、新版递增身份及正式升级签名、真实运行与新版本发布验收。** 本候选不是可公开分发的新版本，也不证明首次登录 presence 问题已解决。
+
+### 独立核对结果
+
+| 检查项 | 独立观察 | 状态 |
+| --- | --- | --- |
+| APK 名称与数量 | 当前 `release/` 仅一个 APK：`anywork-android-arm64.apk`，无 universal/alias | PASS |
+| APK 大小 | **39,192,755 bytes** | PASS，与作者摘要一致 |
+| APK SHA-256 | `a155d3e53e4d0aca172d2bf6f040dd7404edc5b40ae48620ad4294e73365a0fd` | PASS，直接重新计算 |
+| Gradle 输出绑定 | `app/build/outputs/apk/arm64/release/app-arm64-release.apk` 与最终复制件 SHA-256 相同；output-metadata 为 `arm64Release` | PASS |
+| native 数量与 ABI | APK 唯一 `lib/arm64-v8a/libanywork_mobile.so`，无其他 JNI 条目；ELF64、little-endian、machine=183/AArch64 | PASS |
+| native 大小与摘要 | **37,349,816 bytes**；SHA-256 `9231ef41b8ed64864817020999f058952b513ebdf9f7b23c3465f2c3d8f9e40d` | PASS |
+| 共享 target 绑定 | APK 主库与现有 `target/aarch64-linux-android/release/libanywork_mobile.so` 逐摘要一致；共享文件只读 | PASS |
+| sections | 无 `.symtab`、`.strtab`、任何 `.debug_*`；保留 `.dynsym`、`.dynstr`、`.gcc_except_table`、`.eh_frame*` | PASS |
+| 动态导出 | 与旧 v34 同 ABI 主库的 **25 个定义动态导出名称集合完全相等**，无新增或丢失；其中 24 个 JNI、1 个 blake3 C 导出 | PASS |
+| native ZIP 存储 | method=0，压缩前后均 37,349,816 bytes；实际数据偏移 **933,888**，对 16,384 取模为 0 | PASS |
+| ELF LOAD | 4 个 PT_LOAD 的 p_align 均 16,384，且各 p_offset/p_vaddr 对 16 KiB 同余 | PASS |
+| ZIP 对齐与 manifest | 实际 `zipalign -c -P 16 4` exit 0；直接 aapt 解包确认 `extractNativeLibs=false` | PASS |
+| 应用身份 | 实际 badging：`dev.remoteagent.app`、versionName `0.1.34`、versionCode `36`、minSdk `26`、targetSdk `37` | PASS，限测试候选 |
+| 本地入口配置 | 包内 `assets/tauri.conf.json` 保持 mobile.html、frontendDist=`../../web/dist-mobile`、useHttpsScheme=true，与候选配置一致 | PASS |
+| UI 路径键 | 直接在 APK 主库核对当前 dist 的 html/js/css/txt 共 **411** 个路径，缺失 0 | PASS |
+| UI 内容补证 | 见下节：421 个资产内容逐字节匹配，HTML 结构/引用匹配，压缩字节实际嵌入 APK | PASS，超出原 checker 的路径检查 |
+| 签名完整性 | SDK36 apksigner 实际 verify exit 0；单 signer、APK Signature Scheme v2、RSA2048 | PASS，临时证书 |
+
+体积对比直接使用已有公开 v34 原件和同 ABI 主库，没有重新下载或复制大型包：
+
+- 旧 v34 universal：204,082,412 bytes → 新单 ARM64：39,192,755 bytes，减少 **164,889,657 bytes／80.7956%**。这个比例包含分 ABI 分发和 strip 的共同收益，不是同条件全包 strip 对比，更不是安装占用降幅。
+- 旧 v34 同 ARM64 ELF：54,194,168 bytes → 37,349,816 bytes，减少 **16,844,352 bytes／31.0815%**。旧库本来就没有 `.debug_*`，主要移除了其静态符号/字符串表；两版还包含正常产品源码差异，不能将此数字描述为严格控制变量的 strip-only 实验。
+
+### 实际 UI 内容与候选来源补证
+
+未将原 checker 的路径存在性扩大解释为完整内容证明。对此实例，reviewer 另做只读内容核对：读取现有 Tauri `tauri-codegen-assets`，以 Node 内置 Brotli 解压，再将当前 `web/dist-mobile` 内容按 SHA-256 匹配，并在 **已确认与 APK 一致的主库** 中寻找相应压缩字节。
+
+1. dist 共 **422 个文件**。其中 **421 个**（包括 JS/CSS、图片及 notice 等）与解压后的 codegen 文件逐字节相等，且每份对应的压缩字节均实际存在于 APK 主库，不只是缓存里有文件。
+2. 剩余 `mobile.html` 原文 681 bytes，经 Tauri HTML 解析/序列化为 665 bytes。独立 HTMLParser 规范化布尔属性与空白后，20 个标签/属性/文本事件完全一致；该 HTML 的实际 Brotli 字节同样在 APK 主库。主 JS `mobile-DN6VTFE4.js`、preload `markdown-PPMuno5o.js`、CSS `mobile--F7r0Gin.css` 均与本轮 Vite 输出一致。
+3. 构建日志首行记录完整候选 SHA，记录 canonical release `debug=0, strip=symbols`、一次 beforeBuildCommand、来自本 WT 的 anywork-mobile 编译、共享 target→JNI symlink→最终 split APK 路径及 checker 成功结束。实际 ZIP 主库、共享 target 主库和 Gradle APK→最终 APK 的哈希链吻合。
+4. APK 主库实际存在 `fa47cc5` 引入的 `MOBILE_COORDINATION_CONFIG_FETCH_FAILED`、`MOBILE_COORDINATION_REGISTRATION_FAILED`、`MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED` 三个字符串；在旧 v34 的同 ABI 主库均不存在，进一步排除直接复用旧 v34 Rust 库的情况。此检查不是对 forced-refresh 运行语义的重新验收。
+
+这些内容、产物、日志与受控源码关系补足了此候选的实际构建来源证据；没有声称获得可复现构建或独立签名的供应链 attestation。**N1 所述通用 checker 的继承边界仍成立**，不会因这个候选有额外内容验证而自动关闭。
+
+### R8、lint 与 JVM：审阅已有结果，未重新执行
+
+原始 `artifacts/arm64-split-strip-release.log` 从 candidate SHA 到最终 APK 路径连续；作者记录 canonical 命令 `bash scripts/build-android.sh --release --target aarch64`，398.19 秒退出 0。独立检查结果文件与包内元数据：
+
+- R8 mapping 声明 compiler **9.3.16**、min_api=26；实际 `classes.dex` 含 `~~R8` marker，compilation-mode=`release`、r8-mode=`full`、version=`9.3.16`，pg-map-id 与 mapping 的 SHA-256 ID **`9b10c54b9cdd85c8454fef03d22a9e4f9e3aee1c238e6df679cb6d1c3fa2070d`** 完全一致。因此不仅是目录残留一个 mapping 文件。
+- mapping mtime 为当日本地 10:11:33，当前 APK 为 10:12:27，lint XML 为 10:12:27，处于本轮实际构建窗口内；时间证据仅作为哈希/DEX binding 的辅助。
+- 直接解析 lint XML：**0 errors、23 warnings、1 hint**，与文本报告及日志的 `lintArm64Release` 成功一致，不把 warning 写成零。
+- 直接解析本轮 JUnit XML：system **11**、auth **8**、patched core **7**；合计 **26 tests／0 failures／0 errors／0 skipped**。日志明确 App `testUniversalDebugUnitTest NO-SOURCE`，不虚增 App 测试覆盖。
+- canonical checker 日志明确为精确 ARM64 的身份、当前 UI keys、证书及 ELF/ZIP 对齐通过。由于临时 keystore 已删除，reviewer 没有为重跑 release checker 重建密钥或改用 debug 绕过证书校验，而是分别只读验证了真实签名、证书摘要、身份和包内容。
+
+### 签名与未测边界
+
+实际候选证书 DN 为 `CN=AnyWork APK Size Test Only`，SHA-256 **`d0bf4441e55318f2a9e632f85e0f666b73412b1f0b015ddb313c4cb3a51e31da`**，与作者已删除临时 JKS 前记录的摘要一致。只读核对旧 v34 的正式证书 SHA-256 为 **`88b43f83632002fbeddd23a286eabee39c5ada0fa1b037d6ff32b9986a67acb8`**，两者不同。
+
+因此：候选签名本身有效，**不具备证明正式覆盖升级的证书身份**；保留的 0.1.34/code36 也与旧 v34 相同，不能当作新递增发行。未安装、上传或运行该 APK，未读取正式 keystore、业务账号、设备或 Claude 会话。没有替另外三个 ABI、正式矩阵、首次 presence、实体设备或真实授权恢复作通过声明。
+
+本增量小证据保存于 ignored `artifacts/independent-review/arm64-94609a7/`：`independent-verification.json`、`ui-content-binding.json`、`ui-r8-source-binding.json`、`packaged-source-metadata.json`、候选/基线 readelf 与 dynexports、真实 badging/manifest/signing/zipalign 记录和 canonical 日志摘录。未复制 APK/大型 ELF，未建立新的编译 sandbox 或 target 缓存。Git 本次仍只提交独立审查报告。
+
+增量结论：**实际 ARM64 临时签名 Release 成包 PASS；新四 ABI 正式发行验收仍保持待 remote matrix 和正式身份补证。**
