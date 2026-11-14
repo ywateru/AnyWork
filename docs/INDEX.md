@@ -1,6 +1,6 @@
 # Documentation index
 
-- [Android v0.1.38 设备读取卡住](plan/tasks/android-device-loading.md)：TLS verifier 初始化修复已通过同签名实体覆盖验证，永久 loading 消失、40 项 Native 测试通过；目录返回后的在线状态 Unknown 仍在排查，工作区连接未通过。
+- [Android v0.1.38 设备读取卡住](plan/tasks/android-device-loading.md)：同签名实机验证关闭永久 loading；后续原生错误确认为协调配置读取失败，手机蜂窝到该域名 TCP 超时。41 项 Native 测试通过，手机保留修复/诊断包；工作区连接仍待可达网络或服务入口验证。
 
 - [Android APK 体积优化](plan/tasks/android-apk-size.md)：已随 [v0.1.38](https://github.com/ywateru/AnyWork/releases/tag/v0.1.38) 按四架构正式发布；ARM64 为 37.43 MiB，相对旧通用下载包减少 80.77%，[交付记录](plan/reviews/android-size-release.md)说明逐包验收与官网恢复。
 - [桌面首次登录后开启远程访问](plan/tasks/desktop-login-remote-first.md)：检查必须先在 Web 登录才能开启远程的初始化/授权差异，修复桌面独立登录流程。

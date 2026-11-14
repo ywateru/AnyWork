@@ -1,6 +1,6 @@
 # Android v0.1.38 登录后设备读取卡住
 
-状态：永久 loading 已在同签名 Release 候选上实机修复；设备目录返回后仍存在在线状态未知的第二个阻塞，继续调查，不宣称工作区连接通过。2026-11-14 用户明确授权用 ADB 操作已连接测试手机，并提供测试账号；本次真实账号/实体设备验收替代旧任务中不使用账号与手机的测试限制。既有电脑宿主和 Agent 会话保持运行。
+状态：本轮原因调查完成。永久 loading 已在同签名 Release 候选上实机修复；后续 Unknown 的原生失败阶段已确认为协调配置读取，手机蜂窝路线到协调域名的 TCP 连接超时，工作区连接仍未通过。2026-11-14 用户明确授权用 ADB 操作已连接测试手机，并提供测试账号；本次真实账号/实体设备验收替代旧任务中不使用账号与手机的测试限制。既有电脑宿主和 Agent 会话保持运行。
 
 ## 现场证据
 
@@ -18,7 +18,7 @@
 
 作者 worktree：`android-loading-investigation`；构建：`android-loading-build`；独立审查：`android-loading-verify`。共享主目录依赖与 Cargo target，避免并行 Cargo 构建和复制缓存。
 
-## 作者候选与独立源码审查（待同证书真机验收）
+## 第一候选与独立源码审查
 
 已定位源码链路：`refresh_inner` 先发布目录 loading，再由 `account_read` 使用 reqwest 0.13 请求 Account API；其默认 platform verifier 在 Android TLS 握手时需要 JVM 初始化。原入口只设置 rustls crypto provider，没有初始化 platform verifier，也未接入对应 JVM AAR。worker panic 跳过正常错误到 unknown 的收敛分支，与现场两次 panic 和永久 loading 一致；不据此宣称后续 coordination/工作区已通过。
 
@@ -41,3 +41,13 @@
 2026-11-14 父协调者授权最小安全诊断：先补契约，再在 unknown 卡片 details 中显示白名单固定错误码，并在原生刷新 unknown 终态记录固定码。不得记录 SDK 原始错误/响应/凭据，不增加调试桥、不启用 Release WebView debugging，不由作者操作 ADB；不先触发下一轮构建。当前公开 auth/config 主机侧只读检查 HTTP200、固定 issuer/client/resource/endpoints/scope/product/coordination 绑定一致，未提供 endpointPolicy 或 registrationAdmission，因此该服务当前走 SDK 旧 devices 路径；此公开检查不证明手机网络、账号授权或 Native registration 成功。
 
 后续显式 host 探针通过真实 pinned SDK `auth_config()` 校验、typed `AuthConfig` 序列化和生产 `EndpointPolicy::parse`，且未创建 device session；该外网测试默认 ignored，不给常规 CI 增加公开服务依赖。独立 verifier 的有限手机探针显示 OIDC IPv4 HTTP200/TLS 验证成功，而 coordination IPv4 DNS 已完成、TCP 建立前超时，IPv6 也超时；这是网络可达性差异证据，尚不是应用内部失败阶段的实测。后续用诊断候选确认 native 固定码，不修改基础设施、endpoint 或信任策略。
+
+## 最终原生阶段与交付
+
+第二候选 `f5a0ae09aa2314e1519fcbb98ed7705c63200ee6` 经[独立审查](../reviews/android-device-loading-independent.md)和[正式签名包核验](../reviews/android-device-loading-build.md)，再次保留数据覆盖安装成功。正常 SSO 登录与随后手动刷新均在原生日志和 UI 详情显示 `MOBILE_COORDINATION_CONFIG_FETCH_FAILED`，没有 verifier/Rust panic 或 Java fatal。该错误边界为 SDK `auth_config()` 请求/解析/校验，尚未进入应用策略、Native 注册与 devices/presence；固定码本身不细分 TCP/TLS/HTTP。
+
+结合同手机公开配置请求在 DNS 完成后、TCP 建立前超时，以及电脑端真实 SDK 配置检查通过，现有证据支持手机当前路线到协调域名的连接问题。不推断运营商或 Vercel 内部故障原因。临时开启 Wi-Fi 未自动连上已有网络，已恢复原关闭状态，未建立备用路线成功对照。后续恢复连接需要可达协调服务的手机网络或服务入口，再实际验证在线状态与工作区；本轮没有修改域名、DNS、代理/VPN、APN、桌面宿主或原有会话。
+
+诊断增量合入主分支后，完整 mobile Native 测试为 41 passed / 1 ignored（显式公网探针），日志在 ignored `artifacts/android-reading-devices-live/merged-mobile-diagnostics-tests.log`。UI 白名单单测与 Chrome 诊断 E2E 已由独立 verifier 通过。
+
+最终同签 ARM64 候选保留在 ignored `artifacts/anywork-android-arm64-loading-fix.apk`，39,274,111 bytes，SHA256 `106be0556f7cdb6f81823375f0656b287a301037b6bb968f63d1402698b8c736`，版本仍为 `0.1.38/code40`，已安装到测试手机。小型构建/作者证据另保留在 `artifacts/android-device-loading-evidence/`，实机证据为 `artifacts/android-loading-independent/`。两个候选 CI 均为 `publish=false`，ARM64 job 成功；其余非必要平台任务在所需 artifact 安全下载后主动取消，整轮不记为 success，没有新 tag 或发行。
