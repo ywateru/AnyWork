@@ -4,6 +4,12 @@ AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 
 
 **New in 0.1.34 / 本次更新**
 
+Android downloads are separated into ARM64, ARMv7, x86 and x86_64 APKs. Each installer includes only its target architecture; choose ARM64 for most current phones. The bundled Rust/Tauri 2 client and application identity are retained. Existing universal APKs remain available under their original release tags.
+
+Android 改为按 ARM64、ARMv7、x86 和 x86_64 分别提供 APK，每个安装包只包含对应架构，多数当前手机请选择 ARM64。保留完整 Rust/Tauri 2 客户端与原应用标识；旧版通用 APK 继续保留在原发行版中。
+
+**Previous release 0.1.34 / 上一版本**
+
 Android is rebuilt as a Rust/Tauri 2 client with a bundled mobile workspace and an embedded sign-in WebView. Account and device discovery, trust verification, encrypted workspace connections, HTTP streaming and terminal transport are owned by the native layer. Mobile navigation, onboarding, file saving/sharing, previews, account controls and system back behavior are integrated into the app. The application ID and release signing identity are retained for updates from the previous Android app.
 
 Android 重构为 Rust/Tauri 2 客户端，手机工作区随安装包提供，登录在应用内的 WebView 中完成。账号与设备发现、公钥信任核验、加密工作区连接、HTTP 流和终端传输由原生层管理；手机导航、引导、文件保存与分享、预览、账号操作和系统返回均集成在应用内。保留原应用标识与发行签名，支持从旧版 Android 应用更新。
