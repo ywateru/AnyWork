@@ -412,6 +412,10 @@ class PublisherTest(unittest.TestCase):
                 self.assertEqual(apks, publish.ANDROID_APKS if count == 23 else {'anywork-android.apk'})
                 self.pub.pages_only(tag)
                 self.assertEqual(self.api.pushed, [])
+                self.api.release['assets'].pop()
+                with self.assertRaisesRegex(publish.Failure,
+                        f'^Release must contain exactly the expected {count} assets$'):
+                    self.pub.verify_release(tag)
 
     def test_split_release_rejects_missing_duplicate_mixed_or_legacy_apks(self):
         tag = 'v0.1.35'
@@ -504,6 +508,7 @@ class PublisherTest(unittest.TestCase):
 
     def test_verification_rejects_digest_signature_site_and_missing_asset(self):
         tag = 'v' + publish.versions.current_version(self.root)
+        expected_count = len(publish.assets_for_tag(tag))
         self.api.published(tag, self.api.main)
         self.pub.verify_release(tag)
         self.api.release['assets'][0]['digest'] = 'sha256:' + '0' * 64
@@ -513,7 +518,9 @@ class PublisherTest(unittest.TestCase):
         with self.assertRaisesRegex(publish.Failure, 'another release'): self.pub.verify_site(self.api.release)
         self.api.bad_site = False
         self.api.release['assets'].pop()
-        with self.assertRaisesRegex(publish.Failure, '20 assets'): self.pub.verify_release(tag)
+        with self.assertRaisesRegex(publish.Failure,
+                f'^Release must contain exactly the expected {expected_count} assets$'):
+            self.pub.verify_release(tag)
 
     def test_duplicate_website_assets_are_rejected(self):
         tag = 'v' + publish.versions.current_version(self.root)
