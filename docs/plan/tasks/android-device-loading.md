@@ -1,6 +1,6 @@
 # Android v0.1.38 登录后设备读取卡住
 
-状态：现场故障已独立复现，源码修复已独立接受并合入；同签名 Release 候选构建与实体修复验收进行中。2026-11-14 用户明确授权用 ADB 操作已连接测试手机，并提供测试账号；本次真实账号/实体设备验收替代旧任务中不使用账号与手机的测试限制。既有电脑宿主和 Agent 会话保持运行。
+状态：永久 loading 已在同签名 Release 候选上实机修复；设备目录返回后仍存在在线状态未知的第二个阻塞，继续调查，不宣称工作区连接通过。2026-11-14 用户明确授权用 ADB 操作已连接测试手机，并提供测试账号；本次真实账号/实体设备验收替代旧任务中不使用账号与手机的测试限制。既有电脑宿主和 Agent 会话保持运行。
 
 ## 现场证据
 
@@ -27,3 +27,9 @@
 精确修复 `b00464a6df98e9ca61e526d89a332f0acd921b93` 已通过[独立源码与实体基线审查](../reviews/android-device-loading-independent.md)，合并为 `8cae9e8`。合并主分支实际执行 `cargo test --locked --offline -p anywork-mobile --lib`，40 passed / 0 failed，日志在 ignored `artifacts/android-reading-devices-live/merged-mobile-tests.log`。独立强停/正常 SSO 登录后，原版再次出现同一 panic 与 loading，确认不是仅有旧截图。
 
 现有 Release workflow 以 `publish=false`、候选分支运行 [43570167244](https://github.com/ywateru/AnyWork/actions/runs/43570167244)，保持 `0.1.38/code40` 仅作同签名测试候选；没有创建 tag、更新现有发行附件或宣称实体修复已通过。
+
+## 第一候选实体结果
+
+[构建核验](../reviews/android-device-loading-build.md)和[独立实机记录](../reviews/android-device-loading-independent.md)已合入：同证书 `install -r` 成功，保留数据，正常 SSO 登录和 Account API 设备目录读取完成，手动刷新可用且能结束。旧 verifier panic、启动初始化失败、Java fatal 与 JNI 类错误均为 0。
+
+随后界面显示电脑记录但在线状态 Unknown，连接按钮为“等待状态确认”。没有绕过在线状态/身份门禁，也未建立工作区连接。作者继续定位 Native SDK 配置、注册、presence 阶段；这是永久 loading 解除后才可观测到的后续失败，不将其混写成第一修复失败或已完整恢复。
