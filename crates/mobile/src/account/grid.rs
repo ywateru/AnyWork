@@ -44,12 +44,7 @@ impl Authorization {
                     .is_some_and(|bound| std::ptr::eq(bound.as_ref(), client))
                     && !request.cancel.is_cancelled()
                     && request.generation == client.snapshot().generation
-                    && request.min_validity == client.config().auth_min_validity
-                    && request.force_refresh
-                        == matches!(
-                            request.reason,
-                            cybergrid_sdk::AuthRequestReason::AuthorizationRejected
-                        ),
+                    && request.min_validity == client.config().auth_min_validity,
                 "MOBILE_ACCOUNT_CHANGED"
             );
             ensure!(
@@ -65,6 +60,9 @@ impl Authorization {
         handle.ensure_epoch(self.epoch).await?;
         // Do not race/cancel this future after dispatch: the Kotlin operation
         // serializes and retains any rotated grant independently of its caller.
+        // The bound SDK also forces refresh on natural session expiry and
+        // admission recovery. This is a cache instruction, not an identity
+        // assertion tied exclusively to AuthorizationRejected.
         let grant = handle
             .token(
                 TokenResource::Coordination,
@@ -155,7 +153,7 @@ pub(super) async fn devices(handle: &Handle, epoch: u64, subject: &str) -> Resul
         .client
         .auth_config()
         .await
-        .map_err(|_| anyhow::anyhow!("MOBILE_COORDINATION_UNAVAILABLE"))?;
+        .map_err(|_| anyhow::anyhow!("MOBILE_COORDINATION_CONFIG_FETCH_FAILED"))?;
     let policy = EndpointPolicy::parse(&serde_json::to_value(&configuration)?, &handle.0.config)?;
     handle.ensure_epoch(epoch).await?;
     if !directory.registered {
@@ -165,7 +163,7 @@ pub(super) async fn devices(handle: &Handle, epoch: u64, subject: &str) -> Resul
             .client
             .login_with_auth_provider("AnyWork Android")
             .await
-            .map_err(|_| anyhow::anyhow!("MOBILE_COORDINATION_UNAVAILABLE"))?;
+            .map_err(|_| anyhow::anyhow!("MOBILE_COORDINATION_REGISTRATION_FAILED"))?;
         if session.user.id != subject
             || session.purpose != "device"
             || session.app_id != handle.0.config.client_id
@@ -184,7 +182,7 @@ pub(super) async fn devices(handle: &Handle, epoch: u64, subject: &str) -> Resul
         .client
         .devices()
         .await
-        .map_err(|_| anyhow::anyhow!("MOBILE_COORDINATION_UNAVAILABLE"))?;
+        .map_err(|_| anyhow::anyhow!("MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED"))?;
     handle.ensure_epoch(epoch).await?;
     GridDevice::parse(&json!({"devices":devices}), &policy)
 }

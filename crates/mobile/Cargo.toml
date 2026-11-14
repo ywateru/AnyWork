@@ -41,6 +41,7 @@ tauri-build = { version = "=2.7.4", features = [] }
 cybergrid-sdk = { git = "https://github.com/ywateru/CyberGrid.git", rev = "f2a3961536e5c69b13c7dbc661953d9243becbae" }
 
 [dev-dependencies]
+cybergrid-sdk = { git = "https://github.com/ywateru/CyberGrid.git", rev = "f2a3961536e5c69b13c7dbc661953d9243becbae" }
 axum = { version = "0.8", features = ["ws"] }
 rcgen = "0.13"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

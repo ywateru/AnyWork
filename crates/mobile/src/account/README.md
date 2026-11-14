@@ -31,6 +31,9 @@ client identity, issuer, resource, scope, SDK generation/cancellation and accoun
 epoch before and after acquiring a resource token from Kotlin. The SDK never
 receives a refresh token; no CredentialStore, browser/device login, credential
 import, provider executable, STUN or iroh endpoint is enabled by this lane.
+The SDK's `force_refresh` flag is passed to the native token owner independently
+of its reason: natural session expiry and admission recovery can request a
+forced refresh as well as an authorization rejection.
 
 The SDK implements Native `/auth/config`, admission challenge/admit, Native
 `/auth/exchange`, real ephemeral certificate identity, device lease/heartbeat,
@@ -48,8 +51,10 @@ disabled iroh does not remove its compile dependencies. Shell owner reported a
 real `cargo check --offline --locked --target aarch64-linux-android -p
 cybergrid-sdk` success, NDK 27.2/clang API26, debug=0/incremental=0; this verifies
 the SDK dependencies, not the complete app or a production login. No platform
-patch was needed. On non-Android hosts, this module returns explicit
-`SYSTEM_UNAVAILABLE` for Native coordination rather than simulating a session.
+patch was needed. Non-Android production builds return explicit
+`SYSTEM_UNAVAILABLE` for Native coordination. Host tests compile the same
+`grid.rs` with the same pinned SDK through a test-only dependency, and use
+loopback HTTP rather than this stub.
 
 The separate Account API token has no resource and includes the granted
 `custom_data` scope. Only fixed `/api/my-account` is used. Replies are bounded,
@@ -65,6 +70,9 @@ or Native directory fetch is `unknown`, not empty/offline. Connection targets
 require a current ready directory, correct business port and a canonical HTTPS
 endpoint permitted by the Native server policy (or its supported Quick Tunnel
 pattern). JS supplies a device reference, never a URL or token.
+The redacted snapshot retains fixed failure codes for Native config fetching,
+binding validation, registration, directory fetching and directory/endpoint
+parsing. SDK error strings and service response bodies are never projected.
 
 ## Validation boundary
 
@@ -73,8 +81,12 @@ checks. It covers late login after cancellation, unknown rotation retirement,
 snapshot redaction, schema limits, first/changed key confirmation, no pin on
 failed handshake, stale commit rejection, scope isolation, atomic pin loading,
 Native config bindings, endpoint restrictions, rename/remove preservation and
-write readback conflict. These are core/HTTP fixtures, not live Logto or Native
-registration acceptance. Plugin lifecycle tests use the pinned SDK Activity in
+write readback conflict. `grid_tests.rs` also drives the actual pinned Native SDK
+through config, optional admission, exchange, ephemeral identity/publication and
+device querying. It covers session-expiry recovery with a forced token refresh,
+owner reuse, fixed failure stages, subject mismatch and fail-closed targets.
+These loopback fixtures are not live Logto or production Native registration
+acceptance. Plugin lifecycle tests use the pinned SDK Activity in
 Robolectric. Full APK compilation, emulator/device behavior, real registered
 callback login and production device directory acceptance must be reported
 separately; no existing user account has been operated during development.

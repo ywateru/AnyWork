@@ -14,11 +14,11 @@ use tauri::{Emitter, Runtime};
 use tauri_plugin_mobile_auth::{MobileAuthExt, Snapshot as NativeSnapshot};
 use tokio::sync::{Mutex, OnceCell};
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", test))]
 mod grid;
 mod trust;
 mod types;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", test)))]
 mod grid {
     use super::*;
     pub(super) struct NativeDirectory;
@@ -703,8 +703,13 @@ impl Handle {
             } else {
                 grid::devices(self, epoch, &subject).await
             };
-            let unknown = online.is_err();
-            if let Ok(grid) = online {
+            // Retain only the boundary's fixed public error code. Never expose
+            // an SDK error, service response, URL or authorization material.
+            let (online, failure) = match online {
+                Ok(grid) => (Some(grid), None),
+                Err(error) => (None, Some(public_error(error))),
+            };
+            if let Some(grid) = online {
                 for record in &mut records {
                     let remote = grid
                         .iter()
@@ -713,11 +718,11 @@ impl Handle {
                     record.gateway_url = remote.and_then(|g| g.gateway.clone());
                 }
             }
-            Ok::<_, anyhow::Error>((records, unknown))
+            Ok::<_, anyhow::Error>((records, failure))
         }
         .await;
         self.ensure_epoch(epoch).await?;
-        let (records, unknown) = match result {
+        let (records, failure) = match result {
             Ok(value) => value,
             Err(error) => {
                 let mut state = self.0.state.lock().await;
@@ -735,6 +740,7 @@ impl Handle {
                 return Ok(snapshot);
             }
         };
+        let unknown = failure.is_some();
         let scope = self.scope_id().await?;
         let hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&records)?));
         let devices = {
@@ -777,11 +783,7 @@ impl Handle {
         } else {
             DirectoryState::Ready
         };
-        state.snapshot.error_code = if unknown {
-            Some("COORDINATION_UNAVAILABLE".into())
-        } else {
-            state.profile_warning.clone()
-        };
+        state.snapshot.error_code = failure.or_else(|| state.profile_warning.clone());
         if unknown {
             state.lifetime.cancel();
         }

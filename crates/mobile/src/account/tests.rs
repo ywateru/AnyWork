@@ -21,6 +21,7 @@ fn native(generation: u64, status: &str) -> NativeSnapshot {
 }
 #[derive(Default)]
 struct Backend {
+    token_requests: std::sync::Mutex<Vec<(u64, bool, bool, u64)>>,
     fail_token: AtomicBool,
     profile_warning: AtomicBool,
     started: tokio::sync::Notify,
@@ -58,11 +59,15 @@ impl AuthBackend for Backend {
     fn token(
         &self,
         generation: u64,
-        _: bool,
-        _: bool,
-        _: u64,
+        resource: bool,
+        force: bool,
+        validity: u64,
     ) -> AuthFuture<'_, tauri_plugin_mobile_auth::AccessGrant> {
         Box::pin(async move {
+            self.token_requests
+                .lock()
+                .unwrap()
+                .push((generation, resource, force, validity));
             if self.fail_token.load(Ordering::SeqCst) {
                 bail!("fixture unknown rotation")
             }
@@ -460,7 +465,8 @@ async fn server(
 async fn account_rename_and_remove_preserve_unknown_fields_and_verify_writes() {
     let (url, data, task) = server(account_data(), false).await;
     let (handle, _) = handle(Config {
-        endpoint: url,
+        endpoint: url.clone(),
+        grid_url: url,
         ..Config::default()
     });
     signed_in(&handle).await;
@@ -476,7 +482,7 @@ async fn account_rename_and_remove_preserve_unknown_fields_and_verify_writes() {
         .await
         .unwrap();
     assert_eq!(renamed.devices[0].label, "Renamed");
-    assert!(renamed.directory_state == DirectoryState::Unknown); // host has no native broker
+    assert!(renamed.directory_state == DirectoryState::Unknown); // Account-only fixture has no Native API.
     {
         let data = data.lock().await;
         assert_eq!(data["customData"]["unrelated"]["retain"], true);
@@ -508,7 +514,8 @@ async fn account_rename_and_remove_preserve_unknown_fields_and_verify_writes() {
 async fn account_write_readback_conflict_is_not_reported_as_success() {
     let (url, _, task) = server(account_data(), true).await;
     let (handle, _) = handle(Config {
-        endpoint: url,
+        endpoint: url.clone(),
+        grid_url: url,
         ..Config::default()
     });
     signed_in(&handle).await;
@@ -532,7 +539,8 @@ async fn account_write_readback_conflict_is_not_reported_as_success() {
 async fn userinfo_warning_preserves_owner_and_retries_on_refresh() {
     let (url, _, task) = server(json!({"id":"fixture-subject","customData":{}}), false).await;
     let (handle, backend) = handle(Config {
-        endpoint: url,
+        endpoint: url.clone(),
+        grid_url: url,
         ..Config::default()
     });
     signed_in(&handle).await;
@@ -550,3 +558,6 @@ async fn userinfo_warning_preserves_owner_and_retries_on_refresh() {
     assert!(snapshot.error_code.is_none());
     task.abort();
 }
+
+#[path = "grid_tests.rs"]
+mod native_grid;
