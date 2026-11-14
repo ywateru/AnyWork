@@ -1,6 +1,6 @@
 # Android APK 体积优化
 
-状态：源码已独立接受并合入 main，等待账号/连接修复后的统一成包及发行验收。用户反馈 v0.1.34 的公开 APK 过大，要求优化安装包。
+状态：四架构独立 APK 已随 [v0.1.38](https://github.com/ywateru/AnyWork/releases/tag/v0.1.38) 正式发布，官网已更新四个下载入口；[交付记录](../reviews/android-size-release.md)列出实际大小、精确源码门禁与验收边界。用户反馈 v0.1.34 的公开 APK 过大，要求优化安装包。
 
 基线：main `bb75bf7`，v0.1.34 APK 为 204,082,412 bytes。先测量正式包 ZIP 条目、原生 ELF、DEX 和随包界面的实际占用，再选择优化，不把压缩后的下载大小等同于安装占用。
 
@@ -12,6 +12,6 @@
 
 作者 Boole 在隔离工作树完成测量、构建/checker 实现及实际 Release 构建；McClintock 负责发行/官网接线与相应测试；Mendel 独立审查精确提交与包内容。验收需包含具体前后字节数、各 ABI 库占用、签名/身份/随包资产/对齐、R8/lint/JVM 检查，明确测试签名候选与正式发行的区别。无需真实账号、物理设备或 Claude Desktop 真机测试。
 
-交付记录与证据待验收后补充；构建缓存、下载包、签名材料不提交。
+构建缓存、下载包、签名材料不提交。正式四包分别为 ARM64 37.43 MiB、ARMv7 27.24 MiB、x86 41.69 MiB、x86_64 40.57 MiB；相对旧通用下载包减少 78.58%～86.01%，不将其等同于安装后占用变化。
 
 源码验收：[独立审查](../reviews/android-split-build-independent.md)接受 build `e743029` 与发行/官网 `6c08d21`。实际 Gradle flavor/输出/任务解析、26 项 JVM 测试、checker 8 项、静态下载 4 项、publisher 33 项及双语浏览器检查通过；真实旧版 v0.1.34 的 20/19 附件契约只读核验通过。小型 Android cdylib 验证 release strip 保留动态 JNI 符号及 16 KiB 对齐。以上不等同于最终四包实际构建或真实账号验收；最终体积待统一 Release 构建后记录。

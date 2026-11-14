@@ -1,6 +1,6 @@
 # Documentation index
 
-- [Android APK 体积优化](plan/tasks/android-apk-size.md)：针对 v0.1.34 的正式 APK 测量原生库与打包占用，保留完整功能和四 ABI 后优化，并独立验收实际 Release 产物。
+- [Android APK 体积优化](plan/tasks/android-apk-size.md)：已随 [v0.1.38](https://github.com/ywateru/AnyWork/releases/tag/v0.1.38) 按四架构正式发布；ARM64 为 37.43 MiB，相对旧通用下载包减少 80.77%，[交付记录](plan/reviews/android-size-release.md)说明逐包验收与官网恢复。
 - [桌面首次登录后开启远程访问](plan/tasks/desktop-login-remote-first.md)：检查必须先在 Web 登录才能开启远程的初始化/授权差异，修复桌面独立登录流程。
 - [手机设备状态与连接调查](plan/tasks/mobile-device-status.md)：截图对应网页设备页；已修复独立的 Native 恢复缺陷，并补充安全阶段详情，现场失败根因待阶段码确认。
 

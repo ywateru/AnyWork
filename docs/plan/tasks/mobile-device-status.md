@@ -14,4 +14,4 @@ Native `fa47cc5` 的[独立审查](../reviews/mobile-native-recovery-independent
 
 Web `b67da93`、门禁 `6e36f197` 的[独立审查](../reviews/mobile-web-presence-independent.md)接受折叠阶段详情、允许列表错误码/HTTP 状态及不携带凭据的公开配置检查链接。独立 23 项定向单测、10 个真实 AccountApp 浏览器场景通过，包含 Pixel 7 仿真中的各阶段失败和恢复；失败仍保持 unknown，公开检查成功不等于账号授权成功。新组件回归已进入 `scripts/check.sh`。CSP/CORS、当前跨域缓存、开发机代理/直连与旧内建 API 假设均做公开检查，未得到截图根因证据；未修改 DNS、服务授权或 vendor SDK。
 
-下一现场证据仅需手机刷新后“查看状态查询详情”中的固定阶段/错误码，必要时查看无账号公开配置是否可达；不需要 HAR、登录凭据或真实会话内容。官网先行诊断部署与正式新版发行结果待交付记录补充。
+下一现场证据仅需手机刷新后“查看状态查询详情”中的固定阶段/错误码，必要时查看无账号公开配置是否可达；不需要 HAR、登录凭据或真实会话内容。修复已随 [v0.1.38](https://github.com/ywateru/AnyWork/releases/tag/v0.1.38) 正式发行，官网也已更新为同精确源码的诊断界面，见[统一交付记录](../reviews/android-size-release.md)。先更新并重启电脑宿主，再使用对应架构 Android APK；仍不把发行验包或仿真网页通过扩展为截图现场故障已解决。

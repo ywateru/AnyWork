@@ -28,3 +28,24 @@ v0.1.36 准备源码 `6552b19e814984f215851f9f95816677c62501c4` 的 [Checks](htt
 v0.1.37 准备源码 `f3ac0db041ffdaaeeca8397bb08b9c154c8cd468` 的 [Checks](https://github.com/ywateru/AnyWork/actions/runs/43551761469)中，Windows、macOS、Android、容器及 server-web 前置检查通过；最后普通浏览器回归为 677 passed、1 skipped、2 failed。两项失败来自同一通知历史回放场景，分别在 desktop 等待回复和 android-web 等待审批按钮时超时。发布器已停止，未推送 tag 或发行附件。下一步以失败 trace 判断测试同步或产品回归，修复须经作者验证与非作者审查后再进入新精确源码门禁。
 
 两份 trace 均确认用例 setup 在扣住 global poll 后读到了尚未包含目标事件的早期 history，因而在释放 poll 前等待其已扣住的输出。`a3ff87c` 仅为此测试加入真实 history 就绪屏障，透传原响应；不修改产品、夹具输出、超时或原有断言。[作者验证](notification-replay-setup.md)为两项目各 5 次通过，[独立审查](notification-replay-independent.md)为各 3 次通过，并复核新 pending 先恢复、不同旧 turn completion 后回放的顺序。修正已合入，新版本继续执行完整精确源码 CI。
+
+## v0.1.38 正式发行
+
+2026-11-14，[v0.1.38](https://github.com/ywateru/AnyWork/releases/tag/v0.1.38)已正式发布，精确源码 `ef0a7140e420888ea38959fa60cbef4f2a2e84f8`。[Checks 43555523286](https://github.com/ywateru/AnyWork/actions/runs/43555523286)五项全部成功，包含普通浏览器 679 passed／1 既有 skipped、手机专项及安全账号设备状态回归。[Release 43557871642](https://github.com/ywateru/AnyWork/actions/runs/43557871642)五个桌面目标、四个独立 Android 目标及 Web／源码全部成功，正式附件 23 项、SHA256SUMS 22 条，没有 universal 或重复 alias。
+
+以下为正式附件大小；节省比例相对 v0.1.34 四 ABI 通用包 204,082,412 bytes，表示下载体积，不等同于安装后占用：
+
+| APK 架构 | bytes | MiB | 下载减少 |
+| --- | ---: | ---: | ---: |
+| ARM64 | 39,251,019 | 37.43 | 80.77% |
+| ARMv7 | 28,558,341 | 27.24 | 86.01% |
+| x86 | 43,714,429 | 41.69 | 78.58% |
+| x86_64 | 42,539,280 | 40.57 | 79.16% |
+
+[四包实际独立验收](v38-release-independent.md)通过：全文 SHA-256 均匹配正式 SHA256SUMS 和 GitHub digest；四包分别只有目标 ABI，签名有效且证书与 v0.1.34 一致，应用 ID 为 `dev.remoteagent.app`、versionName 0.1.38、versionCode 40、minSdk 26。ELF/ZIP 16 KiB 对齐、符号裁剪及动态导出均通过；四包实际解压出的 422 个嵌入资产的压缩与解码摘要一致，并绑定精确发行 job 的 Vite 输出及受跟踪公开资产。以上不宣称独立可重现构建。保留原签名及应用身份是升级条件验证，不把它描述为已经完成实体设备覆盖安装或真实账号业务测试。使用新版 Android 前，应同步更新并重启电脑宿主；真实账号故障仍按新诊断阶段继续排查。
+
+## 官网正式恢复
+
+正式网站 `https://anywork.aixgg.com` 已以相同精确源码更新为 0.1.38，双语页面提供四架构下载，ARM64 优先推荐。部署为 `https://anywork-c5audrdwu-yywater68-1778s-projects.vercel.app`；从生产入口读回版本、23 附件元数据、四架构链接、应用模块、公开配置、CSP 与源码归档均匹配。归档 1038 个 Git blob 与发行源码逐一一致。`publish.py --verify-existing v0.1.38` 返回 exit 0／verified=true。
+
+本次仍由既有本机 Vercel CLI OAuth 完成手工恢复；自动网站工作流 [43559186736](https://github.com/ywateru/AnyWork/actions/runs/43559186736)的失效 token 问题未修复。没有改 secrets、旧发行附件、tag 或发布器状态；发布器私有阶段继续保留 `pages`，不能将本机部署成功记成该工作流成功。上传前后均核对精确源码与公开配置，清理本轮生成的 env、输出及依赖链接。部署证据为 ignored `artifacts/v38-site-final-deploy/`；[独立匿名验收](v38-release-independent.md)确认精确源码/版本、双语四架构入口、23 项官方附件元数据、公开配置/CSP 与安全诊断模块均通过。

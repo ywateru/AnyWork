@@ -88,4 +88,6 @@ v0.1.32的实际Release发现可选SLF4J binding诊断，修复后v0.1.33已通�
 
 正式[v0.1.34](https://github.com/ywateru/AnyWork/releases/tag/v0.1.34)现已完成精确源码Checks和全部Release目标，Android四ABI、R8、Release lint/JVM及完整APK checker实际通过。公开APK为versionName0.1.34、versionCode36；下载、摘要和官网恢复证据见[最终交付记录](plan/reviews/android-native-merged.md)。这不扩大此前隔离候选的运行验收范围；真实账号业务和正式覆盖安装仍另行验收。
 
+后续正式 [v0.1.38](https://github.com/ywateru/AnyWork/releases/tag/v0.1.38) 已按 ARM64、ARMv7、x86、x86_64 分别提供 APK，versionCode 40，四个 Release 任务及统一发行门禁全部通过；不再生成新 universal 或重复 alias。实际下载大小、逐包独立验收与官网恢复见[分架构交付记录](plan/reviews/android-size-release.md)，旧 v0.1.34 原通用包保持不变。包身份/证书升级条件验证与实际实体设备覆盖安装分别记录。
+
 transport 的显式 ring Connector 在双 provider、未初始化 global provider 的独立进程中通过6项真实 loopback WSS测试，包括可信CA exchange、生产WebPKI拒绝未知CA、可信CA但主机名错误拒绝。shell 在原生入口安装 ring 默认 provider 保护其它SDK调用；transport 不依赖该全局初始化。没有禁用证书或主机名验证。
