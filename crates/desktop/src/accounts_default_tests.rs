@@ -858,7 +858,7 @@ async fn sdk_forces_refresh_only_after_first_definitive_invalid_identity() {
 async fn provider_rejects_every_mismatched_binding_and_invalid_request_before_rotation() {
     let f = Fixture::new().await;
     let (grid, authorization) = f.grid().await;
-    for bad in 0..13 {
+    for bad in 0..11 {
         let mut request = f.request(&grid);
         match bad {
             0 => request.issuer.push_str("/other"),
@@ -871,11 +871,9 @@ async fn provider_rejects_every_mismatched_binding_and_invalid_request_before_ro
             }
             6 => request.min_validity = 0,
             7 => request.min_validity = 3601,
-            8 => request.force_refresh = true,
-            9 => request.reason = cybergrid_sdk::AuthRequestReason::AuthorizationRejected,
-            10 => request.generation += 1,
-            11 => request.cancel.cancel(),
-            12 => request.min_validity = 1,
+            8 => request.generation += 1,
+            9 => request.cancel.cancel(),
+            10 => request.min_validity = 1,
             _ => unreachable!(),
         }
         assert!(
@@ -906,6 +904,35 @@ async fn provider_rejects_every_mismatched_binding_and_invalid_request_before_ro
     assert!(authorization.token(&grid, &request).await.is_err());
     assert_eq!(f.calls("POST /oidc/token"), 2);
     grid.disable_remote().await;
+    f.close().await;
+}
+
+#[tokio::test]
+async fn provider_freshness_is_independent_of_reason_and_always_rotates_the_owned_grant() {
+    let f = Fixture::new().await;
+    let (grid, authorization) = f.grid().await;
+    let mut request = f.request(&grid);
+    for reason in [
+        cybergrid_sdk::AuthRequestReason::Connect,
+        cybergrid_sdk::AuthRequestReason::CoordinationRecovery,
+        cybergrid_sdk::AuthRequestReason::AuthorizationRejected,
+    ] {
+        request.reason = reason;
+        for force in [false, true] {
+            request.force_refresh = force;
+            authorization.token(&grid, &request).await.unwrap();
+        }
+    }
+    assert_eq!(f.calls("POST /oidc/token"), 6);
+    assert_eq!(
+        authorization.owner.state.lock().await.grant.refresh,
+        "synthetic-rotated"
+    );
+    // A legitimate forced recovery cannot bypass manual-off intent.
+    authorization.owner.policy().invalidate(false);
+    assert!(authorization.token(&grid, &request).await.is_err());
+    assert_eq!(f.calls("POST /oidc/token"), 6);
+    grid.close().await.unwrap();
     f.close().await;
 }
 

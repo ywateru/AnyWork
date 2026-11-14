@@ -433,11 +433,6 @@ impl GridAuthorization {
             || client.snapshot().generation != request.generation
             || !(1..=3600).contains(&request.min_validity)
             || request.min_validity != client.config().auth_min_validity
-            || request.force_refresh
-                != matches!(
-                    request.reason,
-                    cybergrid_sdk::AuthRequestReason::AuthorizationRejected
-                )
         {
             bail!("ACCOUNT_TOKEN_REJECTED")
         }
@@ -460,6 +455,9 @@ impl GridAuthorization {
             bail!("ACCOUNT_TOKEN_REJECTED")
         }
         // Every request obtains a fresh token (there is no access-token cache).
+        // The SDK may request force_refresh for Connect/CoordinationRecovery
+        // too, e.g. after finite-admission session expiry. It is a freshness
+        // instruction, not an identity constraint tied to a particular reason.
         // Once dispatched, finish recording any rotation even if intent changes.
         let token = self.owner.refresh(&mut state, true).await?;
         self.current(client, request)?;
