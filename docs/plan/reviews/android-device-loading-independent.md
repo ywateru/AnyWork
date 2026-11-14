@@ -60,3 +60,18 @@ Samsung API28 实际结果：
 这组对照证明本次手机网络到 coordination 域名存在连接问题、同时登录域名可用；不把 shell curl 等同应用原生网络栈，不宣称已拿到 native stage/errorCode，亦不证明注册或 devices 请求曾成功。锁定 SDK 查询参数已按实际源码核对；此前使用 clientId 的初步请求不作为服务shape判断依据。
 
 安全小证据保存在原 ignored 目录的 public-network-summary.json、phone-public-network-family-summary.json、phone-coordination-final-summary.json 和 candidate-refresh-log-safe-summary.json；公开配置正文仅用于作者本地源码核对，不包含登录身份或认证头。后续作者将补固定码诊断，另行精确审查后才可获得原生终态依据。本轮有限网络探测已经结束。
+
+
+## 备用网络与最小诊断增量审查
+
+协调者授权使用已保存 Wi-Fi 做可逆对照。原状态为 Wi-Fi关闭、活动默认网络为蜂窝，未见全局HTTP代理或活动VPN。仅临时开启Wi-Fi，短窗口内未自动连上已有网络，默认路线保持蜂窝，无法进行备用路线的公开配置或原生刷新对照；随后关闭Wi-Fi并确认与原状态一致。未添加或选择网络、记录SSID/凭据、改变APN/VPN/代理。ignored alternate-route-original-state.json、alternate-route-enabled-state.json 与 alternate-route-restoration-summary.json 保存安全投影和恢复结果。
+
+独立接受精确诊断提交 `f5a0ae09aa2314e1519fcbb98ed7705c63200ee6`，十文件增量无阻断。此结论是安全诊断源码接受，不是下游presence修复：
+
+- Rust日志在当前epoch的Unknown终态、状态更新锁内取固定码，未直接格式化anyhow/SDK原始错误。映射仅返回静态常量，其余统一MOBILE_OPERATION_FAILED。没有新增请求、重试、调试桥或网络信任变化。
+- JS严格检查字符串类型并通过Set成员白名单，Unknown卡片只展示该返回值；未知属性对象、prototype名称、多行/URL/私密文本不会直接显示。无可用码提示重新检查；并非把raw snapshot或SDK响应展开。
+- Tao0.37.2 android/ndk_glue.rs::onFirstActivityCreate 创建日志pipe，dup2标准输出/错误，并以RustStdoutStderr tag转发Android日志，确认固定码eprintln有现成平台输出路径。实际新候选日志仍须实体确认。
+- 新公开SDK roundtrip测试默认ignored，常规CI不依赖外网；它使用生产默认配置、锁定SDK及真实serde/EndpointPolicy解析，且断言没有device session，不冒充注册或账号连通性验证。
+- 独立运行 `npm exec -w web -- vitest run src/mobile/account.test.ts`：1/1通过。独立Chrome运行 mobile E2E中“directory diagnostic details show only fixed codes and keep connection blocked”：1/1通过，验证固定码与未知私密值边界、最长码换行、刷新可用、连接禁用且无transport connect调用。未并发Cargo或重复公网探测。小型浏览器证据在根目录ignored android-loading-independent/diagnostic-source-browser/。
+
+第二个官方同签候选来源应为该精确提交；到达后保留数据覆盖安装，才能从终态UI/固定日志确认真实原生失败阶段。第一候选及上述TLS实体结论不受此诊断增量替代。
