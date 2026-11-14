@@ -7,6 +7,31 @@ plugins {
     id("rust")
 }
 
+// The JNI implementation must match the shim selected by the Rust lockfile.
+abstract class RustlsVerifierVersion : ValueSource<String, RustlsVerifierVersion.Params> {
+    interface Params : ValueSourceParameters {
+        val lockFile: RegularFileProperty
+    }
+
+    override fun obtain(): String {
+        val blocks = parameters.lockFile.get().asFile.readText().split("[[package]]")
+        val block = blocks.single { it.lineSequence().any { line -> line == "name = \"rustls-platform-verifier-android\"" } }
+        return Regex("(?m)^version = \"([^\"]+)\"$").find(block)?.groupValues?.get(1)
+            ?: error("rustls-platform-verifier-android version missing from Cargo.lock")
+    }
+}
+
+val rustlsVerifierVersion = providers.of(RustlsVerifierVersion::class.java) {
+    parameters.lockFile.set(layout.projectDirectory.file("../../../../../Cargo.lock"))
+}
+
+repositories {
+    maven {
+        url = uri("https://github.com/rustls/rustls-platform-verifier/raw/maven-archive/android-release-support/maven/")
+        content { includeModule("org.rustls", "rustls-platform-verifier") }
+    }
+}
+
 val tauriProperties = Properties().apply {
     val propFile = file("tauri.properties")
     if (propFile.exists()) {
@@ -82,6 +107,7 @@ rust {
 }
 
 dependencies {
+    implementation("org.rustls:rustls-platform-verifier:${rustlsVerifierVersion.get()}")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.activity:activity-ktx:1.10.1")

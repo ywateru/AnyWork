@@ -42,6 +42,8 @@ HTTP 上限与协议一致，32 KiB chunk，单体/连接缓冲有界，最多�
 
 ## Shell wire 与平台规则（Tauri 2.12.5 / CLI 2.12.4）
 
+Android 原生入口在创建账号 HTTP client 或启动 Tauri/后台请求前，用 Tao 已初始化的 JVM/Application context 初始化 rustls-platform-verifier。reqwest 0.13 使用 Android 系统信任验证；Gradle 必须携带与 Cargo.lock 中 Android shim 版本一致的官方 JVM AAR，Release R8 保留其 JNI 类。不得以跳过证书/主机名校验或替换为宽松 trust manager 处理初始化失败。初始化失败在启动边界显式终止，不让账号目录先进入 loading 后在 worker 中 panic。
+
 JS 使用公开 `window.__TAURI__.core.invoke(command, {request: DTO})`；无参命令省略第二参数。`app.withGlobalTauri=true` 提供 `event.listen` 和 `core.Channel`，PTY Channel 放在 `request.onEvent`。不使用 `__TAURI_INTERNALS__`。仅 main 本地 capability 授权账号/transport 和 mobile-system 的精确命令、core event listen/unlisten；auth Kotlin 插件无 JS guest 权限。build.rs 从同一命令列表生成 ACL，不给远程 origin 授权。
 
 随包入口 `https://tauri.localhost/mobile.html`、`frontendDist=../../web/dist-mobile`、`useHttpsScheme=true`。Rust WS 固定 Origin `https://tauri.localhost`，不接受 JS URL/Origin。业务 WebView 导航只接受此 origin；CSP 允许本地脚本、IPC、blob 图片/PDF，拒绝远程脚本、frame 及表单提交。外链通过 `plugin:mobile-system|open_external`，仅合法 HTTPS。
