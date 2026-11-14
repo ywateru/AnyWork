@@ -11,12 +11,20 @@ import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+ABI_ELF = {
+    'arm64-v8a': (2, 183),
+    'armeabi-v7a': (1, 40),
+    'x86': (1, 3),
+    'x86_64': (2, 62),
+}
 
 
-def check_elf(data):
+def check_elf(data, abi=None):
     if data[:4] != b'\x7fELF' or data[5] != 1:
         raise ValueError('Expected little-endian Android ELF')
     bits = data[4]
+    if abi is not None and (bits, struct.unpack_from('<H', data, 18)[0]) != ABI_ELF[abi]:
+        raise ValueError('Native ELF architecture does not match APK ABI: ' + abi)
     if bits == 2:
         offset = struct.unpack_from('<Q', data, 32)[0]
         stride, count = struct.unpack_from('<HH', data, 54)
@@ -38,10 +46,25 @@ def check_elf(data):
         raise ValueError('Native ELF contains no loadable segment')
 
 
+def check_native_layout(archive, abi):
+    native = [info for info in archive.infolist() if info.filename.startswith('lib/') and info.filename.endswith('.so')]
+    expected = f'lib/{abi}/libanywork_mobile.so'
+    libraries = [info for info in native if info.filename == expected]
+    if len(libraries) != 1:
+        raise ValueError('APK must contain exactly one ' + expected)
+    if any(not re.fullmatch(r'lib/' + re.escape(abi) + r'/[^/]+\.so', info.filename) for info in native):
+        raise ValueError('APK must contain only the requested ABI: ' + abi)
+    for info in native:
+        check_elf(archive.read(info), abi)
+    return libraries
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('apk', type=Path)
     parser.add_argument('--profile', choices=['debug', 'release'], required=True)
+    parser.add_argument('--abi', choices=list(ABI_ELF), required=True,
+                        help='Require exactly this ABI, including matching native ELF headers')
     args = parser.parse_args()
     sdk = Path(os.environ.get('ANDROID_HOME', os.environ.get('ANDROID_SDK_ROOT', str(Path.home() / 'Library/Android/sdk'))))
     tools = sdk / 'build-tools/36.0.0'
@@ -59,17 +82,11 @@ def main():
     if not notice.is_file() or 'Logto' not in notice.read_text():
         raise ValueError('Mobile bundle lacks the Logto SDK third party notice')
     with zipfile.ZipFile(args.apk) as archive:
-        libraries = [info for info in archive.infolist() if re.fullmatch(r'lib/[^/]+/libanywork_mobile.so', info.filename)]
-        if not libraries:
-            raise ValueError('APK lacks the mobile Rust library')
+        libraries = check_native_layout(archive, args.abi)
         for info in libraries:
             native = archive.read(info)
-            check_elf(native)
             if any(path not in native for path in ui_files):
                 raise ValueError('Native library lacks the built local asset keys: ' + info.filename)
-        for info in archive.infolist():
-            if info.filename.startswith('lib/') and info.filename.endswith('.so'):
-                check_elf(archive.read(info))
     subprocess.run([str(tools / 'zipalign'), '-c', '-P', '16', '4', str(args.apk)], check=True, capture_output=True)
     cert = subprocess.check_output([str(tools / 'apksigner'), 'verify', '--print-certs', str(args.apk)], text=True)
     digest = re.search(r'Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)', cert)
@@ -79,7 +96,7 @@ def main():
         certificate = subprocess.check_output(['keytool', '-exportcert', '-keystore', os.environ['ANYWORK_ANDROID_KEYSTORE'], '-alias', os.environ.get('ANYWORK_ANDROID_KEY_ALIAS', 'anywork'), '-storepass:env', 'ANYWORK_ANDROID_STORE_PASSWORD'], stderr=subprocess.PIPE)
         if digest[1].lower() != hashlib.sha256(certificate).hexdigest():
             raise ValueError('APK does not use the configured upgrade certificate')
-    print(f'Verified Android identity, bundled UI, native libraries, signing and 16 KiB alignment ({len(libraries)} ABI).')
+    print(f'Verified Android identity, bundled UI, native libraries, signing and 16 KiB alignment (1 ABI: {args.abi}).')
 
 
 if __name__ == '__main__':
