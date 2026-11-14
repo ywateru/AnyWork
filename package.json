@@ -13,6 +13,7 @@
     "typecheck": "npm run typecheck -w web",
     "test": "npm run test -w web",
     "test:e2e": "playwright test",
+    "test:e2e:account-presence": "node web/scripts/account-presence.check.mjs",
     "test:e2e:mobile": "playwright test --config e2e/mobile.config.ts",
     "format": "prettier --write web/src web/scripts web/vite.config.ts e2e playwright.config.ts",
     "format:check": "prettier --check web/src web/scripts web/vite.config.ts e2e playwright.config.ts",

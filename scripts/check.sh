@@ -46,6 +46,7 @@ python3 scripts/test-check-android-apk.py
 python3 scripts/publish-test.py
 python3 scripts/release-ci-test.py
 python3 scripts/container-smoke-script-test.py
+ANYWORK_ACCOUNT_PRESENCE_OUTPUT_DIR=test-results/account-presence npm run test:e2e:account-presence
 npm run test:e2e:mobile
 npm run test:e2e
 node scripts/desktop-updater-test.mjs

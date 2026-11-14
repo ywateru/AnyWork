@@ -1,12 +1,15 @@
 /** Render AccountApp with the installed Logto client and actual vendored Grid
  * SDK. Only HTTP/storage grants are synthetic; no real login, user or device.
- * PLAYWRIGHT_CHANNEL=chrome node web/scripts/account-presence.check.mjs */
+ * npm run test:e2e:account-presence (optional PLAYWRIGHT_CHANNEL=chrome) */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createServer } from "vite";
 import { chromium, devices, expect } from "@playwright/test";
 
-const output = path.resolve("artifacts/mobile-web-presence");
+const output = path.resolve(
+  process.env.ANYWORK_ACCOUNT_PRESENCE_OUTPUT_DIR ||
+    "artifacts/mobile-web-presence",
+);
 await mkdir(output, { recursive: true });
 const config = {
   VITE_LOGTO_ENDPOINT: "https://identity.fixture.invalid",
@@ -37,13 +40,14 @@ const server = await createServer({
   ),
   server: { host: "127.0.0.1", port: 0, open: false },
 });
-await server.listen();
-const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
-const browser = await chromium.launch({
-  channel: process.env.PLAYWRIGHT_CHANNEL || "chrome",
-});
+let browser;
 const results = [];
 try {
+  await server.listen();
+  const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
+  browser = await chromium.launch({
+    channel: process.env.PLAYWRIGHT_CHANNEL,
+  });
   for (const [mode, stage, code, locale = "zh-CN", mobile = true] of [
     ["healthy", null, null],
     ["config-network", "在线状态服务配置", "NETWORK_ERROR"],
@@ -72,7 +76,8 @@ try {
     });
     const page = await context.newPage();
     const errors = [],
-      calls = [];
+      calls = [],
+      publicChecks = [];
     let recovered = false,
       accountReads = 0;
     page.on("pageerror", (error) => errors.push(error.stack || error.message));
@@ -160,12 +165,31 @@ try {
         });
       if (url.pathname === "/oidc/token") return route.abort();
       if (url.pathname === "/api/v1/console/auth/config") {
-        if (active === "config-network") return route.abort();
+        const publicNavigation = request.isNavigationRequest();
+        if (publicNavigation) {
+          const headers = await request.allHeaders();
+          expect(request.method()).toBe("GET");
+          expect(url.origin).toBe(config.VITE_CYBERGRID_URL);
+          expect([...url.searchParams]).toEqual([
+            ["clientId", config.VITE_LOGTO_APP_ID],
+          ]);
+          expect(headers.authorization).toBeUndefined();
+          // This fresh fixture has no Grid-origin cookies. A link cannot
+          // prevent a real browser from sending that origin's own cookies.
+          expect(headers.cookie).toBeUndefined();
+          expect(headers.referer).toBeUndefined();
+          expect(request.postData()).toBeNull();
+          publicChecks.push(url.href);
+        }
+        // The explicit unauthenticated navigation succeeds independently of
+        // the synthetic business failure; it does not authorize that session.
+        if (!publicNavigation && active === "config-network")
+          return route.abort();
         return send({
           provider: "logto",
           issuer,
           clientId:
-            active === "config-mismatch"
+            !publicNavigation && active === "config-mismatch"
               ? "wrong-fixture"
               : config.VITE_LOGTO_APP_ID,
           resource: config.VITE_LOGTO_RESOURCE,
@@ -252,6 +276,27 @@ try {
           "/api/v1/console/auth/config?clientId=" +
           encodeURIComponent(config.VITE_LOGTO_APP_ID),
       );
+      const [response, popup] = await Promise.all([
+        context.waitForEvent("response", {
+          predicate: (response) =>
+            response.request().isNavigationRequest() &&
+            response.url().startsWith(config.VITE_CYBERGRID_URL + "/"),
+        }),
+        page.waitForEvent("popup"),
+        warning.getByRole("link").click(),
+      ]);
+      expect(response.status()).toBe(200);
+      await popup.waitForLoadState();
+      expect(popup.url()).toBe(publicChecks[0]);
+      expect(publicChecks).toHaveLength(1);
+      expect(await response.json()).toMatchObject({
+        clientId: config.VITE_LOGTO_APP_ID,
+      });
+      expect(await popup.evaluate(() => window.opener === null)).toBe(true);
+      await popup.close();
+      // A public GET returning 200 cannot promote unknown or enable a target.
+      await expect(open).toBeDisabled();
+      await expect(warning.locator("code")).toHaveText(code);
       await expect(warning).toContainText(
         locale === "en"
           ? "Reachability does not confirm account authorization."
@@ -289,6 +334,7 @@ try {
       mobileEmulation: mobile,
       passed: true,
       requests: calls,
+      publicChecks,
     });
     await context.close();
     console.log(mode + ": passed");
@@ -298,6 +344,9 @@ try {
     JSON.stringify(results, null, 2),
   );
 } finally {
-  await browser.close();
-  await server.close();
+  try {
+    await browser?.close();
+  } finally {
+    await server.close();
+  }
 }
