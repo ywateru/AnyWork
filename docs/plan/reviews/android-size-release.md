@@ -20,3 +20,7 @@
 v0.1.35 准备源码 `ecbce9ba3b274c265f8deae553a9957cba416e60` 的 [Checks](https://github.com/ywateru/AnyWork/actions/runs/43547818995)发现两项失败：Windows 测试引用 Unix-only 夹具，Linux Rust 1.100 严格 clippy 检查到新纳入 host 测试的 Android 协调代码。Android 与容器任务已通过；未推送 v0.1.35 tag、未发布该版附件。协调者停止了本地等待进程，保留私有发布进度及远端失败记录。
 
 两项最小修复已获[独立接受](v35-ci-rootfix-independent.md)：`e0fa9f6` 仅限制 Unix 夹具调用，保留跨平台 manager 核心断言；`3901bad` 合并等价条件，不改变 owner/授权顺序。后续使用发布器 `--new` 开始新精确源码版本，不通过盲目重试或覆盖 tag 绕过失败。正式四 ABI 包、发行证书升级兼容、全部附件与官网最终版本仍待下一轮记录。
+
+v0.1.36 准备源码 `6552b19e814984f215851f9f95816677c62501c4` 的 [Checks](https://github.com/ywateru/AnyWork/actions/runs/43549455074)中，Windows、macOS、Android 与容器全部成功；server-web 已通过 Rust/clippy、Web 单测及多项集成后，在 publisher 测试失败。其当前版本 fixture 随源码升到新 23 附件契约，一条缺件错误断言仍写死 20。该遗漏在旧 0.1.34 基线上不会失败，因此此前本地 33 passed 未能覆盖。没有创建 v0.1.36 tag 或发行附件。
+
+修正仅调整测试：按 fixture tag 验证完整缺件错误，并在已有版本表中明确断言旧 20、新 23 两类缺件拒绝；不放宽生产附件、摘要或签名门禁。[作者验证](publisher-version-fixture.md)与[独立审查](publisher-version-fixture-independent.md)在真实 0.1.36 源码复现 before 唯一失败、after 33 passed；独立明确资产集合的额外探针拒绝全部 135 次缺件与 12 次错架构/重复附件。已接受 `e711994`，合入后开始新的精确源码 Checks。
