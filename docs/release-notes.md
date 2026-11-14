@@ -8,6 +8,14 @@ Android downloads are separated into ARM64, ARMv7, x86 and x86_64 APKs. Each ins
 
 Android 改为按 ARM64、ARMv7、x86 和 x86_64 分别提供 APK，每个安装包只包含对应架构，多数当前手机请选择 ARM64。保留完整 Rust/Tauri 2 客户端与原应用标识；旧版通用 APK 继续保留在原发行版中。
 
+Desktop remote access now ignores older readiness probes after successfully preparing a local workspace. This prevents a delayed failure from undoing the newly verified service state. Remote-enable preflight failures also retain specific, safe diagnostic codes in the app. SDK-requested authorization refresh during coordination recovery is accepted while preserving identity and lifetime checks.
+
+桌面端成功准备本地工作区后，会使较早的状态探测失效，避免迟到的失败结果覆盖刚验证成功的服务状态；开启远程时的前置失败也保留具体、安全的诊断码。协调 SDK 在会话恢复时要求的授权刷新不再被错误拒绝，账号身份和生命周期检查继续保留。
+
+These fixes address reproduced readiness and refresh defects. They do not establish the cause of every reported sign-in or phone presence failure; real-account and physical-device checks remain separate from the isolated regression evidence.
+
+以上修复针对已复现的就绪状态与刷新缺陷，不将其等同于所有登录或手机在线状态故障的根因；真实账号及实体设备验收仍与隔离回归证据分别记录。
+
 **Previous release 0.1.34 / 上一版本**
 
 Android is rebuilt as a Rust/Tauri 2 client with a bundled mobile workspace and an embedded sign-in WebView. Account and device discovery, trust verification, encrypted workspace connections, HTTP streaming and terminal transport are owned by the native layer. Mobile navigation, onboarding, file saving/sharing, previews, account controls and system back behavior are integrated into the app. The application ID and release signing identity are retained for updates from the previous Android app.

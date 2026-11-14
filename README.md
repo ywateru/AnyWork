@@ -55,7 +55,7 @@ Get a package from [GitHub Releases](https://github.com/ywateru/AnyWork/releases
 | macOS Apple Silicon / Intel | `.dmg` installer; drag `AnyWork.app` into Applications | macOS 14+; ad-hoc signed, not notarized |
 | Windows x64 | Per-user installer or portable `.zip` | Windows 10/11, Microsoft Edge WebView2; unsigned |
 | Linux x64 / ARM64 | AppImage or portable `.tar.gz` | GTK 3, WebKitGTK 4.1; x64 built on Ubuntu 22.04, ARM64 on Ubuntu 24.04 |
-| Android | Rust/Tauri 2 `.apk` client | Android 8.0+, current Android System WebView; in-app sign-in and bundled workspace |
+| Android | Rust/Tauri 2 `.apk` client, separate ARM64 / ARMv7 / x86 / x86_64 downloads | Android 8.0+, current Android System WebView; choose ARM64 for most current phones; in-app sign-in and bundled workspace |
 | Web / source | `.tar.gz` | Self-hosted deployment / development |
 
 1. Set up your chosen backend using the [Agent setup guide](docs/getting-started.md#choose-a-backend-agent) **on the host computer**. Keep that computer awake while tasks run.
