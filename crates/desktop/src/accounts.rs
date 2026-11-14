@@ -27,6 +27,12 @@ const GRID_CLEANUP_PENDING: &str =
 // deliberately discarded at the boundary rather than formatted or logged.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EnableStage {
+    SignInRequired,
+    ReauthRequired,
+    LocalService,
+    CleanupPending,
+    Cancelled,
+    AlreadyEnabled,
     Identity,
     Gateway,
     Provider,
@@ -45,6 +51,12 @@ enum EnableStage {
 impl EnableStage {
     fn code(self) -> &'static str {
         match self {
+            Self::SignInRequired => "REMOTE_ENABLE_SIGN_IN_REQUIRED",
+            Self::ReauthRequired => "REMOTE_ENABLE_REAUTH_REQUIRED",
+            Self::LocalService => "REMOTE_ENABLE_LOCAL_SERVICE",
+            Self::CleanupPending => "REMOTE_ENABLE_CLEANUP_PENDING",
+            Self::Cancelled => "REMOTE_ENABLE_CANCELLED",
+            Self::AlreadyEnabled => "REMOTE_ENABLE_ALREADY_ENABLED",
             Self::Identity => "REMOTE_ENABLE_IDENTITY",
             Self::Gateway => "REMOTE_ENABLE_GATEWAY",
             Self::Provider => "REMOTE_ENABLE_PROVIDER",
@@ -1975,9 +1987,12 @@ fn safe_error(error: anyhow::Error) -> String {
     }
     match error.to_string().as_str() {
         "LOGIN_CALLBACK_PORT_IN_USE" => "登录回调端口已被占用，请关闭其他登录窗口后重试。".into(),
-        "LOCAL_SERVICE_NOT_READY" => "请先启动并连接本地服务。".into(),
-        "ACCOUNT_REAUTH_REQUIRED" => "账号授权已失效，请退出账号后重新登录。".into(),
-        "REMOTE_COORDINATION_CLEANUP_REQUIRED" => GRID_CLEANUP_PENDING.into(),
+        "ACCOUNT_SIGN_IN_REQUIRED" => EnableStage::SignInRequired.code().into(),
+        "ACCOUNT_REAUTH_REQUIRED" => EnableStage::ReauthRequired.code().into(),
+        "LOCAL_SERVICE_NOT_READY" => EnableStage::LocalService.code().into(),
+        "REMOTE_COORDINATION_CLEANUP_REQUIRED" => EnableStage::CleanupPending.code().into(),
+        "REMOTE_OPERATION_CANCELLED" => EnableStage::Cancelled.code().into(),
+        "REMOTE_ALREADY_ENABLED" => EnableStage::AlreadyEnabled.code().into(),
         "DEVICE_NAME_REJECTED" => "名称需为 1–80 个字符，且不能包含控制字符。".into(),
         "DEVICE_NAME_CONFLICT" => "设备名称未完成同步，账号目录已发生变化，请刷新后重试。".into(),
         "DEVICE_NAME_STORAGE_REJECTED" => "无法保存设备名称，请检查本机配置文件。".into(),
@@ -2309,6 +2324,15 @@ mod tests {
     #[test]
     fn enable_stage_codes_discard_underlying_errors_before_ipc() {
         for (stage, code) in [
+            (
+                EnableStage::SignInRequired,
+                "REMOTE_ENABLE_SIGN_IN_REQUIRED",
+            ),
+            (EnableStage::ReauthRequired, "REMOTE_ENABLE_REAUTH_REQUIRED"),
+            (EnableStage::LocalService, "REMOTE_ENABLE_LOCAL_SERVICE"),
+            (EnableStage::CleanupPending, "REMOTE_ENABLE_CLEANUP_PENDING"),
+            (EnableStage::Cancelled, "REMOTE_ENABLE_CANCELLED"),
+            (EnableStage::AlreadyEnabled, "REMOTE_ENABLE_ALREADY_ENABLED"),
             (EnableStage::Identity, "REMOTE_ENABLE_IDENTITY"),
             (EnableStage::Gateway, "REMOTE_ENABLE_GATEWAY"),
             (EnableStage::Provider, "REMOTE_ENABLE_PROVIDER"),

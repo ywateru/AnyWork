@@ -1114,3 +1114,73 @@ async fn sdk_oauth_unknown_requires_new_login_and_never_becomes_coordinator_retr
     f.provider_stopped();
     f.close().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn enable_preflight_failures_cross_real_ipc_as_exact_codes_without_new_registration() {
+    for (condition, code) in [
+        ("signed-out", "REMOTE_ENABLE_SIGN_IN_REQUIRED"),
+        ("invalid-grant", "REMOTE_ENABLE_REAUTH_REQUIRED"),
+        ("unknown-grant", "REMOTE_ENABLE_REAUTH_REQUIRED"),
+        ("local-service", "REMOTE_ENABLE_LOCAL_SERVICE"),
+        ("cleanup", "REMOTE_ENABLE_CLEANUP_PENDING"),
+        ("cancelled", "REMOTE_ENABLE_CANCELLED"),
+        ("enabled", "REMOTE_ENABLE_ALREADY_ENABLED"),
+        ("config", "REMOTE_ENABLE_GRID_CONFIG"),
+    ] {
+        let f = Fixture::new().await;
+        let owner = f.handle.0.state.lock().await.owner.clone().unwrap();
+        match condition {
+            "signed-out" => f.handle.0.state.lock().await.owner = None,
+            "invalid-grant" => owner.state.lock().await.invalid = true,
+            "unknown-grant" => owner.state.lock().await.uncertain = true,
+            "local-service" => {
+                f.handle.0.manager.state.lock().unwrap().authorized = false;
+            }
+            "cleanup" => {
+                f.handle.enable().await.unwrap();
+                f.fail_grid_revoke.store(true, Ordering::SeqCst);
+                f.handle.disable().await;
+                assert!(f.handle.0.state.lock().await.pending_grid.is_some());
+            }
+            "cancelled" => owner.policy().invalidate(true),
+            "enabled" => f.handle.enable().await.unwrap(),
+            "config" => f.fail_config.store(true, Ordering::SeqCst),
+            _ => unreachable!(),
+        }
+        let tokens = f.calls("POST /oidc/token");
+        let registrations = f.calls("POST /api/v1/auth/exchange");
+        let writes = f.calls("PATCH /api/my-account");
+        let app = tauri::test::mock_builder()
+            .manage(f.handle.clone())
+            .invoke_handler(tauri::generate_handler![account_enable])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        let result = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "account_enable".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: "tauri://localhost".parse().unwrap(),
+                body: tauri::ipc::InvokeBody::default(),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.into(),
+            },
+        );
+        // The public Tauri rejection payload is a string, not an Error object
+        // or a wrapped stage, so the UI's exact-code check can recognize it.
+        assert_eq!(result.unwrap_err(), json!(code), "{condition}");
+        assert_eq!(f.calls("POST /oidc/token"), tokens, "{condition}");
+        assert_eq!(
+            f.calls("POST /api/v1/auth/exchange"),
+            registrations,
+            "{condition}"
+        );
+        assert_eq!(f.calls("PATCH /api/my-account"), writes, "{condition}");
+        f.fail_grid_revoke.store(false, Ordering::SeqCst);
+        f.close().await;
+    }
+}
