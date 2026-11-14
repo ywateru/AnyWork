@@ -1,5 +1,7 @@
 # Documentation index
 
+- [Android APK 体积优化](plan/tasks/android-apk-size.md)：针对 v0.1.34 的正式 APK 测量原生库与打包占用，保留完整功能和四 ABI 后优化，并独立验收实际 Release 产物。
+
 - [Android 原生 Rust/Tauri 2 客户端重构](android-account-entry.md)：已发布[v0.1.34](https://github.com/ywateru/AnyWork/releases/tag/v0.1.34)；[手机布局](mobile-client-layout.md)、[原生接口](mobile-native-contract.md)、[实施任务](plan/tasks/android-native-client.md)、[合并验收与官网恢复](plan/reviews/android-native-merged.md)；完整界面随包、应用内登录与原生远程连接，连接前先更新电脑宿主。
 
 - [网页当前用户名修复](plan/tasks/account-identity-visible.md)：2026-11-13 用户截图反馈；当前账号名称按已验证 profile/username/email 显示，保持 subject 隔离。
