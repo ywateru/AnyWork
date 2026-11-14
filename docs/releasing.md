@@ -49,9 +49,9 @@ Progress is stored atomically under Git's private common directory, protected by
 
 After committing a source fix, use `--new` to start a fresh version once the previous release build is no longer active. Existing tags are never moved. If installers are already published but the Vercel website failed, use `--site-only vX.Y.Z` to verify the immutable release and repair the website without rebuilding or creating another Release. The original failed workflow remains visible.
 
-轻量核验包括 20 个发行文件、19 个 SHA-256 条目与 GitHub 文件摘要、5 个更新目标的 `.sig`／清单一致性和版本绑定，以及官网静态内嵌版本和下载链接。它不把签名元数据检查描述为完整安装验收，也不默认运行需要下载大型更新包的可选真实升级测试。真实设备、网络和升级安装验收仍可按需单独执行。
+从 v0.1.35 起，轻量核验要求精确的 23 个发行文件、22 个 SHA-256 条目与 GitHub 文件摘要；v0.1.34 及更早版本仍按 20 个文件、19 个条目核验和恢复官网。所有版本继续核验 5 个更新目标的 `.sig`／清单一致性和版本绑定，以及官网静态内嵌版本和下载链接。它不把签名元数据检查描述为完整安装验收，也不默认运行需要下载大型更新包的可选真实升级测试。真实设备、网络和升级安装验收仍可按需单独执行。
 
-Light verification checks all 20 assets, 19 checksum entries against GitHub digests, five updater signature-file/manifest/version bindings, and the website's embedded version and download URLs. It does not claim full binary signature or installed-upgrade testing without downloading the packages. Optional live-upgrade and hardware tests remain separate from publication.
+From v0.1.35, light verification requires exactly 23 assets and 22 checksum entries against GitHub digests. Verification and website recovery for v0.1.34 and older retain the 20-asset / 19-checksum contract. Every version also checks five updater signature-file/manifest/version bindings and the website's embedded version and download URLs. It does not claim full binary signature or installed-upgrade testing without downloading the packages. Optional live-upgrade and hardware tests remain separate from publication.
 
 ## 手动排查检查 / Manual diagnostic checks
 
@@ -103,6 +103,25 @@ git push origin main v0.1.0
 Android 使用 GitHub Actions secrets：`ANDROID_KEYSTORE_BASE64`、`ANDROID_STORE_PASSWORD`、`ANDROID_KEY_PASSWORD`。别名为 `anywork`。签名材料必须持久备份且不提交；换密钥会影响覆盖安装。Fork 仓库请自行配置自己的签名 secrets。普通 CI 只构建 Debug APK，不使用发行签名。
 
 Android release signing uses the three secrets above and the `anywork` alias. Back up the signing identity privately. Forks must supply their own key. Pull-request checks do not receive release credentials and only build debug APKs.
+
+从 v0.1.35 起，Android 在四个独立矩阵任务中按 ABI 编译并使用相同发行身份签名，仅发布以下四包，不再发布 universal APK 或 `anywork-android.apk` 别名。旧 tag 和附件保持不可变。全部四项构建通过后才能发布，缺包、混入旧包或重复附件均不得通过发行核验。
+
+| 下载 / Download | APK | 设备 / Device |
+| --- | --- | --- |
+| ARM64（推荐 / Recommended） | `anywork-android-arm64.apk` | 多数手机 / Most phones |
+| ARMv7 | `anywork-android-armv7.apk` | 32-bit ARM (`armeabi-v7a`) |
+| x86 | `anywork-android-x86.apk` | 32-bit Intel (`x86`) |
+| x86_64 | `anywork-android-x86_64.apk` | 64-bit Intel (`x86_64`) |
+
+官网保留现有下载卡片，按下列顺序显示四个架构；不根据浏览器猜测 ABI。窄屏按钮自然换行。静态构建和实时刷新均依据同一发行版本选择下载集合：v0.1.34 及以前只显示旧 universal 下载，新版只显示四个独立 APK；过期元数据不能将新版按钮回退为旧包。尚无发行数据时四个按钮指向发行列表，不伪造下载链接。
+
+```text
+Android
+[ ARM64 · 推荐 ] [ ARMv7 · 32-bit ARM ]
+[ x86 · 32-bit ] [ x86_64 · 64-bit ]
+```
+
+Android releases from v0.1.35 contain four separately built, consistently signed ABI APKs. All four matrix jobs must pass before publication; no universal APK or legacy alias is published. The website recommends ARM64 for most phones and labels the other architectures explicitly. Static pages and live refresh preserve the legacy universal download for old releases and reject older metadata after a newer release has been applied. Existing tags and assets are never modified.
 
 ## 双语官网 / Bilingual website
 

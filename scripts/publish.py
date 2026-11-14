@@ -38,9 +38,11 @@ FILES = ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json',
          'desktop/Info.plist', 'crates/mobile/tauri.conf.json', 'docs/release-notes.md']
 TARGETS = {target: 'anywork-' + platform + suffix
            for platform, (target, _, _, suffix) in updater.PLATFORMS.items()}
-INSTALLERS = {'anywork-macos-arm64.dmg', 'anywork-macos-x86_64.dmg',
+DESKTOP_INSTALLERS = {'anywork-macos-arm64.dmg', 'anywork-macos-x86_64.dmg',
               'anywork-windows-x86_64-setup.exe', 'anywork-linux-x86_64.AppImage',
-              'anywork-linux-arm64.AppImage', 'anywork-android.apk'}
+              'anywork-linux-arm64.AppImage'}
+ANDROID_APKS = {'anywork-android-' + abi + '.apk' for abi in ('arm64', 'armv7', 'x86', 'x86_64')}
+INSTALLERS = DESKTOP_INSTALLERS | ANDROID_APKS
 ASSETS = set(TARGETS.values()) | {name + '.sig' for name in TARGETS.values()} | INSTALLERS | {
     'anywork-linux-x86_64.tar.gz', 'anywork-linux-arm64.tar.gz',
     'anywork-windows-x86_64.zip', 'anywork-source.tar.gz', 'anywork-web.tar.gz',
@@ -60,6 +62,15 @@ def valid_tag(tag):
     require(isinstance(tag, str) and re.fullmatch(r'v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', tag),
             'Expected a stable release tag such as v0.1.13')
     return tag
+
+
+def installers_for_tag(tag):
+    valid_tag(tag)
+    return INSTALLERS if versions.version_tuple(tag[1:]) >= (0, 1, 35) else DESKTOP_INSTALLERS | {'anywork-android.apk'}
+
+
+def assets_for_tag(tag):
+    return (ASSETS - INSTALLERS) | installers_for_tag(tag)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -465,7 +476,9 @@ class Publisher:
         require(not source or commit == source, 'Published tag points to the wrong source commit')
         items = release['assets']
         assets = {item['name']: item for item in items}
-        require(len(items) == len(ASSETS) and set(assets) == ASSETS, 'Release must contain exactly the expected 20 assets')
+        expected = assets_for_tag(tag)
+        require(len(items) == len(expected) and set(assets) == expected,
+                f'Release must contain exactly the expected {len(expected)} assets')
         base = WEB + '/releases/download/' + tag + '/'
         for name, asset in assets.items():
             require(asset.get('size', 0) > 0 and asset.get('state') == 'uploaded'
@@ -480,7 +493,7 @@ class Publisher:
             match = re.fullmatch(r'([a-f0-9]{64}) [ *](\S+)', line)
             require(match and match[2] not in checks, 'Invalid or duplicate checksum entry')
             checks[match[2]] = match[1]
-        require(set(checks) == ASSETS - {'SHA256SUMS'}, 'Expected all 19 checksum entries')
+        require(set(checks) == expected - {'SHA256SUMS'}, f'Expected all {len(expected) - 1} checksum entries')
         for name, digest in checks.items():
             require(assets[name]['digest'] == 'sha256:' + digest, 'GitHub digest/checksum mismatch: ' + name)
         manifest = json.loads(small('latest.json'))
@@ -489,7 +502,7 @@ class Publisher:
             item = manifest['platforms'][target]
             require(item['url'] == base + name and small(name + '.sig').decode().strip() == item['signature']
                     and updater.signature_version(item['signature']) == tag[1:], 'Updater signature file/version metadata mismatch')
-        for name in sorted(INSTALLERS):
+        for name in sorted(installers_for_tag(tag)):
             _, headers = self.api.public(base + name, method='HEAD')
             require(int(headers.get('Content-Length', headers.get('content-length', -1))) == assets[name]['size'], 'Installer HEAD size mismatch: ' + name)
         return release, commit
@@ -514,7 +527,7 @@ class Publisher:
             parser = Downloads()
             parser.feed(raw.decode())
             require(parser.version == release['tag_name'], 'Embedded website version is stale: ' + language)
-            require(INSTALLERS <= set(parser.links), 'Website installer links are missing: ' + language)
+            require(installers_for_tag(release['tag_name']) <= set(parser.links), 'Website installer links are missing: ' + language)
             for name, url in parser.links.items():
                 require(name in assets and url == assets[name]['browser_download_url'], 'Embedded download link is stale: ' + language)
 
@@ -586,7 +599,9 @@ class Publisher:
         release, _ = self.verify_release(self.state['tag'], self.state['source'])
         self.pages(release, self.state['source'], retry)
         self.state.update(phase='complete', release_url=release['html_url'], site_url=SITE,
-                          verified={'assets': 20, 'checksums': 19, 'version_bound_signature_files': 5})
+                          verified={'assets': len(assets_for_tag(self.state['tag'])),
+                                    'checksums': len(assets_for_tag(self.state['tag'])) - 1,
+                                    'version_bound_signature_files': 5})
         self.save()
         print('Published and verified:', release['html_url'], SITE)
         return self.state

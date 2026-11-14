@@ -113,6 +113,22 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64
+            target: aarch64
+            rust: aarch64-linux-android
+          - abi: armv7
+            target: armv7
+            rust: armv7-linux-androideabi
+          - abi: x86
+            target: i686
+            rust: i686-linux-android
+          - abi: x86_64
+            target: x86_64
+            rust: x86_64-linux-android
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -130,10 +146,10 @@ jobs:
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;27.2.12479018'
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
         with:
-          key: android-release-ndk27
+          key: android-${{ matrix.abi }}
       - run: npm ci
       - name: Restore Android release signing key
         env:
@@ -147,11 +163,11 @@ jobs:
           ANYWORK_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANYWORK_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANYWORK_ANDROID_KEY_ALIAS: anywork
-        run: ./scripts/build-android.sh --release --target aarch64,armv7,i686,x86_64
+        run: ./scripts/build-android.sh --release --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: android
-          path: release/anywork-android.apk
+          name: android-${{ matrix.abi }}
+          path: release/anywork-android-${{ matrix.abi }}.apk
           if-no-files-found: error
           retention-days: 14
   source-web:
@@ -191,6 +207,15 @@ jobs:
         working-directory: release
         run: |
           python3 ../scripts/updater-artifacts.py manifest
+          python3 - <<'PY'
+          import json, pathlib, sys
+          sys.path.insert(0, '../scripts')
+          import publish
+          tag = 'v' + json.loads(pathlib.Path('../package.json').read_text())['version']
+          expected = publish.assets_for_tag(tag) - {'SHA256SUMS'}
+          actual = {path.name for path in pathlib.Path('.').iterdir()}
+          publish.require(actual == expected, 'Release files differ from the versioned asset contract')
+          PY
           sha256sum anywork-* latest.json > SHA256SUMS
       - name: Publish release
         env:

@@ -5,6 +5,7 @@ import html
 import json
 import os
 import pathlib
+import re
 import shutil
 from string import Template
 import urllib.error
@@ -15,6 +16,25 @@ SITE = ROOT / 'site'
 DIST = SITE / 'dist'
 REPO = 'https://github.com/ywateru/AnyWork'
 BASE = os.environ.get('ANYWORK_SITE_URL', 'https://anywork.aixgg.com').rstrip('/')
+ANDROID_DOWNLOADS = [('arm64', 'androidArm64'), ('armv7', 'androidArmv7'),
+                     ('x86', 'androidX86'), ('x86_64', 'androidX8664')]
+
+
+def android_names(release):
+    split = [f'anywork-android-{abi}.apk' for abi, _ in ANDROID_DOWNLOADS]
+    if release is None:
+        return split
+    tag = release['tag_name']
+    if not re.fullmatch(r'v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', tag):
+        raise ValueError('Expected a stable release tag')
+    names = split if tuple(map(int, tag[1:].split('.'))) >= (0, 1, 35) else ['anywork-android.apk']
+    actual = [item['name'] for item in release['assets'] if item['name'].startswith('anywork-android')]
+    if len(actual) != len(names) or set(actual) != set(names):
+        raise ValueError('Android downloads differ from the versioned release contract')
+    for item in release['assets']:
+        if item['name'] in names and item['browser_download_url'] != REPO + '/releases/download/' + tag + '/' + item['name']:
+            raise ValueError('Android download URL differs from the release tag')
+    return names
 
 def main():
     parser = argparse.ArgumentParser()
@@ -33,6 +53,7 @@ def main():
         except urllib.error.HTTPError as error:
             if error.code != 404:
                 raise RuntimeError(f'Cannot read release metadata: HTTP {error.code}') from None
+    android = android_names(release)
     if DIST.exists():
         shutil.rmtree(DIST)
     DIST.mkdir()
@@ -83,7 +104,12 @@ def main():
             values['macDownloads'] = ''.join(button(f'anywork-macos-{arch}.dmg', raw[label], f'anywork-macos-{arch}.zip') for arch, label in [('arm64', 'armMac'), ('x86_64', 'intelMac')])
             values['winDownloads'] = (button('anywork-windows-x86_64-setup.exe', raw['installer']) if 'anywork-windows-x86_64-setup.exe' in assets else '') + button('anywork-windows-x86_64.zip', raw['portable'])
             values['linuxDownloads'] = ''.join(button(f'anywork-linux-{arch}.AppImage', raw[label]) for arch, label in [('x86_64', 'x64AppImage'), ('arm64', 'armAppImage')] if f'anywork-linux-{arch}.AppImage' in assets) + button('anywork-linux-x86_64.tar.gz', raw['x64Archive']) + button('anywork-linux-arm64.tar.gz', raw['armArchive'])
-            values['androidDownloads'] = button('anywork-android.apk', raw['apk'])
+            labels = {f'anywork-android-{abi}.apk': raw[key] for abi, key in ANDROID_DOWNLOADS}
+            labels['anywork-android.apk'] = raw['apk']
+            # Retain localized labels when live metadata changes the download set.
+            values['androidDownloads'] = ('<span hidden data-android-labels="' +
+                html.escape(json.dumps(labels, ensure_ascii=False), quote=True) + '"></span>' +
+                ''.join(button(name, labels[name]) for name in android))
             values['checksumUrl'] = url('SHA256SUMS')
             values['structuredData'] = json.dumps({'@context':'https://schema.org', '@type':'SoftwareApplication', 'name':'AnyWork', 'description':raw['description'], 'applicationCategory':'DeveloperApplication', 'operatingSystem':'macOS, Windows, Linux, Android, Web', 'url':BASE + '/' + lang + '/', 'license':REPO + '/blob/main/LICENSE', 'offers':{'@type':'Offer','price':'0','priceCurrency':'USD'}}, ensure_ascii=False).replace('<', '\\u003c')
             folder = DIST if root else DIST / lang

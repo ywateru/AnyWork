@@ -3,6 +3,12 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+const androidAPKs = ['arm64', 'armv7', 'x86', 'x86_64'].map(abi => `anywork-android-${abi}.apk`);
+function withAndroid(release) {
+  const names = release.tag_name === 'v0.1.34' ? ['anywork-android.apk'] : androidAPKs;
+  return {...release, assets:[...release.assets, ...names.map(name => ({name, size:10485760, browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/${release.tag_name}/${name}`}))]};
+}
 const root = path.resolve('site/dist');
 const types = {'.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript','.svg':'image/svg+xml','.json':'application/json','.png':'image/png'};
 const server = createServer(async (req, res) => {
@@ -25,7 +31,7 @@ try {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const asset = 'anywork-macos-arm64.dmg';
-    const release = {tag_name:'v99.0.0',assets:[{name:asset,size:104857600,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${asset}`}]};
+    const release = withAndroid({tag_name:'v99.0.0',assets:[{name:asset,size:104857600,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${asset}`}]});
     await page.route('https://api.github.com/**', route => route.fulfill({json:release}));
     await page.goto(`${base}/${locale}/`, {waitUntil:'networkidle'});
     assert.equal(await page.locator('html').getAttribute('lang'),locale==='zh'?'zh-CN':'en');
@@ -33,6 +39,10 @@ try {
     assert.equal(await page.locator('h1').count(),1);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${locale}/${width}: horizontal overflow`);
     assert((await page.locator(`[data-asset="${asset}"]`).getAttribute('href')).endsWith('/v99.0.0/'+asset));
+    const android = page.locator('a[data-asset^="anywork-android"]');
+    assert.deepEqual(await android.evaluateAll(links => links.map(link => link.dataset.asset)), androidAPKs);
+    assert((await android.first().innerText()).includes(locale === 'zh' ? '推荐' : 'Recommended'));
+    for (const name of androidAPKs) assert((await page.locator(`[data-asset="${name}"]`).getAttribute('href')).endsWith('/v99.0.0/'+name));
     assert.equal(await page.locator('.small-cta').getAttribute('href'), '/app/');
     assert.equal(await page.locator('.hero-actions .primary').getAttribute('href'), '/app/?signup=1');
     assert(await page.locator('.device-preview').isVisible());
@@ -139,8 +149,8 @@ try {
   for (const delayed of ['baseline', 'live']) {
     const page = await browser.newPage();
     const asset = 'anywork-macos-arm64.dmg';
-    const fresh = {tag_name:'v99.0.0', assets:[{name:asset,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${asset}`}]};
-    const stale = {tag_name:'v1.0.0', assets:[{name:asset,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v1.0.0/${asset}`}]};
+    const fresh = withAndroid({tag_name:'v99.0.0', assets:[{name:asset,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${asset}`}]});
+    const stale = withAndroid({tag_name:'v1.0.0', assets:[{name:asset,browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v1.0.0/${asset}`}]});
     await page.route('**/release.json', async route => {
       if (delayed === 'baseline') await new Promise(resolve => setTimeout(resolve, 200));
       await route.fulfill({json:delayed === 'baseline' ? stale : fresh});
@@ -159,7 +169,7 @@ try {
     const page = await browser.newPage();
     const assets = ['anywork-macos-arm64.zip', 'anywork-macos-x86_64.zip',
       ...(useDmg ? ['anywork-macos-arm64.dmg', 'anywork-macos-x86_64.dmg'] : [])];
-    const release = {tag_name:'v99.0.0', assets:assets.map(name => ({name, browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${name}`}))};
+    const release = withAndroid({tag_name:'v99.0.0', assets:assets.map(name => ({name, browser_download_url:`https://github.com/ywateru/AnyWork/releases/download/v99.0.0/${name}`}))});
     await page.route('**/release.json', route => route.fulfill({json:release}));
     await page.route('https://api.github.com/**', route => route.fulfill({json:release}));
     await page.goto(`${base}/en/`, {waitUntil:'networkidle'});
@@ -169,6 +179,77 @@ try {
     }
     await page.close();
     console.log(`Passed macOS download selection: ${useDmg ? 'DMG preferred over ZIP' : 'legacy ZIP fallback'}`);
+  }
+  // Use actual build-site output as the baseline, including no-JavaScript pages.
+  const staticHTML = (release, locale) => execFileSync('python3', ['-c', `
+import contextlib, importlib, io, json, pathlib, sys, tempfile
+from unittest import mock
+sys.path.insert(0, 'scripts')
+builder = importlib.import_module('build-site')
+data = json.load(sys.stdin)
+with tempfile.TemporaryDirectory() as folder:
+    dist = pathlib.Path(folder) / 'dist'
+    with mock.patch.object(builder, 'DIST', dist), mock.patch.object(builder.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(data['release']).encode())), mock.patch('sys.argv', ['build-site.py', '--fetch-release']), contextlib.redirect_stdout(io.StringIO()):
+        builder.main()
+    print((dist / data['locale'] / 'index.html').read_text())
+`], {input:JSON.stringify({release, locale}), encoding:'utf8'});
+  const oldAndroid = withAndroid({tag_name:'v0.1.34', assets:[]});
+  const newAndroid = withAndroid({tag_name:'v0.1.35', assets:[]});
+  const checkAndroid = async (page, tag, names) => {
+    assert.deepEqual(await page.locator('a[data-asset^="anywork-android"]').evaluateAll(links => links.map(link => link.dataset.asset)), names);
+    for (const name of names) assert.equal(await page.locator(`[data-asset="${name}"]`).getAttribute('href'), `https://github.com/ywateru/AnyWork/releases/download/${tag}/${name}`);
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Android ABI buttons overflow');
+  };
+  for (const locale of ['en','zh']) {
+    const oldHTML = staticHTML(oldAndroid, locale);
+    const newHTML = staticHTML(newAndroid, locale);
+    for (const [release, html, names] of [[oldAndroid, oldHTML, ['anywork-android.apk']], [newAndroid, newHTML, androidAPKs]]) {
+      const page = await browser.newPage({javaScriptEnabled:false, viewport:{width:320,height:900}});
+      await page.route(`**/${locale}/`, route => route.fulfill({body:html, contentType:'text/html'}));
+      await page.goto(`${base}/${locale}/`);
+      await checkAndroid(page, release.tag_name, names);
+      await page.close();
+    }
+    for (const delayed of ['baseline', 'live']) {
+      const page = await browser.newPage({viewport:{width:320,height:900}});
+      await page.route(`**/${locale}/`, route => route.fulfill({body:oldHTML, contentType:'text/html'}));
+      await page.route('**/release.json', async route => {
+        if (delayed === 'baseline') await new Promise(resolve => setTimeout(resolve, 200));
+        await route.fulfill({json:delayed === 'baseline' ? oldAndroid : newAndroid});
+      });
+      await page.route('https://api.github.com/**', async route => {
+        if (delayed === 'live') await new Promise(resolve => setTimeout(resolve, 200));
+        await route.fulfill({json:delayed === 'live' ? oldAndroid : newAndroid});
+      });
+      await page.goto(`${base}/${locale}/`, {waitUntil:'networkidle'});
+      await checkAndroid(page, 'v0.1.35', androidAPKs);
+      assert((await page.locator('#release-status').innerText()).includes('v0.1.35'));
+      await page.close();
+    }
+    for (const damage of ['missing', 'mixed', 'duplicate', 'wrong-url', 'older']) {
+      let invalid = withAndroid({tag_name:'v0.1.36', assets:[]});
+      if (damage === 'missing') invalid.assets.pop();
+      if (damage === 'mixed') invalid.assets.push(oldAndroid.assets[0]);
+      if (damage === 'duplicate') invalid.assets[3] = invalid.assets[0];
+      if (damage === 'wrong-url') invalid.assets[0].browser_download_url = oldAndroid.assets[0].browser_download_url;
+      if (damage === 'older') invalid = oldAndroid;
+      const page = await browser.newPage();
+      await page.route(`**/${locale}/`, route => route.fulfill({body:newHTML, contentType:'text/html'}));
+      await page.route('**/release.json', route => route.fulfill({json:invalid}));
+      await page.route('https://api.github.com/**', route => route.fulfill({json:invalid}));
+      await page.goto(`${base}/${locale}/`, {waitUntil:'networkidle'});
+      await checkAndroid(page, 'v0.1.35', androidAPKs);
+      assert((await page.locator('#release-status').innerText()).includes('v0.1.35'));
+      await page.close();
+    }
+    // When only an old release exists, a live refresh must show one universal link.
+    const legacy = await browser.newPage();
+    await legacy.route('**/release.json', route => route.fulfill({json:oldAndroid}));
+    await legacy.route('https://api.github.com/**', route => route.fulfill({json:oldAndroid}));
+    await legacy.goto(`${base}/${locale}/`, {waitUntil:'networkidle'});
+    await checkAndroid(legacy, 'v0.1.34', ['anywork-android.apk']);
+    await legacy.close();
+    console.log(`Passed ${locale} Android downloads: static/no-JS, legacy, split, both response orders, malformed and stale metadata`);
   }
   const fallback = await browser.newPage({javaScriptEnabled:false});
   await fallback.goto(`${base}/`);

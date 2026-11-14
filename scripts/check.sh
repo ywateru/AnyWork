@@ -41,6 +41,8 @@ python3 -m unittest discover -s scripts/cloud -p 'test_redis_*.py'
 node --test scripts/cloud/test-redis-tls-probe.mjs
 python3 scripts/source-archive-test.py
 python3 scripts/release-version-test.py
+python3 scripts/build-site-test.py
+python3 scripts/test-check-android-apk.py
 python3 scripts/publish-test.py
 python3 scripts/release-ci-test.py
 python3 scripts/container-smoke-script-test.py
