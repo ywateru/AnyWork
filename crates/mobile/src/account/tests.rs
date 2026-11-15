@@ -657,7 +657,7 @@ async fn account_tls_rejection_finishes_loading_and_allows_another_refresh() {
     {
         let observed = states.lock().unwrap();
         assert_eq!(observed.len(), 4);
-        for pair in observed.chunks_exact(2) {
+        for pair in observed.as_chunks::<2>().0 {
             assert!(pair[0].directory_state == DirectoryState::Loading);
             assert!(pair[1].directory_state == DirectoryState::Unknown);
         }
