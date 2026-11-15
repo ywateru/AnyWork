@@ -1,6 +1,6 @@
 # Documentation index
 
-- [移动端协调配置与同步恢复](plan/tasks/mobile-coordination-recovery.md)：继续解决 `MOBILE_COORDINATION_CONFIG_FETCH_FAILED`，核对 Native 请求与设备网络入口，允许 Android 模拟器对照，要求实际发现/授权工作区读取验收。
+- [移动端协调配置与同步恢复](plan/tasks/mobile-coordination-recovery.md)：官网精确协调入口已上线，同签名候选在实体 Android 9 原蜂窝网络通过正常 SSO、设备发现、公钥核对与授权工作区/既有历史读取；准备新正式版本，不覆盖公开 v41。
 
 - [Android 加载修复发行](plan/tasks/android-loading-release.md)：[v0.1.41](https://github.com/ywateru/AnyWork/releases/tag/v0.1.41) 已发布，精确源码 Checks、全部发行平台、四 APK 与官网下载入口验收通过；自动部署令牌及手机协调网络限制仍保留。
 

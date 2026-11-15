@@ -4,6 +4,20 @@ AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 
 
 **New in 0.1.41 / 本次更新**
 
+Fixes Android device discovery failing with `MOBILE_COORDINATION_CONFIG_FETCH_FAILED` on the tested cellular route. Android now reaches the existing coordination service through narrowly scoped HTTPS routes on `anywork.aixgg.com`. The OAuth issuer, resource/audience, client and product bindings, and coordination data remain unchanged. Certificate-chain and hostname verification stay enabled; requests and responses are not cached.
+
+修复测试手机蜂窝网络下因 `MOBILE_COORDINATION_CONFIG_FETCH_FAILED` 导致的设备同步失败。Android 改为通过 `anywork.aixgg.com` 上的精确 HTTPS 路由访问原有协调服务，保留 OAuth issuer、resource/audience、client/product 绑定及协调数据。继续校验证书链与域名，请求和响应不缓存。
+
+An officially signed ARM64 candidate passed a data-preserving update on a physical Android 9 phone without changing its network settings. Normal in-app SSO, online-computer discovery, full public-key comparison with the computer's local identity, and authenticated workspace/session-history reads completed. The test sent no Agent messages or terminal commands and edited no real files. An Android 11 emulator also completed sign-in and device discovery.
+
+正式同签名 ARM64 候选已在 Android 9 实体手机上保留数据覆盖验收，未更改手机网络设置。应用内正常 SSO、在线电脑发现、与电脑本机身份的完整公钥核对，以及授权后的工作区和既有会话历史读取均通过。测试未发送 Agent 消息或终端命令，也未修改真实文件；Android 11 模拟器另通过登录与设备发现。
+
+Native account/SDK checks and the exact-route gateway checks passed. Controlled synthetic sessions verified registration, heartbeats, authorization and epoch headers, error responses, signals and 15-second long polling; those test sessions were revoked afterward. Android continues to ship as four separate ARM64, ARMv7, x86 and x86_64 APKs. Choose ARM64 for most current phones. See the [recovery and device verification](https://github.com/ywateru/AnyWork/blob/main/docs/plan/reviews/mobile-coordination-independent.md).
+
+原生账号/SDK 与精确网关路由检查通过；受控测试会话验证了注册、心跳、授权与 epoch 头、错误响应、信令和 15 秒长轮询，结束后已撤销测试会话。Android 继续分别提供 ARM64、ARMv7、x86 和 x86_64 四个 APK，多数当前手机请选择 ARM64。详见[恢复与设备验收记录](https://github.com/ywateru/AnyWork/blob/main/docs/plan/reviews/mobile-coordination-independent.md)。
+
+**Previous release 0.1.41 / 上一版本**
+
 Fixes Android device discovery remaining on “Reading devices…” after sign-in. The native HTTPS platform certificate verifier is now initialized before account requests, with its matching Android component included and preserved in optimized Release builds. System certificate-chain and hostname verification remain enabled.
 
 修复 Android 登录后一直显示“正在读取设备…”的问题。在账号请求前初始化原生 HTTPS 平台证书校验器，并打包对应 Android 组件，确保 Release 优化后仍可正常调用；保留系统证书链与主机名校验。
