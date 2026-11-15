@@ -107,3 +107,29 @@ coordination 请求为 `https://anywork-cybergrid-selfhost.vercel.app/api/v1/aut
 按精确v41的Native路径，非空设备记录显示online需要SDK config/EndpointPolicy、首次session注册与身份绑定、devices/presence合并成功。可见结果支持这些阶段通过；本lane没有截获每条HTTP交换或导出grant，也不将刷新推断为每次都重新注册或证明每次config均发出新HTTP。受限log窗口无固定MOBILE错误、Rust panic或Java fatal，未保留原始日志。
 
 这是原正式v41/43与原协调transport的模拟器对照，说明Android客户端在该模拟器网络下可到达目录，不能替代实体手机gateway候选验收。实体手机保持未动；真实工作区内容仍未读取、未发Agent消息、未改文件。模拟器保留设备页等待后续，未操作电脑宿主。小证据为ignored `emulator-v41/visible-directory-safe.json`、`refresh-visible-safe.json`、`workspace-stage-safe.json`及两张已遮盖账号/公钥的截图；原始截图未保留。ADB仍由本lane独占，唯一已有长期进程是本次只读emulator，无新监控循环。
+
+## 实体手机 gateway 与签名候选业务验收（2026-11-15）
+
+**PASS：真实手机通过正常 SSO、Native config/注册/devices/presence、公钥核对与认证连接，已返回授权工作区会话列表及一条既有会话历史正文。** 原 `MOBILE_COORDINATION_CONFIG_FETCH_FAILED` 在本次候选现场路径上已越过，可支持后续修复版本说明与发行准备；本次没有发布新版本、移动tag或将候选称为正式发行。
+
+绑定：官网 source `40e0548431bc4467f5046a8334edaee685ce15df`，deployment `dpl_97y1sK6c1fMDqHzRAwZAjsHdiCg1`（`https://anywork-l1jfwi8f4-yywater68-1778s-projects.vercel.app`），production `https://anywork.aixgg.com`。手机候选 source `e4f3650890eb1e9e8010be29fca607a12302435a`；与40e0548之间只有候选workflow及两份review文档变化，产品运行时代码相同。GitHub匿名实时API独立确认 [CI43703073305](https://github.com/ywateru/AnyWork/actions/runs/43703073305) 为该精确head、attempt1、completed/success。使用父端交付artifact14157625553，未另下包或启动Cargo。
+
+| 门槛 | 独立实际证据 | 结果 |
+| --- | --- | --- |
+| 手机匿名 Native config | 10:28:47–10:28:50Z；精确Native appId、正常证书/主机名校验、无认证GET、不跟随redirect，HTTP200；curl总3.370976秒，TLS累计1.939536秒 | PASS |
+| 配置身份与后端一致 | 手机正文SHA256 `bc1ac1ba9d3e77a62fa9fe14fb75b8e528daa175d722d6df764c803a99782bdc`；与原入口重新匿名读回的完整JSON及原始bytes一致；issuer/client/resource、OAuth endpoint、memory-v1及UUID epoch符合Native规则，响应epoch header与正文一致 | PASS |
+| 禁缓存 | 手机实际响应 `Cache-Control: no-store`、`x-vercel-cache: MISS`、`age: 0` | PASS（本次响应） |
+| APK bytes/身份/签名 | 实际39,274,111字节；SHA256 `f2161a5923b052858f1d72490d4bb39ee537f7b9ed04feee00e936c2f730ad26`；aapt/apksigner独立验证 `dev.remoteagent.app`、0.1.41/code43、min26、单官方signer，证书SHA256 `88b43f83632002fbeddd23a286eabee39c5ada0fa1b037d6ff32b9986a67acb8`与正式v41相同，均匹配候选metadata | PASS |
+| Native/随包UI | 仅ARM64一份JNI ELF，machine183；4个LOAD均16KiB，zipalign `-c -P 16 4`通过；nondebuggable、extractNativeLibs=false；native中有mobile.html及Logto notice标记，随后实际显示随包业务UI | PASS（未重复完整UI源码键枚举） |
+| 保数据原位更新 | 10:31:26.714–10:31:37.208Z实际 `adb install -r`成功，手机0.1.38/code40→0.1.41/code43；没有uninstall、wipe或网络设置修改 | PASS |
+| 普通登录/目录 | 初始为未登录引导，点击登录并确认既有auth origin后，现有SSO恢复，无凭据重输；10:34:41Z实际显示设备目录及一台在线电脑，无原固定失败码 | PASS |
+| 完整公钥核对 | 正在运行的桌面AnyWork正常UI「远程访问→本机身份核对」，与手机确认页完整公钥逐字符目视一致；随后正常勾选，确认按钮可用，10:37:46Z点击连接 | PASS |
+| 认证业务读取 | 连接后实际工作区会话列表返回；正常选择一条既有会话，10:47:28Z显示历史正文及工具记录，安全投影中有5个可见长正文节点、564个UI节点与正常会话工具导航 | PASS |
+
+匿名probe脚本初稿曾把可选的顶层productId与host product强制比较，产生审查脚本自身的过严BLOCK。核对精确Native `EndpointPolicy::parse`后纠正：它仅在products列表存在时验证host product；此处productId和products均未提供，属于允许的兼容形态，且全文与原后端完全一致。安全证据保留该纠正原因；没有改变产品门禁或省略实际必需绑定。
+
+以上登录、连接与历史观察时间含人工核对和工具采样间隔，不作为网络或登录耗时。受限最后400条logcat投影无固定MOBILE错误、Rust panic、Java fatal；不将有限日志窗口等同于全生命周期无错。正常UI中已有非空输入字段保持未动；没有创建会话、发送Agent消息、执行终端命令、编辑/保存真实文件。按父端要求，以认证工作区/既有历史读取为本次必要业务门槛，不继续穷举文件或Agent。
+
+仍未覆盖：独立文件树读取、写入/发送、全部9条路由的逐项wire负例及15秒long-poll穷举、其他手机/网络、其他ABI运行和后续正式发行。真实业务成功证明本次实际经过的认证与转发路径，不替代这些未测范围。官网仍提供正式v41/f669ef安装包；当前e4f3650仅为同版本签名候选，不混淆网站source与installer source。旧production rollback由route lane保留，本lane未部署或更改回滚。
+
+私有小证据在本WT ignored `artifacts/mobile-coordination-independent/`：`gateway-live/phone-anonymous-config-safe.json`、`candidate-e4f3650/apk-admission-safe.json`及四项工具log、`phone-candidate/`安装/SSO/目录/完整公钥匹配/连接/工作区/历史/最终安全日志和`business-verdict-safe.json`。不保留原始账号、完整公钥、grant、服务正文或历史正文；截图仅保留脱敏版本。没有读取私钥/token文件或重启/改变电脑宿主设置及会话。模拟器公钥也已与桌面UI匹配，但因手机优先仍未确认连接，不伪记其工作区通过；手机保留已连接的现有会话页，未另行logout或清理应用状态。仅原只读emulator与共享ADB server继续使用，无本lane长期监控/下载/构建进程；共享依赖/target未改动。
