@@ -20,4 +20,6 @@ v0.1.40 精确源码 `4ab61ff9721267e0a5bf5533b0feda8a2d9bb745` 的 Rust 1.100 C
 
 最小修正已由[作者验证](../reviews/v40-clippy-author.md)并经[独立审查](../reviews/v40-clippy-independent.md)接受：mobile 测试 41 passed / 1 ignored，本机严格 Clippy 与格式检查通过；Rust 1.100 门禁仍以新版精确源码 CI 为准。
 
-状态：Clippy 修正已合并；SQLite 测试夹具最小修正和独立审查进行中，尚未完成新版发布。
+SQLite 最小修正已由[作者验证](../reviews/v41-review-fixture-author.md)并经[独立审查](../reviews/v41-review-fixture-independent.md)接受，相关脚本 13 项通过；本机复用了旧版真实 binary，该结果只证明局部夹具兼容，精确新版仍须通过 CI。
+
+状态：两项测试修正均已合并，继续 v0.1.41 的精确源码检查与全部发行平台构建，尚未完成新版发布。
