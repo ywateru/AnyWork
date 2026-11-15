@@ -55,21 +55,30 @@ impl Authorization for Auth {
         })
     }
 }
+#[derive(Default)]
 struct Verifier {
     short: bool,
+    initial_expires: AtomicU64,
+    renewed: tokio::sync::Notify,
 }
 impl AccountVerifier for Verifier {
     fn verify<'a>(&'a self, token: &'a str) -> VerifyFuture<'a> {
         Box::pin(async move {
             anyhow::ensure!(token.starts_with("fixture-"), "fixture token");
+            let initial = self.short && token == "fixture-0";
+            // A three-second lease can leave almost no renewal margin after
+            // Unix-second quantization and the actor's 100ms maintenance tick.
+            let expires_at = now() + if initial { 12 } else { 300 };
+            if initial {
+                self.initial_expires.store(expires_at, Ordering::SeqCst);
+            } else if self.short {
+                // This observes the real gateway receiving the refreshed token.
+                // It does not imply that the client accepted the renewal ACK.
+                self.renewed.notify_one();
+            }
             Ok(VerifiedAccount {
                 subject: "fixture-owner".into(),
-                expires_at: now()
-                    + if self.short && token == "fixture-0" {
-                        3
-                    } else {
-                        300
-                    },
+                expires_at,
             })
         })
     }
@@ -78,6 +87,7 @@ struct Fixture {
     service: TransportService,
     info: ConnectionInfo,
     auth: Arc<Auth>,
+    verifier: Arc<Verifier>,
     gateway: Gateway,
     events: mpsc::UnboundedReceiver<TransportEvent>,
     calls: Arc<AtomicUsize>,
@@ -140,13 +150,17 @@ impl Fixture {
         let keys = snow::Builder::new(NOISE_SUITE.parse().unwrap())
             .generate_keypair()
             .unwrap();
+        let verifier = Arc::new(Verifier {
+            short,
+            ..Default::default()
+        });
         let gateway = Gateway::start(GatewayConfig {
             installation_id: "fixture-installation".into(),
             private_key: keys.private.try_into().unwrap(),
             allowed_origins: vec![MOBILE_ORIGIN.into()],
             local_port,
             local_token: "isolated-local-fixture".into(),
-            verifier: Arc::new(Verifier { short }),
+            verifier: verifier.clone(),
         })
         .await
         .unwrap();
@@ -177,6 +191,7 @@ impl Fixture {
             service,
             info,
             auth,
+            verifier,
             gateway,
             events,
             calls,
@@ -460,18 +475,50 @@ async fn renewal_preserves_existing_pty_and_later_http() {
             .await
             .unwrap();
     }
-    tokio::time::sleep(Duration::from_secs(4)).await;
+    let initial_expires = f.verifier.initial_expires.load(Ordering::SeqCst);
+    assert!(initial_expires > 0);
+    tokio::time::timeout(Duration::from_secs(20), f.verifier.renewed.notified())
+        .await
+        .expect("gateway must receive the refreshed authorization");
     assert!(f.auth.tokens.load(Ordering::SeqCst) >= 2);
-    let (head, _) = f.request("after-renew", "GET", "/api/info", b"").await;
+    // Cross the old gateway lease AND the client's rounded monotonic lease.
+    // Later traffic must rely on auth.renewed, not merely a token callback.
+    let old_lease_end = UNIX_EPOCH + Duration::from_secs(initial_expires + 1);
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while let Ok(remaining) = old_lease_end.duration_since(SystemTime::now()) {
+            tokio::time::sleep(remaining).await;
+        }
+    })
+    .await
+    .expect("old fixture authorization must expire");
+    assert!(now() > initial_expires);
+    let (head, body) = f.request("after-renew", "GET", "/api/info", b"").await;
     assert_eq!(head.status, 200);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+        json!({"fixture":true})
+    );
     f.service
         .pty(PtyCommand::Input {
-            operation: op,
+            operation: op.clone(),
             data: "still original pty".into(),
         })
         .await
         .unwrap();
-    assert!(matches!(f.event().await, TransportEvent::PtyData { .. }));
+    match f.event().await {
+        TransportEvent::PtyData {
+            operation, base64, ..
+        } => {
+            assert_eq!(operation.connection, op.connection);
+            assert_eq!(operation.operation_id, op.operation_id);
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&STANDARD.decode(base64).unwrap())
+                    .unwrap(),
+                json!({"type":"input","data":"still original pty"})
+            );
+        }
+        _ => panic!("original PTY must survive acknowledged renewal"),
+    }
     f.service.close_all().await;
 }
 #[test]
@@ -663,7 +710,7 @@ async fn close_all_fences_pending_handshake_and_waits_for_its_cleanup() {
         allowed_origins: vec![MOBILE_ORIGIN.into()],
         local_port: 1,
         local_token: "fixture".into(),
-        verifier: Arc::new(Verifier { short: false }),
+        verifier: Arc::new(Verifier::default()),
     })
     .await
     .unwrap();
