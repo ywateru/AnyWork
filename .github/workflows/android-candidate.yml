@@ -1,0 +1,112 @@
+name: Build Android ARM64 candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-candidate-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  android-arm64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate exact source and embedded versions
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, re, subprocess
+          sha = os.environ['GITHUB_SHA']
+          if os.environ['GITHUB_REF_TYPE'] != 'branch' or not re.fullmatch(r'[0-9a-f]{40}', sha):
+              raise SystemExit('A branch dispatch with an exact source SHA is required')
+          if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != sha:
+              raise SystemExit('Checkout differs from workflow source SHA')
+          config = json.loads(pathlib.Path('crates/mobile/tauri.conf.json').read_text())
+          subprocess.run(['python3', 'scripts/check-release-version.py', 'v' + config['version']], check=True)
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;27.2.12479018'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-arm64
+      - run: npm ci
+      - name: Restore Android release signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo 'Android release signing secret is required.' >&2; exit 1; fi
+          umask 077
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/anywork-android-candidate.jks"
+      - name: Build and verify ARM64 candidate
+        env:
+          ANYWORK_ANDROID_KEYSTORE: ${{ runner.temp }}/anywork-android-candidate.jks
+          ANYWORK_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANYWORK_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANYWORK_ANDROID_KEY_ALIAS: anywork
+        run: ./scripts/build-android.sh --release --target aarch64
+      - name: Verify official signer and record artifact source
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, subprocess
+          sha = os.environ['GITHUB_SHA']
+          if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != sha:
+              raise SystemExit('Artifact checkout differs from workflow source SHA')
+          apk = pathlib.Path('release/anywork-android-arm64.apk')
+          sdk = pathlib.Path(os.environ['ANDROID_HOME'])
+          signing = subprocess.check_output([
+              str(sdk / 'build-tools/36.0.0/apksigner'), 'verify', '--verbose', '--print-certs', str(apk)
+          ], text=True)
+          match = re.search(r'Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)', signing)
+          official = '88b43f83632002fbeddd23a286eabee39c5ada0fa1b037d6ff32b9986a67acb8'
+          if not match or match[1].lower() != official or not re.search(r'(?m)^Number of signers: 1$', signing):
+              raise SystemExit('Candidate does not have the single official upgrade signer')
+          config = json.loads(pathlib.Path('crates/mobile/tauri.conf.json').read_text())
+          metadata = {
+              'source_sha': sha,
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'run_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+              'run_url': os.environ['GITHUB_SERVER_URL'] + '/' + os.environ['GITHUB_REPOSITORY']
+                  + '/actions/runs/' + os.environ['GITHUB_RUN_ID'],
+              'apk': apk.name,
+              'apk_sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
+              'apk_bytes': apk.stat().st_size,
+              'certificate_sha256': official,
+              'package': config['identifier'],
+              'version_name': config['version'],
+              'version_code': config['bundle']['android']['versionCode'],
+              'min_sdk': config['bundle']['android']['minSdkVersion'],
+              'target': 'aarch64',
+              'published': False,
+          }
+          pathlib.Path('release/android-candidate.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          print(json.dumps(metadata, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64-candidate-${{ github.sha }}
+          path: |
+            release/anywork-android-arm64.apk
+            release/android-candidate.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/anywork-android-candidate.jks"
