@@ -151,3 +151,25 @@ external rewrite需保留原query和上述各方法/body/授权及响应header�
 新增 `gateway_transport_preserves_native_audience_policy_and_account_scope`：捕获真实 `Handle::prepare` 投影到AuthBackend的配置，断言使用原audience/client/callback；原配置可过EndpointPolicy，而将audience替换为官网派生 `/api` 时仍返回 `MOBILE_COORDINATION_CONFIGURATION`；同一合成账号在新旧transport下trust scope保持一致。不进行真实登录、公网请求或SDK注册。
 
 本机工具链 `rustc 1.97.1`、`rustfmt 1.9.0`；已通过对两处Rust文件的rustfmt check（edition2024、skip_children）和 `git diff --check`。提交候选时尚未运行Cargo，已向协调者申请共享root target窗口，拟offline/locked执行新增回归及既有真实SDK loopback Native目录/恢复测试；不把待运行测试写成已通过，也不把入口切换视为设备同步恢复。当前未部署、未安装、未操作设备或宿主。
+
+### 已分配Cargo窗口后的作者验证
+
+验证源码候选为 `523fc9d`。协调者分配独占共享target窗口后，执行：
+
+```sh
+CARGO_TARGET_DIR=<main-worktree>/target \
+CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo test --offline --locked -p anywork-mobile --lib account::
+```
+
+首次执行在Tauri `generate_context!()` 编译阶段失败：本WT缺少配置要求的 `web/dist-mobile`，没有运行测试。确认该Cargo进程exit101后，临时将本WT ignored `web/dist-mobile` 软链接到主工作区既有产物再执行相同命令；没有重建前端、下载依赖、复制target或更改Tauri配置。
+
+第二次执行exit0：**19 passed / 0 failed / 1 ignored / 23 filtered out**，编译完成19.01秒，测试2.16秒。包括：
+
+- 新增 `gateway_transport_preserves_native_audience_policy_and_account_scope` 通过。
+- `native_grid::native_directory_sdk_refreshes_presence_without_console_login` 通过：真实锁定SDK loopback配置、注册/准入、目录、重复刷新及业务目标准备。
+- `native_grid::native_failures_keep_account_records_unknown_and_expose_only_fixed_stage` 通过：真实SDK错误阶段保持unknown与既有连接门禁。
+- `native_grid::native_sdk_session_expiry_can_force_refresh_during_coordination_recovery` 通过：真实SDK自然session expiry驱动恢复。
+- 其余账号/schema/轮换/取消/信任及loopback TLS错误收敛测试通过。唯一ignored为 `public_native_configuration_sdk_roundtrip`，没有启用公网探针。
+
+这证明host账号模块与既有SDK夹具行为，不能证明Vercel转发语义、Android公网TLS、实体注册/presence或真实工作区已恢复。没有crosscompile、Android构建、部署、安装、设备或宿主操作。测试进程已退出；已删除仅本WT自建的软链接，保留主工作区原产物不动，共享target窗口已释放。
