@@ -1,6 +1,6 @@
 # Documentation index
 
-- [Android 加载修复发行](plan/tasks/android-loading-release.md)：v0.1.39 被 Rust 1.100 新 Clippy 检查阻止，最小修正后继续 v0.1.40，待精确源码与全部发行平台通过。
+- [Android 加载修复发行](plan/tasks/android-loading-release.md)：修正新 Clippy 检查与 SQLite 测试夹具的发行阻塞，继续 v0.1.41，待精确源码与全部发行平台通过。
 
 - [Android v0.1.38 设备读取卡住](plan/tasks/android-device-loading.md)：同签名实机验证关闭永久 loading；后续原生错误确认为协调配置读取失败，手机蜂窝到该域名 TCP 超时。41 项 Native 测试通过，手机保留修复/诊断包；工作区连接仍待可达网络或服务入口验证。
 

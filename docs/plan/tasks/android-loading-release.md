@@ -6,7 +6,9 @@
 
 v0.1.39 的精确源码为 `541f3ff1e3ae59968c90a8580c594de411f56ff7`。其 [Checks](https://github.com/ywateru/AnyWork/actions/runs/43689682124) 中网页任务在严格 Clippy 阶段失败：CI stable 升至 Rust 1.100.0 后，测试中的 `chunks_exact(2)` 触发 `clippy::chunks_exact_to_as_chunks`。该版本没有创建 tag 或正式 Release；不重试相同源码绕过确定性错误。
 
-作者在独立 worktree 做最小测试源码修正，保留原有长度与状态序列断言，经另一审查者验收后合并。发布器选择后续 v0.1.40 / Android code 42，继续等待精确源码 Checks、全部发行平台与官网核验。
+作者在独立 worktree 做最小测试源码修正，保留原有长度与状态序列断言，经另一审查者验收后合并。发布器选择后续 v0.1.40 / Android code 42。
+
+v0.1.40 精确源码 `4ab61ff9721267e0a5bf5533b0feda8a2d9bb745` 的 Rust 1.100 Clippy、mobile 41 项测试和 Web 446 项单测通过；[Checks](https://github.com/ywateru/AnyWork/actions/runs/43691054293) 在 `scripts/review-test.py::test_last_turn_is_not_a_git_comparison` 出现 `sqlite3.DatabaseError: file is not a database`。单次仅重试失败任务后同错重现，两轮均未授权 tag 或 Release。夹具使用 `glob("*.sqlite*")` 可能匹配 WAL/SHM，日志没有记录实际选中文件名，因此不将误选写成直接实证。作者改用与服务一致的精确数据库路径，独立审查后继续 v0.1.41 / Android code 43，不再重试同一失败源码。
 
 ## 验收范围
 
@@ -18,4 +20,4 @@ v0.1.39 的精确源码为 `541f3ff1e3ae59968c90a8580c594de411f56ff7`。其 [Che
 
 最小修正已由[作者验证](../reviews/v40-clippy-author.md)并经[独立审查](../reviews/v40-clippy-independent.md)接受：mobile 测试 41 passed / 1 ignored，本机严格 Clippy 与格式检查通过；Rust 1.100 门禁仍以新版精确源码 CI 为准。
 
-状态：修正已合并，继续发布器全平台检查与新版发行；尚未完成新版发布。
+状态：Clippy 修正已合并；SQLite 测试夹具最小修正和独立审查进行中，尚未完成新版发布。
