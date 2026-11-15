@@ -97,3 +97,13 @@ coordination 请求为 `https://anywork-cybergrid-selfhost.vercel.app/api/v1/aut
 本地source归档SHA256 `84f14133573f6ac88627d56a991ad0822d54d340f5b052f3b82edd1cb698a656`；逐项对照Git确认1056个归档正文blob均属于精确40e0548，生成manifest路径集合一致。网站source与installer f669ef/v41分别绑定。已读取实际输出CSP，保留原auth/协调origin；部署摘要声明与先前生产一致，本次未另行在线复核。ignored `gateway-review/staging-verdict.json`保留小证据。
 
 本轮未部署、未启动Cargo、未操作手机或重放模拟器凭据。等待route实际deployment ID后，先执行正确Native appId的手机匿名config probe；HTTP透传和业务恢复边界仍以上节为准。构建workflow15d6a0e由另一独立lane审查，不包含于本次40e0548结论。
+
+## 模拟器正式 v41 可见 UI 补证（2026-11-15 10:19–10:22Z）
+
+**登录/设备目录/presence PASS；工作区读取待公钥核对。** 本轮先检查已有emulator-5580：MainActivity前台且有焦点，仍只有3个无输入框的WebView/容器节点。正常截图显示完整已登录「我的设备」，一台电脑为在线，有「打开工作区」入口。此前仅凭可访问性树判为空白的推断不成立；未再次输入凭据、重装、重启或重置。
+
+点击可见「打开工作区」后进入「核对电脑身份」：显示当前公钥与「我已在电脑端核对身份与完整公钥」复选框，未勾选时确认连接禁用。尚未与电脑端实际核对完整公钥，因此未勾选或连接，没有跳过此门禁。返回设备页，仅执行一次正常刷新（10:21:26.716Z），下一次可见观察10:21:46.229Z仍为一台在线电脑，无unknown/错误提示。19.513秒是两次观察间隔，不是请求耗时；初次提交到本轮观察的长间隔也不记为登录耗时。
+
+按精确v41的Native路径，非空设备记录显示online需要SDK config/EndpointPolicy、首次session注册与身份绑定、devices/presence合并成功。可见结果支持这些阶段通过；本lane没有截获每条HTTP交换或导出grant，也不将刷新推断为每次都重新注册或证明每次config均发出新HTTP。受限log窗口无固定MOBILE错误、Rust panic或Java fatal，未保留原始日志。
+
+这是原正式v41/43与原协调transport的模拟器对照，说明Android客户端在该模拟器网络下可到达目录，不能替代实体手机gateway候选验收。实体手机保持未动；真实工作区内容仍未读取、未发Agent消息、未改文件。模拟器保留设备页等待后续，未操作电脑宿主。小证据为ignored `emulator-v41/visible-directory-safe.json`、`refresh-visible-safe.json`、`workspace-stage-safe.json`及两张已遮盖账号/公钥的截图；原始截图未保留。ADB仍由本lane独占，唯一已有长期进程是本次只读emulator，无新监控循环。
