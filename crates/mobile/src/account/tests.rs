@@ -21,6 +21,7 @@ fn native(generation: u64, status: &str) -> NativeSnapshot {
 }
 #[derive(Default)]
 struct Backend {
+    configuration: std::sync::Mutex<Option<tauri_plugin_mobile_auth::Configuration>>,
     token_requests: std::sync::Mutex<Vec<(u64, bool, bool, u64)>>,
     fail_token: AtomicBool,
     profile_warning: AtomicBool,
@@ -30,8 +31,9 @@ struct Backend {
 impl AuthBackend for Backend {
     fn configure(
         &self,
-        _: tauri_plugin_mobile_auth::Configuration,
+        configuration: tauri_plugin_mobile_auth::Configuration,
     ) -> AuthFuture<'_, NativeSnapshot> {
+        *self.configuration.lock().unwrap() = Some(configuration);
         Box::pin(async { Ok(native(0, "signedOut")) })
     }
     fn snapshot(&self) -> AuthFuture<'_, NativeSnapshot> {
@@ -357,6 +359,52 @@ fn native_config() -> Value {
         "revocationEndpoint":format!("{}/token/revocation",config.issuer),"scope":"openid offline_access profile email connect",
         "coordination":{"protocol":"memory-v1","epoch":"00000000-0000-4000-8000-000000000001"}})
 }
+
+#[tokio::test]
+async fn gateway_transport_preserves_native_audience_policy_and_account_scope() {
+    let config = Config::default();
+    assert_eq!(config.grid_url, "https://anywork.aixgg.com");
+    let original_audience = "https://anywork-cybergrid-selfhost.vercel.app/api";
+    assert_eq!(config.resource, original_audience);
+    let gateway_audience = format!("{}/api", config.grid_url);
+    assert_ne!(config.resource, gateway_audience);
+
+    let (gateway, backend) = handle(config.clone());
+    gateway.prepare().await.unwrap();
+    {
+        // Exercise the real native configuration projection, not just defaults.
+        let configured = backend.configuration.lock().unwrap();
+        let configured = configured.as_ref().unwrap();
+        assert_eq!(configured.resource, original_audience);
+        assert_eq!(configured.endpoint, config.endpoint);
+        assert_eq!(configured.client_id, config.client_id);
+        assert_eq!(configured.redirect_uri, config.redirect_uri);
+    }
+
+    let mut auth = native_config();
+    assert!(EndpointPolicy::parse(&auth, &config).is_ok());
+    auth["resource"] = json!(gateway_audience);
+    assert_eq!(
+        EndpointPolicy::parse(&auth, &config)
+            .err()
+            .unwrap()
+            .to_string(),
+        "MOBILE_COORDINATION_CONFIGURATION"
+    );
+
+    // The same account keeps its trust scope across a transport-only change.
+    let (direct, _) = handle(Config {
+        grid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
+        ..config
+    });
+    signed_in(&gateway).await;
+    signed_in(&direct).await;
+    assert_eq!(
+        gateway.scope_id().await.unwrap(),
+        direct.scope_id().await.unwrap()
+    );
+}
+
 #[tokio::test]
 #[ignore = "Explicit public-service probe only; no credentials or device registration"]
 async fn public_native_configuration_sdk_roundtrip() {

@@ -111,7 +111,7 @@ impl Default for Config {
             issuer: "https://auth.x.aixgg.com/oidc".into(),
             client_id: "x7lzj58abb1sdp16lkd34".into(),
             resource: "https://anywork-cybergrid-selfhost.vercel.app/api".into(),
-            grid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
+            grid_url: "https://anywork.aixgg.com".into(),
             host_product_id: "x7lzj58abb1sdp16lkd34".into(),
             redirect_uri: "http://127.0.0.1:17897/callback".into(),
         }

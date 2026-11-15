@@ -143,3 +143,11 @@ Rust SDK HTTP client不安装cookie store/provider，公开config不附Authoriza
 external rewrite需保留原query和上述各方法/body/授权及响应header，不能返回redirect或缓存登录/目录/信令响应。路径rewrite本身不等于method ACL；若平台仅按path匹配，同一路径的非表列方法仍交原服务按其校验拒绝，不能声称边缘已限制方法。原服务对不同错误方法的现有行为不由本报告修改。宿主 `/connect`、`/remote/v1/ws` 不属于这个协调路由集合，不应一起rewrite到协调服务。
 
 本节通过只读遍历锁定SDK生产源码的所有 `api` / `http_json` / 直接session DELETE调用核对，没有运行Cargo、网络请求或生产操作。`git diff --check`用于报告格式核验，不是运行兼容性测试。
+
+## Native入口实施候选
+
+上述初步调查保持原实现的结论属于入口方案选择前的阶段。协调者接受 `772de4a` 契约后，本WT cherry-pick为 `77f232e`，据此仅将 `Config::default().grid_url` 改为 `https://anywork.aixgg.com`。resource仍为既有协调API audience；issuer、Native clientId、产品、原生callback、SDK版本与全部安全门禁不变。route lane单独负责external rewrites与缓存策略，本提交不修改Vercel、Cargo/lock、Desktop或Web。
+
+新增 `gateway_transport_preserves_native_audience_policy_and_account_scope`：捕获真实 `Handle::prepare` 投影到AuthBackend的配置，断言使用原audience/client/callback；原配置可过EndpointPolicy，而将audience替换为官网派生 `/api` 时仍返回 `MOBILE_COORDINATION_CONFIGURATION`；同一合成账号在新旧transport下trust scope保持一致。不进行真实登录、公网请求或SDK注册。
+
+本机工具链 `rustc 1.97.1`、`rustfmt 1.9.0`；已通过对两处Rust文件的rustfmt check（edition2024、skip_children）和 `git diff --check`。提交候选时尚未运行Cargo，已向协调者申请共享root target窗口，拟offline/locked执行新增回归及既有真实SDK loopback Native目录/恢复测试；不把待运行测试写成已通过，也不把入口切换视为设备同步恢复。当前未部署、未安装、未操作设备或宿主。
