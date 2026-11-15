@@ -22,4 +22,10 @@
 
 工作区：`mobile-coordination-native`（Native 作者）、`mobile-coordination-route`（入口调查/作者）、`mobile-coordination-verify`（独立审查及独占 ADB）。依赖共享现有 root `node_modules` / Cargo target，不复制依赖或并发大编译。协调者维护产品契约与合并发布；未经新证据不重复 v41 已完成的全平台打包。
 
-状态：调查与现场复核进行中，尚未形成新的修复或通过结论。
+## 已选候选
+
+当前手机复核显示官网/auth HTTPS200，协调 IPv4 TCP 成功但 TLS 握手失败；电脑请求受系统隧道影响，不能证明公网直连。Native 调查未发现明确请求参数或 TLS 初始化缺陷。采用既有官网 origin 的精确路径 external rewrite 候选：Android transport root 使用官网，转发至同一个既有协调 alias，维持所有 OAuth 和存储绑定。无需新 DNS、迁移数据或更改手机网络。精确 SDK API 集合由 Native lane 冻结；route lane 负责规则/缓存边界和部署，Native lane 负责默认入口及定向回归，独立 verifier 负责源码审查与实体/模拟器验收。
+
+契约已同步 [mobile-native-contract](../../mobile-native-contract.md) 和 [cloud-configuration](../../cloud-configuration.md)。候选只有通过转发语义与手机实际注册/目录/授权工作区读取后才可记为同步恢复；若后续失败，按新阶段继续定位。
+
+状态：候选实施准备中，尚未部署或恢复验收。

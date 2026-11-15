@@ -16,6 +16,12 @@
 
 AccountService 为 transport 提供 `VerifiedTarget {gateway_url,installation_id,public_key:base64url字符串,account_epoch,scope_id,lifetime:CancellationToken}` 与 `Arc<dyn TransportAuthorization>`，二者不 Serialize。授权 trait `token(force_refresh,min_validity_secs)` 返回仅原生可见的 token，并提供 ensure_epoch；公钥在握手前严格解码/校验32字节。目录目标解析、信任接受和 connect 的具体方法由 account/transport 两位作者协同冻结，shell 仅转发。当前部署使用电脑既有 Native client 的 Native device session，不调用 SPA console 路由。应用 grant 仅内存，IdP SSO cookie 另由官方 SDK/WebView 管理；进程重启不自动恢复 grant。stable scopeId 由 issuer/subject 确定，epoch 只作异步栅栏，不充当草稿命名空间。
 
+### 协调 HTTPS 入口恢复（2026-11-15 候选）
+
+Android 默认协调 transport root 调整为 `https://anywork.aixgg.com`，由既有官网项目对 Native SDK 所需的精确 `/api/v1` 路径做 external rewrite，目标仍为现有 `https://anywork-cybergrid-selfhost.vercel.app`。不做客户端自动回退、重定向或新增网关前缀；不代理 console/admin 或其它 `/api` 路径。OAuth resource/audience 仍固定为 `https://anywork-cybergrid-selfhost.vercel.app/api`，issuer、client/product、Redis namespace/epoch 与电脑原入口保持不变。公开 URL 与授权 audience 是不同字段，不随 transport 域名推导。
+
+转发保持方法、查询、请求体、Authorization、协调 epoch header、状态与响应体；配置、登记、目录、信令和 session 响应不得缓存。账号 grant 与刷新所有者仍在 Native；网站 JS 不取得 Native token，外部目标固定且由本项目控制。端到端业务内容继续走既有已核验电脑 gateway，不经过此协调入口。候选上线须独立验证匿名配置、安全错误、真实 Native 登记/presence 和授权工作区只读读取；HTTP200 或模拟器通过不能替代实体蜂窝验收。当前这是修复契约，尚非恢复成功声明。
+
 ## Transport
 
 Rust `TransportService` 不依赖 Tauri。`ConnectionRef={connectionId,generation}`，`ConnectionInfo=ConnectionRef & {scopeId}`。`OperationRef={connection:ConnectionRef,operationId}`；operationId 由前端启动前生成且不重用，Rust wire ID 为递增 rN。
