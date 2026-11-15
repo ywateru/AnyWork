@@ -2,7 +2,7 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.41 / 本次更新**
+**New in 0.1.42 / 本次更新**
 
 Fixes Android device discovery failing with `MOBILE_COORDINATION_CONFIG_FETCH_FAILED` on the tested cellular route. Android now reaches the existing coordination service through narrowly scoped HTTPS routes on `anywork.aixgg.com`. The OAuth issuer, resource/audience, client and product bindings, and coordination data remain unchanged. Certificate-chain and hostname verification stay enabled; requests and responses are not cached.
 
