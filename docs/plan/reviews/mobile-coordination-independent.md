@@ -48,3 +48,20 @@ coordination 请求为 `https://anywork-cybergrid-selfhost.vercel.app/api/v1/aut
 小型脱敏证据在本WT ignored `artifacts/mobile-coordination-independent/`：`baseline-safe.json`、`installed-apk-binding.json`、`refresh-safe.json`、`final-device-safe.json`、`public-network-safe.json`、`avd-inventory.json`，以及无账号probe复核脚本。未保存原始私人UI树/截图、原始logcat、connectivity dump、地址标识或服务正文。
 
 手机停在现有应用已登录、诊断详情展开的Unknown页面；刷新可用、连接禁用。所有本轮有限命令已结束，无自建模拟器、探针或监控后台进程；既有ADB server保留。ADB独占继续由本lane持有，后续通过父端接收作者commit或明确probe建议。该报告是基线与验收计划，不是协调配置、设备发现或工作区同步恢复完成声明。
+
+## 后续：正式 v41 模拟器登录前对照
+
+父端接受基线后授权启动现有模拟器。选用 `nuva_mirror_isolated` API30 ARM64 AVD，以 `-read-only -no-snapshot-load -no-snapshot-save -no-window -no-audio` 运行，不 wipe、不下载镜像、不改原 AVD 既有数据。所有命令显式选择 emulator，真实手机完全未操作。原 AVD 没有 AnyWork 安装；模拟器临时运行层安装了 root 保留的正式 v41 ARM64 APK，未复制或重建包。
+
+实际安装前再次计算 APK SHA-256 为 `a31c8cc1404b9efa4ebfb4cfab526c85edc3397c28242e74910053cc5f07e434`，39,274,111 bytes，绑定正式源 `f669ef59bde7cb70bbe98fd59592b6f87e93698b`。安装成功耗时8.0秒，实际 package 为0.1.41/code43。`09:32:31Z` 已观测boot complete（不是从进程启动精确计时），正常启动应用后有限日志窗口未见 verifier/Rust panic 或 Java fatal。
+
+`09:34:00Z` 通过正常 UI 点击“登录账号”，核对应用内来源确认弹窗并点击“继续”；`09:35:50Z` 观测到正常 Logto Username/Password/Sign in 页面。两时刻相差约110秒，包含人工检查和弹窗停留，**不是认证HTTP耗时**。该AVD无现成AnyWork SSO，用户名/密码字段为空，没有提交凭据。当前lane上下文缺少此前授权凭据的具体值或安全读取位置，待父端提供后才能继续正常UI登录；未从私人文件或进程中搜寻凭据。
+
+| 阶段 | 实际证据 |
+| --- | --- |
+| 应用启动/登录来源确认 | 正式v41在API30启动，来源弹窗及auth登录表单正常加载 |
+| 账号读取 | 未到达：等待正常UI登录；页面加载不等于Native账号API请求成功 |
+| config / registration / presence | 均未到达，不能与手机Native失败作成功对照 |
+| 授权工作区读取 | 未到达；未发送Agent prompt或改动真实文件 |
+
+模拟器已有nc，无curl/wget/openssl；未推送额外工具或借私有bridge/隐藏IPC补做Native结果。小证据位于同ignored目录 `emulator-v41/` 的 launch/login/prelogin安全JSON。模拟器保留在登录页，唯一自建后台进程为本次emulator，ADB独占仍由本lane持有；没有监控或重复探针循环。这是等待授权凭据输入材料的中间记录，尚非模拟器业务验收通过。
