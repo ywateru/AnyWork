@@ -293,7 +293,7 @@ Desktop updates continue downloading quietly and install only after confirmation
 - macOS 14+ Apple Silicon / Intel: DMG installers; ad-hoc signed app, not notarized / DMG 安装盘；临时签名，尚未公证。
 - Windows x64: per-user installer or portable ZIP; requires WebView2, unsigned / 当前用户安装版或便携包；需 WebView2，未做发行商签名。
 - Linux x64 / ARM64: AppImages or portable archives; compatible desktop libraries required / AppImage 或便携包，需兼容运行库。
-- Android 8+: signed universal APK / 持久签名通用 APK。
+- Android 8+: four separately signed ARM64, ARMv7, x86 and x86_64 APKs; ARM64 recommended for most phones / ARM64、ARMv7、x86、x86_64 四个独立签名 APK，多数手机推荐 ARM64。
 - Web client and corresponding source / Web 资源与对应源码。
 
 Checksums are provided in `SHA256SUMS`. Desktop packages include the corresponding source and licenses; the DMG includes a bilingual installation guide.
