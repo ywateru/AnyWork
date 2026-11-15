@@ -39,3 +39,5 @@
 ### 正式发行检查阻塞
 
 首个正式版本候选 v0.1.42/code44 源 `0a38dbb` 的 Checks `43706633883` 为4项通过、server-web失败，尚无 tag 或 Release。失败是已有 `transport::tests::renewal_preserves_existing_pty_and_later_http` 在3秒有效期夹具、固定等待4秒后未观察到第二次 token 请求。不能未经分析认定为基础设施瞬态或盲重跑；由 Native 作者独立工作树调查实际续期逻辑与测试时序，保留有意义的续期/既有 PTY/后续 HTTP 门槛。独立 reviewer 接受后才恢复正式发布，不跳过检查。网站自动流程另因失效令牌失败，现有已验收官网入口继续服务，正式站点更新另行绑定最终发行源。
+
+续期夹具已在秒末相位控制中复现旧失败：服务端完整墙钟与客户端整秒转换令三秒测试租期几乎没有调度余量。修复只修改测试，使用12秒短租期、观察 gateway 收到刷新授权，再跨过旧到期点验证完整 HTTP JSON 和同一 PTY 的精确回显。作者21项通过，独立正向与“不延长租约”负对照通过；[作者](../reviews/mobile-renewal-check-author.md)与[独立记录](../reviews/mobile-renewal-check-independent.md)保留证据。生产逻辑不变。按 canonical publisher 单调版本规则归档未发布 v42 的真实失败，下一次正式候选预计 v0.1.43/code45；重新运行新精确源码 CI，不复用旧通过状态。
