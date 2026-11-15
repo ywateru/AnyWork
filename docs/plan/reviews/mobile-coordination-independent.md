@@ -18,7 +18,7 @@
 
 使用手机已有 curl 7.58.0/BoringSSL；每项为无认证 GET、丢弃响应正文，不输出原始 curl 错误或服务响应。请求使用系统现有解析与路线，进程级 `--noproxy '*'`，保留证书/主机名校验，connect timeout 8 秒、总上限12秒，无 redirect 跟随；没有修改系统代理设置。
 
-coordination 请求为 `https://anywork-cybergrid-selfhost.vercel.app/api/v1/auth/config?appId=<公开应用ID>`。参数名 **appId** 已核对锁定 SDK `f2a3961536e5c69b13c7dbc661953d9243becbae` 的实际实现，值取当前源码默认 client ID；不是 console 的 clientId 路径。未传账号、设备或 grant。
+coordination 请求为 `https://anywork-cybergrid-selfhost.vercel.app/api/v1/auth/config?appId=<公开应用ID>`。参数名 **appId** 已核对锁定 SDK `f2a3961536e5c69b13c7dbc661953d9243becbae` 的实际实现，不是 console 的 clientId 路径。后续自查纠正：这次 shell 脚本的值取自 Web 公开 ID，而 Native 实际 client ID 对应另一项 Native 公开配置。全部 coordination 请求均在 HTTP 前失败，query 不参与 DNS/TCP/TLS，故仅保留表中传输阶段结论，**不作为精确 Native 配置绑定或反序列化验收**；后续 gateway probe 必须改用精确 Native client ID。未传账号、设备或 grant。
 
 | 端点 / 地址族 | DNS | TCP累计秒 | TLS累计秒 | HTTP / exit | 判断 |
 | --- | --- | ---: | ---: | --- | --- |
@@ -65,3 +65,35 @@ coordination 请求为 `https://anywork-cybergrid-selfhost.vercel.app/api/v1/aut
 | 授权工作区读取 | 未到达；未发送Agent prompt或改动真实文件 |
 
 模拟器已有nc，无curl/wget/openssl；未推送额外工具或借私有bridge/隐藏IPC补做Native结果。小证据位于同ignored目录 `emulator-v41/` 的 launch/login/prelogin安全JSON。模拟器保留在登录页，唯一自建后台进程为本次emulator，ADB独占仍由本lane持有；没有监控或重复探针循环。这是等待授权凭据输入材料的中间记录，尚非模拟器业务验收通过。
+
+## 40e0548 Native 与 gateway 精确源码审查
+
+**接受（PASS）：可进入受控部署及手机匿名 gateway probe，无源码阻断项。** 审查精确合并候选 `40e0548431bc4467f5046a8334edaee685ce15df`，Native 代码 `207e890778b79e41e830e130a6f8cae9d7902e8d`、API契约报告 `02e90f8bfba16dcb4b585838cad08cf730161b60`、route代码 `c110af73c256facbf497e4a16682657d34e718b8`。确认两份代码在完整候选中没有后续漂移；本 reviewer 没有 cherry-pick 产品代码或修改 main。
+
+- Native生产代码仅将 `Config::default().grid_url` 切到官网HTTPS根。resource/audience、issuer、client/product、callback、SDK锁定版、EndpointPolicy、epoch、公钥确认与unknown连接门禁均未改变。SDK实际client取该grid_url；账号scope仅绑定原issuer/client/subject，未随transport origin漂移。新增测试通过真实prepare配置投影断言原audience/client/callback，拒绝官网派生的错误audience，并检验同一合成账号scope保持；不是仅复述一行默认值的测试。
+- 独立遍历锁定SDK的auth_config、api、directory、heartbeat、signals和精确session撤销路径，确认当前Native需要9个pathname：auth/config、auth/registration/challenge、auth/registration/admit、auth/exchange、directory、devices、devices/self、signals、session，均在 `/api/v1/` 下。GET/POST signals共用一路径；SDK apps未被当前Native调用，可以不代理。无协调resolve或业务宿主 `/connect`、`/remote/v1/ws`需求。
+- `vercel.json`恰好这9条literal external rewrites，每个destination固定为旧协调origin加相同pathname；无动态host、query重写、redirect或catchall，不暴露console/admin/apps/旧auth登录路由。配置是pathname白名单，不是method ACL，非预期方法仍由原服务校验。现有app/callback/source重写不变。
+- 每条路径精确配置Cache-Control、CDN-Cache-Control、Vercel-CDN-Cache-Control为no-store，另有 `x-vercel-enable-rewrite-caching: 0`，未注入认证/cookie/epoch或放宽CORS。CSP preparer只绑定global CSP，保留固定上游和其他header；其真实CLI及组装测试覆盖这一点。此处检查的是显式禁缓存配置，不将外部rewrite默认行为视作已完成线上无缓存验收。
+- 不改变已部署协调服务、PUBLIC_ORIGIN、OAuth资源或存储namespace；同alias有利于保持既有状态，但源码规则不能独立证明生产alias/epoch未漂移。实际部署仍须固定源/目标身份并对账。
+
+独立针对性验证：从精确40e0548提取必要脚本、vercel配置、workflow和5个小型静态asset到自动清理临时目录，运行 `scripts/cloud/test_frontend.py -v`，**9/9 PASS，1.276秒**。再分别使用旧无gateway配置、宽泛 `/api/v1/:path*`、signals改为public/max-age60的反例，全部由gateway测试拒绝。显式预期路径/固定origin和负例提供独立边界，不是从生产配置镜像生成期望；`scripts/check.sh`已持续调用该测试文件。两个代码提交的 `git show --check`通过。
+
+已阅Native作者40e0548测试报告：19 pass/1 ignored，含真实锁定SDK的3项loopback目录/失败/恢复夹具；这是作者执行证据，本 reviewer 未重复Cargo，也不将loopback结果称为Android公网或Vercel验收。首次缺web/dist-mobile导致编译失败与后续复用产物通过的边界保留。
+
+**部署后门槛仍在：** query（包括正确Native appId、cursor和signals after/wait）、HTTP方法/JSON body、Authorization、请求和响应X-CyberGrid-Epoch、状态/body/Retry-After、无缓存及至少15秒long-poll实际透传；路径规则和离线测试不能直接证明这些wire语义。合成受控协议验证与匿名手机config优先，不把真实token导出到shell。随后才是获准同签包与实体Native config→registration→presence→授权工作区只读读取。上线网站source与仍为v41的installer source/tag须分别记录，不伪造新版发行或修复publisher phase。
+
+对应证据在ignored `gateway-review/`：frontend-9.log、3组负例log和focused-verdict.json，含精确输入文件摘要；临时源码/fixture树已删除，无依赖复制、构建、部署或公网探针。
+
+## 模拟器恢复后的阶段边界
+
+获准正常UI输入后已有一次登录提交，未保存凭据/表单正文或截图。随后上游503中断后，恢复检查确认emulator与应用进程仍在；MainActivity前台、display ON，可访问性树只有3个WebView容器节点，无可确认表单/设备控件，也无新固定MOBILE码或有限窗口panic/fatal。没有凭此推断认证、账号读取或SDK config成功，更没有再次盲输凭据、安装或重启应用。真实手机未操作。
+
+按父端优先级暂停进一步模拟器UI排查，先完成上述代码接受以解除部署前审查门槛。模拟器正式v41的config/registration/presence/工作区仍待正常UI补证，当前不作为gateway候选或业务恢复通过。模拟器继续保留，ADB独占不变；没有自建轮询/探针后台进程。
+
+## 40e0548 预构建部署输入审查
+
+**接受（PASS），可进入受控部署。** 独立读取route WT的 `.vercel/output`，逐文件重算447文件/24,354,680字节摘要，与预构建upload manifest完全一致；manifest SHA256 `37f5549f0e4572959dec2e23b022801488d6ad919cb5adcc423351c36efe0db3`。实际Build Output config仍为9条固定同后端external routes及每条4项禁缓存header，且无static/api遮挡。build.json精确绑定40e0548/0.1.41；release.json的23附件名称/大小/URL与本lane先前正式v41公开验收记录一致。EN/ZH各有四ABI精确v41链接、无universal/alias下载链接；旧APK名称仅留在兼容标签映射，不将字符串存在误判为当前下载回退。
+
+本地source归档SHA256 `84f14133573f6ac88627d56a991ad0822d54d340f5b052f3b82edd1cb698a656`；逐项对照Git确认1056个归档正文blob均属于精确40e0548，生成manifest路径集合一致。网站source与installer f669ef/v41分别绑定。已读取实际输出CSP，保留原auth/协调origin；部署摘要声明与先前生产一致，本次未另行在线复核。ignored `gateway-review/staging-verdict.json`保留小证据。
+
+本轮未部署、未启动Cargo、未操作手机或重放模拟器凭据。等待route实际deployment ID后，先执行正确Native appId的手机匿名config probe；HTTP透传和业务恢复边界仍以上节为准。构建workflow15d6a0e由另一独立lane审查，不包含于本次40e0548结论。
