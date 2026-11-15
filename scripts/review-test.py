@@ -215,7 +215,7 @@ class Review(unittest.TestCase):
         root,sid=self.repo(); other=self.create(cwd=str(root))["id"]
         (root/"tracked.txt").write_text("unrelated working tree\n")
         self.assertIsNone(self.review(sid,"last-turn")["diff"])
-        database = next((self.base/"data").glob("*.sqlite*"))
+        database = self.base/"data"/"remote-agent.sqlite"
         with sqlite3.connect(database) as db:
             for method,params in [("turn/started",{"turn":{"id":"first"}}),("turn/diff/updated",{"turnId":"first","diff":"aggregate patch"})]:
                 db.execute("INSERT INTO events(session_id,data) VALUES(?,?)",(sid,json.dumps({"seq":0,"session_id":sid,"method":method,"params":params,"request_id":None,"created_at":1})))
