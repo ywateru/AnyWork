@@ -5,6 +5,15 @@
   "buildCommand": "python3 scripts/build-site.py --fetch-release && ANYWORK_WEB_BASE=/app/ npm run build -w web && python3 scripts/assemble-vercel.py",
   "outputDirectory": "site/dist",
   "rewrites": [
+    { "source": "/api/v1/auth/config", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/auth/config" },
+    { "source": "/api/v1/auth/registration/challenge", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/auth/registration/challenge" },
+    { "source": "/api/v1/auth/registration/admit", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/auth/registration/admit" },
+    { "source": "/api/v1/auth/exchange", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/auth/exchange" },
+    { "source": "/api/v1/directory", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/directory" },
+    { "source": "/api/v1/devices", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/devices" },
+    { "source": "/api/v1/devices/self", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/devices/self" },
+    { "source": "/api/v1/signals", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/signals" },
+    { "source": "/api/v1/session", "destination": "https://anywork-cybergrid-selfhost.vercel.app/api/v1/session" },
     { "source": "/app/callback", "destination": "/app/index.html" },
     { "source": "/app", "destination": "/app/index.html" },
     { "source": "/app/", "destination": "/app/index.html" },
@@ -20,6 +29,15 @@
     {"source":"/app/callback","headers":[{"key":"Cache-Control","value":"no-store"}]},
     {"source":"/app/sw.js","headers":[{"key":"Cache-Control","value":"no-cache"}]},
     {"source":"/build.json","headers":[{"key":"Cache-Control","value":"no-store"}]},
-    {"source":"/release.json","headers":[{"key":"Cache-Control","value":"no-cache"}]}
+    {"source":"/release.json","headers":[{"key":"Cache-Control","value":"no-cache"}]},
+    {"source":"/api/v1/auth/config","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]},
+    {"source":"/api/v1/auth/registration/challenge","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]},
+    {"source":"/api/v1/auth/registration/admit","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]},
+    {"source":"/api/v1/auth/exchange","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]},
+    {"source":"/api/v1/directory","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]},
+    {"source":"/api/v1/devices","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]},
+    {"source":"/api/v1/devices/self","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]},
+    {"source":"/api/v1/signals","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]},
+    {"source":"/api/v1/session","headers":[{"key":"Cache-Control","value":"no-store"},{"key":"CDN-Cache-Control","value":"no-store"},{"key":"Vercel-CDN-Cache-Control","value":"no-store"},{"key":"x-vercel-enable-rewrite-caching","value":"0"}]}
   ]
 }

@@ -19,6 +19,64 @@ frontend = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(frontend)
 
 
+class NativeGatewayRoutes(unittest.TestCase):
+    # Android's current SDK call graph, frozen in mobile-coordination-native.md.
+    # /apps is an SDK API, but Android does not call it. No console/admin surface.
+    paths = {
+        '/api/v1/auth/config',
+        '/api/v1/auth/registration/challenge',
+        '/api/v1/auth/registration/admit',
+        '/api/v1/auth/exchange',
+        '/api/v1/directory',
+        '/api/v1/devices',
+        '/api/v1/devices/self',
+        '/api/v1/signals',
+        '/api/v1/session',
+    }
+
+    def setUp(self):
+        self.config = json.loads((frontend.ROOT / 'vercel.json').read_text())
+
+    def test_only_exact_android_paths_reach_fixed_upstream_without_query_or_redirect(self):
+        external = [rule for rule in self.config['rewrites']
+                    if not rule['destination'].startswith('/')]
+        self.assertEqual(len(external), len(self.paths))
+        self.assertEqual({rule['source'] for rule in external}, self.paths)
+        for rule in external:
+            with self.subTest(source=rule['source']):
+                # Literal same-path destination preserves the original query;
+                # no dynamic authority, prefix stripping, or query substitution.
+                self.assertEqual(rule, {'source': rule['source'], 'destination':
+                                       'https://anywork-cybergrid-selfhost.vercel.app' + rule['source']})
+        self.assertFalse(self.config.get('redirects'))
+        self.assertEqual([rule for rule in self.config['rewrites'] if rule not in external], [
+            {'source': '/app/callback', 'destination': '/app/index.html'},
+            {'source': '/app', 'destination': '/app/index.html'},
+            {'source': '/app/', 'destination': '/app/index.html'},
+            {'source': '/source', 'destination': '/anywork-source.tar.gz'},
+        ])
+
+    def test_every_gateway_path_disables_edge_rewrite_and_downstream_caching(self):
+        rules = [rule for rule in self.config['headers'] if rule['source'].startswith('/api')]
+        self.assertEqual(len(rules), len(self.paths))
+        self.assertEqual({rule['source'] for rule in rules}, self.paths)
+        for rule in rules:
+            with self.subTest(source=rule['source']):
+                headers = {header['key'].lower(): header['value'] for header in rule['headers']}
+                self.assertEqual(len(headers), len(rule['headers']))
+                self.assertEqual(headers, {
+                    'cache-control': 'no-store',
+                    'cdn-cache-control': 'no-store',
+                    'vercel-cdn-cache-control': 'no-store',
+                    'x-vercel-enable-rewrite-caching': '0',
+                })
+        # No edge rule injects bearer/cookie/epoch material or widens CORS.
+        header_names = {header['key'].lower() for rule in self.config['headers']
+                        for header in rule['headers']}
+        self.assertFalse(header_names & {'authorization', 'cookie', 'set-cookie', 'x-cybergrid-epoch',
+                                         'access-control-allow-origin'})
+
+
 class FrontendDeployment(unittest.TestCase):
     def setUp(self):
         self.values = {'VITE_LOGTO_ENDPOINT': 'https://identity.example.invalid', 'VITE_LOGTO_APP_ID': 'web',
@@ -29,7 +87,8 @@ class FrontendDeployment(unittest.TestCase):
     def test_self_hosted_csp_is_derived_without_broadening_or_retaining_cloud_origins(self):
         result = frontend.bind(copy.deepcopy(self.config), self.values)
         self.assertEqual(result, frontend.bind(copy.deepcopy(result), self.values, check=True))
-        content = json.dumps(result)
+        content = next(header['value'] for rule in result['headers'] if rule['source'] == '/(.*)'
+                       for header in rule['headers'] if header['key'] == 'Content-Security-Policy')
         self.assertIn('https://identity.example.invalid', content)
         self.assertIn('https://grid.example.invalid', content)
         self.assertNotIn('logto.app', content)
@@ -84,6 +143,11 @@ class FrontendDeployment(unittest.TestCase):
                 result = subprocess.run(command + args, capture_output=True, env=env, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
             prepared = target.read_bytes()
+            # Exercise the actual deployment preparer: public CSP overrides must
+            # not retarget the controlled gateway or drop its no-cache rules.
+            config = json.loads(prepared)
+            self.assertEqual(config['rewrites'], self.config['rewrites'])
+            self.assertEqual(config['headers'][1:], self.config['headers'][1:])
             env.pop('VITE_CYBERGRID_NATIVE_APP_ID')
             result = subprocess.run(command, capture_output=True, env=env, text=True)
             self.assertNotEqual(result.returncode, 0)
