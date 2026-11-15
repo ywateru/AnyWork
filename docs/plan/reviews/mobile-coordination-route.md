@@ -1,8 +1,8 @@
-# 移动协调入口调查与 gateway 作者候选
+# 移动协调入口调查、候选与上线记录
 
 2026-11-15。基线 `b110681ad451754b5e1be6b59833fee5771a3d4c`；契约 `772de4a` 在本 lane 接为 `8c430ba`。旧基线缺少任务文件，cherry-pick 的 modify/delete 冲突保留了来件完整任务内容，没有改写契约。实施依据为[恢复任务](../tasks/mobile-coordination-recovery.md)、[移动接口](../../mobile-native-contract.md)与[云配置](../../cloud-configuration.md)。
 
-结论：采用手机已可达的官网 HTTPS origin，精确转发 Android Native 协调请求至现有协调 alias。当前仅完成配置候选和离线回归，**没有部署，不能宣称移动同步已恢复**。没有操作手机、模拟器或桌面宿主，没有改 DNS、代理、云环境、issuer、授权或存储。
+结论：采用手机已可达的官网 HTTPS origin，精确转发 Android Native 协调请求至现有协调 alias。初始候选完成配置与离线回归后，经协调者转达独立 PASS 并明确 GO，已按精确网站源码 `40e0548431bc4467f5046a8334edaee685ce15df` 上线；下文分别记录调查阶段、冻结计划与真实部署结果。作者受控 wire 通过，**实体手机同步恢复仍由独立 verifier 验证**。没有操作手机、模拟器或桌面宿主，没有改 DNS、代理、项目环境、issuer、授权配置或存储命名空间。
 
 ## 只读路线证据
 
@@ -22,7 +22,7 @@ Native 公开配置的 issuer/resource/client 逐项匹配源码默认，协议�
 
 ## 生产项目、alias 与域名
 
-使用缓存 Vercel CLI `50.28.0` 的既有 OAuth，只调用 GET API；移除 subprocess 的 `VERCEL_TOKEN`，未检查或输出凭据内容。未读取项目 env 或 Redis、用户、设备、业务记录。
+以下为上线前的只读库存。使用缓存 Vercel CLI `50.28.0` 的既有 OAuth，只调用 GET API；移除 subprocess 的 `VERCEL_TOKEN`，未检查或输出凭据内容。未读取项目 env 或 Redis、用户、设备、业务记录。
 
 | 对象                   | 实际只读结果                                                                                                                                                                                |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -73,11 +73,11 @@ Native 公开配置的 issuer/resource/client 逐项匹配源码默认，协议�
 
 额外在临时目录运行同一 gateway tests 的反例控制：旧 `b110681` 配置被两项契约断言拒绝；增加宽泛 `/api/v1/:path*` rewrite 被路径门禁拒绝；将 signals 改为 `public, max-age=60` 被缓存门禁拒绝。未改源码或删断言来执行反例。
 
-这是配置边界与离线组装回归，不是自造 HTTP proxy 来代替 Vercel 的协议验收。未运行 Cargo、全站 E2E、APK 构建或新的公网重复探针。尚无本候选的 production build、上传或原生恢复通过结论。
+这是配置边界与离线组装回归，不是自造 HTTP proxy 来代替 Vercel 的协议验收。上述离线阶段未运行 Cargo、全站 E2E、APK 构建或新的公网重复探针，当时尚无 production build、上传或原生恢复通过结论。后续获审部署与 wire 结果单列如下。
 
 ## 获审后的精确预构建与可逆计划
 
-当前停在源码审查门槛；协调者接受具体候选并明确部署后才执行：
+以下为获审前冻结的计划；实际执行依据是协调者随后对精确 `40e0548` 的明确 GO：
 
 1. 固定协调者指定的获审网站源码 SHA，确认工作树干净、依赖仅链接 root；记录当前官网 deployment、协调 alias ID/产物身份及公开配置 fingerprint，拒绝未知漂移。
 2. 分别绑定 **websiteSource** 和 **installerTag/installerSource**。若先部署 gateway 而安装包仍为 v41，`build.json` 与 `/source` 必须反映获审网站新 SHA，release metadata/四 ABI 链接仍来自不可变 v41（安装包 source `f669ef59bde7cb70bbe98fd59592b6f87e93698b`），不得把新网站冒写成旧源码或伪造新 Release。latest 前进时先向协调者报告，不能静默混用。
@@ -94,3 +94,51 @@ Native 公开配置的 issuer/resource/client 逐项匹配源码默认，协议�
 - Vercel GET API：`/v9/projects/:id`、项目 domains、`/v4/aliases/:host`、`/v13/deployments/:id`、`/v6/domains/:host/config`。保存字段经过白名单投影，无凭据/环境值。
 
 本机 ignored `artifacts/mobile-coordination-route/` 保留 `provider-readonly.json`、`provider-additional.json`、`network-initial.json`、`network-public-resolved.json`、`public-dns.json` 与官方文档摘录。没有保存账号正文或登录材料，不提交这些运行产物。
+
+## 精确 40e0548 生产部署与公开读回
+
+2026-11-15，协调者明确转达精确 source 的 Native + route + 9 tests / negative controls 独立 PASS 后授权上线。本 lane 没有自行替代该独立审查结论。部署前重新核验产物 manifest、HEAD、原公开配置、既有项目、latest v41 和原 rollback deployment 无漂移，随后只提交了一次 `deploy --prebuilt --prod`。命令成功，Vercel GET API 确认 READY，没有未知结果或部署重试。
+
+| 身份                       | 实际结果                                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 生产入口                   | <https://anywork.aixgg.com>                                                                                     |
+| 新不可变 deployment        | <https://anywork-l1jfwi8f4-yywater68-1778s-projects.vercel.app>                                                 |
+| 新 deployment ID           | `dpl_97y1sK6c1fMDqHzRAwZAjsHdiCg1`                                                                              |
+| 精确网站源码               | `40e0548431bc4467f5046a8334edaee685ce15df`                                                                      |
+| 网站版本                   | `0.1.41`                                                                                                        |
+| 安装包发行 / 源码          | [v0.1.41](https://github.com/ywateru/AnyWork/releases/tag/v0.1.41) / `f669ef59bde7cb70bbe98fd59592b6f87e93698b` |
+| 保留的 rollback deployment | `dpl_6JyqfndLrs42zeDLCLgvydPqU1Tw`，<https://anywork-r44p9fjfo-yywater68-1778s-projects.vercel.app>             |
+
+仍为既有 `anywork` 项目、原 org 与 CLI50.28.0 OAuth。五项生产 VITE 值及 portal 与实际 v41 部署一致，CSP 逐字相等；没有更改 backend、env、DNS、issuer、resource、产品绑定、存储配置/命名空间或 repository vars。没有重发 Release、改 tag、覆盖安装包或改 canonical publisher 状态；历史 CI token 失败没有被描述为修复成功。
+
+最终 Vercel 编译输出仅有九条精确外部 rewrite，逐条四项禁缓存 header，未新增宽泛路由。生产匿名 Native config 返回 200，与原协调入口 JSON 完全相等，既有 epoch 保留。公开响应为 `Cache-Control: no-store`、`x-vercel-cache: MISS`、`Age: 0`。`x-vercel-enable-rewrite-caching` 未回显；它作为平台内部开关存在于编译规则，不能要求客户端收到该内部头。CDN 专用缓存头也不作为必须回显的公开 header。
+
+公开读回以下八项均200，逐字节等于已核验预构建：`/build.json`、`/release.json`、`/en/`、`/zh/`、`/app/`、`/app.js`、实际 app JS 模块、`/source`。英中文各四个正式 v41 ABI 链接，ARM64 第一，无 universal 或旧 alias。`build.json` 使用网站 SHA；release/download 继续使用不可变 v41，未混用两个 source 身份。
+
+源码归档的1056个文件逐一匹配网站精确 Git blob，另有生成的 `SOURCE_MANIFEST.json`；公开 `/source` SHA256 为 `84f14133573f6ac88627d56a991ad0822d54d340f5b052f3b82edd1cb698a656`。上传目录447个文件，去除 diagnostics、敏感文件与 symlink，manifest 在 GO 前后保持一致。
+
+## 受控 synthetic wire：9组通过
+
+仅使用既有、明确标记为隔离自部署验收的 synthetic 账号，在临时独立 Chromium context 完成 Native client 的授权码 + PKCE。callback 由测试拦截，不启动17897 listener。没有操作用户浏览器登录态、真实用户 grant 或桌面宿主；没有把 token 放进 shell 参数、stdout、报告或磁盘文件。grant 仅在测试进程内存中，临时浏览器的 IdP cookie 边界不被描述为所有登录材料均在 RAM。
+
+初期夹具曾因 callback 拦截与遗漏 OAuth resource 未走到注册，随后已按既有 Native 绑定修正。不存在的合法 appId 按服务契约返回404，而非夹具初写的400。另一轮夹具误要求新 `/directory` 恒为200，记录为失败并撤销该轮两条自有 session；没有用改 backend 或开启能力掩盖失败。最终按配置和锁定 SDK 的真实兼容分支重新验证，结果为：
+
+| 检查                   | 实际结果                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------ |
+| synthetic Native OAuth | issuer/resource/client/scope 绑定通过，无 auth limit                                                   |
+| GET config query       | 正确 appId 200；未知产品404，与旧 alias 的错误 JSON 相等                                               |
+| 方法与 JSON body       | GET exchange 405 `METHOD_NOT_ALLOWED`；POST malformed JSON 400                                         |
+| POST exchange          | 两个新生成 registration key 成功，响应 epoch 与公开 config 相等                                        |
+| PUT devices/self       | 两条 synthetic publication 200，返回对应 fixture device                                                |
+| Authorization / epoch  | 有效200；缺失/无效401；过期 epoch409 `COORDINATOR_RESET`，错误 JSON 与旧 alias 相等                    |
+| SDK 兼容目录           | config 无 `endpointPolicy`；新旧 `/directory?cursor=...` 均404 `NOT_FOUND` 且 JSON 相等；`/devices`200 |
+| POST / GET signals     | POST201；合成 payload、connection、来源精确往返；after cursor 生效；非法 after/wait 各400              |
+| 空队列 wait=15         | HTTP200，空 signals，端到端19556ms（包含网络开销），未提前返回或超时                                   |
+
+成功与预期错误的 gateway 响应均核验 `no-store`、无 HIT、Age 不大于0。最终两条自有 synthetic session 经 DELETE200撤销，随后各读 devices 均401；前一轮目录夹具的两条 session 也已撤销。注册/信令只涉及本轮随机生成的 fixture 标识，没有读写真实业务文件或向 Agent 会话发提示。
+
+当前既有后端 upstream `2bd6729c6bbee90ed2926410caca883a0a100890` 没有 versioned directory 路由，且公开 config 没有宣告 `endpointPolicy`。锁定 SDK 的 `devices()` 在该配置下调用 `/devices`，不会先调用 `/directory` 再靠404降级。本夹具核对了该分支对应的真实 HTTP 行为，未把模拟 HTTP 客户端声称为已运行手机 Native 客户端。既有后端也未宣告 registration admission，所以本次未执行 challenge/admit 成功分支，不宣称新 admission 或 versioned cursor 成功能力。九条精确路由的静态/编译边界继续保留，未为这些能力更改服务端。
+
+部署 READY 后已先向协调者发送 deployment 身份、匿名 config200及缓存结果，供独立 verifier 并行手机探针。实体手机 Native 注册、设备目录与已授权工作区读取以 verifier 实际报告为准；本作者记录不提前宣布移动同步完整恢复。
+
+本 lane 已清除 pulled env、Vercel build输出、site/web dist、生成源码归档及两个共享依赖 symlink；派生 CSP恢复为精确 Git内容，未动共享依赖或root target。小证据保存在 ignored `artifacts/mobile-coordination-gateway-40e0548-prebuild/`：`go-checks.json`、`immediate-production-result.json`、`prebuilt-verification.json`、`gateway-compiled-verification.json`、`production-readback.json`、`wire-result.json`及上传 manifest。最终提交仅更新本报告，不改变已部署网站源码。
