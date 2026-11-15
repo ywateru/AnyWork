@@ -2,7 +2,29 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.38 / 本次更新**
+**New in 0.1.39 / 本次更新**
+
+Fixes Android device discovery remaining on “Reading devices…” after sign-in. The native HTTPS platform certificate verifier is now initialized before account requests, with its matching Android component included and preserved in optimized Release builds. System certificate-chain and hostname verification remain enabled.
+
+修复 Android 登录后一直显示“正在读取设备…”的问题。在账号请求前初始化原生 HTTPS 平台证书校验器，并打包对应 Android 组件，确保 Release 优化后仍可正常调用；保留系统证书链与主机名校验。
+
+The Android device page now offers collapsible diagnostic details containing fixed, safe failure codes. Directory failures also emit a fixed native log code, making service-configuration and subsequent discovery failures distinguishable without exposing credentials, account identity or raw service responses. Unknown devices remain unavailable for connection until their status can be confirmed.
+
+Android 设备页增加可展开的安全诊断详情，显示固定错误码；原生目录查询失败也记录固定阶段码，便于区分服务配置与后续发现失败，不输出凭据、账号身份或原始服务响应。尚未确认状态的设备继续保持未知，等待确认后再连接。
+
+An officially signed ARM64 candidate was installed over the existing app on a physical Android 9 device while preserving application data. Normal sign-in and account-directory reads completed, manual refresh returned, and the former verifier panic did not recur. Merged Native validation passed 41 tests; the public-service probe is excluded from routine offline tests, and diagnostic UI checks passed independently.
+
+正式同签名 ARM64 候选已在 Android 9 实体设备上保留数据覆盖验证：正常登录与账号目录读取完成，手动刷新可以结束，原证书校验器 panic 未再出现。合并后的 Native 验证通过 41 项测试；公开服务探针不进入常规离线测试，诊断界面另经独立验证。
+
+The test phone still could not reach the coordination service over its current cellular route. The app reported `MOBILE_COORDINATION_CONFIG_FETCH_FAILED`; unauthenticated phone probes timed out before TCP connection while the same configuration passed the desktop SDK check. This release fixes the indefinite loading defect and adds diagnostics; it does not claim that this network limitation or remote-workspace connectivity has been resolved. See the [physical-device investigation](https://github.com/ywateru/AnyWork/blob/main/docs/plan/reviews/android-device-loading-independent.md).
+
+测试手机当前蜂窝路线仍无法连接协调服务，应用报告 `MOBILE_COORDINATION_CONFIG_FETCH_FAILED`；同手机公开探针在 TCP 连接建立前超时，同一配置在电脑 SDK 检查中正常。本版修复永久加载并补充诊断，不宣称已解决该网络限制或恢复远程工作区连接，详见[实体设备调查](https://github.com/ywateru/AnyWork/blob/main/docs/plan/reviews/android-device-loading-independent.md)。
+
+Android continues to ship as four separate ARM64, ARMv7, x86 and x86_64 APKs with the existing application ID and release signing identity. Choose ARM64 for most current phones.
+
+Android 继续分别提供 ARM64、ARMv7、x86 和 x86_64 四个 APK，保留应用标识与发行签名；多数当前手机请选择 ARM64。
+
+**Previous release 0.1.38 / 上一版本**
 
 Android downloads are separated into ARM64, ARMv7, x86 and x86_64 APKs. Each installer includes only its target architecture; choose ARM64 for most current phones. The bundled Rust/Tauri 2 client and application identity are retained. Existing universal APKs remain available under their original release tags.
 
