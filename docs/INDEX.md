@@ -1,6 +1,6 @@
 # Documentation index
 
-- [Android 加载修复发行](plan/tasks/android-loading-release.md)：修正新 Clippy 检查与 SQLite 测试夹具的发行阻塞，继续 v0.1.41，待精确源码与全部发行平台通过。
+- [Android 加载修复发行](plan/tasks/android-loading-release.md)：[v0.1.41](https://github.com/ywateru/AnyWork/releases/tag/v0.1.41) 已发布，精确源码 Checks、全部发行平台、四 APK 与官网下载入口验收通过；自动部署令牌及手机协调网络限制仍保留。
 
 - [Android v0.1.38 设备读取卡住](plan/tasks/android-device-loading.md)：同签名实机验证关闭永久 loading；后续原生错误确认为协调配置读取失败，手机蜂窝到该域名 TCP 超时。41 项 Native 测试通过，手机保留修复/诊断包；工作区连接仍待可达网络或服务入口验证。
 

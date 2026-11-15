@@ -2,6 +2,8 @@
 
 ## Current Android client reconstruction
 
+加载修复与安全诊断已随 [v0.1.41](https://github.com/ywateru/AnyWork/releases/tag/v0.1.41) 正式发布，精确源码 Checks 与全部发行平台通过，四个实际 APK、23 附件/22 校验项和官网下载入口完成验收；[发行记录](tasks/android-loading-release.md)保留两项测试门禁修正、官网人工恢复及尚未解决的手机协调网络限制。该发行没有新增实体设备或真实工作区连接验收。
+
 后续 [v0.1.38](https://github.com/ywateru/AnyWork/releases/tag/v0.1.38) 已正式交付四种架构独立 APK、已复现的桌面/Native 恢复修正及网页设备查询安全诊断；[分架构交付记录](reviews/android-size-release.md)汇总精确源码 Checks、全部发行平台、实际大小与官网手工恢复。手机截图当次“状态未知”和桌面首次登录问题仍待现场阶段码，不以已复现的独立缺陷替代其根因。
 
 用户要求完整 Rust/Tauri 2 Android 客户端、手机 UI/引导、修复网页用户名并在完成后更新 GitHub。[Android 任务](tasks/android-native-client.md)划分账号、transport、壳/系统/构建、手机界面和独立验收；[产品契约](../android-account-entry.md)替代旧 Custom Tab 入口，[合并验收](reviews/android-native-merged.md)汇总实际检查与边界。凭据只在原生内存，业务界面随包，不以移动网页测试代替 APK 验收。此前 Claude Desktop 真机测试仍按用户安排后置。
