@@ -1,6 +1,6 @@
 > 2026-11-12 domain update: the canonical website and new client defaults use `https://anywork.aixgg.com`. It is attached to the existing Vercel project; root verified the existing DNS ownership record without changing DNS. Deployment must also add the new SPA callback/logout/CORS origin and coordinator browser origin while preserving old entries. Earlier acceptance below records the previous domain and does not establish new-domain account acceptance.
 
-> 2026-11-15 移动协调入口恢复：Android 到 `*.vercel.app` 的协调 TLS 失败，而同设备官网和登录域名 HTTPS 可达。既有官网项目已增加 Native SDK 9 条精确路径的 external rewrite，Android transport root 使用 `https://anywork.aixgg.com`；后端、旧入口、resource/audience、issuer/client/product 与 Redis namespace/epoch 不变，未调整 DNS、套餐或手机网络设置。仅代理协调元数据，不代理业务内容；禁用缓存，保留方法/查询/授权和 epoch 头/长轮询及错误。网站源 `40e0548`、deployment `dpl_97y1sK6c1fMDqHzRAwZAjsHdiCg1`，同签名候选 `e4f3650` 已在实体原蜂窝网络通过 SSO、在线电脑发现、公钥核对及授权工作区/既有历史读取。部署、受控协议与实体证据见[恢复任务](plan/tasks/mobile-coordination-recovery.md)。公开 v41 安装包仍保留，正式新版另行验收发布。
+> 2026-11-15 移动协调入口恢复：Android 到 `*.vercel.app` 的协调 TLS 失败，而同设备官网和登录域名 HTTPS 可达。既有官网项目已增加 Native SDK 9 条精确路径的 external rewrite，Android transport root 使用 `https://anywork.aixgg.com`；后端、旧入口、resource/audience、issuer/client/product 与 Redis namespace/epoch 不变，未调整 DNS、套餐或手机网络设置。仅代理协调元数据，不代理业务内容；禁用缓存，保留方法/查询/授权和 epoch 头/长轮询及错误。正式 [v0.1.43](https://github.com/ywateru/AnyWork/releases/tag/v0.1.43) 与官网同源 `417a67f`，当前 deployment `dpl_9SphfUmfubzcC9pgg8gFPDTFbqMi`；初次恢复 `40e0548` deployment 保留作回滚。实体原蜂窝网络已通过 SSO、在线电脑发现、公钥核对及授权工作区/既有历史读取，并保留数据覆盖升级正式 code45。证据见[恢复任务](plan/tasks/mobile-coordination-recovery.md)与[官网部署记录](plan/reviews/v43-site-manual-recovery.md)。自动官网令牌失效仍保留，publisher `pages` 未被人工改写为完成；本次用既有认证完成精确源码部署与公开读回。
 
 > 2026-11-11 存储切换：此前正式 CyberGrid 配置接口的 HTTP503 已确认由 Upstash 免费月度命令额度耗尽引起（供应商固定错误 `max requests limit exceeded`、上限500000）。现按使用者授权改用 `redis.x.aixgg.com:6379` 自部署 TLS Redis，严格校验可信证书链与域名，不使用 IP 或明文回退。新 deployment `dpl_7Xvjo9kSsDNoWycj57W4zLyP4Xz4` 已 READY，正式 alias 与新环境读回一致，原版 RedisStore.ready 初始化通过；独立上线验收见[切换报告](plan/reviews/cybergrid-selfhost-redis-independent.md)。旧 Upstash 与旧不可变 deployment 保留，没有套餐升级或业务数据迁移。此前下述证据均保留原验收时点。
 
@@ -163,6 +163,8 @@ vercel deploy --prebuilt --prod
 | `cybergridUrl` | `https://anywork-cybergrid-selfhost.vercel.app` |
 | `frontendOrigin` | `https://anywork.aixgg.com` |
 | `accountPortalUrl` | `https://anywork.aixgg.com/app/` |
+
+上表 `cybergridUrl` 保留 Web/desktop 的协调服务原入口。2026-11-15 起 Android Native 的 `grid_url` 单独使用 `https://anywork.aixgg.com` 的精确协调转发入口；其 `resource` 仍是上表原 audience，不由新 transport origin 推导。不要将 Native 路径白名单当作 Web console/admin 网关。
 
 作者离线检查：6项自部署配置契约、6项prebuilt隐私/身份/CLI/未知结果契约、20项原发布恢复与新增pinned环境检查、9项配置安全、7项前端配置/CSP、6项源码导出、28项发布器检查，共82项通过；候选变更文件对已知真实bootstrap/管理令牌/synthetic登录秘密字节扫描命中0。真实自部署配置已创建并重放读回，不代表协调服务已部署，也未发布前端或修改运行中的用户服务。
 

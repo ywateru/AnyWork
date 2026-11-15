@@ -20,7 +20,7 @@ AccountService 为 transport 提供 `VerifiedTarget {gateway_url,installation_id
 
 Android 默认协调 transport root 调整为 `https://anywork.aixgg.com`，由既有官网项目对 Native SDK 所需的精确 `/api/v1` 路径做 external rewrite，目标仍为现有 `https://anywork-cybergrid-selfhost.vercel.app`。不做客户端自动回退、重定向或新增网关前缀；不代理 console/admin 或其它 `/api` 路径。OAuth resource/audience 仍固定为 `https://anywork-cybergrid-selfhost.vercel.app/api`，issuer、client/product、Redis namespace/epoch 与电脑原入口保持不变。公开 URL 与授权 audience 是不同字段，不随 transport 域名推导。
 
-转发保持方法、查询、请求体、Authorization、协调 epoch header、状态与响应体；配置、登记、目录、信令和 session 响应不得缓存。账号 grant 与刷新所有者仍在 Native；网站 JS 不取得 Native token，外部目标固定且由本项目控制。端到端业务内容继续走既有已核验电脑 gateway，不经过此协调入口。上线须独立验证匿名配置、安全错误、真实 Native 登记/presence 和授权工作区只读读取；HTTP200 或模拟器通过不能替代实体蜂窝验收。2026-11-15 精确网站源 `40e0548` 与同签名候选 `e4f3650` 已在实体手机原蜂窝路线通过正常 SSO、在线电脑发现、公钥核对、工作区与既有会话历史读取，详见[独立报告](plan/reviews/mobile-coordination-independent.md)。此验收不包含 Agent 写入、终端命令或文件编辑。
+转发保持方法、查询、请求体、Authorization、协调 epoch header、状态与响应体；配置、登记、目录、信令和 session 响应不得缓存。账号 grant 与刷新所有者仍在 Native；网站 JS 不取得 Native token，外部目标固定且由本项目控制。端到端业务内容继续走既有已核验电脑 gateway，不经过此协调入口。上线须独立验证匿名配置、安全错误、真实 Native 登记/presence 和授权工作区只读读取；HTTP200 或模拟器通过不能替代实体蜂窝验收。2026-11-15 初次网站源 `40e0548` 与同签名候选 `e4f3650` 已在实体手机原蜂窝路线通过正常 SSO、在线电脑发现、公钥核对、工作区与既有会话历史读取，详见[独立报告](plan/reviews/mobile-coordination-independent.md)。正式 v0.1.43/code45 及官网同源 `417a67f`，实体手机保留数据覆盖后正常 SSO/设备发现通过，见[发行核验](plan/reviews/v43-release-independent.md)。此验收不包含 Agent 写入、终端命令或文件编辑。
 
 ## Transport
 

@@ -34,10 +34,17 @@
 - 同签名 ARM64 候选 `e4f3650`／run `43703073305` 在实体 Android 9 手机通过 `install -r` 保留数据覆盖。原蜂窝网络无修改，正常 SSO、在线电脑发现、完整公钥与本机身份核对、授权工作区/既有会话历史读取通过。未发送 Agent/终端命令，未编辑真实文件；文件列表未额外验收。
 - API30 模拟器正式 v41 另通过正常登录与设备发现。模拟器与手机证据分开；正式 v42 四 ABI 及其它发行附件仍须精确源码构建、签名与独立核验。
 
-状态：同步恢复的实体只读门槛已通过；准备新的正式版本及官网下载更新。现有公开 v41 安装包不被覆盖，候选不冒充正式发行。
+状态：**已交付 [v0.1.43](https://github.com/ywateru/AnyWork/releases/tag/v0.1.43) / code45，官网与正式安装包同源 `417a67f`。** 公开 v41 安装包与旧 tag 保留，候选不冒充正式发行。
 
 ### 正式发行检查阻塞
 
 首个正式版本候选 v0.1.42/code44 源 `0a38dbb` 的 Checks `43706633883` 为4项通过、server-web失败，尚无 tag 或 Release。失败是已有 `transport::tests::renewal_preserves_existing_pty_and_later_http` 在3秒有效期夹具、固定等待4秒后未观察到第二次 token 请求。不能未经分析认定为基础设施瞬态或盲重跑；由 Native 作者独立工作树调查实际续期逻辑与测试时序，保留有意义的续期/既有 PTY/后续 HTTP 门槛。独立 reviewer 接受后才恢复正式发布，不跳过检查。网站自动流程另因失效令牌失败，现有已验收官网入口继续服务，正式站点更新另行绑定最终发行源。
 
-续期夹具已在秒末相位控制中复现旧失败：服务端完整墙钟与客户端整秒转换令三秒测试租期几乎没有调度余量。修复只修改测试，使用12秒短租期、观察 gateway 收到刷新授权，再跨过旧到期点验证完整 HTTP JSON 和同一 PTY 的精确回显。作者21项通过，独立正向与“不延长租约”负对照通过；[作者](../reviews/mobile-renewal-check-author.md)与[独立记录](../reviews/mobile-renewal-check-independent.md)保留证据。生产逻辑不变。按 canonical publisher 单调版本规则归档未发布 v42 的真实失败，下一次正式候选预计 v0.1.43/code45；重新运行新精确源码 CI，不复用旧通过状态。
+续期夹具已在秒末相位控制中复现旧失败：服务端完整墙钟与客户端整秒转换令三秒测试租期几乎没有调度余量。修复只修改测试，使用12秒短租期、观察 gateway 收到刷新授权，再跨过旧到期点验证完整 HTTP JSON 和同一 PTY 的精确回显。作者21项通过，独立正向与“不延长租约”负对照通过；[作者](../reviews/mobile-renewal-check-author.md)与[独立记录](../reviews/mobile-renewal-check-independent.md)保留证据。生产逻辑不变。按 canonical publisher 单调版本规则归档未发布 v42 的真实失败，随后以 v0.1.43/code45 对新精确源码重新运行 CI，未复用旧通过状态。
+
+## 正式交付
+
+- 精确源 `417a67fb1ee743c2ef67f4e75dcd056355fb2e7b` 的 Checks `43709434739` 五项全成功，续期测试实际通过；Build releases `43711399021` 十二项全成功。v43 tag 正确绑定，23 个正式附件、22 条校验项与5组更新签名元数据匹配。
+- 四份正式 APK 正文均独立核验单 ABI、appID、v0.1.43/code45、官方单证书、非 debug、JNI/DEX 与 ELF/ZIP 16KiB，正式源码归档1063个 blob/mode匹配精确 Git tree。实体手机 `install -r` 保留数据覆盖正式 ARM64，正常 SSO 后在线电脑发现通过。既有同运行时候选的公钥/工作区/历史读取证据单独保留，不冒称正式包重复了全部业务测试。
+- 官网当前 deployment `dpl_9SphfUmfubzcC9pgg8gFPDTFbqMi`，build 与安装包同源/v43，四 ABI 英中文链接、app、CSP、源码和协调配置公开读回通过；原40e deployment保留作回滚，后端/epoch不变。自动流程 `43712745935` 因 token invalid 失败，publisher 真实停在 `pages`；人工精确部署和 `--verify-existing` 成功不被改写成自动流程成功。
+- 完整证据：[独立发行与正式手机核验](../reviews/v43-release-independent.md)、[官网部署](../reviews/v43-site-manual-recovery.md)、[网站 staging 独立审查](../reviews/v43-site-staging-independent.md)。不扩展为真实 Agent/终端/文件写入、Claude Desktop 原生控制或所有网络环境均已验收。

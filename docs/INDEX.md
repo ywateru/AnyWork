@@ -1,6 +1,6 @@
 # Documentation index
 
-- [移动端协调配置与同步恢复](plan/tasks/mobile-coordination-recovery.md)：官网精确协调入口已上线，同签名候选在实体 Android 9 原蜂窝网络通过正常 SSO、设备发现、公钥核对与授权工作区/既有历史读取；准备新正式版本，不覆盖公开 v41。
+- [移动端协调配置与同步恢复](plan/tasks/mobile-coordination-recovery.md)：[v0.1.43](https://github.com/ywateru/AnyWork/releases/tag/v0.1.43) 已发布，官网与安装包同源；实体 Android 9 原蜂窝网络恢复发现与授权工作区/历史读取，并保留数据升级正式 code45。四独立 APK、签名及源码验收见[独立发行记录](plan/reviews/v43-release-independent.md)。
 
 - [Android 加载修复发行](plan/tasks/android-loading-release.md)：[v0.1.41](https://github.com/ywateru/AnyWork/releases/tag/v0.1.41) 已发布，精确源码 Checks、全部发行平台、四 APK 与官网下载入口验收通过；自动部署令牌及手机协调网络限制仍保留。
 
