@@ -1,6 +1,6 @@
 # Mobile coordination: ARM64 candidate workflow author report
 
-2026-11-15. Base: `40e0548431bc4467f5046a8334edaee685ce15df`; branch `codex/mobile-coordination-build`. Scope is only `.github/workflows/android-candidate.yml` and this report. **Local configuration checks PASS; independent source review, actual CI build/signing and device acceptance remain pending.**
+2026-11-15. Base: `40e0548431bc4467f5046a8334edaee685ce15df`; branch `codex/mobile-coordination-build`. Scope is only `.github/workflows/android-candidate.yml` and this report. **Local configuration checks and subsequent exact-source CI/artifact checks PASS; device acceptance remains independently pending.**
 
 ## Delivered behavior
 
@@ -27,3 +27,18 @@ Ignored helper/log: `artifacts/mobile-coordination-build/{validate.py,validation
 Independent review must accept the final workflow commit before dispatch. GitHub requires the new dispatch workflow on the default branch; after integration, dispatch a reviewed branch containing the exact intended source, with no inputs. Verify run `head_sha` equals that reviewed full SHA, and downloaded artifact/JSON/hash/signer agree. The workflow/report commit is part of that source SHA; the base above is not a claim about the future APK source.
 
 The gateway deployment's source/deployment binding is separate from APK provenance. Route allowlist/deployment and actual phone/emulator registration, presence and authorized workspace reads remain outside this build-lane acceptance. No production APK, account data, installed app or existing retained v41 artifact was changed or redownloaded.
+
+## Exact-source candidate delivery
+
+Independent workflow review `3fd09c4` was accepted before dispatch. Using the existing publisher credential source `~/.ssh/ghp` through process-local askpass/environment, the coordinator-authorized source `e4f3650890eb1e9e8010be29fca607a12302435a` was pushed to main after reconciling the previous remote head. Global gh/keychain configuration was unchanged; no other credential sources were searched.
+
+[Candidate run 43703073305](https://github.com/ywateru/AnyWork/actions/runs/43703073305) completed **success**, with only ARM64 job `132778214384`. No cancellation, retry, publication or version/tag change occurred. Canonical build, ARM64 Release lint, system/auth/core JVM tasks, App unit `NO-SOURCE`, APK checker, official signer/source record and upload all succeeded. Temporary signing-key cleanup succeeded. Numeric JVM case counts were not printed in the console and are not asserted here.
+
+Artifact `14157625553`, named `android-arm64-candidate-e4f3650890eb1e9e8010be29fca607a12302435a`, was the only artifact downloaded. Its archive digest and run source binding passed. Actual downloaded APK verification passed:
+
+- APK size **39,274,111 bytes**, SHA256 `f2161a5923b052858f1d72490d4bb39ee537f7b9ed04feee00e936c2f730ad26`.
+- Single official signer SHA256 `88b43f83632002fbeddd23a286eabee39c5ada0fa1b037d6ff32b9986a67acb8`.
+- `dev.remoteagent.app`, `0.1.41/code43`, minSDK26, ARM64 only, nondebuggable, `extractNativeLibs=false`, ELF/ZIP16KiB alignment.
+- APK hash/size/certificate/identity match `android-candidate.json`; source SHA, repository, run and attempt match the completed GitHub run.
+
+APK and small evidence are retained under root ignored `artifacts/mobile-coordination-candidate-e4f3650/`: `anywork-android-arm64.apk`, `android-candidate.json`, `verification.json`, `summary.md` and `candidate-ci.log`. Path/hash/certificate were handed to Hilbert for independent runtime verification; this lane performed no ADB or local builds. These artifact checks do not establish coordination/presence/workspace runtime acceptance. No workflow fix was needed during execution; root tracked files and local docs head `43325c6` were not changed or pushed by this lane.
