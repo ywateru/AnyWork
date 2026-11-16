@@ -19,6 +19,14 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
+#[path = "accounts_saved.rs"]
+mod saved;
+use saved::{Journal, Phase as SavedPhase};
+#[path = "accounts_restore.rs"]
+mod restore;
+#[cfg(test)]
+use restore::RestoreFixture;
+
 const CALLBACK: &str = "http://127.0.0.1:17897/callback";
 const GRID_SCOPES: [&str; 5] = ["openid", "offline_access", "profile", "email", "connect"];
 const GRID_CLEANUP_PENDING: &str =
@@ -334,6 +342,8 @@ impl PublicConfig {
 pub enum AuthorizationStatus {
     #[default]
     SignedOut,
+    Restoring,
+    RestoreRetry,
     Authorizing,
     LoginInterrupted,
     SignedIn,
@@ -378,6 +388,7 @@ struct GrantState {
     invalid: bool,
     // A provider exchange may have rotated the grant, but its outcome is unknown.
     uncertain: bool,
+    save_pending: bool,
 }
 // Independent of the refresh mutex: closing access must fence an enable even
 // while its sole OAuth exchange is awaiting a response. Never cancel that exchange.
@@ -423,6 +434,7 @@ struct GrantOwner {
     remote_policy: std::sync::Mutex<RemotePolicy>,
     state: Mutex<GrantState>,
     http: reqwest::Client,
+    saved: Option<(Arc<Journal>, String)>,
     #[cfg(test)]
     token_endpoint: Option<String>,
 }
@@ -434,11 +446,26 @@ impl GrantOwner {
                 grant,
                 invalid: false,
                 uncertain: false,
+                save_pending: false,
             }),
             http: client()?,
+            saved: None,
             #[cfg(test)]
             token_endpoint: None,
         })
+    }
+    async fn checkpoint(&self, state: &GrantState, phase: SavedPhase) -> Result<()> {
+        if let Some((journal, owner)) = &self.saved {
+            journal
+                .checkpoint(
+                    owner,
+                    phase,
+                    Some(&state.grant.refresh),
+                    Some(&state.grant.subject),
+                )
+                .await?;
+        }
+        Ok(())
     }
     fn policy(&self) -> std::sync::MutexGuard<'_, RemotePolicy> {
         self.remote_policy.lock().unwrap_or_else(|e| e.into_inner())
@@ -464,6 +491,15 @@ impl GrantOwner {
         let mut state = self.state.lock().await;
         self.refresh(&mut state, resource).await
     }
+    async fn recover_storage(&self) -> Result<()> {
+        let mut state = self.state.lock().await;
+        if state.save_pending {
+            self.checkpoint(&state, SavedPhase::Ready).await?;
+            state.save_pending = false;
+            state.uncertain = false;
+        }
+        Ok(())
+    }
     async fn refresh(&self, state: &mut GrantState, resource: bool) -> Result<String> {
         if state.invalid || state.uncertain {
             bail!("ACCOUNT_REAUTH_REQUIRED")
@@ -477,11 +513,22 @@ impl GrantOwner {
         if resource {
             form.push(("resource", config.resource.clone()));
         }
-        // Unknown exchange outcomes block this RAM owner from replaying a
-        // possibly rotated grant. Nothing is checkpointed to persistent storage.
+        // Persist uncertainty BEFORE dispatch. A new process must never replay
+        // a grant whose rotating POST may already have reached the provider.
+        self.checkpoint(state, SavedPhase::Pending).await?;
         state.uncertain = true;
         let endpoint = self.token_endpoint(&config);
-        let response = self.http.post(endpoint).form(&form).send().await?;
+        let response = match self.http.post(endpoint).form(&form).send().await {
+            Ok(response) => response,
+            Err(error) if error.is_connect() => {
+                // A connect failure happens before HTTP dispatch. Re-checkpoint
+                // the still-current grant; other outcomes remain pending.
+                self.checkpoint(state, SavedPhase::Ready).await?;
+                state.uncertain = false;
+                return Err(anyhow::anyhow!("ACCOUNT_RESTORE_NETWORK"));
+            }
+            Err(_) => bail!("ACCOUNT_REAUTH_REQUIRED"),
+        };
         let successful = response.status().is_success();
         let bytes = bounded(response).await?;
         let value: Value = serde_json::from_slice(&bytes)?;
@@ -495,11 +542,18 @@ impl GrantOwner {
         // A parsed successful token response without rotation confirms the old
         // grant remains current. Otherwise only a returned rotation is known.
         if rotated.is_some() || (successful && value.get("error").is_none() && access.is_some()) {
+            // Store failure leaves the disk pending and this RAM owner fenced.
+            state.save_pending = true;
+            self.checkpoint(state, SavedPhase::Ready).await?;
+            state.save_pending = false;
             state.uncertain = false;
         }
         if !successful || value.get("error").is_some() {
             if value["error"] == "invalid_grant" {
                 state.invalid = true;
+                if let Some((journal, _)) = &self.saved {
+                    journal.retire().await?;
+                }
             }
             bail!("ACCOUNT_REAUTH_REQUIRED")
         }
@@ -787,6 +841,7 @@ impl cybergrid_sdk::AuthProvider for GridAuthorization {
 }
 fn client() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
+        .retry(reqwest::retry::never())
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(30))
         .build()?)
@@ -843,6 +898,7 @@ struct State {
     installation: Option<Installation>,
     transaction: Option<Arc<Transaction>>,
     owner: Option<Arc<GrantOwner>>,
+    restoring_owner: Option<Arc<GrantOwner>>,
     remote: Option<Remote>,
     pending_grid: Option<PendingGrid>,
     snapshot: Snapshot,
@@ -855,6 +911,10 @@ struct Inner {
     state: Mutex<State>,
     operation: Mutex<()>,
     account_write: Mutex<()>,
+    journal: Option<Arc<Journal>>,
+    restore: Mutex<bool>,
+    #[cfg(test)]
+    restore_fixture: Option<RestoreFixture>,
     #[cfg(test)]
     gateway_shutdowns: Mutex<Vec<anywork_remote::gateway::GatewayShutdown>>,
     #[cfg(test)]
@@ -898,6 +958,14 @@ impl Handle {
     pub fn new(support: PathBuf, manager: manager::Handle, read_only: bool) -> Result<Self> {
         let config = PublicConfig::load(&support)?;
         let device_name = load_device_name(&support, read_only)?;
+        // Legacy unit fixtures deliberately have no system store. Persistence
+        // tests inject a shared fake across handles; no test reads user secrets.
+        let journal = if read_only || cfg!(test) {
+            None
+        } else {
+            Some(Journal::system(&config, &support)?)
+        };
+        let needs_restore = journal.is_some();
         Ok(Self(Arc::new(Inner {
             read_only,
             config,
@@ -907,15 +975,25 @@ impl Handle {
                 installation: None,
                 transaction: None,
                 owner: None,
+                restoring_owner: None,
                 remote: None,
                 pending_grid: None,
                 snapshot: Snapshot {
                     device_name,
+                    authorization_status: if needs_restore {
+                        AuthorizationStatus::Restoring
+                    } else {
+                        AuthorizationStatus::SignedOut
+                    },
                     ..Default::default()
                 },
             }),
             operation: Mutex::new(()),
             account_write: Mutex::new(()),
+            journal,
+            restore: Mutex::new(!needs_restore),
+            #[cfg(test)]
+            restore_fixture: None,
             #[cfg(test)]
             gateway_shutdowns: Mutex::new(Vec::new()),
             #[cfg(test)]
@@ -930,11 +1008,11 @@ impl Handle {
             // A renderer poll must not delay disable/logout while a rotating
             // grant is in flight. Re-read public state after waiting for it.
             let owner = self.0.state.lock().await.owner.clone();
-            let reauth = if let Some(owner) = &owner {
+            let (reauth, save_pending) = if let Some(owner) = &owner {
                 let grant = owner.state.lock().await;
-                grant.invalid || grant.uncertain
+                (grant.invalid || grant.uncertain, grant.save_pending)
             } else {
-                false
+                (false, false)
             };
             let state = self.0.state.lock().await;
             let same_owner = match (&owner, &state.owner) {
@@ -955,7 +1033,18 @@ impl Handle {
                 None => vec![],
             };
             snapshot.transaction_id = state.transaction.as_ref().map(|tx| tx.id.clone());
-            if let Some(owner) = &owner {
+            if save_pending {
+                snapshot.signed_in = false;
+                snapshot.authorization_status = AuthorizationStatus::RestoreRetry;
+                snapshot.error = Some(
+                    "最新授权尚未保存。请解锁系统凭据存储后重试；当前不会继续使用令牌。".into(),
+                );
+            } else if matches!(
+                snapshot.authorization_status,
+                AuthorizationStatus::Restoring | AuthorizationStatus::RestoreRetry
+            ) {
+                snapshot.signed_in = false;
+            } else if let Some(owner) = &owner {
                 let logged_out = owner.policy().logged_out;
                 snapshot.signed_in = !reauth && !logged_out;
                 snapshot.authorization_status = if reauth || logged_out {
@@ -997,6 +1086,9 @@ impl Handle {
             bail!("ACCOUNT_PREVIEW_READ_ONLY")
         }
         let _op = self.0.operation.lock().await;
+        if !*self.0.restore.lock().await {
+            bail!("ACCOUNT_RESTORE_REQUIRED")
+        }
         let mut state = self.0.state.lock().await;
         if state.transaction.is_some() || state.owner.is_some() {
             bail!("ACCOUNT_OPERATION_IN_PROGRESS")
@@ -1016,6 +1108,9 @@ impl Handle {
             latest: Mutex::new(None),
             uncertain: std::sync::atomic::AtomicBool::new(false),
         });
+        if let Some(journal) = &self.0.journal {
+            journal.begin(&tx.id).await?;
+        }
         state.transaction = Some(tx.clone());
         state.snapshot.busy = true;
         state.snapshot.error = None;
@@ -1144,6 +1239,16 @@ impl Handle {
             builder = builder.body(body)
         };
         if token {
+            if let Some(journal) = &self.0.journal {
+                journal
+                    .checkpoint(
+                        &tx.id,
+                        SavedPhase::Pending,
+                        tx.latest.lock().await.as_deref(),
+                        None,
+                    )
+                    .await?;
+            }
             tx.uncertain
                 .store(true, std::sync::atomic::Ordering::SeqCst);
         }
@@ -1155,6 +1260,11 @@ impl Handle {
             if let Some(refresh) = value["refresh_token"].as_str().filter(|v| !v.is_empty()) {
                 // The sole broker owns this rotation in RAM before IPC returns.
                 *tx.latest.lock().await = Some(refresh.into());
+                if let Some(journal) = &self.0.journal {
+                    journal
+                        .checkpoint(&tx.id, SavedPhase::Provisional, Some(refresh), None)
+                        .await?;
+                }
                 tx.uncertain
                     .store(false, std::sync::atomic::Ordering::SeqCst);
             }
@@ -1164,6 +1274,16 @@ impl Handle {
                     .as_str()
                     .is_some_and(|v| !v.is_empty())
             {
+                if let Some(journal) = &self.0.journal {
+                    journal
+                        .checkpoint(
+                            &tx.id,
+                            SavedPhase::Provisional,
+                            tx.latest.lock().await.as_deref(),
+                            None,
+                        )
+                        .await?;
+                }
                 tx.uncertain
                     .store(false, std::sync::atomic::Ordering::SeqCst);
             }
@@ -1220,8 +1340,20 @@ impl Handle {
             refresh: tokens.refresh_token,
             subject: subject.clone(),
         };
-        let owner = Arc::new(GrantOwner::new(grant)?);
-        // Explicit ACK transfers the only refresh ownership to this RAM owner.
+        let mut owner = GrantOwner::new(grant)?;
+        if let Some(journal) = &self.0.journal {
+            journal
+                .checkpoint(
+                    &tx.id,
+                    SavedPhase::Ready,
+                    Some(&owner.state.lock().await.grant.refresh),
+                    Some(&subject),
+                )
+                .await?;
+            owner.saved = Some((journal.clone(), tx.id.clone()));
+        }
+        let owner = Arc::new(owner);
+        // ACK only after the verified grant is durably owned by Native.
         let mut state = self.0.state.lock().await;
         state.owner = Some(owner);
         state.transaction = None;
@@ -1237,7 +1369,12 @@ impl Handle {
         }
         state.snapshot.subject = Some(subject);
         state.snapshot.signed_in = true;
-        Ok("OwnedInMemory".into())
+        Ok(if self.0.journal.is_some() {
+            "OwnedSecurely"
+        } else {
+            "OwnedInMemory"
+        }
+        .into())
     }
     async fn account_request(
         &self,
@@ -1810,7 +1947,8 @@ impl Handle {
         self.close_remote().await;
     }
     async fn invalidate_remote(&self, logout: bool) {
-        if let Some(owner) = &self.0.state.lock().await.owner {
+        let state = self.0.state.lock().await;
+        for owner in [&state.owner, &state.restoring_owner].into_iter().flatten() {
             owner.policy().invalidate(logout);
         }
     }
@@ -1890,7 +2028,13 @@ impl Handle {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("LOGIN_TRANSACTION_CLOSED"))?;
         tx.stop.cancel();
+        if let Some(journal) = &self.0.journal {
+            journal.retire().await?;
+        }
         let _grant = tx.operation.lock().await;
+        if let Some(journal) = &self.0.journal {
+            journal.delete().await?;
+        }
         if let Some(refresh) = tx.latest.lock().await.clone() {
             self.revoke(&refresh).await?;
         }
@@ -1938,11 +2082,24 @@ impl Handle {
             bail!("ACCOUNT_PREVIEW_READ_ONLY")
         }
         self.invalidate_remote(true).await;
+        // Retire before waiting on an in-flight exchange. A late rotation may
+        // remain available for revocation in RAM but cannot revive disk state.
+        let retirement = match &self.0.journal {
+            Some(journal) => journal.retire().await,
+            None => Ok(()),
+        };
         let _op = self.0.operation.lock().await;
         self.close_remote().await;
+        retirement?;
         let (owner, transaction) = {
             let state = self.0.state.lock().await;
-            (state.owner.clone(), state.transaction.clone())
+            (
+                state
+                    .owner
+                    .clone()
+                    .or_else(|| state.restoring_owner.clone()),
+                state.transaction.clone(),
+            )
         };
         if let Some(tx) = &transaction {
             tx.stop.cancel();
@@ -1952,25 +2109,38 @@ impl Handle {
             Some(tx) => Some(tx.operation.lock().await),
             None => None,
         };
-        if let Some(owner) = owner {
-            owner.revoke().await?;
+        if let Some(journal) = &self.0.journal {
+            journal.delete().await?;
+        }
+        let revocation = if let Some(owner) = owner {
+            owner.revoke().await
         } else if let Some(refresh) = match &transaction {
             Some(tx) => tx.latest.lock().await.clone(),
             None => None,
         } {
-            self.revoke(&refresh).await?;
-        }
+            self.revoke(&refresh).await
+        } else {
+            Ok(())
+        };
         let mut state = self.0.state.lock().await;
         if let Some(tx) = state.transaction.take() {
             tx.stop.cancel()
         };
         state.owner = None;
+        state.restoring_owner = None;
         state.installation = None;
         let device_name = state.snapshot.device_name.clone();
         state.snapshot = Snapshot {
             device_name,
             ..Default::default()
         };
+        *self.0.restore.lock().await = true;
+        if revocation.is_err() {
+            state.snapshot.error = Some(
+                "本应用保存的登录已清除，但登录服务撤销尚未确认。可在登录服务中结束授权。".into(),
+            );
+            bail!("ACCOUNT_REVOCATION_PENDING")
+        }
         Ok(())
     }
 }
@@ -2115,12 +2285,22 @@ fn safe_error(error: anyhow::Error) -> String {
         "DEVICE_NAME_REJECTED" => "名称需为 1–80 个字符，且不能包含控制字符。".into(),
         "DEVICE_NAME_CONFLICT" => "设备名称未完成同步，账号目录已发生变化，请刷新后重试。".into(),
         "DEVICE_NAME_STORAGE_REJECTED" => "无法保存设备名称，请检查本机配置文件。".into(),
+        "ACCOUNT_STORE_UNAVAILABLE"
+        | "ACCOUNT_STORE_DELETE_FAILED"
+        | "ACCOUNT_REVOCATION_PENDING"
+        | "ACCOUNT_STORE_REJECTED"
+        | "ACCOUNT_RESTORE_RETRY"
+        | "ACCOUNT_RESTORE_REQUIRED" => error.to_string(),
         _ => "账号操作未完成，请检查登录状态和网络后重试。".into(),
     }
 }
 #[tauri::command]
 pub async fn account_snapshot(state: tauri::State<'_, Handle>) -> Result<Snapshot, String> {
     Ok(state.snapshot().await)
+}
+#[tauri::command]
+pub async fn account_restore(state: tauri::State<'_, Handle>) -> Result<(), String> {
+    state.restore_login().await.map_err(safe_error)
 }
 #[tauri::command]
 pub async fn account_rename_device(
@@ -2209,6 +2389,9 @@ pub(crate) mod default_tests;
 #[cfg(test)]
 #[path = "accounts_experience_tests.rs"]
 mod experience_tests;
+#[cfg(test)]
+#[path = "accounts_saved_tests.rs"]
+mod saved_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2848,7 +3031,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
     #[tokio::test]
-    async fn process_restart_has_no_account_but_same_public_id_and_fresh_keys() {
+    async fn unsaved_fixture_restart_has_no_account_but_same_public_id_and_fresh_keys() {
         let dir = tempfile::tempdir().unwrap();
         let first = handle(dir.path());
         let (owner, _) = provider(false).await;
@@ -3126,7 +3309,7 @@ mod tests {
         assert!(public_installation_id(dir.path(), &config, "owner").is_err());
     }
     #[tokio::test]
-    async fn logout_keeps_ram_owner_on_revocation_failure_and_never_restores_it() {
+    async fn logout_clears_local_owner_even_on_remote_revocation_failure() {
         let calls = Arc::new(AtomicUsize::new(0));
         let server_calls = calls.clone();
         let app = axum::Router::new().route(
@@ -3164,14 +3347,14 @@ mod tests {
         owner.state.lock().await.uncertain = true;
         h.0.state.lock().await.owner = Some(owner);
         assert!(h.logout().await.is_err());
-        assert!(h.0.state.lock().await.owner.is_some());
+        assert!(h.0.state.lock().await.owner.is_none());
         assert_eq!(
             h.snapshot().await.authorization_status,
-            AuthorizationStatus::ReauthRequired
+            AuthorizationStatus::SignedOut
         );
         h.logout().await.unwrap();
         assert!(h.0.state.lock().await.owner.is_none());
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(
             handle(dir.path()).snapshot().await.authorization_status,
             AuthorizationStatus::SignedOut

@@ -40,5 +40,12 @@ tauri = { version = "=2.12.5", features = ["test"] }
 
 [target.'cfg(unix)'.dependencies]
 cybergrid-sdk = { git = "https://github.com/ywateru/CyberGrid.git", rev = "f2a3961536e5c69b13c7dbc661953d9243becbae" }
+keyring-core = "=1.0.1"
 
 libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "=1.0.2", default-features = false, features = ["keychain"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store = { version = "=1.0.1", default-features = false, features = ["crypto-rust"] }

@@ -17,6 +17,8 @@ import { ConfirmDialog } from "./confirm";
 
 type AuthorizationStatus =
   | "signedOut"
+  | "restoring"
+  | "restoreRetry"
   | "authorizing"
   | "loginInterrupted"
   | "signedIn"
@@ -61,6 +63,17 @@ const invoke = <T,>(
     : Promise.reject(new Error("请从 AnyWork 桌面应用打开此页面。"));
 const message = "账号操作未完成，请检查登录状态和网络后重试。";
 const enableMessages: Record<string, string> = {
+  ACCOUNT_REVOCATION_PENDING:
+    "本应用保存的登录已清除，但登录服务撤销尚未确认。可在登录服务中结束授权。",
+  ACCOUNT_STORE_UNAVAILABLE:
+    "无法安全保存登录。请解锁系统凭据存储后重试；当前不会继续使用未保存的授权。",
+  ACCOUNT_STORE_DELETE_FAILED:
+    "未能确认删除保存的登录。请解锁系统凭据存储后再次退出；不能声称已清除。",
+  ACCOUNT_STORE_REJECTED:
+    "保存的授权绑定或格式未通过验证，请退出账号并重新登录。",
+  ACCOUNT_RESTORE_RETRY:
+    "暂时无法恢复保存的登录，请解锁系统凭据存储并检查网络后重试。",
+  ACCOUNT_RESTORE_REQUIRED: "请先完成登录恢复，或退出账号后重新登录。",
   REMOTE_ENABLE_SIGN_IN_REQUIRED: "请先登录桌面账号，再开启远程访问。",
   REMOTE_ENABLE_REAUTH_REQUIRED:
     "本次账号授权已失效或结果未知，请结束本次授权后重新登录；不能重试旧令牌。",
@@ -296,12 +309,12 @@ async function login(mode: "register" | "signIn"): Promise<void> {
       transactionId: begin.transactionId,
       tokens: { accessToken, accountToken, refreshToken },
     });
-    if (outcome !== "OwnedInMemory") throw new Error(message);
+    if (outcome !== "OwnedSecurely") throw new Error(message);
     handedOff = true;
     await client.clearAllTokens();
     memory.clear();
     loginOwner = undefined;
-  } catch {
+  } catch (error) {
     if (!handedOff) {
       try {
         await clearLogin(begin.transactionId);
@@ -309,6 +322,8 @@ async function login(mode: "register" | "signIn"): Promise<void> {
         /* Retain the JS owner without refreshing until native ownership is resolved. */
       }
     }
+    if (typeof error === "string" && Object.hasOwn(enableMessages, error))
+      throw error;
     throw new Error(message);
   }
 }
@@ -447,10 +462,18 @@ export function useAccountController() {
     signIn: (mode: "register" | "signIn") =>
       authorizationAction(() => login(mode)),
     cancel: () => authorizationAction(() => clearLogin()),
+    restore: () => authorizationAction(() => invoke("account_restore")),
     logout: () =>
       authorizationAction(async () => {
-        await invoke("account_logout");
+        let warning: string | undefined;
+        try {
+          await invoke("account_logout");
+        } catch (error) {
+          if (error !== "ACCOUNT_REVOCATION_PENDING") throw error;
+          warning = error;
+        }
         await clearLogin();
+        if (warning) throw warning;
       }),
     renameDevice: async (name: string, expectedName: string) => {
       if (
@@ -492,6 +515,8 @@ export function useAccountController() {
 export type AccountController = ReturnType<typeof useAccountController>;
 const statusLabels: Record<AuthorizationStatus, string> = {
   signedOut: "尚未登录",
+  restoring: "正在恢复登录",
+  restoreRetry: "保存的登录暂时无法恢复",
   authorizing: "等待浏览器完成登录",
   loginInterrupted: "登录已结束，请取消本次登录后重试",
   signedIn: "已登录",
@@ -513,10 +538,28 @@ export function AccountActions({
   controller: AccountController;
   onLogout?: () => void;
 }) {
-  const { state, available, pending, signIn, cancel, logout } = controller;
+  const { state, available, pending, signIn, cancel, logout, restore } =
+    controller;
   if (!available) return <span role="status">正在核验账号状态</span>;
   if (!state) return <span role="status">正在读取账号状态</span>;
   switch (state.authorizationStatus) {
+    case "restoring":
+      return <span role="status">正在安全恢复登录，请稍候。</span>;
+    case "restoreRetry":
+      return (
+        <>
+          <button
+            className="primary"
+            disabled={pending}
+            onClick={() => void restore()}
+          >
+            重试恢复登录
+          </button>
+          <button disabled={pending} onClick={() => void logout()}>
+            退出账号
+          </button>
+        </>
+      );
     case "signedOut":
       return (
         <>

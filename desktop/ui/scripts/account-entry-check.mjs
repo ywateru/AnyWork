@@ -128,6 +128,10 @@ try {
             }
             return { ...window.fixtureAccount };
           }
+          if (command === "account_restore") {
+            window.fixtureAccount = signedOut();
+            return;
+          }
           if (command === "account_begin") {
             if (window.fixtureMode === "fail")
               throw new Error("fixture timeout before grant");
@@ -198,6 +202,38 @@ try {
   await expect(
     entry.getByRole("button", { name: "创建账号", exact: true }),
   ).toBeVisible();
+  await expect(
+    entry.getByRole("button", { name: "登录已有账号", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    window.fixtureAccount.authorizationStatus = "restoring";
+  });
+  await expect(
+    entry.getByText("正在安全恢复登录，请稍候。", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    entry.getByRole("button", { name: "登录已有账号", exact: true }),
+  ).toHaveCount(0);
+  await page.evaluate(() => {
+    window.fixtureAccount.authorizationStatus = "restoreRetry";
+  });
+  await expect(
+    entry.getByRole("button", { name: "重试恢复登录", exact: true }),
+  ).toBeVisible();
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.fixtureCalls.filter((call) =>
+          ["account_begin", "account_open", "account_enable_default"].includes(
+            call,
+          ),
+        ).length,
+    ),
+    0,
+  );
+  await entry
+    .getByRole("button", { name: "重试恢复登录", exact: true })
+    .click();
   await expect(
     entry.getByRole("button", { name: "登录已有账号", exact: true }),
   ).toBeVisible();
@@ -319,7 +355,7 @@ try {
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByText("连接与隐私说明", { exact: true }).click();
   await expect(
-    page.getByText("账号凭据和设备私钥只留在内存", { exact: false }),
+    page.getByText("登录由系统安全凭据存储保留", { exact: false }),
   ).toBeVisible();
   await page.getByRole("button", { name: "返回", exact: true }).click();
   await page.evaluate(() => {
@@ -478,7 +514,7 @@ try {
   });
   assert.deepEqual(errors, []);
   console.log(
-    "Desktop account entry: failure retry, separate official screens, pending cancellation race, memory-only notice, account identity, reauth and safe enable-stage controls passed.",
+    "Desktop account entry: failure retry, separate official screens, pending cancellation race, restoring/retry states, saved-login notice, account identity, reauth and safe enable-stage controls passed.",
   );
 } finally {
   await browser.close();

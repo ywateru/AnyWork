@@ -492,14 +492,16 @@ async fn default_without_verified_service_does_not_consume_grant() {
 }
 
 #[tokio::test]
-async fn failed_logout_retains_latest_grant_but_never_reopens_remote() {
+async fn failed_remote_revocation_still_completes_local_logout_and_never_reopens_remote() {
     let f = Fixture::new().await;
     f.handle.enable_default().await.unwrap();
     f.fail_revoke.store(true, Ordering::SeqCst);
     assert!(f.handle.logout().await.is_err());
-    let owner = f.handle.0.state.lock().await.owner.clone().unwrap();
-    assert_eq!(owner.state.lock().await.grant.refresh, "synthetic-rotated");
-    assert!(owner.policy().logged_out && owner.policy().consumed);
+    assert!(f.handle.0.state.lock().await.owner.is_none());
+    assert_eq!(
+        f.handle.snapshot().await.authorization_status,
+        AuthorizationStatus::SignedOut
+    );
     assert!(!f.handle.snapshot().await.signed_in);
     assert!(f.handle.enable_default().await.is_err());
     assert!(f.handle.enable().await.is_err());

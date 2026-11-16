@@ -69,6 +69,10 @@ pub async fn account_begin() -> Result<Value, String> {
     Err(unsupported())
 }
 #[cfg_attr(not(unix), tauri::command)]
+pub async fn account_restore() -> Result<(), String> {
+    Err(unsupported())
+}
+#[cfg_attr(not(unix), tauri::command)]
 pub async fn account_open(transaction_id: String, url: String) -> Result<(), String> {
     let _ = (transaction_id, url);
     Err(unsupported())

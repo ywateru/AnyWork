@@ -72,6 +72,8 @@ fn run() -> anyhow::Result<()> {
     };
     let account = accounts::Handle::new(config::support_dir(), handle.clone(), preview.is_some())?;
     let quit_account = account.clone();
+    #[cfg(unix)]
+    let restore_account = account.clone();
     let quitting = Arc::new(AtomicBool::new(false));
     let finished = Arc::new(AtomicBool::new(false));
     let finished_event = finished.clone();
@@ -87,6 +89,7 @@ fn run() -> anyhow::Result<()> {
         .invoke_handler(tauri::generate_handler![
             bridge::desktop_snapshot,
             accounts::account_snapshot,
+            accounts::account_restore,
             accounts::account_rename_device,
             bridge::desktop_chrome,
             bridge::desktop_drag,
@@ -115,6 +118,10 @@ fn run() -> anyhow::Result<()> {
             updates::desktop_update_open_releases
         ])
         .setup(move |app| {
+            #[cfg(unix)]
+            tauri::async_runtime::spawn(async move {
+                let _ = restore_account.restore_login().await;
+            });
             if update_service {
                 updater.start(app.handle().clone());
             }
