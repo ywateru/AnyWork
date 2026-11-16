@@ -80,3 +80,11 @@ REVIEW_DIST=candidate-dist node <root>/node_modules/@playwright/test/cli.js test
 ```
 
 未merge/push、未修改版本、未构建安装APK；未读取凭据或连接真实业务。最终提交仅新增本独立报告；静态服务及测试进程已结束。
+
+## Test-only 后续收口：673c76e
+
+父端授权后，作者提交 `673c76edad36ad4b25403458e28ee2acdfeb5c93`（parent `bc649b3`）。独立树仅取该提交，对应 `44446bd74ff4e6bc93586273229e9052382e6179`。差异仅为 `e2e/mobile-native.spec.ts` 增加16行：会话菜单tap前注册监听，等待其 `newState=open && menu.open` 的真实toggle送达后，再程序click More；保留会话菜单关闭断言，并增加More打开断言。没有sleep、删断言或产品修改。
+
+**此后续独立复核PASS，前述测试时序观察已收口。** `git diff bc649b3 HEAD -- web/src`为空，因此复用已绑定哈希的同一production MOBILE bundle，未重建或扩大矩阵。用正式收集用例 `--grep 'mobile More uses' --repeat-each=3` 独立执行，**3 passed / 0 failed / 0 flaky / 0 skipped**；定向Prettier与diffcheck通过。证据为 `artifacts/mobile-file-menu-independent/candidate-test-followup.log` 与 `candidate-test-followup/`。先前8/1结果继续保留作诊断历史，不将它改写为首轮全绿。
+
+最终接受的提交顺序为 **`bc649b3ae8ace7d691b4fab54ca766d9d63dd8e6` → `673c76edad36ad4b25403458e28ee2acdfeb5c93`**；产品PASS结论不变，无本轮未关闭阻断。报告最初提交 `8278ec8` 与本次报告增量可依次cherry-pick，也可直接保留本文件的最终完整内容。未修改产品、merge/push或进行设备操作；本次测试服务已结束。
