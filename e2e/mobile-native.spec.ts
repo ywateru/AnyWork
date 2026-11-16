@@ -21,6 +21,9 @@ async function fixture(
     question?: boolean;
     subagent?: boolean;
     mixedWorkspace?: boolean;
+    restorePhase?: "restoring" | "restoreRetryable" | "reauthRequired";
+    restoreError?: string;
+    holdInitialSnapshot?: boolean;
   } = {},
 ) {
   await page.addInitScript((options) => {
@@ -45,7 +48,8 @@ async function fixture(
     let snapshot: any = {
       protocolVersion: 1,
       epoch: 1,
-      phase: options.signedIn ? "signedIn" : "signedOut",
+      phase:
+        options.restorePhase ?? (options.signedIn ? "signedIn" : "signedOut"),
       account: options.signedIn
         ? {
             scopeId: "fixture-account",
@@ -72,7 +76,7 @@ async function fixture(
         : [],
       directoryState: options.unknown ? "unknown" : "ready",
       revision: 1,
-      errorCode: null,
+      errorCode: options.restoreError ?? null,
     };
     const session: any = {
       id: "synthetic-session",
@@ -309,6 +313,28 @@ async function fixture(
       operations,
       exports,
       snapshot: () => snapshot,
+      holdNextSnapshot: options.holdInitialSnapshot ?? false,
+      failNextSnapshot: false,
+      failLogout: false,
+      resolveSnapshot: null,
+      setSnapshotSilently: (next: any) => {
+        snapshot = next;
+      },
+      restoreSuccess: () => {
+        snapshot = {
+          ...snapshot,
+          epoch: snapshot.epoch + 1,
+          phase: "signedIn",
+          errorCode: null,
+          account: {
+            scopeId: "fixture-account",
+            label: "林晓",
+            email: "lin@example.invalid",
+          },
+          devices: [device],
+          directoryState: "ready",
+        };
+      },
       setSnapshot: (next: any) => {
         snapshot = next;
         emit("mobile://account-state", next);
@@ -342,11 +368,32 @@ async function fixture(
             args !== undefined
           )
             throw Error("Noarg account command received args");
-          if (
-            command === "mobile_account_snapshot" ||
-            command === "mobile_account_refresh"
-          )
+          if (command === "mobile_account_snapshot") {
+            if (w.mobileFixture.failNextSnapshot) {
+              w.mobileFixture.failNextSnapshot = false;
+              throw Error("TIMEOUT");
+            }
+            if (w.mobileFixture.holdNextSnapshot) {
+              w.mobileFixture.holdNextSnapshot = false;
+              const captured = structuredClone(snapshot);
+              return new Promise((resolve) => {
+                w.mobileFixture.resolveSnapshot = () => resolve(captured);
+              });
+            }
             return structuredClone(snapshot);
+          }
+          if (command === "mobile_account_refresh") {
+            if (snapshot.phase === "restoreRetryable") {
+              snapshot = {
+                ...snapshot,
+                epoch: snapshot.epoch + 1,
+                phase: "restoring",
+                errorCode: null,
+              };
+              emit("mobile://account-state", snapshot);
+            }
+            return structuredClone(snapshot);
+          }
           if (command === "mobile_account_login") {
             if (options.holdLogin) return new Promise(() => {});
             snapshot = {
@@ -370,9 +417,14 @@ async function fixture(
             snapshot = {
               ...snapshot,
               epoch: snapshot.epoch + 1,
-              phase: "signedOut",
+              phase: w.mobileFixture.failLogout
+                ? "reauthRequired"
+                : "signedOut",
               account: null,
               devices: [],
+              errorCode: w.mobileFixture.failLogout
+                ? "MOBILE_AUTH_CLEAR_REQUIRED"
+                : null,
             };
             emit("mobile://account-state", snapshot);
             return structuredClone(snapshot);
@@ -973,6 +1025,210 @@ test("short landscape trusted touch chains history and editor scrolling to the c
   } finally {
     await cdp.detach();
   }
+});
+
+test("saved login startup gates SSO and polls native completion without account events", async ({
+  page,
+}, testInfo) => {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await fixture(page, { restorePhase: "restoring", holdInitialSnapshot: true });
+  await expect(
+    page.getByRole("heading", { name: "正在恢复登录" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "我的设备" })).toHaveCount(0);
+  await page.evaluate(() => (window as any).mobileFixture.resolveSnapshot());
+  await expect(
+    page.getByRole("button", { name: "退出并清除登录授权" }),
+  ).toBeVisible();
+  await page.clock.runFor(1100);
+  expect(await calls(page, "mobile_account_snapshot")).toHaveLength(2);
+  await page.evaluate(() => (window as any).mobileFixture.restoreSuccess());
+  await page.clock.runFor(1100);
+  await expect(page.getByRole("heading", { name: "我的设备" })).toBeVisible();
+  const count = (await calls(page, "mobile_account_snapshot")).length;
+  await page.clock.runFor(4000);
+  expect(await calls(page, "mobile_account_snapshot")).toHaveLength(count);
+  expect(await calls(page, "mobile_account_login")).toHaveLength(0);
+  await page.getByRole("button", { name: "账户与设置" }).click();
+  await expect(
+    page.getByText("登录恢复授权由此手机的原生安全存储保护", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("进程结束后需重新登录", { exact: false }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("saved-login-account.png"),
+  });
+});
+
+test("saved login retry is explicit refresh, and pending polls cannot undo logout", async ({
+  page,
+}, testInfo) => {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await fixture(page, {
+    restorePhase: "restoreRetryable",
+    restoreError: "MOBILE_AUTH_STORAGE_UNAVAILABLE",
+  });
+  await expect(
+    page.getByText("安全存储暂不可用，请重试恢复登录", { exact: true }),
+  ).toBeVisible();
+  await page.clock.runFor(5000);
+  expect(await calls(page, "mobile_account_refresh")).toHaveLength(0);
+  await page.screenshot({ path: testInfo.outputPath("saved-login-retry.png") });
+  await page.getByRole("button", { name: "重试恢复登录" }).click();
+  await expect(
+    page.getByRole("heading", { name: "正在恢复登录" }),
+  ).toBeVisible();
+  expect(await calls(page, "mobile_account_refresh")).toHaveLength(1);
+  await page.evaluate(() => {
+    (window as any).mobileFixture.holdNextSnapshot = true;
+  });
+  await page.clock.runFor(1100);
+  const count = (await calls(page, "mobile_account_snapshot")).length;
+  await page.clock.runFor(5000);
+  expect(await calls(page, "mobile_account_snapshot")).toHaveLength(count);
+  await page.getByRole("button", { name: "退出并清除登录授权" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const f = (window as any).mobileFixture;
+    f.resolveSnapshot();
+    f.emit("mobile://account-state", {
+      ...f.snapshot(),
+      epoch: f.snapshot().epoch - 1,
+      phase: "restoring",
+    });
+  });
+  await page.clock.runFor(5000);
+  await expect(page.getByRole("heading", { name: "正在恢复登录" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toBeVisible();
+  expect(await calls(page, "mobile_account_snapshot")).toHaveLength(count);
+  expect(await calls(page, "mobile_account_login")).toHaveLength(0);
+});
+
+test("saved login poll failure stops retries and restoring polls preserve the exit confirmation", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await fixture(page, { restorePhase: "restoring" });
+  await expect(
+    page.getByRole("button", { name: "退出并清除登录授权" }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    (window as any).mobileFixture.failNextSnapshot = true;
+  });
+  await page.clock.runFor(1100);
+  await expect(page.getByRole("alert")).toContainText("连接超时");
+  const count = (await calls(page, "mobile_account_snapshot")).length;
+  await page.clock.runFor(5000);
+  expect(await calls(page, "mobile_account_snapshot")).toHaveLength(count);
+  await page.getByRole("button", { name: "重新检查登录状态" }).click();
+  expect(await calls(page, "mobile_account_refresh")).toHaveLength(1);
+  await page.getByRole("button", { name: "退出并清除登录授权" }).click();
+  await page.clock.runFor(2200);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect((await calls(page, "mobile_account_snapshot")).length).toBeGreaterThan(
+    count,
+  );
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toBeVisible();
+  expect(await calls(page, "mobile_account_login")).toHaveLength(0);
+});
+
+for (const [code, message] of [
+  ["MOBILE_AUTH_SAVED_GRANT_INVALID", "保存的登录已失效，请重新登录"],
+  ["MOBILE_AUTH_REFRESH_UNCERTAIN", "登录刷新未能确认，请重新登录"],
+]) {
+  test(`saved login ${code} requires explicit authentication`, async ({
+    page,
+  }, testInfo) => {
+    await fixture(page, { restorePhase: "reauthRequired", restoreError: code });
+    await expect(page.getByText(message, { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "重试恢复登录" }),
+    ).toHaveCount(0);
+    expect(await calls(page, "mobile_account_login")).toHaveLength(0);
+    expect(await calls(page, "mobile_account_refresh")).toHaveLength(0);
+    await page.screenshot({
+      path: testInfo.outputPath("saved-login-reauth.png"),
+    });
+    await page.getByRole("button", { name: "登录账号", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "我的设备" })).toBeVisible();
+    expect(await calls(page, "mobile_account_login")).toHaveLength(1);
+  });
+}
+
+test("saved login clear failure forbids SSO until durable logout is confirmed", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, {
+    restorePhase: "reauthRequired",
+    restoreError: "MOBILE_AUTH_CLEAR_REQUIRED",
+  });
+  const clear = page.getByRole("button", { name: "重试退出并清除授权" });
+  await expect(clear).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "注册账号", exact: true }),
+  ).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as any).mobileFixture.failLogout = true;
+  });
+  await clear.click();
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "尚未确认清除保存的登录",
+  );
+  await expect(clear).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("saved-login-clear-required.png"),
+  });
+  await page.evaluate(() => {
+    (window as any).mobileFixture.failLogout = false;
+  });
+  await clear.click();
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toBeVisible();
+  expect(await calls(page, "mobile_account_logout")).toHaveLength(2);
+  expect(await calls(page, "mobile_account_login")).toHaveLength(0);
+});
+
+test("saved login unknown native error is not rendered as private details", async ({
+  page,
+}) => {
+  await fixture(page, {
+    restorePhase: "restoreRetryable",
+    restoreError: "PRIVATE_NATIVE_VALUE_should_not_render",
+  });
+  await expect(
+    page.getByRole("button", { name: "重试恢复登录" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("PRIVATE_NATIVE_VALUE_should_not_render", { exact: false }),
+  ).toHaveCount(0);
+  expect(await calls(page, "mobile_account_login")).toHaveLength(0);
 });
 
 test("first run, cancelled login, retry and real account summary", async ({

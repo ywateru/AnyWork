@@ -37,8 +37,8 @@ import type { Connection } from "../types";
 type Page = "devices" | "guide" | "account";
 const initial: AccountSnapshot = {
   protocolVersion: 1,
-  epoch: -1,
-  phase: "signedOut",
+  epoch: 0,
+  phase: "restoring",
   account: null,
   devices: [],
   directoryState: "idle",
@@ -46,6 +46,13 @@ const initial: AccountSnapshot = {
   errorCode: null,
 };
 const logo = new URL("../../public/icon.svg", import.meta.url).href;
+const restoreErrors = new Set([
+  "MOBILE_AUTH_STORAGE_UNAVAILABLE",
+  "MOBILE_AUTH_RESTORE_UNAVAILABLE",
+  "MOBILE_AUTH_SAVED_GRANT_INVALID",
+  "MOBILE_AUTH_REFRESH_UNCERTAIN",
+  "MOBILE_AUTH_CLEAR_REQUIRED",
+]);
 export default function MobileApp() {
   const [snapshot, setSnapshot] = useState(initial);
   const [ready, setReady] = useState(false);
@@ -55,6 +62,7 @@ export default function MobileApp() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [restorePollFailed, setRestorePollFailed] = useState(false);
   const [connection, setConnection] = useState<{
     value: Connection;
     transport: NativeTransport;
@@ -101,7 +109,7 @@ export default function MobileApp() {
       if (
         next.epoch !== previous.epoch ||
         next.account?.scopeId !== previous.account?.scopeId ||
-        next.phase !== "signedIn"
+        (previous.phase === "signedIn" && next.phase !== "signedIn")
       ) {
         closeConnection();
         state.current.dialog?.resolve(null);
@@ -125,6 +133,7 @@ export default function MobileApp() {
     const id = ++operation.current;
     setBusy("refresh");
     setError("");
+    setRestorePollFailed(false);
     try {
       const next = await accountCommand("refresh");
       if (id === operation.current) apply(next);
@@ -171,21 +180,24 @@ export default function MobileApp() {
   async function logout() {
     if (
       (await ask(
-        "退出账号将断开此手机的连接和终端，电脑上的 Agent 任务继续执行。",
+        "退出账号会清除此应用保存的登录授权，并断开此手机的连接和终端。电脑上的 Agent 任务继续执行。",
       )) !== true
     )
       return;
-    ++operation.current;
+    const id = ++operation.current;
     closeConnection();
     setBusy("logout");
     await cancelExports();
     try {
-      apply(await accountCommand("logout"));
-      setPage("devices");
+      const next = await accountCommand("logout");
+      if (id === operation.current) {
+        apply(next);
+        setPage("devices");
+      }
     } catch (e) {
-      showError(e);
+      if (id === operation.current) showError(e);
     } finally {
-      setBusy(null);
+      if (id === operation.current) setBusy(null);
     }
   }
   async function updateDevice(device: Device, remove: boolean) {
@@ -399,6 +411,42 @@ export default function MobileApp() {
     };
   }, [apply, showError]);
   useEffect(() => {
+    if (!ready || snapshot.phase !== "restoring" || busy || restorePollFailed)
+      return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      const id = operation.current;
+      try {
+        const next = await accountCommand("snapshot");
+        if (!disposed && id === operation.current) apply(next);
+      } catch (e) {
+        if (!disposed && id === operation.current) {
+          setRestorePollFailed(true);
+          showError(e);
+        }
+        return;
+      }
+      if (!disposed && state.current.snapshot.phase === "restoring")
+        timer = setTimeout(() => void poll(), 1000);
+    };
+    // Configure/restore is Native-owned. Poll only its projection, never login
+    // or replay refresh while a rotation may still be running.
+    timer = setTimeout(() => void poll(), 1000);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [
+    ready,
+    snapshot.phase,
+    snapshot.epoch,
+    busy,
+    restorePollFailed,
+    apply,
+    showError,
+  ]);
+  useEffect(() => {
     let frame = 0;
     const publish = () => {
       cancelAnimationFrame(frame);
@@ -443,6 +491,15 @@ export default function MobileApp() {
     setDialog(null);
   }
   const signedIn = snapshot.phase === "signedIn" && snapshot.account;
+  const clearRequired = snapshot.errorCode === "MOBILE_AUTH_CLEAR_REQUIRED";
+  const recovering =
+    snapshot.phase === "restoring" ||
+    snapshot.phase === "restoreRetryable" ||
+    clearRequired;
+  const restoreMessage =
+    snapshot.errorCode && restoreErrors.has(snapshot.errorCode)
+      ? friendlyError({ code: snapshot.errorCode })
+      : "暂时无法恢复登录。请检查网络后重试，或退出并清除保存的授权。";
   return (
     <div className="mobile-client">
       {error && (
@@ -531,7 +588,7 @@ export default function MobileApp() {
             {busy === "connect" ? "正在建立加密连接…" : "确认并连接"}
           </button>
         </section>
-      ) : page === "guide" ? (
+      ) : page === "guide" && !recovering ? (
         <section className="mobile-page">
           <PageHeader title="添加工作电脑" back={() => setPage("devices")} />
           <h1>把电脑准备好</h1>
@@ -601,8 +658,9 @@ export default function MobileApp() {
             <p className="mobile-secondary">还没有核验过的电脑。</p>
           )}
           <p className="mobile-secondary">
-            原生授权仅在当前应用进程内有效，进程结束后需重新登录。账号网页的登录
-            Cookie 另由登录服务与 WebView 管理。
+            登录恢复授权由此手机的原生安全存储保护，重新打开应用时会尝试恢复登录。
+            退出账号会清除此应用保存的授权。账号网页的登录 Cookie 另由登录服务与
+            WebView 管理。
           </p>
           <a href="https://github.com/ywateru/AnyWork">AnyWork · 开源与许可</a>
           <button
@@ -617,7 +675,7 @@ export default function MobileApp() {
       ) : !ready ? (
         <section className="mobile-page mobile-welcome">
           <Brand />
-          <h1>正在准备工作空间</h1>
+          <h1>正在恢复登录</h1>
           <p role="status">检查应用与登录状态…</p>
           {error && (
             <button
@@ -627,6 +685,48 @@ export default function MobileApp() {
               重新加载
             </button>
           )}
+        </section>
+      ) : recovering ? (
+        <section className="mobile-page mobile-welcome">
+          <Brand />
+          <h1>
+            {clearRequired
+              ? "保存的授权尚未清除"
+              : snapshot.phase === "restoring"
+                ? "正在恢复登录"
+                : "暂时无法恢复登录"}
+          </h1>
+          <p role="status">
+            {clearRequired
+              ? restoreMessage
+              : snapshot.phase === "restoring"
+                ? "正在核验此手机安全保存的登录授权，请稍候。"
+                : restoreMessage}
+          </p>
+          {snapshot.phase === "restoring" && !restorePollFailed && (
+            <LoaderCircle className="mobile-spin" size={24} aria-hidden />
+          )}
+          {!clearRequired &&
+            (snapshot.phase === "restoreRetryable" || restorePollFailed) && (
+              <button
+                className="mobile-primary"
+                disabled={!!busy}
+                onClick={() => void refresh()}
+              >
+                {restorePollFailed ? "重新检查登录状态" : "重试恢复登录"}
+              </button>
+            )}
+          <button
+            className="mobile-danger-button"
+            disabled={busy === "logout"}
+            onClick={() => void logout()}
+          >
+            {busy === "logout"
+              ? "正在清除登录授权…"
+              : clearRequired
+                ? "重试退出并清除授权"
+                : "退出并清除登录授权"}
+          </button>
         </section>
       ) : !signedIn ? (
         <section className="mobile-page mobile-welcome">
@@ -640,7 +740,11 @@ export default function MobileApp() {
             <p>连接自己的工作电脑，处理会话、文件、终端和审批。</p>
           </div>
           {snapshot.phase === "reauthRequired" && (
-            <p role="status">登录已失效。重新登录同一账号后可继续工作。</p>
+            <p role="status">
+              {snapshot.errorCode && restoreErrors.has(snapshot.errorCode)
+                ? friendlyError({ code: snapshot.errorCode })
+                : "登录已失效。重新登录同一账号后可继续工作。"}
+            </p>
           )}
           <button
             className="mobile-primary"
