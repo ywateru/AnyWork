@@ -753,6 +753,12 @@ body {
     flex: 1 0 320px;
     min-height: 320px;
   }
+  /* Boundary swipes must reach the outer workspace after history/editor
+     content finishes scrolling. The workspace still contains page overscroll. */
+  .mobile-workspace.mobile-session-mode .chat-scroll,
+  .mobile-workspace.mobile-session-mode .composer .prompt-editor {
+    overscroll-behavior-y: auto;
+  }
   :root[data-ime="true"] .mobile-workspace .composer .prompt-editor {
     min-height: 48px;
     max-height: 48px;

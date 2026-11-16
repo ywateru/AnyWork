@@ -118,3 +118,22 @@ Private evidence is retained under root `artifacts/mobile-workspace-ime-author/`
 | `assets/mobile-Cmx7-Z1-.js`  | `0662e86629241ca44bf336244e22d274ec166ebbcb5698b4d37b298c84d6bab1` |
 
 Reproduction uses the same private MOBILE preview command as above, replacing the evidence directory with `mobile-workspace-ime-author` and selecting `--grep 'short landscape workspace|connected workspace|terminal reaches|contrast'`. The test remains in `e2e/mobile-native.spec.ts`, so the existing required mobile CI gate collects it without new configuration.
+
+## Trusted-touch scroll-chain follow-up to 15c975e
+
+Independent checkpoint `af82b6d` closed the terminal finding with actual trusted touch and synthetic PTY input, but found that programmatic reachability alone did not close the composer finding. At IME220, repeated real touch strokes first moved the outer workspace to78px, then stopped at the shared history area's `overscroll-behavior: contain`; allowing history chaining alone moved it to234px, where the editor's own containment stopped it again. Neither result is treated as an accepted composer fix.
+
+This follow-up changes only the two inner vertical scroll boundaries to `auto` within the existing short-height mobile-session media rule. The outer workspace retains `contain`; normal portrait, desktop, modal and other scrolling boundaries are unchanged. Both history and the multiline editor still scroll internally; boundary gestures can now continue to the outer workspace.
+
+A second collected regression reuses the existing trusted CDP touch helper. It fills the actual four-paragraph editor before entering landscape, injects native IME220, asserts the workspace starts at scrollTop0, and uses at most16 real touch strokes at x330/y105→12. There is no `scrollTop` assignment, `scrollIntoView`, wheel input or DOM-synthesized touch event in the traversal. The evidence requires trusted `touchmove`, preserved draft/visible IME and complete editor/send bounds with center hits.
+
+- Negative control against exact `15c975e` MOBILE: FAIL, scrollTop78, editor y230–278 and send y286–334, both outside the140px available region.
+- Corrected exact production MOBILE: **4 passed** — both connected-workspace cases, the existing short-height controls/terminal case and the new trusted-touch case. The touch case reaches scrollTop293=max(433−140); editor y15–63 and send y71–119 both hit correctly. No assertion was weakened.
+- Relevant Prettier and whitespace checks pass; no Native/device, server cache, restore UI or production changes are included.
+
+Evidence: root `artifacts/mobile-workspace-ime-author/touch-before/` retains the negative-control trace/JSON. Root `artifacts/mobile-workspace-touch-author/` retains private build/config/binding, `final.log`, and `final/` with `short-landscape-trusted-touch.json` and its screenshot. Incremental independent review of this exact follow-up remains required.
+
+| Entry asset                  | SHA-256                                                            |
+| ---------------------------- | ------------------------------------------------------------------ |
+| `assets/mobile-BdM7bMIa.css` | `d872ce01a599ab5fe58b04ac8466a860d82066cd2b2157a9d848fe3d65b01765` |
+| `assets/mobile-DxwBqYX7.js`  | `df2c91cf2c6d2d7dbfb9dadb70a47d9822c6478c82c0bef55a5fcc8895ff6b80` |

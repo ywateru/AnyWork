@@ -1,4 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
+import {
+  attachTouchEvidence,
+  observeTouchInput,
+  touchEvidence,
+  touchStroke,
+} from "./touch-input";
 
 /** Synthetic native boundary; exercises the real React UI + NativeTransport adapter.
  * No real account, gateway, credential or user conversation is contacted. */
@@ -879,6 +885,94 @@ test("short landscape workspace can scroll composer and terminal controls above 
     "0px",
   );
   await reachable(send, 0);
+});
+
+test("short landscape trusted touch chains history and editor scrolling to the composer", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, { signedIn: true, mixedWorkspace: true });
+  await connect(page);
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await input.fill("合成草稿，不发送\n第二行\n第三行\n第四行");
+  await page.setViewportSize({ width: 640, height: 360 });
+  await page.evaluate(() => {
+    const f = (window as any).mobileFixture;
+    f.emit("mobile-system-insets", {
+      ...f.insets,
+      revision: 10,
+      systemBars: { top: 0, left: 24, right: 12, bottom: 16 },
+      cutout: { top: 0, left: 0, right: 0, bottom: 0 },
+      ime: { top: 0, left: 0, right: 0, bottom: 220 },
+      imeVisible: true,
+    });
+  });
+  const workspace = page.locator(".mobile-workspace");
+  await expect
+    .poll(() => workspace.evaluate((el) => el.clientHeight))
+    .toBe(140);
+  expect(await workspace.evaluate((el) => el.scrollTop)).toBe(0);
+  await observeTouchInput(page, ".mobile-workspace");
+  const cdp = await page.context().newCDPSession(page);
+  const bounds = () =>
+    page.evaluate(() =>
+      Object.fromEntries(
+        [".composer .prompt-editor", ".send-button"].map((selector) => {
+          const el = document.querySelector(selector)!;
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            r.x + r.width / 2,
+            r.y + r.height / 2,
+          );
+          return [
+            selector,
+            {
+              rect: r.toJSON(),
+              reachable:
+                r.top >= 0 &&
+                r.bottom <= 140 &&
+                r.left >= 24 &&
+                r.right <= 628 &&
+                !!hit &&
+                (hit === el || el.contains(hit)),
+            },
+          ];
+        }),
+      ),
+    );
+  try {
+    // Only trusted touch input moves the workspace: no scrollTop assignment,
+    // scrollIntoView, wheel or DOM-dispatched touch events after IME arrives.
+    for (let stroke = 0; stroke < 16; stroke++) {
+      if (Object.values(await bounds()).every((value) => value.reachable))
+        break;
+      await touchStroke(page, cdp, 330, 105, 12);
+    }
+    const final = await bounds();
+    const evidence = await touchEvidence(page);
+    await attachTouchEvidence("short-landscape-trusted-touch.json", {
+      ...evidence,
+      controls: final,
+    });
+    expect(
+      evidence.events.some(
+        (event) => event.type === "touchmove" && event.trusted === true,
+      ),
+    ).toBe(true);
+    expect(evidence.scrollTop).toBeGreaterThan(200);
+    expect(Object.values(final).every((value) => value.reachable)).toBe(true);
+    await expect(input.locator("p")).toHaveText([
+      "合成草稿，不发送",
+      "第二行",
+      "第三行",
+      "第四行",
+    ]);
+    await expect(page.locator("html")).toHaveAttribute("data-ime", "true");
+    await page.screenshot({
+      path: testInfo.outputPath("short-landscape-trusted-touch.png"),
+    });
+  } finally {
+    await cdp.detach();
+  }
 });
 
 test("first run, cancelled login, retry and real account summary", async ({
