@@ -1,5 +1,7 @@
 # Documentation index
 
+- [手机文件侧栏与菜单关闭](plan/tasks/mobile-file-sidebar-menu.md)：ADB复现文件页目录顺序/对齐与“更多”菜单外点不关闭；统一移动布局并保留数据更新供手测。
+
 - [Android 间距与发送按钮](plan/tasks/mobile-spacing-send.md)：0.1.44 实机手测补充，收紧会话列表行距并保持发送/停止控件圆形；独立验证后同签名覆盖安装供用户手测。
 
 - [桌面远程、手机工作区与登录恢复](plan/tasks/desktop-mobile-session-recovery.md)：调查 v0.1.43 更新后协调配置错误和复用服务；修复手机连接后样式，按用户新要求实现[安全保存登录](login-session-persistence.md)。
