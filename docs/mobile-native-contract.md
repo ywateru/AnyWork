@@ -1,5 +1,7 @@
 # Mobile native interface v1
 
+> 2026-11-16：按用户要求新增[安全保存登录与恢复](login-session-persistence.md)，替代下文进程重启不恢复应用 grant 的约定。当前实现与验收进度见[任务](plan/tasks/desktop-mobile-session-recovery.md)。
+
 所有 DTO 使用 camelCase。模块内部通过 Rust 类型共享；JS 只能取得账号摘要、目录、句柄和业务响应，不取得凭据。下面的命令是实现边界；新增行为须同步本契约。shell owner 维护 Cargo、lock、lib.rs 和 Tauri 注册，模块作者不同时修改这些共享文件。
 
 ## Account

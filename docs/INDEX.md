@@ -1,5 +1,7 @@
 # Documentation index
 
+- [桌面远程、手机工作区与登录恢复](plan/tasks/desktop-mobile-session-recovery.md)：调查 v0.1.43 更新后协调配置错误和复用服务；修复手机连接后样式，按用户新要求实现[安全保存登录](login-session-persistence.md)。
+
 - [移动端协调配置与同步恢复](plan/tasks/mobile-coordination-recovery.md)：[v0.1.43](https://github.com/ywateru/AnyWork/releases/tag/v0.1.43) 已发布，官网与安装包同源；实体 Android 9 原蜂窝网络恢复发现与授权工作区/历史读取，并保留数据升级正式 code45。四独立 APK、签名及源码验收见[独立发行记录](plan/reviews/v43-release-independent.md)。
 
 - [Android 加载修复发行](plan/tasks/android-loading-release.md)：[v0.1.41](https://github.com/ywateru/AnyWork/releases/tag/v0.1.41) 已发布，精确源码 Checks、全部发行平台、四 APK 与官网下载入口验收通过；自动部署令牌及手机协调网络限制仍保留。

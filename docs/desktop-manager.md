@@ -1,5 +1,7 @@
 # AnyWork 桌面与手机账号入口
 
+> 2026-11-16：重启后登录策略按用户新要求改为[安全保存与恢复](login-session-persistence.md)。下文“重启需重新登录”和“仅内存”描述旧行为，功能交付进度见[任务](plan/tasks/desktop-mobile-session-recovery.md)。服务归属、会话保留和远程关闭规则继续有效。
+
 本页描述当前源码的统一体验。当前源码已退役旧版的独立匿名/固定隧道、WireGuard、配对链接和手动令牌流程；新版本不从旧配置恢复这些路由。已发布旧包以对应发行记录为准，历史实现与验收保留在Git中。[完整契约](account-unified-experience.md) · [账号安全](account-desktop.md) · [支持矩阵](support-matrix.md)
 
 ## 本地工作

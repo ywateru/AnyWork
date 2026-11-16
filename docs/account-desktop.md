@@ -1,6 +1,8 @@
 # Local account and remote access
 
-## Current contract: account secrets stay in memory
+> 2026-11-16 用户已要求重启保留登录。[安全保存与恢复契约](login-session-persistence.md)替代下方仅内存及每次启动登录要求；本轮实现/验收见[任务](plan/tasks/desktop-mobile-session-recovery.md)。下方描述旧版本行为与历史证据。
+
+## Previous contract: account secrets stay in memory
 
 The native account path keeps refresh/access tokens, Noise private keys and CyberGrid registration material only in process memory. It does not call OS Keychain/Secret Service, read old account credential records, or write secrets to ordinary files. Closing the client loses this authorization: the next process starts signed out and remote access disabled. Standalone manual routes are retired: no legacy route startup, recovery, credential loading, pairing or token export remains. Old configuration files are preserved; cloudflared remains internal to the account gateway. See [local browser handoff](local-browser-session.md).
 

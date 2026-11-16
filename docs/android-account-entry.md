@@ -1,5 +1,7 @@
 # Android 原生客户端
 
+> 2026-11-16：用户要求手机和桌面保存登录、重启免二次登录。[新恢复契约](login-session-persistence.md)替代本文仅内存应用 grant 和 `usingPersistStorage=false` 要求；不允许普通明文存储凭据，实现与验证见[本轮任务](plan/tasks/desktop-mobile-session-recovery.md)。
+
 2026-11-13 用户要求替代旧 Custom Tab 入口：Android 是 Rust + Tauri 2 客户端，安装包携带完整界面，账号登录在应用内独立 WebView 中完成，业务连接、设备目录和凭据由原生层管理。手机连接电脑上的 Agent，不在手机运行电脑后端。实现状态与验收见[任务](plan/tasks/android-native-client.md)；本契约不代表已经通过真机验收。
 
 ## 结构与边界
