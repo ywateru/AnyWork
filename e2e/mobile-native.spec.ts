@@ -23,6 +23,7 @@ async function fixture(
     mixedWorkspace?: boolean;
     running?: boolean;
     longModel?: boolean;
+    fileTree?: boolean;
     restorePhase?: "restoring" | "restoreRetryable" | "reauthRequired";
     restoreError?: string;
     holdInitialSnapshot?: boolean;
@@ -84,7 +85,9 @@ async function fixture(
       id: "synthetic-session",
       thread_id: "synthetic-thread",
       title: "Android 界面开发",
-      cwd: "/workspace/any-work",
+      cwd: options.fileTree
+        ? "/workspace/很长的工作目录路径/another-long-project-name/any-work"
+        : "/workspace/any-work",
       agent: "fixture",
       model: "fixture-model",
       policy: "manual",
@@ -249,6 +252,30 @@ async function fixture(
           file = data.content;
           fileRevision = "sha256:" + "b".repeat(64);
           return { ok: true, revision: fileRevision };
+        }
+        if (options.fileTree) {
+          const directory = url.searchParams.get("path") || "";
+          if (["", "src", "src/nested"].includes(directory))
+            return {
+              entries: [
+                ...(directory === "src/nested"
+                  ? []
+                  : [
+                      {
+                        name: directory ? "nested" : "src",
+                        path: directory ? "src/nested" : "src",
+                        directory: true,
+                        size: 0,
+                      },
+                    ]),
+                ...Array.from({ length: 30 }, (_, i) => ({
+                  name: `document-${i}-长文件名与目录层级布局回归.md`,
+                  path: `${directory ? directory + "/" : ""}document-${i}-长文件名与目录层级布局回归.md`,
+                  directory: false,
+                  size: 64,
+                })),
+              ],
+            };
         }
         return url.searchParams.get("path")
           ? { content: file, revision: fileRevision }
@@ -885,6 +912,284 @@ for (const running of [false, true]) {
     ).toHaveLength(1);
   });
 }
+
+test("mobile files place a left aligned independently scrolling tree above preview without desktop header space", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, { signedIn: true, fileTree: true });
+  await connect(page);
+  await page.getByRole("button", { name: "文件", exact: true }).tap();
+  const src = page.getByRole("treeitem", { name: "src", exact: true });
+  await src.tap();
+  await page.getByRole("treeitem", { name: "nested", exact: true }).tap();
+  const nested = page.locator(
+    '[role="treeitem"][title="src/nested/document-0-长文件名与目录层级布局回归.md"]',
+  );
+  await nested.tap();
+  await expect(page.locator(".document-content")).toContainText("合成文档");
+  let revision = 10;
+  for (const [width, height, keyboard] of [
+    [320, 820, 0],
+    [412, 820, 280],
+    [640, 360, 180],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.evaluate(
+      ({ revision, keyboard }) => {
+        const f = (window as any).mobileFixture;
+        f.emit("mobile-system-insets", {
+          ...f.insets,
+          revision,
+          ime: { top: 0, left: 0, right: 0, bottom: keyboard },
+          imeVisible: keyboard > 0,
+        });
+      },
+      { revision: revision++, keyboard },
+    );
+    await expect
+      .poll(() =>
+        page
+          .locator(".mobile-client")
+          .evaluate((el) =>
+            Number.parseFloat(getComputedStyle(el).paddingBottom),
+          ),
+      )
+      .toBe(Math.max(24, keyboard));
+    const metrics = await page.evaluate(() => {
+      const box = (selector: string) =>
+        document.querySelector(selector)!.getBoundingClientRect().toJSON();
+      const row = document.querySelector('.file-tree-level [role="treeitem"]')!;
+      const arrow = row.querySelector("svg")!.getBoundingClientRect();
+      const child = document.querySelector(
+        '[role="treeitem"][title="src/nested/document-0-长文件名与目录层级布局回归.md"]',
+      )!;
+      return {
+        chrome: box(".mobile-workspace-chrome"),
+        inspector: box(".workspace-inspector"),
+        tabs: box(".panel-tabs"),
+        toolbar: box(".document-toolbar"),
+        tree: box(".document-file-tree"),
+        search: box(".file-tree-search"),
+        preview: box(".document-content"),
+        row: row.getBoundingClientRect().toJSON(),
+        child: child.getBoundingClientRect().toJSON(),
+        arrowLeft: arrow.left - row.getBoundingClientRect().left,
+        justify: getComputedStyle(row).justifyContent,
+        border: getComputedStyle(document.querySelector(".document-file-tree")!)
+          .borderLeftWidth,
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        controls: [
+          ...document.querySelectorAll(
+            ".panel-tabs .panel-close,.panel-tabs .panel-launcher > summary,.panel-tabs .close-session-tab",
+          ),
+        ].map((el) => el.getBoundingClientRect().toJSON()),
+      };
+    });
+    await testInfo.attach(`file-layout-${width}-ime-${keyboard}.json`, {
+      contentType: "application/json",
+      body: JSON.stringify(metrics, null, 2),
+    });
+    expect(
+      Math.abs(metrics.inspector.top - metrics.chrome.bottom),
+    ).toBeLessThan(1);
+    expect(Math.abs(metrics.tabs.top - metrics.chrome.bottom)).toBeLessThan(1);
+    expect(metrics.tabs.height).toBe(56);
+    expect(metrics.toolbar.height).toBe(56);
+    expect(metrics.tree.top).toBeGreaterThanOrEqual(metrics.toolbar.bottom);
+    expect(metrics.tree.bottom).toBeLessThanOrEqual(metrics.preview.top);
+    expect(metrics.preview.height).toBeGreaterThanOrEqual(48);
+    expect(metrics.search.height).toBeGreaterThanOrEqual(48);
+    expect(metrics.row.height).toBeGreaterThanOrEqual(48);
+    expect(metrics.arrowLeft).toBeLessThanOrEqual(4);
+    expect(metrics.justify).toBe("flex-start");
+    expect(metrics.child.left - metrics.row.left).toBe(24);
+    expect(metrics.border).toBe("0px");
+    expect(metrics.overflow).toBe(false);
+    expect(metrics.controls.length).toBeGreaterThanOrEqual(3);
+    for (const r of metrics.controls) {
+      expect(r.width).toBeGreaterThanOrEqual(48);
+      expect(r.height).toBeGreaterThanOrEqual(48);
+    }
+    for (const target of [
+      page.getByRole("textbox", { name: "筛选文件", exact: true }),
+      nested,
+      page.locator(".document-content"),
+    ]) {
+      await target.scrollIntoViewIfNeeded();
+      const r = await target.boundingBox();
+      expect(r).not.toBeNull();
+      expect(r!.y).toBeGreaterThanOrEqual(0);
+      expect(r!.y + r!.height).toBeLessThanOrEqual(
+        height - Math.max(24, keyboard) + 1,
+      );
+    }
+    await page.screenshot({
+      path: testInfo.outputPath(`file-layout-${width}-ime-${keyboard}.png`),
+    });
+  }
+  // Move only the tree with native touch. The preview must retain its geometry.
+  await page.setViewportSize({ width: 412, height: 820 });
+  await page.evaluate((revision) => {
+    const f = (window as any).mobileFixture;
+    f.emit("mobile-system-insets", { ...f.insets, revision });
+  }, revision++);
+  await page
+    .getByRole("textbox", { name: "筛选文件", exact: true })
+    .scrollIntoViewIfNeeded();
+  const tree = page.locator(".file-tree-scroll");
+  const before = await page.locator(".document-content").boundingBox();
+  await observeTouchInput(page, ".file-tree-scroll");
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const r = (await tree.boundingBox())!;
+    for (let i = 0; i < 3; i++)
+      await touchStroke(
+        page,
+        cdp,
+        r.x + r.width / 2,
+        r.y + r.height - 10,
+        r.y + 10,
+      );
+    const evidence = await touchEvidence(page);
+    await attachTouchEvidence("file-tree-trusted-scroll.json", evidence);
+    expect(
+      evidence.events.some((e) => e.type === "touchmove" && e.trusted === true),
+    ).toBe(true);
+    expect(evidence.scrollTop).toBeGreaterThan(50);
+    expect(await page.locator(".document-content").boundingBox()).toEqual(
+      before,
+    );
+  } finally {
+    await cdp.detach();
+  }
+  await page
+    .getByRole("textbox", { name: "筛选文件", exact: true })
+    .fill("document-29");
+  const last = page.locator(
+    '[role="treeitem"][title="document-29-长文件名与目录层级布局回归.md"]',
+  );
+  await last.tap();
+  await expect(page.locator(".document-content")).toContainText("合成文档");
+});
+
+test("mobile More uses unified outside touch, Escape, exclusivity, selection and tab lifecycle", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, { signedIn: true });
+  await connect(page);
+  await page.getByRole("button", { name: "文件", exact: true }).tap();
+  const more = page.locator(".mobile-more-tools");
+  const trigger = page.getByLabel("更多会话工具", { exact: true });
+  await observeTouchInput(page, ".document-content");
+  await trigger.tap();
+  await expect(more).toHaveAttribute("open", "");
+  const popup = (await more.locator(":scope > div").boundingBox())!;
+  const point = { x: popup.x + popup.width / 2, y: popup.y + 3 };
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document
+          .elementFromPoint(x, y)
+          ?.parentElement?.matches("details[data-floating-menu]"),
+      point,
+    ),
+  ).toBe(true);
+  // Chrome touch adjustment snaps this 6px padding to the adjacent action.
+  // Use a precise trusted pointer for the non-action area; actions/outside use touch.
+  await page.mouse.click(point.x, point.y);
+  await expect(more).toHaveAttribute("open", "");
+  await page.locator(".document-placeholder").tap();
+  await expect(more).not.toHaveAttribute("open", "");
+  await attachTouchEvidence(
+    "more-outside-trusted-touch.json",
+    await touchEvidence(page),
+  );
+  await trigger.tap();
+  await page.keyboard.press("Escape");
+  await expect(more).not.toHaveAttribute("open", "");
+  await expect(trigger).toBeFocused();
+  await trigger.tap();
+  await page.locator(".mobile-workspace-chrome .session-menu > summary").tap();
+  await expect(more).not.toHaveAttribute("open", "");
+  // The session popup overlays this trigger; exercise toggle exclusivity directly.
+  await trigger.evaluate((el) => (el as HTMLElement).click());
+  await expect(
+    page.locator(".mobile-workspace-chrome .session-menu"),
+  ).not.toHaveAttribute("open", "");
+  await page.getByRole("button", { name: "终端", exact: true }).tap();
+  await expect(more).not.toHaveAttribute("open", "");
+  await expect(page.locator(".terminal-status")).toContainText("已连接");
+  await trigger.tap();
+  await more.getByRole("button", { name: "变更与审查", exact: true }).tap();
+  await expect(more).not.toHaveAttribute("open", "");
+  await expect(page.getByLabel("变更面板", { exact: true })).toBeVisible();
+  await trigger.tap();
+  await expect(more).toHaveAttribute("open", "");
+  // Programmatic tab changes also retire the menu, not only outside events.
+  await page
+    .getByRole("button", { name: "文件", exact: true })
+    .evaluate((el) => (el as HTMLButtonElement).click());
+  await expect(more).not.toHaveAttribute("open", "");
+  await trigger.tap();
+  await page.getByRole("button", { name: "返回会话列表", exact: true }).tap();
+  await expect(more).toHaveCount(0);
+  expect(
+    (await calls(page, "mobile_transport_http_begin")).filter(
+      (c: any) => c.request.method === "POST",
+    ),
+  ).toHaveLength(0);
+});
+
+test("device menus have one page owner and leave diagnostic disclosures expanded", async ({
+  page,
+}) => {
+  await fixture(page, { signedIn: true, unknown: true });
+  const diagnostic = page.locator(".mobile-directory-error details");
+  await diagnostic.locator("summary").tap();
+  await expect(diagnostic).toHaveAttribute("open", "");
+  const menus = page.locator(".mobile-device-menu");
+  const first = menus.first();
+  await first.locator("summary").tap();
+  await expect(first).toHaveAttribute("open", "");
+  const popup = (await first.locator(":scope > div").boundingBox())!;
+  const point = { x: popup.x + popup.width / 2, y: popup.y + 3 };
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document
+          .elementFromPoint(x, y)
+          ?.parentElement?.matches("details[data-floating-menu]"),
+      point,
+    ),
+  ).toBe(true);
+  // Chrome touch adjustment snaps this 6px padding to the adjacent action.
+  // Use a precise trusted pointer for the non-action area; actions/outside use touch.
+  await page.mouse.click(point.x, point.y);
+  await expect(first).toHaveAttribute("open", "");
+  await page.getByRole("heading", { name: "我的设备", exact: true }).tap();
+  await expect(first).not.toHaveAttribute("open", "");
+  await expect(diagnostic).toHaveAttribute("open", "");
+  await first.locator("summary").tap();
+  await menus.nth(1).locator("summary").tap();
+  await expect(first).not.toHaveAttribute("open", "");
+  await page.keyboard.press("Escape");
+  await expect(menus.nth(1)).not.toHaveAttribute("open", "");
+  await first.locator("summary").tap();
+  await first.getByRole("button", { name: "修改名称", exact: true }).tap();
+  await expect(first).not.toHaveAttribute("open", "");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("textbox").fill("合成电脑名称");
+  await dialog.getByRole("button", { name: "确认", exact: true }).tap();
+  expect(await calls(page, "mobile_account_device_update")).toHaveLength(1);
+  await first.locator("summary").tap();
+  await page.getByRole("button", { name: "账户与设置", exact: true }).tap();
+  await expect(menus).toHaveCount(0);
+  await page.getByRole("button", { name: "返回", exact: true }).tap();
+  await expect(page.locator(".mobile-device-menu[open]")).toHaveCount(0);
+  await first.locator("summary").tap();
+  await expect(first).toHaveAttribute("open", "");
+});
 
 test("connected workspace conversation, keyboard, files and terminal keep mobile bounds", async ({
   page,

@@ -293,7 +293,9 @@ export default function App({
         }
       : null;
 
-  useFloatingMenus(JSON.stringify([serverKey, selected]));
+  useFloatingMenus(
+    JSON.stringify(mobile ? [serverKey, selected, tab] : [serverKey, selected]),
+  );
   const [draft, setDraft] = useSessionDraft(serverKey, selected);
   const [reviewRequest, setReviewRequest] = useState<{
     sessionId: string;

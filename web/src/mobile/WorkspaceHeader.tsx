@@ -60,7 +60,7 @@ export default function WorkspaceHeader({
               </button>
             );
           })}
-          <details className="mobile-more-tools">
+          <details className="mobile-more-tools" data-floating-menu>
             <summary aria-label="更多会话工具">更多</summary>
             <div>
               {[
@@ -70,15 +70,7 @@ export default function WorkspaceHeader({
               ].map(([key, label, Icon]) => {
                 const ToolIcon = Icon as typeof Flag;
                 return (
-                  <button
-                    key={String(key)}
-                    onClick={(event) => {
-                      onTool(String(key));
-                      event.currentTarget
-                        .closest("details")
-                        ?.removeAttribute("open");
-                    }}
-                  >
+                  <button key={String(key)} onClick={() => onTool(String(key))}>
                     <ToolIcon size={18} />
                     {String(label)}
                   </button>

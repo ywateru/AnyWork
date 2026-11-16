@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import App from "../App";
 import { useAppearance } from "../appearance";
+import { useFloatingMenus } from "../hooks/useFloatingMenus";
 import { platformError } from "../platform";
 import {
   accountCommand,
@@ -53,6 +54,12 @@ const restoreErrors = new Set([
   "MOBILE_AUTH_REFRESH_UNCERTAIN",
   "MOBILE_AUTH_CLEAR_REQUIRED",
 ]);
+// Only mounted on the device page. The connected App owns its own menus, so
+// there is never a second global hook handling the same workspace events.
+function DeviceMenuOwner({ scope }: { scope: string }) {
+  useFloatingMenus(scope);
+  return null;
+}
 export default function MobileApp() {
   const [snapshot, setSnapshot] = useState(initial);
   const [ready, setReady] = useState(false);
@@ -788,6 +795,9 @@ export default function MobileApp() {
         </section>
       ) : (
         <section className="mobile-page mobile-devices">
+          <DeviceMenuOwner
+            scope={JSON.stringify([snapshot.account?.scopeId, snapshot.epoch])}
+          />
           <header className="mobile-brand-header">
             <Brand />
             <button aria-label="账户与设置" onClick={() => setPage("account")}>
@@ -862,7 +872,7 @@ export default function MobileApp() {
                           : "首次连接需核验身份"}
                     </small>
                   </div>
-                  <details className="mobile-device-menu">
+                  <details className="mobile-device-menu" data-floating-menu>
                     <summary aria-label={`${device.label}的更多操作`}>
                       <MoreHorizontal size={22} />
                     </summary>
