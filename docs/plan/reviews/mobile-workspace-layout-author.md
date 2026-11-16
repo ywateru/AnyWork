@@ -75,3 +75,46 @@ node node_modules/@playwright/test/cli.js test --config artifacts/mobile-workspa
 - `bundle-binding.json`: entry CSS/JS hashes and the mobile input file hashes, binding the private bundle to the reviewed source.
 
 No APK, AVD or physical phone was operated in this lane: the failure was reproduced and corrected in the actual bundled MOBILE build, with native bridge/inset fixtures. Actual phone activity remains coordinated through Nash. This report does not claim fresh Native/physical-device acceptance. Independent review remains required before merge/release. There were no production, host, Agent, credential, publisher or deployment mutations.
+
+## Short-landscape follow-up for independent review 08e4f4d
+
+Base/dependency: `f92061a4943517b1153bec4b82b88820ab98147e`; this follow-up is on `codex/mobile-workspace-ime`. The original candidate remains unchanged on `codex/mobile-workspace-layout`. No restore-login, server-cache, Native bridge or desktop source is changed here.
+
+The independent review found two P2 failures at 640×360 with native system insets top0/left24/right12/bottom16: IME180 clipped the send button, and the terminal clipped its second shortcut row and Ctrl+C even without IME. The shell could shrink its conversation pane below the fixed chrome/composer/key content height while descendants retained `overflow: hidden`.
+
+The minimal mobile CSS change applies only below 481px viewport height. The session workspace becomes a vertical scroll container, with a 320px minimum main region so the terminal toolbar and existing shortcut rows fit inside their pane. Chrome and the main region can scroll together; controls retain their original structure and touch heights. While IME is visible, the actual ProseMirror editor has a bounded 48px height and scrolls its multiline contents. No tool, shortcut or text is hidden to manufacture room.
+
+```text
+short-height session workspace (scrolls above native IME)
+  existing header / tool navigation
+  main region (at least 320px)
+    conversation + bounded multiline editor + send
+    OR terminal toolbar + viewport + all shortcut rows + Ctrl+C
+---------------- native IME boundary ----------------
+```
+
+The new collected mobile fixture uses the real connected App, the native insets event and a four-paragraph draft. At IME140/180/220 it scrolls the real composer into view, checks full bounds and the send button's `elementFromPoint` center hit, focuses the actual editor and confirms its multiline contents are internally scrollable. It also validates every terminal shortcut and Ctrl+C individually at IME0/180/220, then actually clicks Ctrl+C and requires exactly three synthetic PTY `input` calls carrying `\u0003`. Returning to portrait preserves all four draft paragraphs and restores the normal main-region sizing. It sends no session prompt.
+
+Exact final production MOBILE results at 640×360:
+
+| Native IME bottom | Available bottom | Editor top–bottom | Send top–bottom | Send center hit |
+| ----------------- | ---------------- | ----------------- | --------------- | --------------- |
+| 140               | 220              | 95–143            | 151–199         | PASS            |
+| 180               | 180              | 67–115            | 123–171         | PASS            |
+| 220               | 140              | 27–75             | 83–131          | PASS            |
+
+Validation:
+
+- Before fix: the new control-reachability test fails against the original `f92061a` production MOBILE bundle, including after attempting to scroll the controls into view. Private `before.log` and trace retain this negative control.
+- Exact final production MOBILE: **8 passed, 0 skipped, 0 flaky** — new short-height case, both connected-workspace cases, existing Native terminal case and four contrast cases. Screenshots include composer IME140/180/220 and terminal IME0/180/220, plus the existing portrait/light/dark, files and conversation views.
+- TypeScript, relevant Prettier and `git diff --check`: PASS.
+- No full unrelated suite, APK build, AVD or physical phone operation was performed. Independent incremental review of both P2 findings is still required.
+
+Private evidence is retained under root `artifacts/mobile-workspace-ime-author/`: `exact-final.log`, `exact-results.json` (including measured composer attachments), extracted `composer-metrics-{140,180,220}.json`, `exact-final/` screenshots, `bundle-binding.json`, the isolated Vite/Playwright configs and build log. The private preview uses port3428 and shared dependencies by symlink. Only the mobile entry was built, with a private dist/cache.
+
+| Final entry asset            | SHA-256                                                            |
+| ---------------------------- | ------------------------------------------------------------------ |
+| `assets/mobile-BP_3ZqGl.css` | `46ce5bc067dc418a869722c593a7014d81fac4fd31986583414f7557bccb7e45` |
+| `assets/mobile-Cmx7-Z1-.js`  | `0662e86629241ca44bf336244e22d274ec166ebbcb5698b4d37b298c84d6bab1` |
+
+Reproduction uses the same private MOBILE preview command as above, replacing the evidence directory with `mobile-workspace-ime-author` and selecting `--grep 'short landscape workspace|connected workspace|terminal reaches|contrast'`. The test remains in `e2e/mobile-native.spec.ts`, so the existing required mobile CI gate collects it without new configuration.

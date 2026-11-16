@@ -733,6 +733,154 @@ test("connected workspace conversation, keyboard, files and terminal keep mobile
   });
 });
 
+test("short landscape workspace can scroll composer and terminal controls above IME", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, { signedIn: true, mixedWorkspace: true });
+  await connect(page);
+  await page.setViewportSize({ width: 640, height: 360 });
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  const send = page.getByRole("button", { name: "发送", exact: true });
+  await input.fill("合成草稿，不发送\n第二行\n第三行\n第四行");
+  let revision = 10;
+  async function insets(bottom: number) {
+    await page.evaluate(
+      ({ bottom, revision }) => {
+        const f = (window as any).mobileFixture;
+        f.emit("mobile-system-insets", {
+          ...f.insets,
+          revision,
+          systemBars: { top: 0, left: 24, right: 12, bottom: 16 },
+          cutout: { top: 0, left: 0, right: 0, bottom: 0 },
+          ime: { top: 0, left: 0, right: 0, bottom },
+          imeVisible: bottom > 0,
+        });
+      },
+      { bottom, revision: revision++ },
+    );
+  }
+  async function reachable(
+    target: ReturnType<Page["locator"]>,
+    bottom: number,
+  ) {
+    await target.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        target.evaluate((el, bottom) => {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            r.x + r.width / 2,
+            r.y + r.height / 2,
+          );
+          return (
+            r.top >= 0 &&
+            r.bottom <= innerHeight - Math.max(16, bottom) &&
+            r.left >= 24 &&
+            r.right <= innerWidth - 12 &&
+            !!hit &&
+            (hit === el || el.contains(hit))
+          );
+        }, bottom),
+      )
+      .toBe(true);
+  }
+  for (const bottom of [140, 180, 220]) {
+    await insets(bottom);
+    await page.locator(".composer").scrollIntoViewIfNeeded();
+    await reachable(send, bottom);
+    await testInfo.attach(`composer-metrics-${bottom}.json`, {
+      contentType: "application/json",
+      body: JSON.stringify(
+        await page.evaluate(() =>
+          Object.fromEntries(
+            [
+              ".mobile-workspace",
+              ".main",
+              ".composer-area",
+              ".composer",
+              ".composer .prompt-editor",
+              ".composer-tools",
+              ".send-button",
+            ].map((selector) => {
+              const el = document.querySelector(selector);
+              if (!el) return [selector, null];
+              const s = getComputedStyle(el);
+              return [
+                selector,
+                {
+                  rect: el.getBoundingClientRect().toJSON(),
+                  padding: s.padding,
+                  minHeight: s.minHeight,
+                  maxHeight: s.maxHeight,
+                  scrollTop: el.scrollTop,
+                },
+              ];
+            }),
+          ),
+        ),
+        null,
+        2,
+      ),
+    });
+    // The same viewport must expose the actual editor too, not only its button.
+    await expect
+      .poll(() =>
+        input.evaluate((el, bottom) => {
+          const r = el.getBoundingClientRect();
+          return r.top >= 0 && r.bottom <= innerHeight - bottom;
+        }, bottom),
+      )
+      .toBe(true);
+    await input.click();
+    await expect(input).toBeFocused();
+    expect(
+      await input.evaluate((el) => el.scrollHeight > el.clientHeight),
+    ).toBe(true);
+    await reachable(send, bottom);
+    await page.screenshot({
+      path: testInfo.outputPath(`short-landscape-ime-${bottom}.png`),
+    });
+  }
+  await insets(0);
+  const terminal = page.getByRole("button", { name: "终端", exact: true });
+  await reachable(terminal, 0);
+  await terminal.click();
+  await expect(page.locator(".terminal-status")).toContainText("已连接");
+  for (const bottom of [0, 180, 220]) {
+    await insets(bottom);
+    const keys = page.locator(".terminal-key, .terminal-interrupt");
+    expect(await keys.count()).toBeGreaterThan(7);
+    for (const key of await keys.all()) {
+      await reachable(key, bottom);
+    }
+    const interrupt = page.getByRole("button", { name: "Ctrl+C", exact: true });
+    await reachable(interrupt, bottom);
+    await interrupt.click();
+    await page.screenshot({
+      path: testInfo.outputPath(`short-landscape-terminal-ime-${bottom}.png`),
+    });
+  }
+  expect(
+    (await calls(page, "mobile_transport_pty")).filter(
+      (c: any) => c.request.type === "input" && c.request.data === "\u0003",
+    ),
+  ).toHaveLength(3);
+  await insets(0);
+  await page.setViewportSize({ width: 412, height: 820 });
+  await page.getByRole("button", { name: "对话", exact: true }).click();
+  await expect(input.locator("p")).toHaveText([
+    "合成草稿，不发送",
+    "第二行",
+    "第三行",
+    "第四行",
+  ]);
+  await expect(page.locator(".mobile-workspace > .main")).toHaveCSS(
+    "min-height",
+    "0px",
+  );
+  await reachable(send, 0);
+});
+
 test("first run, cancelled login, retry and real account summary", async ({
   page,
 }, testInfo) => {

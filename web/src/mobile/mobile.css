@@ -742,6 +742,22 @@ body {
   }
 }
 @media (max-height: 480px) {
+  /* In short landscape windows, fixed chrome + composer/terminal keys can
+     exceed the remaining native viewport. Scroll the workspace as a whole
+     instead of clipping controls inside a zero-height conversation pane. */
+  .mobile-workspace.mobile-session-mode {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  .mobile-workspace.mobile-session-mode > .main {
+    flex: 1 0 320px;
+    min-height: 320px;
+  }
+  :root[data-ime="true"] .mobile-workspace .composer .prompt-editor {
+    min-height: 48px;
+    max-height: 48px;
+    overflow-y: auto;
+  }
   .mobile-welcome-copy {
     padding: 8px 0;
   }
