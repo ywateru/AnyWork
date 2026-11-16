@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directoryDiagnosticCode } from "./account";
+import { directoryDiagnosticCode, friendlyError } from "./account";
 
 describe("native directory diagnostic boundary", () => {
   it("retains fixed coordination stages without accepting arbitrary codes", () => {
@@ -25,5 +25,23 @@ describe("native directory diagnostic boundary", () => {
     ]) {
       expect(directoryDiagnosticCode(value)).toBeNull();
     }
+  });
+});
+
+describe("saved login public messages", () => {
+  it("explains the five fixed recovery boundaries without exposing native errors", () => {
+    for (const code of [
+      "MOBILE_AUTH_STORAGE_UNAVAILABLE",
+      "MOBILE_AUTH_RESTORE_UNAVAILABLE",
+      "MOBILE_AUTH_SAVED_GRANT_INVALID",
+      "MOBILE_AUTH_REFRESH_UNCERTAIN",
+      "MOBILE_AUTH_CLEAR_REQUIRED",
+    ]) {
+      expect(friendlyError({ code })).not.toBe(code);
+      expect(friendlyError({ code })).toMatch(/恢复|登录|退出/);
+    }
+    expect(friendlyError({ code: "MOBILE_AUTH_CLEAR_REQUIRED" })).toContain(
+      "重试退出",
+    );
   });
 });

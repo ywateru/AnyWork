@@ -12,7 +12,13 @@ export interface Device {
 export interface AccountSnapshot {
   protocolVersion: 1;
   epoch: number;
-  phase: "signedOut" | "signingIn" | "signedIn" | "reauthRequired";
+  phase:
+    | "signedOut"
+    | "restoring"
+    | "restoreRetryable"
+    | "signingIn"
+    | "signedIn"
+    | "reauthRequired";
   account: { scopeId: string; label: string; email: string | null } | null;
   devices: Device[];
   directoryState: "idle" | "loading" | "ready" | "unknown";
@@ -54,6 +60,11 @@ export function errorCode(error: unknown) {
 export function friendlyError(error: unknown) {
   const code = errorCode(error);
   const messages: Record<string, string> = {
+    MOBILE_AUTH_STORAGE_UNAVAILABLE: "安全存储暂不可用，请重试恢复登录",
+    MOBILE_AUTH_RESTORE_UNAVAILABLE: "暂时无法恢复登录，请检查网络后重试",
+    MOBILE_AUTH_SAVED_GRANT_INVALID: "保存的登录已失效，请重新登录",
+    MOBILE_AUTH_REFRESH_UNCERTAIN: "登录刷新未能确认，请重新登录",
+    MOBILE_AUTH_CLEAR_REQUIRED: "尚未确认清除保存的登录，请重试退出账号",
     CANCELLED: "操作已取消",
     LOGIN_REQUIRED: "登录已失效，请重新登录",
     AUTHORIZATION_EXPIRED: "连接授权已过期，请重新连接",
