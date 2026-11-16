@@ -145,7 +145,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "anywork"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -181,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "anywork-desktop"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "anyhow",
  "anywork-remote",
@@ -217,7 +217,7 @@ dependencies = [
 
 [[package]]
 name = "anywork-mobile"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "anyhow",
  "anywork-remote",
@@ -255,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "anywork-remote"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "anyhow",
  "axum",
@@ -5572,7 +5572,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "remote-agent-codex"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "remote-agent-sdk",
  "serde_json",
@@ -5580,7 +5580,7 @@ dependencies = [
 
 [[package]]
 name = "remote-agent-sdk"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -7029,7 +7029,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-mobile-auth"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "anyhow",
  "serde",
@@ -7039,7 +7039,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-mobile-system"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "base64 0.22.1",
  "serde",

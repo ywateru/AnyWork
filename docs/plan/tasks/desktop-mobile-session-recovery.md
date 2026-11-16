@@ -36,3 +36,12 @@
 - 桌面入口/能力判断/固定配置诊断候选 `68364ff` 经[独立审查](../reviews/desktop-v43-remote-independent.md)接受，合并 `a1e98ac`。私有双版本真实 Chromium 复现缓存旧入口白屏，新query取得当前入口；HTTP无ticket、无自动重放。合并后完整 Desktop lib **87 passed / 3 ignored**，没有操作实际服务或安装候选。缓存回归接入CI另行收口，现场历史协调失败仍未重现。
 - 手机基础样式候选 `f92061a` 在手机生产入口已复现并修正原截图问题；独立复核要求补修短横屏IME发送与终端快捷键可达性，尚未合并。
 - 两端安全保存登录与恢复实现、审查中；不宣称已交付或已完成真实安全存储/进程重启验收。
+
+## 2026-11-16 合并与本机交付安排
+
+用户最新要求：修正后合并代码，启动新版桌面，并以同签名 APK 保留数据安装到 ADB 设备，随后通知用户手测。先交付可运行测试候选，不将候选装包或浏览器夹具称为正式 Release/正常账号全流程验收。
+
+- Desktop 保存登录候选 `8673771` 已由独立报告 `2a1d9e3` 接受，合并 `016ed8b`；Android Native `81cee2f` 已由 `12f3843` 接受，合并 `1a3b0e5`。包括实际 macOS Keychain 六进程及 Android Keystore 十九进程的隔离合成授权验证，没有读取用户凭据。
+- Mobile 布局 `f92061a` → `15c975e` → `0f7d5a4` 与恢复 UI `6ac8b47` 均已合并；[布局独立记录](../reviews/mobile-workspace-layout-independent.md)关闭两项 P2，包含真实触摸滚动和合成发送；[恢复 UI 独立记录](../reviews/mobile-login-restore-ui-independent.md)接受启动、重试、退出和迟到结果栅栏。
+- 合并后 Desktop 完整 lib 测试 **99 passed / 3 ignored / 0 failed**。静态 HTML/SW 缓存候选仍须独立接受；安装、启动及最终候选 SHA 在完成后追加。
+- 本轮不因历史服务版本号停止外部宿主，不终止 Agent；桌面 GUI 正常退出后启动新版，Android 使用 `adb install -r`，不卸载、不清数据。旧版本未保存 grant，升级后需先登录一次；后续普通重启才可验证恢复。

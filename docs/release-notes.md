@@ -2,7 +2,21 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.43 / 本次更新**
+**Test candidate 0.1.44 / 本轮测试候选**
+
+Desktop and Android now save the application login grant using the OS credential store or Android Keystore and attempt restoration on restart. Explicit sign-out clears the saved authorization. Earlier versions did not save grants, so the first login after upgrading is still required. Endpoint private keys and active connections remain in memory; Windows Native account support remains unavailable.
+
+桌面和 Android 使用系统安全凭据存储或 Android Keystore 保存应用登录授权，重启时尝试恢复；显式退出清除保存授权。旧版本没有保存授权，首次升级后仍需登录一次。端点私钥和活动连接仅在内存，Windows Native 账号仍不支持。
+
+Fixes the bundled Android workspace missing shared styles, oversized Agent images and broken navigation. Short landscape layouts also keep the message composer and terminal controls reachable by touch. Desktop opens use a fresh public navigation query to avoid a stale HTML entry referencing deleted build assets, while the private browser ticket stays in the URL fragment. Local readiness now checks the actual secure handoff capability.
+
+修复 Android 内置工作区漏载共享样式导致的大图标、竖排按钮和导航错乱，并修复短横屏输入及终端控件的触摸滚动。桌面打开时使用新的公开导航参数，避免陈旧 HTML 引用已删除资源，私有交接票据仍只在 URL fragment 中。本地就绪状态会核对实际安全交接能力。
+
+Source reviews, synthetic SDK tests, actual OS secure-store fixtures and production browser layout checks passed. Installation and normal-account restart behavior are separate user tests; this candidate does not imply a new public Release has been published. See the [delivery task](https://github.com/ywateru/AnyWork/blob/main/docs/plan/tasks/desktop-mobile-session-recovery.md).
+
+源码独立审查、合成 SDK 测试、实际系统安全存储夹具及生产界面浏览器检查已通过。安装和正常账号重启恢复交用户手测；测试候选不代表已公开发布新版 Release。见[交付任务](https://github.com/ywateru/AnyWork/blob/main/docs/plan/tasks/desktop-mobile-session-recovery.md)。
+
+**Previous release 0.1.43 / 上一版本**
 
 Fixes Android device discovery failing with `MOBILE_COORDINATION_CONFIG_FETCH_FAILED` on the tested cellular route. Android now reaches the existing coordination service through narrowly scoped HTTPS routes on `anywork.aixgg.com`. The OAuth issuer, resource/audience, client and product bindings, and coordination data remain unchanged. Certificate-chain and hostname verification stay enabled; requests and responses are not cached.
 

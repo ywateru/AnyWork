@@ -1,6 +1,6 @@
 # 支持与验收矩阵 / Support and acceptance matrix
 
-更新日期：2026-11-13。维护位置：本文是当前 Agent/拓扑、平台和验收边界的统一入口；原生协议细节与历史测试计数保留在链接的专门契约/验收记录中。公开版本以 [GitHub Release](https://github.com/ywateru/AnyWork/releases/latest) 为准，源码改进及对应验收见[交付进度](plan/improvement-progress.md)。不把源码已合并自动视为已发布或已实机验收。
+更新日期：2026-11-16。维护位置：本文是当前 Agent/拓扑、平台和验收边界的统一入口；原生协议细节与历史测试计数保留在链接的专门契约/验收记录中。公开版本以 [GitHub Release](https://github.com/ywateru/AnyWork/releases/latest) 为准，源码改进及对应验收见[交付进度](plan/improvement-progress.md)。不把源码已合并自动视为已发布或已实机验收。
 
 ## 状态的含义 / State definitions
 
@@ -57,10 +57,10 @@ Claude Desktop 的实现与独立源码审查已完成；用户明确将真机�
 | 范围 | 当前目标与限制 | 证据状态 |
 | --- | --- | --- |
 | Web/手机浏览器 → 用户电脑 | Logto 登录、CyberGrid 发现；浏览器到本机 Noise 加密网关；业务仍由本机服务执行 | 自部署真实原生启用/发现/换钥/公网加密空工作区/关闭与退出、正式域名390/1440视口通过；22项浏览器/Rust业务互操作夹具另记；物理手机蜂窝未实测 |
-| macOS 桌面账号宿主 | 官方 Native 注册/登录、账号令牌及私钥仅进程内存、本机显式开启、独立加密入口 | 内存实现与真实自部署重启换钥已通过；进程退出后重新登录及开启，不自动恢复授权；注册入口到达托管用户名表单，未验证邮件投递 |
-| Linux 桌面账号宿主 | 新账号路径不使用系统 Secret Service，授权和密钥只在进程内存 | 编译/运行及上游provider矩阵待验证，不据macOS验收声称所有发行版支持 |
+| macOS 桌面账号宿主 | 官方 Native 注册/登录；Keychain 保存恢复授权，重启验证后恢复；端点私钥与连接仅内存 | 保存登录源码独立审查、合成轮换及实际 Keychain 六进程读写/清除通过；安装版真实登录重启由用户手测，见[记录](plan/reviews/login-session-persistence-independent.md) |
+| Linux 桌面账号宿主 | 保存恢复授权使用系统 Secret Service，无明文回退；端点私钥与连接仅内存 | Linux 实际编译/运行及 provider 矩阵待验证，不据 macOS 验收声称所有发行版支持 |
 | Windows 桌面账号宿主 | 上游 Rust SDK 凭据模块当前依赖 Unix；账号远程访问明确不可用 | 本地工作仍可用；不以恢复旧手动入口假装平台支持完成，SDK支持另立阶段 |
-| Android 原生客户端 | 当前源码重构为应用内登录、账号/目录和业务连接的原生 owner；页面随包，完整工作区在应用内使用，进程重启重新登录 | [契约与验收](android-account-entry.md)区分源码、隔离互通、浏览器与真实 APK；电脑端需支持移动 Native client。网页支持目标包含 iOS 浏览器，不等于新增原生 iOS 客户端 |
+| Android 原生客户端 | 当前源码重构为应用内登录、账号/目录和业务连接的原生 owner；页面随包，完整工作区在应用内使用；Keystore 保护恢复授权，重启尝试恢复登录 | [契约与验收](android-account-entry.md)区分源码、隔离互通、浏览器与真实 APK；本轮保存登录通过实际 SDK 与 Keystore 合成授权独立审查，正常账号重启由用户手测。电脑端需支持移动 Native client。网页支持目标包含 iOS 浏览器，不等于新增原生 iOS 客户端 |
 | 当前账号云服务 | 最新配置已改自部署Logto default业务租户，独立CyberGrid项目/Upstash namespace；旧Cloud Development资源保留 | 新应用/权限/Account API已配置并独立读回；协调服务与正式主页READY；真实CORS/Redis/Native-Web加密链通过，本机更新见[当前记录](plan/reviews/account-selfhost-cutover-01.md)；无Cloud付费升级 |
 
 账号数据与最少配置在 Logto，Upstash 仅作 CyberGrid 协调；业务正文和端到端私钥留在用户两端。HTTPS 本身不等于端到端加密。首次公钥目录、浏览器托管代码及终端仍是信任边界，详情见[方案](account-device-cloud-review.md)。
