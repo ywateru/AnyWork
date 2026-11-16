@@ -8,9 +8,9 @@ Desktop and Android now save the application login grant using the OS credential
 
 桌面和 Android 使用系统安全凭据存储或 Android Keystore 保存应用登录授权，重启时尝试恢复；显式退出清除保存授权。旧版本没有保存授权，首次升级后仍需登录一次。端点私钥和活动连接仅在内存，Windows Native 账号仍不支持。
 
-Fixes the bundled Android workspace missing shared styles, oversized Agent images and broken navigation. Short landscape layouts also keep the message composer and terminal controls reachable by touch. Desktop opens use a fresh public navigation query to avoid a stale HTML entry referencing deleted build assets, while the private browser ticket stays in the URL fragment. Local readiness now checks the actual secure handoff capability.
+Fixes the bundled Android workspace missing shared styles, oversized Agent images and broken navigation. Short landscape layouts also keep the message composer and terminal controls reachable by touch. Desktop opens use a fresh public navigation query to avoid a stale HTML entry referencing deleted build assets, while the private browser ticket stays in the URL fragment. Local readiness now checks the actual secure handoff capability. New server HTML and worker responses disable storage, while online PWA navigation bypasses HTTP caches and preserves the existing offline shell and manual update choice.
 
-修复 Android 内置工作区漏载共享样式导致的大图标、竖排按钮和导航错乱，并修复短横屏输入及终端控件的触摸滚动。桌面打开时使用新的公开导航参数，避免陈旧 HTML 引用已删除资源，私有交接票据仍只在 URL fragment 中。本地就绪状态会核对实际安全交接能力。
+修复 Android 内置工作区漏载共享样式导致的大图标、竖排按钮和导航错乱，并修复短横屏输入及终端控件的触摸滚动。桌面打开时使用新的公开导航参数，避免陈旧 HTML 引用已删除资源，私有交接票据仍只在 URL fragment 中。本地就绪状态会核对实际安全交接能力。新版服务 HTML 和 worker 响应禁用存储，PWA 在线导航绕过 HTTP 缓存，保留离线 shell 和手动更新选择。
 
 Source reviews, synthetic SDK tests, actual OS secure-store fixtures and production browser layout checks passed. Installation and normal-account restart behavior are separate user tests; this candidate does not imply a new public Release has been published. See the [delivery task](https://github.com/ywateru/AnyWork/blob/main/docs/plan/tasks/desktop-mobile-session-recovery.md).
 

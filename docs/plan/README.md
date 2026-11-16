@@ -1,5 +1,9 @@
 # DeepSeek Harness delivery
 
+## Current desktop and Android recovery follow-up
+
+The [current recovery task](tasks/desktop-mobile-session-recovery.md) records the 0.1.44 test candidate: connected Android layout, fresh desktop workspace entry and safe saved-login restoration. The [saved-login contract](../login-session-persistence.md) supersedes the older memory-only grant descriptions below. Source review and isolated platform tests are complete for both Native implementations; installed-app startup and data-preserving Android adoption are tracked separately before handing the candidate to the user for manual testing.
+
 ## Current Android client reconstruction
 
 加载修复与安全诊断已随 [v0.1.41](https://github.com/ywateru/AnyWork/releases/tag/v0.1.41) 正式发布，精确源码 Checks 与全部发行平台通过，四个实际 APK、23 附件/22 校验项和官网下载入口完成验收；[发行记录](tasks/android-loading-release.md)保留两项测试门禁修正、官网人工恢复及尚未解决的手机协调网络限制。该发行没有新增实体设备或真实工作区连接验收。

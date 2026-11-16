@@ -1,6 +1,6 @@
 # v0.1.43 桌面远程、手机工作区与登录恢复
 
-状态：调查与实现中。基线 main `15f5c3f`，2026-11-16。
+状态：修正与独立审查完成，已合入 main；0.1.44 / Android code46 测试候选等待构建、启动及保留数据安装。基线 main `15f5c3f`，2026-11-16。
 
 用户报告桌面更新后远程启用错误 `REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE`，本地“已就绪 · 复用已有服务”仍无法打开；追加 Android 连接后样式严重异常，以及桌面和手机应保存登录、重启无需二次登录。后者明确替代历史仅内存授权要求，契约见[登录恢复](../../login-session-persistence.md)。
 
@@ -45,3 +45,6 @@
 - Mobile 布局 `f92061a` → `15c975e` → `0f7d5a4` 与恢复 UI `6ac8b47` 均已合并；[布局独立记录](../reviews/mobile-workspace-layout-independent.md)关闭两项 P2，包含真实触摸滚动和合成发送；[恢复 UI 独立记录](../reviews/mobile-login-restore-ui-independent.md)接受启动、重试、退出和迟到结果栅栏。
 - 合并后 Desktop 完整 lib 测试 **99 passed / 3 ignored / 0 failed**。静态 HTML/SW 缓存候选仍须独立接受；安装、启动及最终候选 SHA 在完成后追加。
 - 本轮不因历史服务版本号停止外部宿主，不终止 Agent；桌面 GUI 正常退出后启动新版，Android 使用 `adb install -r`，不卸载、不清数据。旧版本未保存 grant，升级后需先登录一次；后续普通重启才可验证恢复。
+
+- 静态缓存候选 `e420d1a` 由[独立审查](../reviews/workspace-static-cache-independent.md)接受，合并 `ffd30c7`：HTML/SW 不存储、在线导航绕过 HTTP 缓存，保留用户确认更新、旧离线 shell 与草稿。Rust HTTP 2/2、既有浏览器 8/8、追加 4/4 通过；编码 HTML 别名/非入口子目录条件请求为已记录 P3，不影响固定入口和正常导航。
+- 合并后 Web TypeScript、**45 files / 447 tests** 与 **8 scripts** 通过；Desktop production UI build、账号恢复 UI 检查、真实 Chromium 缓存入口负对照通过。准备统一版本 **0.1.44 / Android code46**；正式签名 ARM64 candidate 与本机 Desktop 构建绑定冻结提交，不创建 tag 或公开 Release。
