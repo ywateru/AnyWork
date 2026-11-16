@@ -129,7 +129,7 @@
       "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/http/HttpRequest.kt",
       "local": "src/main/kotlin/io/logto/sdk/core/http/HttpRequest.kt",
       "upstream_sha256": "f0c2a17b5a96722e7e5f5337b8c9ec6080a5f9b71c4b29a92239b398e0bf7b91",
-      "local_sha256": "2c506afbef607dcc68c92a53dbe6c953807ce4c218eab3f34adfa8630e1f7b69"
+      "local_sha256": "1fe8cf2b711acc4ea296e2cdea900fcb99af675b62fdba26f27c2a540d77aeb3"
     },
     {
       "upstream": "kotlin-sdk/kotlin/src/main/kotlin/io/logto/sdk/core/type/CodeTokenResponse.kt",

@@ -25,5 +25,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.google.code.gson:gson:2.13.2")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.fasterxml.jackson.core:jackson-databind:2.15.3")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
 }

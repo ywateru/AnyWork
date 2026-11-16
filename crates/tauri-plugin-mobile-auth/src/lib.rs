@@ -31,6 +31,9 @@ pub struct Configuration {
     pub client_id: String,
     pub resource: String,
     pub redirect_uri: String,
+    pub product: String,
+    pub issuer: String,
+    pub grid_url: String,
 }
 
 // Deliberately neither Debug nor Serialize. Returned only to Rust native callers.
@@ -75,6 +78,9 @@ impl<R: Runtime> MobileAuth<R> {
     }
     pub async fn snapshot(&self) -> Result<Snapshot> {
         self.call("snapshot", ()).await
+    }
+    pub async fn restore(&self) -> Result<Snapshot> {
+        self.call("restore", ()).await
     }
     pub async fn sign_in(&self, register: bool) -> Result<Snapshot> {
         #[derive(Serialize)]
@@ -170,6 +176,7 @@ mod boundary_tests {
                 "configure",
                 "signIn",
                 "snapshot",
+                "restore",
                 "profile",
                 "token",
                 "logout",

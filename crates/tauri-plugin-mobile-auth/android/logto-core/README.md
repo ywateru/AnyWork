@@ -14,6 +14,12 @@ archive digest. `source.patch` is the entire upstream source diff. Only
 `HttpRequest.kt` changes: disable connection retries and both redirect policies,
 bound connect/read/write/whole-call times to 15/30/30/60 seconds, and wrap POST
 bodies as one-shot while delegating their type, length and bytes unchanged.
+The same file adds an operation observer: every GET/POST call uses at most its
+remaining monotonic operation budget or the ordinary 60-second limit. A budget
+exhausted before enqueue sends nothing. The refresh dispatch hooks provide durable
+pending before enqueue and conservative `requestHeadersStart` evidence for whether
+an unsent failure may retain its grant. It also completes the SDK callback when
+response-body reading throws, instead of leaving the owner waiting indefinitely.
 OAuth, PKCE/state, ID-token checks, serialization and callback APIs are unchanged.
 The original public lazy `httpClient`/`gson` and all `makeRequest` overloads remain.
 

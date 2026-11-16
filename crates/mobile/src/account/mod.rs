@@ -47,6 +47,7 @@ pub trait AuthBackend: Send + Sync {
         config: tauri_plugin_mobile_auth::Configuration,
     ) -> AuthFuture<'_, NativeSnapshot>;
     fn snapshot(&self) -> AuthFuture<'_, NativeSnapshot>;
+    fn restore(&self) -> AuthFuture<'_, NativeSnapshot>;
     fn sign_in(&self, register: bool) -> AuthFuture<'_, NativeSnapshot>;
     fn logout(&self) -> AuthFuture<'_, NativeSnapshot>;
     fn profile(&self, generation: u64) -> AuthFuture<'_, NativeSnapshot>;
@@ -69,6 +70,9 @@ impl<R: Runtime> AuthBackend for NativeBackend<R> {
     }
     fn snapshot(&self) -> AuthFuture<'_, NativeSnapshot> {
         Box::pin(self.0.mobile_auth().snapshot())
+    }
+    fn restore(&self) -> AuthFuture<'_, NativeSnapshot> {
+        Box::pin(self.0.mobile_auth().restore())
     }
     fn sign_in(&self, register: bool) -> AuthFuture<'_, NativeSnapshot> {
         Box::pin(self.0.mobile_auth().sign_in(register))
@@ -268,7 +272,7 @@ impl Handle {
                 snapshot: AccountSnapshot {
                     protocol_version: 1,
                     epoch: 0,
-                    phase: Phase::SignedOut,
+                    phase: Phase::Restoring,
                     account: None,
                     devices: vec![],
                     directory_state: DirectoryState::Idle,
@@ -283,15 +287,24 @@ impl Handle {
             .configured
             .get_or_try_init(|| async {
                 let c = &self.0.config;
-                self.0
+                let epoch = self.0.state.lock().await.snapshot.epoch;
+                let native = self
+                    .0
                     .backend
                     .configure(tauri_plugin_mobile_auth::Configuration {
                         endpoint: c.endpoint.clone(),
                         client_id: c.client_id.clone(),
                         resource: c.resource.clone(),
                         redirect_uri: c.redirect_uri.clone(),
+                        product: c.host_product_id.clone(),
+                        issuer: c.issuer.clone(),
+                        grid_url: c.grid_url.clone(),
                     })
                     .await?;
+                let initializing = self.0.state.lock().await.snapshot.phase == Phase::Restoring;
+                if initializing {
+                    self.apply(epoch, native).await?;
+                }
                 Ok::<(), anyhow::Error>(())
             })
             .await?;
@@ -310,6 +323,8 @@ impl Handle {
     async fn apply(&self, epoch: u64, native: NativeSnapshot) -> Result<AccountSnapshot> {
         let phase = match native.status.as_str() {
             "signedOut" => Phase::SignedOut,
+            "restoring" => Phase::Restoring,
+            "restoreRetryable" => Phase::RestoreRetryable,
             "authorizing" => Phase::SigningIn,
             "signedIn" => Phase::SignedIn,
             "reauthRequired" => Phase::ReauthRequired,
@@ -331,9 +346,15 @@ impl Handle {
         // logout dispatch/rotation is still settling.
         ensure!(
             phase != Phase::SignedIn
-                || matches!(state.snapshot.phase, Phase::SigningIn | Phase::SignedIn),
+                || matches!(
+                    state.snapshot.phase,
+                    Phase::SigningIn | Phase::SignedIn | Phase::Restoring
+                ),
             "CANCELLED"
         );
+        if state.snapshot.phase == Phase::Restoring && phase == Phase::SignedIn {
+            state.snapshot.epoch = next(state.snapshot.epoch);
+        }
         let changed = state.snapshot.phase == Phase::SignedIn
             && (phase != Phase::SignedIn
                 || native.generation != state.native_generation
@@ -374,6 +395,11 @@ impl Handle {
                     | "MOBILE_AUTH_REAUTH_REQUIRED"
                     | "MOBILE_REVOCATION_UNCONFIRMED"
                     | "MOBILE_PROFILE_UNAVAILABLE"
+                    | "MOBILE_AUTH_STORAGE_UNAVAILABLE"
+                    | "MOBILE_AUTH_RESTORE_UNAVAILABLE"
+                    | "MOBILE_AUTH_SAVED_GRANT_INVALID"
+                    | "MOBILE_AUTH_REFRESH_UNCERTAIN"
+                    | "MOBILE_AUTH_CLEAR_REQUIRED"
             )
         });
         let snapshot = state.snapshot.clone();
@@ -433,11 +459,12 @@ impl Handle {
     pub async fn logout(&self) -> Result<AccountSnapshot> {
         let mut state = self.0.state.lock().await;
         state.snapshot.epoch = next(state.snapshot.epoch);
-        state.snapshot.phase = Phase::SignedOut;
+        // Retire access now; signedOut is only true after durable native clearing.
+        state.snapshot.phase = Phase::ReauthRequired;
         state.snapshot.account = None;
         state.subject = None;
         state.profile_warning = None;
-        state.snapshot.error_code = None;
+        state.snapshot.error_code = Some("MOBILE_AUTH_CLEAR_REQUIRED".into());
         Self::clear_directory(&mut state);
         let epoch = state.snapshot.epoch;
         let snapshot = state.snapshot.clone();
@@ -469,7 +496,7 @@ impl Handle {
             Err(_) => {
                 let mut state = self.0.state.lock().await;
                 ensure!(state.snapshot.epoch == epoch, "CANCELLED");
-                state.snapshot.error_code = Some("MOBILE_LOGOUT_UNCONFIRMED".into());
+                state.snapshot.error_code = Some("MOBILE_AUTH_CLEAR_REQUIRED".into());
                 let snapshot = state.snapshot.clone();
                 drop(state);
                 (self.0.notify)(snapshot.clone());
@@ -539,6 +566,15 @@ impl Handle {
         {
             Ok(value) => value,
             Err(_) => {
+                if let Ok(native) = self.0.backend.snapshot().await
+                    && matches!(
+                        native.status.as_str(),
+                        "restoreRetryable" | "reauthRequired"
+                    )
+                {
+                    self.apply(epoch, native).await?;
+                    bail!("MOBILE_AUTH_RESTORE_UNAVAILABLE");
+                }
                 self.reauth(epoch).await;
                 bail!("MOBILE_AUTH_REAUTH_REQUIRED")
             }
@@ -669,6 +705,39 @@ impl Handle {
             .collect()
     }
     pub async fn refresh(&self) -> Result<AccountSnapshot> {
+        self.prepare().await?;
+        {
+            let mut state = self.0.state.lock().await;
+            if state.snapshot.phase == Phase::Restoring {
+                drop(state);
+                return self.snapshot().await;
+            }
+            if state.snapshot.phase == Phase::RestoreRetryable {
+                state.snapshot.epoch = next(state.snapshot.epoch);
+                state.snapshot.phase = Phase::Restoring;
+                let epoch = state.snapshot.epoch;
+                let snapshot = state.snapshot.clone();
+                drop(state);
+                (self.0.notify)(snapshot);
+                let native = match self.0.backend.restore().await {
+                    Ok(native) => native,
+                    Err(_) => {
+                        let mut state = self.0.state.lock().await;
+                        ensure!(state.snapshot.epoch == epoch, "CANCELLED");
+                        state.snapshot.phase = Phase::RestoreRetryable;
+                        state.snapshot.error_code = Some("MOBILE_AUTH_RESTORE_UNAVAILABLE".into());
+                        let snapshot = state.snapshot.clone();
+                        drop(state);
+                        (self.0.notify)(snapshot.clone());
+                        return Ok(snapshot);
+                    }
+                };
+                let snapshot = self.apply(epoch, native).await?;
+                if snapshot.phase != Phase::SignedIn {
+                    return Ok(snapshot);
+                }
+            }
+        }
         self.refresh_inner(true).await
     }
     async fn refresh_inner(&self, read_profile: bool) -> Result<AccountSnapshot> {

@@ -18,6 +18,17 @@ as public pins only. Corrupt/unavailable trust storage fails closed.
 Logout and authorization uncertainty retire target cancellation tokens before
 network cleanup. Shell installs `set_retire_hook` to close all transport sessions
 and abort system exports. Old responses cannot apply after an epoch change.
+On first configure Rust accepts a native saved-grant restore only from `restoring`
+and establishes a fresh runtime epoch. Configure/retry return without waiting for
+network: public snapshots poll the process-owned restore and `refresh` while
+`restoring` only checks status. `restoreRetryable` has no usable account or
+connection targets; `mobile_account_refresh` retries native restore without SSO.
+Native logout and Rust epoch fences reject a late restore after explicit logout.
+Rust first retires access as `reauthRequired`/`MOBILE_AUTH_CLEAR_REQUIRED`; only a
+confirmed durable native clear can report `signedOut`.
+Only the plugin's new Keystore schema stores grant data; this module continues to
+persist public trust pins only. See the [plugin lifecycle](../../../tauri-plugin-mobile-auth/README.md).
+
 Foreground refresh is a read operation; it never silently logs in or replays a
 business request. Native refresh keeps one serial owner even if a Rust caller
 drops its future.

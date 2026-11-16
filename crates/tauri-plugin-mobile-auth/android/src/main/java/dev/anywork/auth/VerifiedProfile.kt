@@ -2,6 +2,10 @@ package dev.anywork.auth
 
 import android.net.Uri
 import io.logto.sdk.android.exception.LogtoException
+import io.logto.sdk.android.LogtoClient
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import org.json.JSONObject
 
 internal data class ProfileResult(val value: JSONObject, val unavailable: Boolean)
@@ -32,4 +36,23 @@ internal fun verifiedProfile(claims: JSONObject, info: JSONObject?, previous: JS
         val picture = text("picture")?.takeIf { Uri.parse(it).scheme == "https" }
         put("picture", picture ?: JSONObject.NULL)
     }, info == null)
+}
+
+
+/** Shared by the process owner and real-AAR fixtures. Only pure UserInfo GET
+ * failures permit the integrity-protected identity/display fallback. */
+internal suspend fun readSdkProfile(sdk: LogtoClient, previous: JSONObject?, claims: suspend () -> JSONObject): ProfileResult {
+    val original = claims()
+    val info = suspendCancellableCoroutine<JSONObject?> { continuation ->
+        sdk.fetchUserInfo { exception, value ->
+            if (continuation.isActive) {
+                if (exception == null && value != null) continuation.resume(JSONObject(com.google.gson.Gson().toJson(value)))
+                else if (exception != null && userInfoGetFailed(exception)) continuation.resume(null)
+                else continuation.resumeWithException(IllegalStateException("MOBILE_AUTH_REAUTH_REQUIRED"))
+            }
+        }
+    }
+    val current = claims()
+    check(current.optString("sub") == original.optString("sub"))
+    return verifiedProfile(current, info, previous)
 }

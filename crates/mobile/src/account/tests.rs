@@ -25,6 +25,9 @@ struct Backend {
     token_requests: std::sync::Mutex<Vec<(u64, bool, bool, u64)>>,
     fail_token: AtomicBool,
     profile_warning: AtomicBool,
+    hold_logout: AtomicBool,
+    logout_started: tokio::sync::Notify,
+    logout_release: tokio::sync::Notify,
     started: tokio::sync::Notify,
     release: tokio::sync::Notify,
 }
@@ -39,6 +42,9 @@ impl AuthBackend for Backend {
     fn snapshot(&self) -> AuthFuture<'_, NativeSnapshot> {
         Box::pin(async { Ok(native(7, "signedIn")) })
     }
+    fn restore(&self) -> AuthFuture<'_, NativeSnapshot> {
+        self.snapshot()
+    }
     fn sign_in(&self, _: bool) -> AuthFuture<'_, NativeSnapshot> {
         Box::pin(async {
             self.started.notify_one();
@@ -47,7 +53,13 @@ impl AuthBackend for Backend {
         })
     }
     fn logout(&self) -> AuthFuture<'_, NativeSnapshot> {
-        Box::pin(async { Ok(native(8, "signedOut")) })
+        Box::pin(async {
+            if self.hold_logout.load(Ordering::SeqCst) {
+                self.logout_started.notify_one();
+                self.logout_release.notified().await;
+            }
+            Ok(native(8, "signedOut"))
+        })
     }
     fn profile(&self, _: u64) -> AuthFuture<'_, NativeSnapshot> {
         Box::pin(async {
@@ -714,4 +726,125 @@ async fn account_tls_rejection_finishes_loading_and_allows_another_refresh() {
         .await
         .unwrap()
         .unwrap();
+}
+
+struct RestoreBackend {
+    status: std::sync::Mutex<String>,
+    started: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+impl AuthBackend for RestoreBackend {
+    fn configure(
+        &self,
+        _: tauri_plugin_mobile_auth::Configuration,
+    ) -> AuthFuture<'_, NativeSnapshot> {
+        self.snapshot()
+    }
+    fn snapshot(&self) -> AuthFuture<'_, NativeSnapshot> {
+        let status = self.status.lock().unwrap().clone();
+        Box::pin(async move { Ok(native(12, &status)) })
+    }
+    fn restore(&self) -> AuthFuture<'_, NativeSnapshot> {
+        Box::pin(async {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(native(13, "signedIn"))
+        })
+    }
+    fn sign_in(&self, _: bool) -> AuthFuture<'_, NativeSnapshot> {
+        panic!("restore must not launch SSO")
+    }
+    fn logout(&self) -> AuthFuture<'_, NativeSnapshot> {
+        *self.status.lock().unwrap() = "signedOut".into();
+        self.snapshot()
+    }
+    fn profile(&self, _: u64) -> AuthFuture<'_, NativeSnapshot> {
+        self.snapshot()
+    }
+    fn token(
+        &self,
+        _: u64,
+        _: bool,
+        _: bool,
+        _: u64,
+    ) -> AuthFuture<'_, tauri_plugin_mobile_auth::AccessGrant> {
+        Box::pin(async { bail!("fixture unused") })
+    }
+}
+fn restoring(status: &str) -> (Handle, Arc<RestoreBackend>) {
+    let backend = Arc::new(RestoreBackend {
+        status: std::sync::Mutex::new(status.into()),
+        started: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+    });
+    (
+        Handle::with_backend(Config::default(), backend.clone(), Arc::new(|_| {})),
+        backend,
+    )
+}
+#[tokio::test]
+async fn cold_restore_adopts_validated_subject_with_new_epoch_without_saved_access_token() {
+    let (handle, _) = restoring("signedIn");
+    let snapshot = handle.snapshot().await.unwrap();
+    assert!(snapshot.phase == Phase::SignedIn);
+    assert_eq!(snapshot.epoch, 1);
+    assert!(snapshot.account.is_some());
+    assert_eq!(handle.0.state.lock().await.native_generation, 12);
+}
+#[tokio::test]
+async fn recoverable_restore_is_explicit_and_has_no_account_or_directory_targets() {
+    let (handle, _) = restoring("restoreRetryable");
+    let snapshot = handle.snapshot().await.unwrap();
+    assert!(snapshot.phase == Phase::RestoreRetryable);
+    assert!(snapshot.account.is_none());
+    assert!(snapshot.devices.is_empty());
+    assert!(handle.owner().await.is_err());
+}
+#[tokio::test]
+async fn logout_during_retry_restore_cannot_reopen_the_account() {
+    let (handle, backend) = restoring("restoreRetryable");
+    handle.snapshot().await.unwrap();
+    let child = handle.clone();
+    let pending = tokio::spawn(async move { child.refresh().await });
+    backend.started.notified().await;
+    let out = handle.logout().await.unwrap();
+    assert!(out.phase == Phase::SignedOut);
+    backend.release.notify_one();
+    assert!(pending.await.unwrap().is_err());
+    assert!(handle.0.state.lock().await.snapshot.phase == Phase::SignedOut);
+    assert!(handle.owner().await.is_err());
+}
+
+#[tokio::test]
+async fn logout_does_not_claim_completion_before_durable_native_clear() {
+    let (handle, backend) = handle(Config::default());
+    signed_in(&handle).await;
+    backend.hold_logout.store(true, Ordering::SeqCst);
+    let child = handle.clone();
+    let pending = tokio::spawn(async move { child.logout().await });
+    backend.logout_started.notified().await;
+    {
+        let state = handle.0.state.lock().await;
+        assert!(state.snapshot.phase == Phase::ReauthRequired);
+        assert_eq!(
+            state.snapshot.error_code.as_deref(),
+            Some("MOBILE_AUTH_CLEAR_REQUIRED")
+        );
+        assert!(state.snapshot.account.is_none());
+        assert!(state.snapshot.devices.is_empty());
+    }
+    assert!(handle.owner().await.is_err());
+    backend.logout_release.notify_one();
+    assert!(pending.await.unwrap().unwrap().phase == Phase::SignedOut);
+}
+
+#[tokio::test]
+async fn startup_restoring_poll_is_public_and_never_opens_sso() {
+    let (handle, backend) = restoring("restoring");
+    assert!(handle.snapshot().await.unwrap().phase == Phase::Restoring);
+    assert!(handle.refresh().await.unwrap().phase == Phase::Restoring);
+    *backend.status.lock().unwrap() = "signedIn".into();
+    let ready = handle.snapshot().await.unwrap();
+    assert!(ready.phase == Phase::SignedIn);
+    assert_eq!(ready.epoch, 1);
 }

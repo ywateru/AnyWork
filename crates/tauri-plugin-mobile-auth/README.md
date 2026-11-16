@@ -4,21 +4,68 @@ This internal Tauri plugin has no guest commands or guest permissions. Only Rust
 calls `run_mobile_plugin_async`. Business JavaScript receives the account module's
 redacted snapshot, never these native profile/access-grant DTOs.
 
-The sole OAuth owner is official `io.logto.sdk:android:2.0.3`. Persistence is
-explicitly disabled with `usingPersistStorage=false`. Refresh and ID tokens never
-leave that SDK instance. Resource and opaque Account API access tokens are acquired
-under one native mutex; no Rust OAuth client, imported token file, credential
-migration, KeyStore or second refresh owner exists. A caller dropping its Rust
-future does not cancel the native coroutine or discard its new SDK grant. Unknown
-refresh outcomes fence that owner until logout/login.
+The sole OAuth/refresh owner remains official `io.logto.sdk:android:2.0.3`.
+Its ordinary SharedPreferences persistence stays disabled (`usingPersistStorage=false`).
+A process-owned subclass exposes only the protected refresh/ID fields to an internal
+Keystore adapter; these values never cross JNI or guest IPC. Access-token caches,
+Noise keys, registration keys and account contents are not persisted. No historical
+credential record or legacy SDK storage is read.
 
-Android WebView/IdP SSO cookies may persist independently of the application
-grant. Logout clears cookies and SDK RAM, while revocation failure is reported.
-Process restart does not restore an application grant. The SDK's own Polyfill and
-SocialHandler bridges remain within its documented trust boundary; no AnyWork IPC
-is installed in the login Activity. Before launch, an Android dialog identifies
-the fixed `https://auth.x.aixgg.com` source and explains system Back cancellation
-and cookie persistence. The full-screen SDK Activity has no promised source bar.
+## Saved login and lifecycle
+
+The current contract is [login-session-persistence](../../docs/login-session-persistence.md).
+`GrantStore` schema v1 binds endpoint, issuer, Native client, resource, grid URL, host product, callback,
+and exact scope set, plus the previously validated subject inside authenticated
+ciphertext. `AndroidGrantBytes` uses an Android Keystore non-exportable AES key and
+AES-GCM (random 96-bit IV, binding in AAD), with a 0600 file under `noBackupFilesDir`.
+Writes fsync the temporary file, atomically replace the current record, and fsync
+its directory; failures propagate. SDK plaintext SharedPreferences stays off.
+
+The process, not a host Activity, owns the SDK/mutex. Ordinary Activity destruction
+preserves a completed login and lets already dispatched rotation settle. Only that
+Activity's unfinished interactive authorization is cancelled. Cold configure returns
+`restoring` immediately and schedules a process-owned restore under the same SDK
+mutex. Snapshot polling remains responsive; public `mobile_account_refresh` starts
+one retry from `restoreRetryable`, without opening SSO. The restore loads only this
+new schema and forces an SDK access-token request from refresh grant. No saved access token is needed. SDK refresh verifies a returned
+ID token through its existing JWKS/signature/issuer/audience path; the adapter also
+checks fixed issuer/client and same subject, including UserInfo when available.
+When the token endpoint omits a new ID token, the fresh refresh establishes current
+authorization while identity retains the integrity-protected previously verified
+binding. This does not freshly verify the old ID signature or expiry. Only a pure
+UserInfo GET failure allows this fallback/warning; nested refresh/JWKS/ID failures
+and a changed subject fail closed. An ID token loaded from encrypted storage is not by itself a signed-in session.
+
+Each SDK operation installs a `RefreshJournal` lease. Before a refresh request is
+enqueued the old grant becomes durably `pending`. An actual OkHttp per-call
+`requestHeadersStart` event conservatively marks possible transmission. Only a
+failure before that event may roll back to ready; exceptions/timeouts are not
+classified by their names. Response loss, invalid_grant, SDK validation failure,
+process death or an interrupted commit never authorizes reuse of old pending grant.
+A successful SDK response and same-subject check must be saved before native ACK.
+A new subject cannot replace the saved subject. A stale store generation rejects
+both late commits and late no-send rollbacks. A monotonic 90-second network budget
+spans all SDK GET/POST calls in that operation; each call, including body read, gets
+at most 60 seconds or the remaining budget. Exhaustion fails before the next enqueue.
+No coroutine timeout releases the lock while a previously sent rotation can still
+complete. Tauri 2.12.5 async JNI and the public JS bridge impose no separate timeout;
+dropping a caller does not cancel the process-owned operation.
+
+`restoreRetryable` has no usable account/targets and retries via native `restore`
+without opening SSO. Pre-send network failures and temporarily unavailable storage
+retain the recoverable record. Invalid/corrupt/binding-mismatched or interrupted
+pending records require reauthentication. Explicit logout immediately fences both
+runtime and store generation, writes a durable loggedOut record (or cryptographically
+erases the key/file if writing fails), then waits for serial SDK revoke/cleanup.
+If tombstone, key deletion and ciphertext deletion all fail, native reports
+`reauthRequired`/`MOBILE_AUTH_CLEAR_REQUIRED` and only retrying clear is allowed.
+Rust retires runtime access immediately but reports `signedOut` only after native
+confirms durable clearing. A logout arriving before configure erases the new schema
+without reading it and also fences any later initial restore. Storage/revocation
+failures are explicit; a late refresh cannot resurrect a record.
+SSO cookies are separate from the saved application grant and are cleared on logout.
+The pre-login source dialog describes saved login and system Back cancellation;
+the full-screen SDK Activity still has no promised source bar.
 
 The callback is the existing desktop Native constant
 `http://127.0.0.1:17897/callback` (`crates/desktop/src/accounts.rs`). The official SDK
@@ -29,7 +76,7 @@ invented redirect URI or a claim of successful production login. A deployment
 rejecting that registered Native callback is a real login failure, not bypassed.
 
 One native operation spans the SDK callback and destruction of all its login
-Activities. Cancellation fences generation immediately, finishes only those
+Activities. Interactive cancellation fences generation immediately, finishes only those
 Activities, and waits for the operation to settle before logout completes. A
 manifest ContentProvider installs public Android lifecycle callbacks before any
 restored Activity: an SDK login restored without an in-memory attempt is closed.
