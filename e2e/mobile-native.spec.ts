@@ -14,6 +14,7 @@ async function fixture(
     approval?: boolean;
     question?: boolean;
     subagent?: boolean;
+    mixedWorkspace?: boolean;
   } = {},
 ) {
   await page.addInitScript((options) => {
@@ -88,6 +89,29 @@ async function fixture(
       title: "Child worker",
       status: "idle",
     };
+    if (options.mixedWorkspace) session.agent = "codex";
+    const workspaceAgents = [
+      "codex",
+      "deepseek-harness",
+      "workbuddy",
+      "claude-code",
+      "claude-desktop",
+    ];
+    const workspaceSessions = options.mixedWorkspace
+      ? [
+          session,
+          ...Array.from({ length: 24 }, (_, index) => ({
+            ...session,
+            id: `workspace-session-${index}`,
+            thread_id: `workspace-thread-${index}`,
+            agent: workspaceAgents[index % workspaceAgents.length],
+            title: `新增 Claude Code 及桌面版的会话边界与移动端布局核验 ${index + 1}`,
+            cwd: index < 18 ? session.cwd : "/workspace/另一个工程",
+          })),
+        ]
+      : options.subagent
+        ? [session, child]
+        : [session];
     let fileRevision = "sha256:" + "a".repeat(64);
     const history = [
       {
@@ -174,10 +198,10 @@ async function fixture(
         };
       if (url.pathname === "/api/plugins")
         return {
-          plugins: [
-            {
-              id: "fixture",
-              name: "Fixture",
+          plugins: (options.mixedWorkspace ? workspaceAgents : ["fixture"]).map(
+            (id) => ({
+              id,
+              name: id === "fixture" ? "Fixture" : id,
               protocol_version: 1,
               available: true,
               capabilities: [
@@ -188,8 +212,8 @@ async function fixture(
                 "questions",
                 "models",
               ],
-            },
-          ],
+            }),
+          ),
         };
       if (url.pathname === "/api/workspaces")
         return {
@@ -198,7 +222,7 @@ async function fixture(
           ],
         };
       if (url.pathname === "/api/sessions")
-        return { sessions: options.subagent ? [session, child] : [session] };
+        return { sessions: workspaceSessions };
       if (url.pathname === `/api/sessions/${child.id}`)
         return { session: child };
       if (url.pathname === `/api/sessions/${session.id}`) return { session };
@@ -491,6 +515,223 @@ const calls = (page: Page, command: string) =>
       ),
     command,
   );
+
+test("connected workspace keeps branded session rows and navigation compact", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, { signedIn: true, mixedWorkspace: true });
+  await connect(page);
+  await page.getByRole("button", { name: "返回会话列表", exact: true }).click();
+  const sidebar = page.locator(".mobile-list-mode > .sidebar");
+  await expect(sidebar.locator(".session-row")).toHaveCount(10);
+  for (const [width, theme] of [
+    [320, "light"],
+    [360, "light"],
+    [412, "dark"],
+  ] as const) {
+    await page.setViewportSize({ width, height: 820 });
+    await page.evaluate((theme) => {
+      document.documentElement.dataset.theme = theme;
+    }, theme);
+    await page.screenshot({
+      path: testInfo.outputPath(`workspace-${width}-${theme}.png`),
+    });
+    const metrics = await sidebar.evaluate((element) => {
+      const box = (selector: string) => {
+        const el = element.querySelector(selector)!;
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      };
+      const images = [
+        ...element.querySelectorAll<HTMLImageElement>(
+          ".session-row .agent-mark img",
+        ),
+      ].filter((image) => image.getClientRects().length);
+      return {
+        newButton: box(".navigation-new"),
+        newLabel: box(".navigation-new > span"),
+        search: box(".search-box"),
+        searchIcon: box(".search-box > svg"),
+        searchInput: box(".search-box input"),
+        firstRow: box(".session-row"),
+        rowHeights: [...element.querySelectorAll(".session-row")].map(
+          (el) => el.getBoundingClientRect().height,
+        ),
+        imageSizes: images.map((image) => ({
+          width: image.width,
+          height: image.height,
+          loaded: image.complete && image.naturalWidth > 0,
+        })),
+        codexLight: getComputedStyle(
+          element.querySelector('[data-agent-icon="codex"] .agent-mark-light')!,
+        ).display,
+        codexDark: getComputedStyle(
+          element.querySelector('[data-agent-icon="codex"] .agent-mark-dark')!,
+        ).display,
+        scroller: box(".session-list"),
+        sidebarY: element.getBoundingClientRect().y,
+        sidebarBottom: element.getBoundingClientRect().bottom,
+        chromeY: document
+          .querySelector(".mobile-workspace-chrome")!
+          .getBoundingClientRect().y,
+        options: box(".navigation-options > summary"),
+        directoryAdd: box(".workspace-add"),
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    await testInfo.attach(`workspace-${width}-${theme}-bounds`, {
+      body: JSON.stringify(metrics, null, 2),
+      contentType: "application/json",
+    });
+    expect(metrics.overflow).toBe(false);
+    expect(metrics.chromeY).toBe(24);
+    expect(metrics.sidebarBottom).toBe(796); // one native bottom inset, not two
+    expect(metrics.options.width).toBeGreaterThanOrEqual(48);
+    expect(metrics.options.height).toBeGreaterThanOrEqual(48);
+    expect(metrics.directoryAdd.width).toBeGreaterThanOrEqual(48);
+    expect(metrics.newButton.height).toBeGreaterThanOrEqual(48);
+    expect(metrics.newButton.height).toBeLessThanOrEqual(56);
+    expect(metrics.newLabel.height).toBeLessThan(30); // one horizontal line
+    expect(metrics.searchIcon.x + metrics.searchIcon.width).toBeLessThanOrEqual(
+      metrics.searchInput.x,
+    );
+    expect(
+      Math.abs(
+        metrics.searchIcon.y +
+          metrics.searchIcon.height / 2 -
+          metrics.searchInput.y -
+          metrics.searchInput.height / 2,
+      ),
+    ).toBeLessThan(2);
+    expect(metrics.firstRow.y - metrics.sidebarY).toBeLessThan(320);
+    expect(
+      metrics.rowHeights.every((height) => height >= 48 && height <= 64),
+    ).toBe(true);
+    expect(metrics.imageSizes.length).toBeGreaterThanOrEqual(10);
+    expect(
+      metrics.imageSizes.every(
+        (image) => image.loaded && image.width <= 20 && image.height <= 20,
+      ),
+    ).toBe(true);
+    expect(metrics.codexLight === "none").toBe(theme === "dark");
+    expect(metrics.codexDark === "none").toBe(theme === "light");
+    expect(metrics.scroller.height).toBeGreaterThan(200);
+    await sidebar.locator(".session-list").evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect(sidebar.locator(".session-row").last()).toBeInViewport();
+    await sidebar.locator(".session-list").evaluate((el) => {
+      el.scrollTop = 0;
+    });
+  }
+  while (await sidebar.getByRole("button", { name: /^展开显示/ }).count())
+    await sidebar
+      .getByRole("button", { name: /^展开显示/ })
+      .first()
+      .click();
+  await expect(sidebar.locator(".session-row")).toHaveCount(25);
+  await page.getByRole("textbox", { name: "搜索会话" }).fill("Android");
+  await expect(sidebar.locator(".session-row")).toHaveCount(1);
+  await page.getByRole("button", { name: "清除搜索", exact: true }).click();
+  await expect(sidebar.locator(".session-row")).toHaveCount(25);
+  await sidebar.locator(".sidebar-agent-filter > summary").click();
+  await sidebar
+    .locator(".sidebar-agent-menu")
+    .getByRole("button", { name: "Claude Code", exact: true })
+    .click();
+  await expect(sidebar.locator(".session-row")).toHaveCount(5);
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-agent-filter.png"),
+  });
+  await sidebar.locator(".sidebar-agent-filter > summary").click();
+  await sidebar
+    .locator(".sidebar-agent-menu")
+    .getByRole("button", { name: "所有 Agent", exact: true })
+    .click();
+  await expect(sidebar.locator(".session-row")).toHaveCount(25);
+  await page.getByRole("button", { name: "新建会话", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "新建会话", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog", { name: "新建会话", exact: true })
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  expect(
+    (await calls(page, "mobile_transport_http_begin")).filter(
+      (call: any) => call.request.method === "POST",
+    ),
+  ).toHaveLength(0);
+});
+
+test("connected workspace conversation, keyboard, files and terminal keep mobile bounds", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, { signedIn: true, mixedWorkspace: true });
+  await connect(page);
+  await expect(
+    page.getByText("手机界面已连接。", { exact: false }),
+  ).toBeVisible();
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await expect(input).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-conversation.png"),
+  });
+  await page.setViewportSize({ width: 740, height: 412 });
+  await expect(page.locator(".mobile-session-mode > .sidebar")).toBeHidden();
+  await expect(
+    page.getByRole("navigation", { name: "会话工具" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-landscape.png"),
+  });
+  await page.setViewportSize({ width: 412, height: 820 });
+  await input.click();
+  await page.evaluate(() => {
+    const f = (window as any).mobileFixture;
+    f.emit("mobile-system-insets", {
+      ...f.insets,
+      revision: 2,
+      ime: { top: 0, right: 0, bottom: 280, left: 0 },
+      imeVisible: true,
+    });
+  });
+  await expect
+    .poll(() => input.evaluate((el) => el.getBoundingClientRect().bottom))
+    .toBeLessThanOrEqual(540);
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-keyboard-inset.png"),
+  });
+  await page.evaluate(() => {
+    const f = (window as any).mobileFixture;
+    f.emit("mobile-system-insets", { ...f.insets, revision: 3 });
+  });
+  await page.getByRole("button", { name: "文件", exact: true }).click();
+  await page.getByRole("treeitem", { name: "README.md", exact: true }).click();
+  await expect(page.getByText("合成文档", { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-document.png"),
+  });
+  await page.getByRole("button", { name: "终端", exact: true }).click();
+  await expect(page.locator(".terminal-status")).toContainText("已连接");
+  await expect(page.locator(".terminal-view")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-terminal.png"),
+  });
+});
 
 test("first run, cancelled login, retry and real account summary", async ({
   page,

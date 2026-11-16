@@ -509,13 +509,28 @@ body {
   margin: 0;
   padding: 8px 0;
 }
+.mobile-workspace .navigation-new,
+.mobile-workspace .workspace-toggle {
+  justify-content: flex-start;
+}
 .mobile-workspace .search-box {
   min-height: 48px;
 }
 .mobile-workspace .navigation-view {
   padding: 12px 0;
 }
-.mobile-workspace .session-item {
+.mobile-workspace .navigation-view .icon-button,
+.mobile-workspace .navigation-options > summary,
+.mobile-workspace .workspace-add {
+  width: 48px;
+  min-height: 48px;
+}
+.mobile-workspace .workspace-heading,
+.mobile-workspace .workspace-toggle {
+  min-height: 48px;
+  height: auto;
+}
+.mobile-workspace .session-row {
   min-height: 64px;
 }
 .mobile-workspace .topbar.workspace-overview-header {
