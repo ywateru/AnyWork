@@ -40,9 +40,8 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 let browser;
 try {
   browser = await chromium.launch({
-    executablePath:
-      process.env.ANYWORK_TEST_CHROME ??
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    executablePath: process.env.ANYWORK_TEST_CHROME,
+    channel: process.env.PLAYWRIGHT_CHANNEL,
     headless: true,
   });
   const context = await browser.newContext();

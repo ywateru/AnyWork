@@ -10,6 +10,7 @@ cargo test --workspace
 cargo build
 npm run build
 npm test
+node desktop/ui/scripts/workspace-entry-cache-check.mjs
 python3 scripts/plugin-catalog-test.py
 python3 scripts/capability-projection-test.py
 python3 scripts/integration-test.py
