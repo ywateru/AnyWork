@@ -2,7 +2,15 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.45 / 本次更新**
+**New in 0.1.46 / 本次更新**
+
+Test candidate for manual verification; no public Release has been created. 本轮为手动验收测试候选，尚未创建公开 Release。
+
+Fixes the Android file workspace layout: removes the extra gap above the file panel, keeps tabs and actions reachable on narrow screens, and places the left-aligned, independently scrolling file browser above the preview. More tools and device action menus now close when tapping outside, choosing an action or leaving their page, while ordinary disclosures retain their state.
+
+修复 Android 文件工作区布局：移除文件面板顶部多余空白，保持窄屏标签和操作可触达；左对齐、独立滚动的文件目录放在预览上方。更多工具和设备操作菜单支持点击外部、选择动作及离开页面时关闭，普通展开区域保持原状态。
+
+**Previous test candidate 0.1.45 / 上轮测试候选**
 
 Test candidate for manual verification; no public Release has been created. 本轮为手动验收测试候选，尚未创建公开 Release。
 
