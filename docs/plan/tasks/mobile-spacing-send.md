@@ -18,3 +18,5 @@ Agent 筛选             ≥48px
 ```
 
 实现代理与独立审查代理分离；通过后合并、递增候选版本，使用官方同签名 ARM64 workflow 构建，校验并 `adb install -r` 保留数据安装及正常启动。用户负责正常账号、会话发送和实机体验手测，不代为发送 Agent 消息、不清数据、不退出其账号。无需重建桌面或公开 Release。
+
+上一候选完整 Checks 中 Windows、macOS、Android、container 通过，server/web E2E 为671通过、1跳过、10失败；失败全部为两个 Desktop spec 仍检查旧“凭据只在内存”说明。本轮同时按已接受保存登录契约修订这两处过时断言，保持原行为检查，交独立审查与定向执行，不修改 Native 产品实现。

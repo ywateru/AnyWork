@@ -1,5 +1,7 @@
 # Documentation index
 
+- [Android 间距与发送按钮](plan/tasks/mobile-spacing-send.md)：0.1.44 实机手测补充，收紧会话列表行距并保持发送/停止控件圆形；独立验证后同签名覆盖安装供用户手测。
+
 - [桌面远程、手机工作区与登录恢复](plan/tasks/desktop-mobile-session-recovery.md)：调查 v0.1.43 更新后协调配置错误和复用服务；修复手机连接后样式，按用户新要求实现[安全保存登录](login-session-persistence.md)。
 
 - [移动端协调配置与同步恢复](plan/tasks/mobile-coordination-recovery.md)：[v0.1.43](https://github.com/ywateru/AnyWork/releases/tag/v0.1.43) 已发布，官网与安装包同源；实体 Android 9 原蜂窝网络恢复发现与授权工作区/历史读取，并保留数据升级正式 code45。四独立 APK、签名及源码验收见[独立发行记录](plan/reviews/v43-release-independent.md)。
