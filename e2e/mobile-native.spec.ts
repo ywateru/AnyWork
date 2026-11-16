@@ -21,6 +21,8 @@ async function fixture(
     question?: boolean;
     subagent?: boolean;
     mixedWorkspace?: boolean;
+    running?: boolean;
+    longModel?: boolean;
     restorePhase?: "restoring" | "restoreRetryable" | "reauthRequired";
     restoreError?: string;
     holdInitialSnapshot?: boolean;
@@ -86,7 +88,12 @@ async function fixture(
       agent: "fixture",
       model: "fixture-model",
       policy: "manual",
-      status: options.approval || options.question ? "waiting" : "idle",
+      status:
+        options.approval || options.question
+          ? "waiting"
+          : options.running
+            ? "running"
+            : "idle",
       archived: false,
       created_at: Date.now(),
       updated_at: Date.now(),
@@ -278,7 +285,16 @@ async function fixture(
       if (url.pathname.endsWith("/queue")) return { items: [], paused: false };
       if (url.pathname.endsWith("/composer"))
         return {
-          models: [],
+          models: options.longModel
+            ? [
+                {
+                  model: "fixture-model",
+                  displayName:
+                    "合成超长模型名称 Super Long Native Model With Reasoning",
+                },
+              ]
+            : [],
+          model: options.longModel ? "fixture-model" : undefined,
           model_catalog_complete: false,
           settings: { model: "fixture-model" },
           capabilities: [],
@@ -607,6 +623,8 @@ test("connected workspace keeps branded session rows and navigation compact", as
       ].filter((image) => image.getClientRects().length);
       return {
         newButton: box(".navigation-new"),
+        agentFilter: box(".sidebar-agent-filter > summary"),
+        navigation: box(".navigation-view"),
         newLabel: box(".navigation-new > span"),
         search: box(".search-box"),
         searchIcon: box(".search-box > svg"),
@@ -661,9 +679,11 @@ test("connected workspace keeps branded session rows and navigation compact", as
           metrics.searchInput.height / 2,
       ),
     ).toBeLessThan(2);
-    expect(metrics.firstRow.y - metrics.sidebarY).toBeLessThan(320);
+    expect(metrics.agentFilter.height).toBe(48);
+    expect(metrics.navigation.height).toBe(48);
+    expect(metrics.firstRow.y - metrics.sidebarY).toBeLessThanOrEqual(256);
     expect(
-      metrics.rowHeights.every((height) => height >= 48 && height <= 64),
+      metrics.rowHeights.every((height) => height >= 48 && height <= 56),
     ).toBe(true);
     expect(metrics.imageSizes.length).toBeGreaterThanOrEqual(10);
     expect(
@@ -721,6 +741,150 @@ test("connected workspace keeps branded session rows and navigation compact", as
     ),
   ).toHaveLength(0);
 });
+
+test("sparse workspace keeps compact rows with unused space at the list end", async ({
+  page,
+}, testInfo) => {
+  await fixture(page, { signedIn: true });
+  await connect(page);
+  await page.getByRole("button", { name: "返回会话列表", exact: true }).click();
+  for (const width of [320, 412]) {
+    await page.setViewportSize({ width, height: 820 });
+    const sidebar = page.locator(".mobile-list-mode > .sidebar");
+    const metrics = await sidebar.evaluate((el) => {
+      const box = (selector: string) =>
+        el.querySelector(selector)!.getBoundingClientRect().toJSON();
+      return {
+        row: box(".session-row"),
+        list: box(".session-list"),
+        group: box(".workspace-group"),
+        heading: box(".workspace-heading"),
+        rootFont: getComputedStyle(document.documentElement).fontSize,
+      };
+    });
+    expect(metrics.row.height).toBeGreaterThanOrEqual(48);
+    expect(metrics.row.height).toBeLessThanOrEqual(56);
+    expect(metrics.row.y - metrics.heading.bottom).toBeLessThanOrEqual(2);
+    expect(metrics.list.bottom - metrics.row.bottom).toBeGreaterThan(200);
+    expect(metrics.rootFont).toBe("16px");
+    await testInfo.attach(`sparse-${width}.json`, {
+      contentType: "application/json",
+      body: JSON.stringify(metrics, null, 2),
+    });
+    await page.screenshot({ path: testInfo.outputPath(`sparse-${width}.png`) });
+  }
+});
+
+for (const running of [false, true]) {
+  test(`mobile ${running ? "stop" : "send"} remains a reachable nonshrinking 48px circle with long model and IME`, async ({
+    page,
+  }, testInfo) => {
+    await fixture(page, { signedIn: true, running, longModel: true });
+    await connect(page);
+    const input = page.getByRole("textbox", { name: "消息", exact: true });
+    const action = page.getByRole("button", {
+      name: running ? "中断" : "发送",
+      exact: true,
+    });
+    const model = page.getByRole("button", {
+      name: "模型与思考强度",
+      exact: true,
+    });
+    await expect(model).toContainText("合成超长模型名称");
+    if (!running) {
+      await input.fill("只发送到合成移动端夹具");
+      await page.locator('.composer input[type="file"]').setInputFiles({
+        name: "spacing-fixture.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("synthetic attachment"),
+      });
+      await expect(page.locator(".attachments")).toContainText("测试.txt");
+    }
+    let revision = 10;
+    for (const width of [320, 360, 412]) {
+      await page.setViewportSize({ width, height: 820 });
+      for (const bottom of [0, 280]) {
+        await page.evaluate(
+          ({ revision, bottom }) => {
+            const f = (window as any).mobileFixture;
+            f.emit("mobile-system-insets", {
+              ...f.insets,
+              revision,
+              ime: { top: 0, right: 0, left: 0, bottom },
+              imeVisible: bottom > 0,
+            });
+          },
+          { revision: revision++, bottom },
+        );
+        await expect(action).toBeEnabled();
+        await expect
+          .poll(() =>
+            page
+              .locator(".mobile-client")
+              .evaluate((el) =>
+                Number.parseFloat(getComputedStyle(el).paddingBottom),
+              ),
+          )
+          .toBe(Math.max(24, bottom));
+        const metrics = await page.locator(".composer").evaluate((el) => {
+          const box = (selector: string) =>
+            el.querySelector(selector)!.getBoundingClientRect().toJSON();
+          const button = el.querySelector(".send-button")!;
+          const style = getComputedStyle(button);
+          const rect = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          );
+          return {
+            button: rect.toJSON(),
+            model: box(".model-picker-trigger"),
+            tools: box(".composer-tools"),
+            left: box(".composer-left"),
+            editor: box(".prompt-editor"),
+            flexShrink: style.flexShrink,
+            minWidth: style.minWidth,
+            minHeight: style.minHeight,
+            radius: style.borderRadius,
+            hit: !!hit && (hit === button || button.contains(hit)),
+            overflow: document.documentElement.scrollWidth > innerWidth,
+          };
+        });
+        await testInfo.attach(`circle-${width}-ime-${bottom}.json`, {
+          contentType: "application/json",
+          body: JSON.stringify(metrics, null, 2),
+        });
+        expect(metrics.button.width).toBe(48);
+        expect(metrics.button.height).toBe(48);
+        expect(metrics.flexShrink).toBe("0");
+        expect(metrics.minWidth).toBe("48px");
+        expect(metrics.minHeight).toBe("48px");
+        expect(metrics.radius).toBe("50%");
+        expect(metrics.hit).toBe(true);
+        expect(metrics.overflow).toBe(false);
+        expect(metrics.button.right).toBeLessThanOrEqual(width);
+        expect(metrics.button.bottom).toBeLessThanOrEqual(
+          820 - Math.max(24, bottom),
+        );
+        expect(metrics.editor.top).toBeGreaterThanOrEqual(24);
+        expect(metrics.model.right).toBeLessThanOrEqual(metrics.button.left);
+        expect(metrics.left.right).toBeLessThanOrEqual(metrics.model.left);
+        await expect(model).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath(`circle-${width}-ime-${bottom}.png`),
+        });
+      }
+    }
+    await action.tap();
+    expect(
+      (await calls(page, "mobile_transport_http_begin")).filter(
+        (c: any) =>
+          c.request.method === "POST" &&
+          c.request.path.endsWith(running ? "/interrupt" : "/messages"),
+      ),
+    ).toHaveLength(1);
+  });
+}
 
 test("connected workspace conversation, keyboard, files and terminal keep mobile bounds", async ({
   page,

@@ -507,7 +507,10 @@ body {
 }
 .mobile-workspace .navigation-actions {
   margin: 0;
-  padding: 8px 0;
+  padding: 0;
+  gap: 0;
+  flex: none;
+  align-content: start;
 }
 .mobile-workspace .navigation-new,
 .mobile-workspace .workspace-toggle {
@@ -517,7 +520,11 @@ body {
   min-height: 48px;
 }
 .mobile-workspace .navigation-view {
-  padding: 12px 0;
+  padding: 0;
+  min-height: 48px;
+}
+.mobile-workspace .sidebar-agent-filter {
+  margin: 0;
 }
 .mobile-workspace .navigation-view .icon-button,
 .mobile-workspace .navigation-options > summary,
@@ -531,7 +538,9 @@ body {
   height: auto;
 }
 .mobile-workspace .session-row {
-  min-height: 64px;
+  min-height: 52px;
+  height: 52px;
+  margin: 0;
 }
 .mobile-workspace .topbar.workspace-overview-header {
   display: none;
@@ -661,6 +670,20 @@ body {
 }
 .mobile-workspace .composer {
   border-radius: 20px;
+}
+.mobile-workspace .anywork-workbench .composer-left {
+  flex-wrap: wrap;
+}
+.mobile-workspace .anywork-workbench .composer .send-button {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  max-width: 48px;
+  max-height: 48px;
+  flex: 0 0 48px;
+  padding: 0;
+  border-radius: 50%;
 }
 .mobile-workspace .notification-panel {
   position: fixed;
