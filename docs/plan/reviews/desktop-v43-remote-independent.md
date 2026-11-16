@@ -1,6 +1,6 @@
 # Desktop v0.1.43：现场基线与 68364ff 独立审查
 
-最终候选结论：**接受 `68364ffe288a008eeb182c8268defecc83c939af`，无阻塞代码发现。** 私有双版本HTTP服务与真实隔离Chromium复现了“缓存旧HTML、旧入口模块已移除、root空白”的反例；候选公开随机query能取得当前文档，实际 `localBootstrap.ts` 清除ticket fragment且保留query。安全readiness和固定诊断投影通过源码审查及独立UI回归。新浏览器回归尚未接入持续门禁，作为P2后续项明确保留。**未在用户运行实例安装候选，不将隔离夹具通过记为用户白屏已修复，也不宣称历史配置不可用已解决。** 精确范围及验证见末节。
+最终候选结论：**接受 `68364ffe288a008eeb182c8268defecc83c939af`，无阻塞代码发现。** 私有双版本HTTP服务与真实隔离Chromium复现了“缓存旧HTML、旧入口模块已移除、root空白”的反例；候选公开随机query能取得当前文档，实际 `localBootstrap.ts` 清除ticket fragment且保留query。安全readiness和固定诊断投影通过源码审查及独立UI回归。初审提出的新缓存回归持续门禁P2由后续 **`cbcfc36cfc118eaed09710a2215fef637ce58b46`** 接线，独立增量审查接受；精确Linux CI运行结果仍待后续实际执行。**未在用户运行实例安装候选，不将隔离夹具通过记为用户白屏已修复，也不宣称历史配置不可用已解决。** 精确范围及验证见末节。
 
 历史现场结论：安装包与运行服务的版本标识分离已确认；该服务是历史上经批准安装、具备安全交接能力的定制构建，不能按正式v13标签推断不兼容。正常UI打开动作确实产生浏览器标签，但页面实际空白；其文档入口模块在当前源站已缺失，返回404/HTML。远程页当时显示已开启，未复现配置不可用。本次没有修复或接管现有服务。
 
@@ -149,3 +149,13 @@
 未重复运行Cargo/原作者7项Rust定向测试；这7项的结果来自作者报告，独立工作仅审查相应真实HTTP manager测试、preflight和诊断负例的语义。候选未产生正式二进制/发行验收结论；不宣称已修好全部远程网络、更新迁移或跨重启登录。
 
 候选阶段完全未操作用户应用、服务或原浏览器标签。私有浏览器与HTTP服务均在finally关闭，所有本次测试命令已退出；没有长期监控或后台测试进程。移除本WT自建的共享依赖symlink及生成的UI dist，保留ignored小型夹具/安全结果；不触碰root依赖、作者产物、真实会话或ADB。候选缓存结果位于 `artifacts/desktop-v43-remote/workspace-entry-cache.json`；独立bootstrap夹具及安全投影位于 `artifacts/desktop-v43-remote-independent/cache-bootstrap-review.mjs` 和 `cache-bootstrap-verdict.json`。本次最终提交仅更新本独立报告。
+
+## 持续门禁增量 cbcfc36：PASS
+
+独立审查精确 **`cbcfc36cfc118eaed09710a2215fef637ce58b46`**，仅两文件、3增3删，没有登录恢复文件或产品运行时变更。本WT仅cherry-pick此提交，`scripts/check.sh` 和缓存脚本与作者SHA逐字节一致。
+
+- `scripts/check.sh` 在既有 `npm test` 后直接执行缓存脚本，保留全部原检查及 `set -euo pipefail`，浏览器断言/启动失败会使门禁失败。
+- 浏览器启动使用显式 `ANYWORK_TEST_CHROME` executable覆盖和可选 `PLAYWRIGHT_CHANNEL`；两者均未设置时按Playwright默认选择其管理的Chromium，不再依赖macOS应用路径。现有 `server-web` job 在调用 `check.sh` 前已经执行 `npm ci` 和 `npx playwright install --with-deps chromium`，与默认分支匹配。
+- 独立 `bash -n scripts/check.sh`、精确文件比较及diff检查通过；`PLAYWRIGHT_CHANNEL=chrome node desktop/ui/scripts/workspace-entry-cache-check.mjs` 使用现有Chrome实跑PASS，旧缓存负例/新query正例及无ticket HTTP泄漏断言保留。
+
+**关闭新缓存回归未接线/默认路径不便携这一P2。** 本机未安装额外浏览器，未运行全量check.sh，也未实跑Linux runner的bundled Chromium；因此接受的是接线与runner选择实现，不提前宣称新SHA的远端CI已通过。账号入口脚本仍是单独本机回归，未因本次接线而成为持续门禁。私有测试已退出，自建依赖链接再次清理，用户进程/标签及真实账号未操作。
