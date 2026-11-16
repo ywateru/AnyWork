@@ -1109,13 +1109,29 @@ test("mobile More uses unified outside touch, Escape, exclusivity, selection and
   await expect(more).not.toHaveAttribute("open", "");
   await expect(trigger).toBeFocused();
   await trigger.tap();
+  await page.evaluate(() => {
+    const menu = document.querySelector<HTMLDetailsElement>(
+      ".mobile-workspace-chrome .session-menu",
+    )!;
+    (window as any).sessionMenuOpened = new Promise<void>((resolve) => {
+      const opened = (event: Event) => {
+        if ((event as ToggleEvent).newState !== "open" || !menu.open) return;
+        menu.removeEventListener("toggle", opened);
+        resolve();
+      };
+      menu.addEventListener("toggle", opened);
+    });
+  });
   await page.locator(".mobile-workspace-chrome .session-menu > summary").tap();
   await expect(more).not.toHaveAttribute("open", "");
+  // Outside pointerdown closes More before the session's queued toggle arrives.
+  await page.evaluate(() => (window as any).sessionMenuOpened);
   // The session popup overlays this trigger; exercise toggle exclusivity directly.
   await trigger.evaluate((el) => (el as HTMLElement).click());
   await expect(
     page.locator(".mobile-workspace-chrome .session-menu"),
   ).not.toHaveAttribute("open", "");
+  await expect(more).toHaveAttribute("open", "");
   await page.getByRole("button", { name: "终端", exact: true }).tap();
   await expect(more).not.toHaveAttribute("open", "");
   await expect(page.locator(".terminal-status")).toContainText("已连接");
