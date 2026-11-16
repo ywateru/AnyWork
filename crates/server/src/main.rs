@@ -27,6 +27,7 @@ mod shared_host;
 mod store;
 mod terminal;
 mod user_text;
+mod web_assets;
 mod workbuddy;
 
 use anyhow::{Context, Result};
@@ -52,11 +53,7 @@ use std::{
 use store::{Session, Store};
 use subtle::ConstantTimeEq;
 use tokio::sync::{Mutex, Notify};
-use tower_http::{
-    cors::CorsLayer,
-    services::{ServeDir, ServeFile},
-    trace::TraceLayer,
-};
+use tower_http::{cors::CorsLayer, services::ServeFile, trace::TraceLayer};
 
 #[derive(Parser, Debug)]
 #[command(name = "anywork", version, about = "AnyWork — your agents, anywhere")]
@@ -505,10 +502,7 @@ async fn main() -> Result<()> {
         )
         .route("/ws/terminal/{id}", get(terminal::upgrade))
         .route_service("/source", ServeFile::new("artifacts/anywork-source.tar.gz"))
-        .fallback_service(
-            ServeDir::new(&args.web_dir)
-                .not_found_service(ServeFile::new(args.web_dir.join("index.html"))),
-        )
+        .fallback_service(web_assets::router(&args.web_dir))
         .layer(DefaultBodyLimit::max(22 * 1024 * 1024))
         .layer(cors)
         .layer(TraceLayer::new_for_http())

@@ -75,7 +75,7 @@ for (const path of paths) {
 const version = "anywork-" + hash.digest("hex").slice(0, 16);
 const publicPath = (path) => base.slice(0, -1) + path;
 const script = `const CACHE=${JSON.stringify(version)},ASSETS=${JSON.stringify(paths.map(publicPath))},PRECACHE=${JSON.stringify(precache.map(publicPath))};
-self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PRECACHE))));
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PRECACHE.map(url=>new Request(url,{cache:'no-store'}))))));
 self.addEventListener('message',event=>{if(event.data==='ACTIVATE_UPDATE')self.skipWaiting();if(event.data==='GET_VERSION')event.ports[0]?.postMessage({version:CACHE})});
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>(key.startsWith('remote-agent-')||key.startsWith('anywork-'))&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('notificationclick',event=>{
@@ -93,7 +93,7 @@ self.addEventListener('notificationclick',event=>{
 self.addEventListener('fetch',event=>{
  const request=event.request,url=new URL(request.url);
  if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/api/')||url.pathname.startsWith('/ws/')||url.pathname==='/source'||url.pathname.endsWith('/callback')||url.searchParams.has('code')||url.searchParams.has('state'))return;
- if(request.mode==='navigate'){event.respondWith(fetch(request).catch(()=>caches.match(${JSON.stringify(base + "index.html")})));return;}
+ if(request.mode==='navigate'||url.pathname.endsWith('.html')){event.respondWith(fetch(request,{cache:'no-store'}).catch(()=>caches.open(CACHE).then(cache=>cache.match(${JSON.stringify(base + "index.html")}))));return;}
  if(ASSETS.includes(url.pathname))event.respondWith((async()=>{
    const cache=await caches.open(CACHE),cached=await cache.match(request);
    if(cached)return cached;

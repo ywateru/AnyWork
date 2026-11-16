@@ -80,6 +80,8 @@
 
 现在以内容版本为标识：页面携带 app-version，waiting worker 回复自己的缓存版本；同版页面不提醒，已忽略版本不重复提醒，新版以非阻塞通知显示，只在用户点击时激活并重新加载。保留离线 shell 与 API 不缓存规则。多标签页中其他页面的更新不会强制重载当前会话。
 
+启动文档必须与当前服务的哈希资源树匹配。服务端静态fallback对HTML（含SPA fallback及缺失旧模块返回的HTML）和 `sw.js` 返回 `Cache-Control: no-store`；已识别的文档/worker请求忽略旧条件验证头，返回当前正文，而非依赖文件时间精度的304。哈希资源、API和source下载保留原有响应策略。PWA在线导航/直接HTML请求显式使用 `cache: no-store`，避免network-first实际复用HTTP旧文档；安装shell也显式绕过HTTP缓存，注册worker使用 `updateViaCache: none`。网络失败仍可读取当前激活worker自己的版本化离线shell，不把在线新版HTML写入旧shell造成资源混用。保留既有激活时仅清理旧应用shell缓存的行为，不清理业务缓存、账号、草稿或浏览器用户数据；不新增自动激活、重载或ticket重放。
+
 
 ## 原会话直接控制
 

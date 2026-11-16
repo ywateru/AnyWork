@@ -65,7 +65,9 @@ test("updates are nonblocking, version-aware and remember Later across reloads",
   try {
     await page.goto(origin);
     await page.evaluate(async () => {
-      await navigator.serviceWorker.ready;
+      const registration = await navigator.serviceWorker.ready;
+      if (registration.updateViaCache !== "none")
+        throw new Error("Service worker update checks must bypass HTTP cache");
     });
     await page.reload();
     await expect(page.getByRole("status", { name: "应用更新" })).toHaveCount(0);

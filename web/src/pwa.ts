@@ -28,6 +28,7 @@ export async function registerPwa() {
   try {
     const registration = await navigator.serviceWorker.register(
       import.meta.env.BASE_URL + "sw.js",
+      { updateViaCache: "none" },
     );
     const current = document.querySelector<HTMLMetaElement>(
       'meta[name="app-version"]',
