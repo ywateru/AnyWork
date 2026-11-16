@@ -12,6 +12,8 @@
 
 ## 合并与候选
 
-作者候选 `bc649b3` 已由[独立审查](../reviews/mobile-file-sidebar-menu-independent.md)接受并合入main。独立production MOBILE文件/菜单/顶部探针10项、顶部实际触摸1项、原短横屏IME trusted-touch3项通过；43px空白消除、关键关闭/launcher为48×48、目录在预览上方且左对齐。新菜单测试程序互斥的原生toggle等待竞态交作者test-only收口，不改产品行为。
+作者候选 `bc649b3` 已由[独立审查](../reviews/mobile-file-sidebar-menu-independent.md)接受并合入main。独立production MOBILE文件/菜单/顶部探针10项、顶部实际触摸1项、原短横屏IME trusted-touch3项通过；43px空白消除、关键关闭/launcher为48×48、目录在预览上方且左对齐。新菜单测试程序互斥的原生toggle等待竞态已由test-only `673c76e` 收口并独立重复3次通过，不改产品行为；原首轮8/1诊断记录保留。
 
 下一手测候选版本 **0.1.46 / Android code48**，保留官方单签名、ARM64与原账号数据。最终冻结后记录完整Mobile回归、APK实际JS/CSS与源码匹配、同签名覆盖安装和ADB效果截图；公开Release与正常账号功能验收分开。
+
+合并后完整Mobile E2E **48/48通过**（`PLAYWRIGHT_CHANNEL=chrome`），TypeScript、全格式、版本一致性与diff检查通过。首次默认headless-shell执行因本机缺少该Playwright浏览器，在所有用例启动前失败；保留失败日志，随后使用已安装Chrome完成全量运行，不作为产品失败或跳过场景。日志分别为root artifacts下 `mobile-file-menu-merged-e2e.log`、`mobile-file-menu-merged-chrome.log`。
