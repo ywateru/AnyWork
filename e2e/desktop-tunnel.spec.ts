@@ -395,14 +395,18 @@ test("disclosures support the keyboard and settings privacy does not fill the co
     page.getByRole("textbox", { name: "设备公钥", exact: true }),
   ).toHaveAttribute("readonly", "");
   await expect(
-    page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
+    page.getByText(
+      /登录由系统安全凭据存储保留，关闭应用后会恢复登录；退出账号会删除保存的授权。设备连接私钥仅在内存中。/,
+    ),
   ).toHaveCount(0);
   await desktopNavigate(page, "设置");
   const privacy = page.getByText("连接与隐私说明", { exact: true });
   await privacy.focus();
   await privacy.press("Enter");
   await expect(
-    page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
+    page.getByText(
+      /登录由系统安全凭据存储保留，关闭应用后会恢复登录；退出账号会删除保存的授权。设备连接私钥仅在内存中。/,
+    ),
   ).toBeVisible();
   await desktopNavigate(page, "远程访问");
   await expect(

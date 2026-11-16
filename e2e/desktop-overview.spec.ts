@@ -91,7 +91,9 @@ for (const [width, height] of [
       page.getByRole("button", { name: "打开本地工作区", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
+      page.getByText(
+        /登录由系统安全凭据存储保留，关闭应用后会恢复登录；退出账号会删除保存的授权。设备连接私钥仅在内存中。/,
+      ),
     ).toHaveCount(0);
     await expect(
       page.getByText(/匿名隧道|固定隧道|WireGuard|连接器令牌|配对二维码/),
@@ -146,7 +148,9 @@ for (const [width, height] of [
     ).toBe(false);
     await page.getByText("连接与隐私说明", { exact: true }).click();
     await expect(
-      page.getByText(/本客户端的账号凭据和设备私钥只留在内存/),
+      page.getByText(
+        /登录由系统安全凭据存储保留，关闭应用后会恢复登录；退出账号会删除保存的授权。设备连接私钥仅在内存中。/,
+      ),
     ).toBeVisible();
     await page.screenshot({
       path: info.outputPath(`settings-${width}.png`),
