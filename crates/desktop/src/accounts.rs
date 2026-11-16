@@ -30,6 +30,7 @@ enum EnableStage {
     SignInRequired,
     ReauthRequired,
     LocalService,
+    LocalServiceUpgrade,
     CleanupPending,
     Cancelled,
     AlreadyEnabled,
@@ -54,6 +55,7 @@ impl EnableStage {
             Self::SignInRequired => "REMOTE_ENABLE_SIGN_IN_REQUIRED",
             Self::ReauthRequired => "REMOTE_ENABLE_REAUTH_REQUIRED",
             Self::LocalService => "REMOTE_ENABLE_LOCAL_SERVICE",
+            Self::LocalServiceUpgrade => "REMOTE_ENABLE_LOCAL_SERVICE_UPGRADE",
             Self::CleanupPending => "REMOTE_ENABLE_CLEANUP_PENDING",
             Self::Cancelled => "REMOTE_ENABLE_CANCELLED",
             Self::AlreadyEnabled => "REMOTE_ENABLE_ALREADY_ENABLED",
@@ -84,6 +86,98 @@ impl std::fmt::Display for EnableStage {
 }
 impl std::error::Error for EnableStage {}
 
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum GridFailureKind {
+    Deadline,
+    Timeout,
+    Connect,
+    Request,
+    Body,
+    Decode,
+    Redirect,
+    HttpStatus,
+    Protocol,
+    Configuration,
+    Binding,
+    Transport,
+    Sdk,
+}
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GridFailureDetail {
+    kind: GridFailureKind,
+    http_status: Option<u16>,
+    attempts: u8,
+}
+#[derive(Debug)]
+struct GridConfigFailure {
+    stage: EnableStage,
+    detail: GridFailureDetail,
+}
+impl std::fmt::Display for GridConfigFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.stage.code())
+    }
+}
+impl std::error::Error for GridConfigFailure {}
+impl GridFailureDetail {
+    fn from_sdk(error: &cybergrid_sdk::Error, attempts: u8) -> Self {
+        use cybergrid_sdk::Error;
+        let kind = match error {
+            Error::Http(error) if error.is_timeout() => GridFailureKind::Timeout,
+            Error::Http(error) if error.is_connect() => GridFailureKind::Connect,
+            Error::Http(error) if error.is_decode() => GridFailureKind::Decode,
+            Error::Http(error) if error.is_redirect() => GridFailureKind::Redirect,
+            Error::Http(error) if error.is_builder() => GridFailureKind::Configuration,
+            Error::Http(error) if error.is_body() => GridFailureKind::Body,
+            Error::Http(_) => GridFailureKind::Request,
+            Error::Api { .. } => GridFailureKind::HttpStatus,
+            Error::Timeout(_) => GridFailureKind::Timeout,
+            Error::Transport(_) => GridFailureKind::Transport,
+            Error::Protocol(_) => GridFailureKind::Protocol,
+            Error::Config(_) => GridFailureKind::Configuration,
+            _ => GridFailureKind::Sdk,
+        };
+        let http_status = match error {
+            Error::Api { status, .. } if (100..=599).contains(status) => Some(*status),
+            _ => None,
+        };
+        Self {
+            kind,
+            http_status,
+            attempts,
+        }
+    }
+    fn fail(self, stage: EnableStage) -> anyhow::Error {
+        GridConfigFailure {
+            stage,
+            detail: self,
+        }
+        .into()
+    }
+}
+// Only configuration failures gain structured, fixed diagnostics. Other IPC
+// errors retain the exact safe stage string accepted by existing renderers.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum AccountActionError {
+    Code(String),
+    Configuration {
+        code: &'static str,
+        detail: GridFailureDetail,
+    },
+}
+fn action_error(error: anyhow::Error) -> AccountActionError {
+    if let Some(failure) = error.downcast_ref::<GridConfigFailure>() {
+        return AccountActionError::Configuration {
+            code: failure.stage.code(),
+            detail: failure.detail,
+        };
+    }
+    AccountActionError::Code(safe_error(error))
+}
+
 fn retryable_grid_config_error(error: &cybergrid_sdk::Error) -> bool {
     match error {
         cybergrid_sdk::Error::Http(error) => {
@@ -106,31 +200,50 @@ async fn verified_grid_config(
     // Only the public, unauthenticated, idempotent configuration GET is retried.
     // Never repeat OAuth exchanges, device registration or directory writes.
     for attempt in 0..=retry_delays.len() {
-        let retryable = match tokio::time::timeout(attempt_timeout, grid.auth_config()).await {
-            Ok(Ok(auth)) => {
-                if auth.issuer != expected.issuer
-                    || auth.resource != expected.resource
-                    || auth.client_id != expected.native_client_id
-                    || !grid_scopes_match(
-                        &auth
-                            .scope
-                            .split_whitespace()
-                            .map(str::to_owned)
-                            .collect::<Vec<_>>(),
-                    )
-                {
-                    return Err(EnableStage::GridConfig.into());
+        let attempts = (attempt + 1) as u8;
+        let (retryable, detail) =
+            match tokio::time::timeout(attempt_timeout, grid.auth_config()).await {
+                Ok(Ok(auth)) => {
+                    if auth.issuer != expected.issuer
+                        || auth.resource != expected.resource
+                        || auth.client_id != expected.native_client_id
+                        || !grid_scopes_match(
+                            &auth
+                                .scope
+                                .split_whitespace()
+                                .map(str::to_owned)
+                                .collect::<Vec<_>>(),
+                        )
+                    {
+                        return Err(GridFailureDetail {
+                            kind: GridFailureKind::Binding,
+                            http_status: None,
+                            attempts,
+                        }
+                        .fail(EnableStage::GridConfig));
+                    }
+                    return Ok(auth);
                 }
-                return Ok(auth);
-            }
-            Ok(Err(error)) => retryable_grid_config_error(&error),
-            Err(_) => true,
-        };
+                Ok(Err(error)) => (
+                    retryable_grid_config_error(&error),
+                    GridFailureDetail::from_sdk(&error, attempts),
+                ),
+                Err(_) => (
+                    true,
+                    GridFailureDetail {
+                        kind: GridFailureKind::Deadline,
+                        http_status: None,
+                        attempts,
+                    },
+                ),
+            };
         if !retryable {
-            return Err(EnableStage::GridConfig.into());
+            return Err(detail.fail(EnableStage::GridConfig));
         }
         if let Some(delay) = retry_delays.get(attempt) {
             tokio::time::sleep(*delay).await;
+        } else {
+            return Err(detail.fail(EnableStage::GridConfigUnavailable));
         }
     }
     Err(EnableStage::GridConfigUnavailable.into())
@@ -1393,6 +1506,9 @@ impl Handle {
         if !snapshot.authorized || snapshot.service != manager::Phase::Running {
             bail!("LOCAL_SERVICE_NOT_READY")
         }
+        if !snapshot.workspace_ready() {
+            return Err(EnableStage::LocalServiceUpgrade.into());
+        }
         let resumable = {
             let state = self.0.state.lock().await;
             state.pending_grid.as_ref().is_some_and(|pending| {
@@ -1982,6 +2098,9 @@ async fn callback_listener(listener: tokio::net::TcpListener, tx: Arc<Transactio
 }
 
 fn safe_error(error: anyhow::Error) -> String {
+    if let Some(failure) = error.downcast_ref::<GridConfigFailure>() {
+        return failure.stage.code().into();
+    }
     if let Some(stage) = error.downcast_ref::<EnableStage>() {
         return stage.code().into();
     }
@@ -2066,12 +2185,14 @@ pub async fn account_cancel(
     state.cancel(&transaction_id).await.map_err(safe_error)
 }
 #[tauri::command]
-pub async fn account_enable(state: tauri::State<'_, Handle>) -> Result<(), String> {
-    state.enable().await.map_err(safe_error)
+pub async fn account_enable(state: tauri::State<'_, Handle>) -> Result<(), AccountActionError> {
+    state.enable().await.map_err(action_error)
 }
 #[tauri::command]
-pub async fn account_enable_default(state: tauri::State<'_, Handle>) -> Result<(), String> {
-    state.enable_default().await.map_err(safe_error)
+pub async fn account_enable_default(
+    state: tauri::State<'_, Handle>,
+) -> Result<(), AccountActionError> {
+    state.enable_default().await.map_err(action_error)
 }
 #[tauri::command]
 pub async fn account_disable(state: tauri::State<'_, Handle>) -> Result<(), String> {
@@ -2290,8 +2411,8 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            safe_error(result.unwrap_err()),
-            "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE"
+            serde_json::to_value(action_error(result.unwrap_err())).unwrap(),
+            json!({"code":"REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE","detail":{"kind":"DEADLINE","httpStatus":null,"attempts":3}})
         );
         assert_eq!(calls.load(Ordering::SeqCst), 3);
         grid.close().await.unwrap();
@@ -2318,8 +2439,46 @@ mod tests {
         .await
         .unwrap_err();
         assert_eq!(error.chain().count(), 1);
-        assert_eq!(safe_error(error), "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE");
+        let projection = serde_json::to_value(action_error(error)).unwrap();
+        assert_eq!(projection["code"], "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE");
+        assert_eq!(projection["detail"]["attempts"], 3);
+        // The pinned SDK retains system proxy discovery. A closed loopback
+        // socket may be reported directly or as an upstream proxy's 502; this
+        // test must not mutate process proxy configuration to force one path.
+        assert!(
+            projection["detail"] == json!({"kind":"CONNECT","httpStatus":null,"attempts":3})
+                || projection["detail"]
+                    == json!({"kind":"HTTP_STATUS","httpStatus":502,"attempts":3})
+        );
         grid.close().await.unwrap();
+    }
+    #[test]
+    fn configuration_projection_never_includes_provider_text_or_out_of_range_status() {
+        for error in [
+            cybergrid_sdk::Error::Protocol("private-provider-body".into()),
+            cybergrid_sdk::Error::Transport("https://private.invalid/?token=hidden".into()),
+            cybergrid_sdk::Error::Api {
+                status: 65535,
+                code: "PRIVATE_PROVIDER_CODE".into(),
+            },
+        ] {
+            let detail = GridFailureDetail::from_sdk(&error, 1);
+            assert!(detail.http_status.is_none());
+            let projected =
+                serde_json::to_value(action_error(detail.fail(EnableStage::GridConfig))).unwrap();
+            let text = projected.to_string();
+            for private in [
+                "private-provider-body",
+                "private.invalid",
+                "hidden",
+                "PRIVATE_PROVIDER_CODE",
+                "65535",
+            ] {
+                assert!(!text.contains(private));
+            }
+            assert_eq!(projected["code"], "REMOTE_ENABLE_GRID_CONFIG");
+            assert_eq!(projected["detail"]["attempts"], 1);
+        }
     }
     #[test]
     fn enable_stage_codes_discard_underlying_errors_before_ipc() {
@@ -2330,6 +2489,10 @@ mod tests {
             ),
             (EnableStage::ReauthRequired, "REMOTE_ENABLE_REAUTH_REQUIRED"),
             (EnableStage::LocalService, "REMOTE_ENABLE_LOCAL_SERVICE"),
+            (
+                EnableStage::LocalServiceUpgrade,
+                "REMOTE_ENABLE_LOCAL_SERVICE_UPGRADE",
+            ),
             (EnableStage::CleanupPending, "REMOTE_ENABLE_CLEANUP_PENDING"),
             (EnableStage::Cancelled, "REMOTE_ENABLE_CANCELLED"),
             (EnableStage::AlreadyEnabled, "REMOTE_ENABLE_ALREADY_ENABLED"),

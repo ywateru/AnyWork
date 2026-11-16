@@ -65,6 +65,8 @@ const enableMessages: Record<string, string> = {
   REMOTE_ENABLE_REAUTH_REQUIRED:
     "本次账号授权已失效或结果未知，请结束本次授权后重新登录；不能重试旧令牌。",
   REMOTE_ENABLE_LOCAL_SERVICE: "请先准备并连接本机工作区，再开启远程访问。",
+  REMOTE_ENABLE_LOCAL_SERVICE_UPGRADE:
+    "现有本地服务不支持安全浏览器交接，请确认任务与服务归属后升级，或选择正确的数据目录。本应用不会停止它。",
   REMOTE_ENABLE_CLEANUP_PENDING:
     "本地远程入口已关闭，但上次协调登记或撤销结果尚未确认；恢复网络后请重试。",
   REMOTE_ENABLE_CANCELLED: "本次远程操作已取消，请确认当前账号和远程状态。",
@@ -85,12 +87,72 @@ const enableMessages: Record<string, string> = {
   REMOTE_ENABLE_INDEX_WRITE: "设备目录更新未完成。",
   REMOTE_ENABLE_INDEX_READBACK: "设备目录更新后的核对未通过。",
 };
-function actionError(error: unknown): { message: string; code: string | null } {
+const configFailureKinds = new Set([
+  "DEADLINE",
+  "TIMEOUT",
+  "CONNECT",
+  "REQUEST",
+  "BODY",
+  "DECODE",
+  "REDIRECT",
+  "HTTP_STATUS",
+  "PROTOCOL",
+  "CONFIGURATION",
+  "BINDING",
+  "TRANSPORT",
+  "SDK",
+]);
+type ConfigFailureDetail = {
+  kind: string;
+  httpStatus: number | null;
+  attempts: number;
+};
+function actionError(error: unknown): {
+  message: string;
+  code: string | null;
+  detail: ConfigFailureDetail | null;
+} {
   // Accept only exact native stage codes, never display an arbitrary IPC error,
   // SDK body, URL or token. Retrying remains an explicit user action.
-  return typeof error === "string" && Object.hasOwn(enableMessages, error)
-    ? { message: enableMessages[error], code: error }
-    : { message, code: null };
+  if (typeof error === "string" && Object.hasOwn(enableMessages, error))
+    return { message: enableMessages[error], code: error, detail: null };
+  if (
+    error &&
+    typeof error === "object" &&
+    Object.keys(error).sort().join() === "code,detail"
+  ) {
+    const { code, detail } = error as { code: unknown; detail: unknown };
+    if (
+      (code === "REMOTE_ENABLE_GRID_CONFIG" ||
+        code === "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE") &&
+      detail &&
+      typeof detail === "object" &&
+      Object.keys(detail).sort().join() === "attempts,httpStatus,kind"
+    ) {
+      const { kind, httpStatus, attempts } = detail as Record<string, unknown>;
+      if (
+        typeof kind === "string" &&
+        configFailureKinds.has(kind) &&
+        typeof attempts === "number" &&
+        Number.isInteger(attempts) &&
+        attempts >= 1 &&
+        attempts <= 3 &&
+        (httpStatus === null ||
+          (kind === "HTTP_STATUS" &&
+            typeof httpStatus === "number" &&
+            Number.isInteger(httpStatus) &&
+            httpStatus >= 100 &&
+            httpStatus <= 599))
+      ) {
+        return {
+          message: enableMessages[code],
+          code,
+          detail: { kind, httpStatus: httpStatus as number | null, attempts },
+        };
+      }
+    }
+  }
+  return { message, code: null, detail: null };
 }
 
 let loginOwner:
@@ -378,6 +440,7 @@ export function useAccountController() {
     remotePending: remoteOperations > 0,
     error: remoteIssue?.message ?? error,
     errorCode: remoteIssue ? remoteIssue.code : errorCode,
+    errorDetail: remoteIssue?.detail ?? null,
     action,
     remoteAction: (fn: () => Promise<unknown>, valid?: () => boolean) =>
       action(fn, true, valid),
@@ -557,6 +620,14 @@ export function AccountError({
         <details className="error-details">
           <summary>诊断详情</summary>
           <code>{code}</code>
+          {controller.errorDetail && (
+            <p className="hint">
+              失败类别：<code>{controller.errorDetail.kind}</code>
+              {controller.errorDetail.httpStatus !== null &&
+                ` · HTTP ${controller.errorDetail.httpStatus}`}
+              {` · 已尝试 ${controller.errorDetail.attempts} 次（最多 3 次）`}
+            </p>
+          )}
           <p className="hint">
             {code === "REMOTE_ENABLE_REAUTH_REQUIRED"
               ? "不要重试旧令牌；完成重新登录后再开启远程访问。"

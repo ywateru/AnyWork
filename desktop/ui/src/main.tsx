@@ -134,7 +134,17 @@ function App() {
   );
   formState.current = { dirty };
   const localReady = Boolean(
-    snapshotAvailable && state?.authorized && state.service === "running",
+    snapshotAvailable &&
+    state?.authorized &&
+    state.service === "running" &&
+    state.info?.local_browser_session === true,
+  );
+  const serviceNeedsUpgrade = Boolean(
+    snapshotAvailable &&
+    state?.authorized &&
+    state.service === "running" &&
+    state.info &&
+    state.info.local_browser_session !== true,
   );
   const installing = updates.state?.phase === "installing";
   const settingsLocked =
@@ -185,11 +195,17 @@ function App() {
         ? state?.external
           ? "已就绪 · 复用已有服务"
           : "已就绪"
-        : ["starting", "checking", "validating"].includes(state?.service ?? "")
-          ? "正在准备"
-          : state?.service === "error"
-            ? "需要检查"
-            : "未启动";
+        : serviceNeedsUpgrade
+          ? "本地服务需要升级"
+          : state?.service === "running"
+            ? "已有服务待验证"
+            : ["starting", "checking", "validating"].includes(
+                  state?.service ?? "",
+                )
+              ? "正在准备"
+              : state?.service === "error"
+                ? "需要检查"
+                : "未启动";
 
   function navigate(next: Page) {
     if (next === page) return;
@@ -553,7 +569,11 @@ function App() {
                 </p>
                 {!localReady && localAddress && (
                   <p className="hint address-state">
-                    已配置，服务就绪后可使用。
+                    {serviceNeedsUpgrade
+                      ? "现有服务不支持安全浏览器交接。本应用不会停止它；请确认任务与服务归属后升级，或在设置中选择正确的数据目录。"
+                      : state?.service === "running"
+                        ? "已有服务尚未通过身份验证，请在设置中确认所选服务的数据目录。"
+                        : "已配置，服务就绪后可使用。"}
                   </p>
                 )}
                 <p className="copy-feedback" role="status" aria-live="polite">

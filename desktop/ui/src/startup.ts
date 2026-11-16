@@ -62,12 +62,17 @@ export function useWorkspacePreparation(
       await invoke();
       if (current.current.active && current.current.epoch === owner.epoch)
         setPreparation({ epoch: owner.epoch, phase: "prepared", error: "" });
-    } catch {
+    } catch (error) {
       if (current.current.active && current.current.epoch === owner.epoch)
         setPreparation({
           epoch: owner.epoch,
           phase: "failed",
-          error: "工作区没有就绪。请检查本机设置与服务状态后重试。",
+          error:
+            error === "LOCAL_WORKSPACE_UPGRADE_REQUIRED"
+              ? "现有本地服务不支持安全浏览器交接。本应用不会停止它；请确认任务与服务归属后升级，或在设置中选择正确的数据目录。"
+              : error === "无法验证本地服务，请在设置中选择该服务的数据目录。"
+                ? "无法验证本地服务，请在设置中选择该服务的数据目录。"
+                : "工作区没有就绪。请检查本机设置与服务状态后重试。",
         });
     } finally {
       inFlight.current.delete(owner.epoch);

@@ -39,6 +39,13 @@ impl Fixture {
         );
         local.authorized = true;
         local.service = manager::Phase::Running;
+        local.info = Some(manager::ServerInfo {
+            hostname: "fixture".into(),
+            product: "AnyWork".into(),
+            workspace: "/fixture-workspace".into(),
+            local_service_control: false,
+            local_browser_session: true,
+        });
         let mut handle =
             Handle::new(dir.path().into(), manager::Handle::preview(local), false).unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1136,6 +1143,10 @@ async fn enable_preflight_failures_cross_real_ipc_as_exact_codes_without_new_reg
         ("invalid-grant", "REMOTE_ENABLE_REAUTH_REQUIRED"),
         ("unknown-grant", "REMOTE_ENABLE_REAUTH_REQUIRED"),
         ("local-service", "REMOTE_ENABLE_LOCAL_SERVICE"),
+        (
+            "local-service-upgrade",
+            "REMOTE_ENABLE_LOCAL_SERVICE_UPGRADE",
+        ),
         ("cleanup", "REMOTE_ENABLE_CLEANUP_PENDING"),
         ("cancelled", "REMOTE_ENABLE_CANCELLED"),
         ("enabled", "REMOTE_ENABLE_ALREADY_ENABLED"),
@@ -1149,6 +1160,18 @@ async fn enable_preflight_failures_cross_real_ipc_as_exact_codes_without_new_reg
             "unknown-grant" => owner.state.lock().await.uncertain = true,
             "local-service" => {
                 f.handle.0.manager.state.lock().unwrap().authorized = false;
+            }
+            "local-service-upgrade" => {
+                f.handle
+                    .0
+                    .manager
+                    .state
+                    .lock()
+                    .unwrap()
+                    .info
+                    .as_mut()
+                    .unwrap()
+                    .local_browser_session = false;
             }
             "cleanup" => {
                 f.handle.enable().await.unwrap();
@@ -1184,9 +1207,17 @@ async fn enable_preflight_failures_cross_real_ipc_as_exact_codes_without_new_reg
                 invoke_key: tauri::test::INVOKE_KEY.into(),
             },
         );
-        // The public Tauri rejection payload is a string, not an Error object
-        // or a wrapped stage, so the UI's exact-code check can recognize it.
-        assert_eq!(result.unwrap_err(), json!(code), "{condition}");
+        // Only config failures carry a fixed projection; every other stage
+        // retains its existing exact string IPC representation.
+        let error = result.unwrap_err();
+        if condition == "config" {
+            assert_eq!(
+                error,
+                json!({"code":code,"detail":{"kind":"HTTP_STATUS","httpStatus":401,"attempts":1}})
+            );
+        } else {
+            assert_eq!(error, json!(code), "{condition}");
+        }
         assert_eq!(f.calls("POST /oidc/token"), tokens, "{condition}");
         assert_eq!(
             f.calls("POST /api/v1/auth/exchange"),

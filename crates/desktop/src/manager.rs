@@ -131,6 +131,14 @@ impl Snapshot {
     pub fn locked(&self) -> bool {
         self.owned || matches!(self.service, Phase::Starting | Phase::Stopping)
     }
+    pub fn workspace_ready(&self) -> bool {
+        self.authorized
+            && self.service == Phase::Running
+            && self
+                .info
+                .as_ref()
+                .is_some_and(|info| info.local_browser_session)
+    }
 }
 pub enum Command {
     SaveService(Config),
@@ -540,6 +548,11 @@ impl Worker {
             }
             Command::PrepareWorkspace(done) => {
                 let result = self.prepare_workspace().await.map_err(|e| e.to_string());
+                if let Err(error) = &result {
+                    self.edit(|s| s.error = if error == "LOCAL_WORKSPACE_UPGRADE_REQUIRED" {
+                        "现有服务不支持安全浏览器交接。本应用不会停止它；请确认任务与服务归属后升级，或在设置中选择正确的数据目录。".into()
+                    } else { error.clone() });
+                }
                 let _ = done.send(result);
                 Ok(())
             }
@@ -669,7 +682,7 @@ impl Worker {
         };
         anyhow::ensure!(
             info.local_browser_session,
-            "当前本地服务不支持安全浏览器交接，请先升级本地服务。不会退回访问密钥链接。"
+            "LOCAL_WORKSPACE_UPGRADE_REQUIRED"
         );
         // This authenticated check supersedes polls begun before preparation.
         // Even a completed poll can still have an event queued in run().
@@ -680,6 +693,7 @@ impl Worker {
             v.service = Phase::Running;
             v.info = Some(info);
             v.external = !v.owned;
+            v.error.clear();
         });
         Ok(())
     }
@@ -719,9 +733,13 @@ impl Worker {
                 && ticket.ticket.bytes().all(|b| b.is_ascii_hexdigit()),
             "本地服务返回了无效交接响应。"
         );
+        // A fragment does not change the HTTP cache key. An older external
+        // service may still serve cacheable HTML after hashed assets change.
+        // Use a public, per-open document URL; keep the one-use ticket fragment-only.
         Ok(format!(
-            "{}/#local-ticket={}",
+            "{}/?desktop-open={}#local-ticket={}",
             current.config.local_url(),
+            uuid::Uuid::new_v4(),
             ticket.ticket
         ))
     }
@@ -996,15 +1014,42 @@ mod tests {
         handle.prepare_workspace().await.unwrap();
         assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert!(handle.snapshot().external && handle.snapshot().authorized);
+        assert!(handle.snapshot().workspace_ready());
         let url = handle
             .open_workspace(BrowserContext::default())
             .await
             .unwrap();
+        let first = reqwest::Url::parse(&url).unwrap();
         assert_eq!(
-            url,
-            format!("http://127.0.0.1:{port}/#local-ticket={}", "a".repeat(64))
+            first.origin().ascii_serialization(),
+            format!("http://127.0.0.1:{port}")
         );
-        assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(first.path(), "/");
+        assert_eq!(
+            first.fragment().unwrap(),
+            format!("local-ticket={}", "a".repeat(64))
+        );
+        let query: Vec<_> = first.query_pairs().collect();
+        assert_eq!(query.len(), 1);
+        assert_eq!(query[0].0, "desktop-open");
+        assert_eq!(
+            uuid::Uuid::parse_str(&query[0].1)
+                .unwrap()
+                .get_version_num(),
+            4
+        );
+        let second = reqwest::Url::parse(
+            &handle
+                .open_workspace(BrowserContext::default())
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(second.origin(), first.origin());
+        assert_eq!(second.path(), first.path());
+        assert_eq!(second.fragment(), first.fragment());
+        assert_ne!(second.query(), first.query());
+        assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 2);
         assert_eq!(
             std::fs::read(dir.path().join("manager.json")).unwrap(),
             saved
@@ -1070,6 +1115,28 @@ mod tests {
             assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 0);
             assert!(!handle.snapshot().authorized);
             assert!(!handle.snapshot().owned);
+            if mode == "old-service" {
+                // Observe a genuine authenticated background poll as well as
+                // the rejected prepare command: authentication alone is not
+                // browser handoff compatibility, irrespective of version.
+                tokio::time::timeout(Duration::from_secs(3), async {
+                    while handle.snapshot().info.is_none() {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                assert!(handle.snapshot().authorized);
+                assert_eq!(handle.snapshot().service, Phase::Running);
+                assert!(!handle.snapshot().workspace_ready());
+                assert!(
+                    handle
+                        .open_workspace(BrowserContext::default())
+                        .await
+                        .is_err()
+                );
+                assert_eq!(tickets.load(std::sync::atomic::Ordering::SeqCst), 0);
+            }
             assert_eq!(
                 std::fs::read(dir.path().join("manager.json")).unwrap(),
                 saved

@@ -84,6 +84,13 @@ try {
               owned: false,
               external: false,
               authorized: Boolean(window.fixtureLocalReady),
+              info: window.fixtureLocalReady
+                ? {
+                    workspace: "/fixture-workspace",
+                    local_browser_session:
+                      window.fixtureBrowserCapability !== false,
+                  }
+                : null,
               clients: [],
               routes: [0, 1, 2].map(() => ({
                 phase: "off",
@@ -327,6 +334,24 @@ try {
   await expect(
     page.getByRole("heading", { name: "这台电脑", exact: true }),
   ).toBeVisible();
+  await page.evaluate(() => {
+    window.fixtureBrowserCapability = false;
+  });
+  await expect(
+    page.getByRole("status").filter({ hasText: "本地服务需要升级" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "打开本地工作区", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText("本应用不会停止它", { exact: false }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    window.fixtureBrowserCapability = true;
+  });
+  await expect(
+    page.getByRole("button", { name: "打开本地工作区", exact: true }),
+  ).toBeEnabled();
   await page.locator(".sidebar-account button").click();
   await expect(
     page.getByRole("status").filter({ hasText: "已登录 · person@example.org" }),
@@ -346,6 +371,7 @@ try {
     "REMOTE_ENABLE_SIGN_IN_REQUIRED",
     "REMOTE_ENABLE_REAUTH_REQUIRED",
     "REMOTE_ENABLE_LOCAL_SERVICE",
+    "REMOTE_ENABLE_LOCAL_SERVICE_UPGRADE",
     "REMOTE_ENABLE_CLEANUP_PENDING",
     "REMOTE_ENABLE_CANCELLED",
     "REMOTE_ENABLE_ALREADY_ENABLED",
@@ -378,6 +404,32 @@ try {
       before + 1,
     );
   }
+  await page.evaluate(() => {
+    window.fixtureEnableError = {
+      code: "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
+      detail: { kind: "HTTP_STATUS", httpStatus: 503, attempts: 3 },
+    };
+  });
+  await enable.click();
+  const diagnostic = page.locator(".error-details");
+  if ((await diagnostic.getAttribute("open")) === null)
+    await diagnostic.locator("summary").click();
+  await expect(diagnostic).toContainText("HTTP_STATUS");
+  await expect(diagnostic).toContainText("HTTP 503");
+  await expect(diagnostic).toContainText("已尝试 3 次");
+  await page.evaluate(() => {
+    window.fixtureEnableError = {
+      code: "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
+      detail: { kind: "private-provider-body", httpStatus: 503, attempts: 3 },
+    };
+  });
+  await enable.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "账号操作未完成，请检查登录状态和网络后重试。",
+  );
+  await expect(
+    page.getByText("private-provider-body", { exact: false }),
+  ).toHaveCount(0);
   await page.evaluate(() => {
     window.fixtureEnableError =
       "provider body https://secret.invalid/?token=do-not-display";
