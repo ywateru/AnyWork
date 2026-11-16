@@ -2,7 +2,9 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**Test candidate 0.1.44 / 本轮测试候选**
+**New in 0.1.44 / 本次更新**
+
+Test candidate for manual verification; no public Release has been created. 本轮为手动验收测试候选，尚未创建公开 Release。
 
 Desktop and Android now save the application login grant using the OS credential store or Android Keystore and attempt restoration on restart. Explicit sign-out clears the saved authorization. Earlier versions did not save grants, so the first login after upgrading is still required. Endpoint private keys and active connections remain in memory; Windows Native account support remains unavailable.
 

@@ -1,6 +1,6 @@
 # v0.1.43 桌面远程、手机工作区与登录恢复
 
-状态：修正与独立审查完成，已合入 main；0.1.44 / Android code46 测试候选等待构建、启动及保留数据安装。基线 main `15f5c3f`，2026-11-16。
+状态：修正与独立审查完成，已合入 main；0.1.44 / Android code46 测试候选已启动桌面并保留数据安装到 ADB 设备，交用户手测。基线 main `15f5c3f`，2026-11-16。
 
 用户报告桌面更新后远程启用错误 `REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE`，本地“已就绪 · 复用已有服务”仍无法打开；追加 Android 连接后样式严重异常，以及桌面和手机应保存登录、重启无需二次登录。后者明确替代历史仅内存授权要求，契约见[登录恢复](../../login-session-persistence.md)。
 
@@ -48,3 +48,12 @@
 
 - 静态缓存候选 `e420d1a` 由[独立审查](../reviews/workspace-static-cache-independent.md)接受，合并 `ffd30c7`：HTML/SW 不存储、在线导航绕过 HTTP 缓存，保留用户确认更新、旧离线 shell 与草稿。Rust HTTP 2/2、既有浏览器 8/8、追加 4/4 通过；编码 HTML 别名/非入口子目录条件请求为已记录 P3，不影响固定入口和正常导航。
 - 合并后 Web TypeScript、**45 files / 447 tests** 与 **8 scripts** 通过；Desktop production UI build、账号恢复 UI 检查、真实 Chromium 缓存入口负对照通过。准备统一版本 **0.1.44 / Android code46**；正式签名 ARM64 candidate 与本机 Desktop 构建绑定冻结提交，不创建 tag 或公开 Release。
+
+
+### 本机测试候选已采用
+
+运行包源码为 `78dfa0924d1ebc4ecd3213a078dd0db63d06fc46`，v0.1.44 / code46。Desktop 为本地 debug profile 测试 `.app`，包含同源 GUI、新 server 与 Web；新 GUI 已运行并渲染。原 `/Applications` 安装保留，外部服务与 Agent 未停止，不能将“包内 server 已更新”记为“外部运行 server 已升级”。冻结源码 HTTP 2/2 与 workspace/all-targets Clippy 通过。
+
+正式签名 ARM64 candidate [43830958024](https://github.com/ywateru/AnyWork/actions/runs/43830958024) 成功，同签名覆盖安装到现有 ADB 设备，安装后版本 code46、正常启动，未卸载或清除数据。正常账号登录、重启恢复与连接后的实机布局交用户手测；没有代为发送真实 Agent 消息或终端输入。
+
+精确源码 [Checks 43830956153](https://github.com/ywateru/AnyWork/actions/runs/43830956153) 的 server/web 在发行说明标题格式处失败：`Test candidate` 不符合现有发布器的 `New in / 本次更新` 标题约定。纯文档修正恢复约定标题，并在正文明确测试候选未发布；独立 `publish-test.py` **33/33**、`release-version-test.py` **4/4** 通过。应用代码未变化，不重建或重复装包；后续完整 Checks 与公开 Release 状态分开记录。既有 Vercel 自动部署凭据故障不由候选安装修复，不将网站工作流失败记为安装验收失败。
