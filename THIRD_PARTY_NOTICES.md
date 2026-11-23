@@ -8,6 +8,12 @@ The Android client uses the official [Logto Kotlin/Android SDK](https://github.c
 
 The Rust Claude adapter in `crates/server/src/claude/` follows the stream control protocol and adapts conversation-chain and parallel-tool history reconstruction behavior from [Anthropic's Claude Agent SDK for Python](https://github.com/anthropics/claude-agent-sdk-python), commit `22b8eb9c19adfa78759b79e22bd664a57843bb06`, particularly `_internal/query.py`, `_internal/sessions.py`, and `_internal/transport/subprocess_cli.py`. Copyright (c) 2025 Anthropic, PBC. The upstream MIT license is included in [licenses/claude-agent-sdk-MIT.txt](licenses/claude-agent-sdk-MIT.txt). Claude product names identify the native integrations; no endorsement is implied.
 
+## CyberBus and EasyTier device transport
+
+The native desktop and Android account transport uses the Rust `cyberbus-transport` crate from [CyberBus](https://github.com/osd-pub/CyberBus), version **v0.2.0**, commit `a2b5be3b2c3cd8d21e6a0c5bf2b4da2040f36c11`. The CyberBus workspace is offered under **MIT OR Apache-2.0**, but `cyberbus-transport` declares **LGPL-3.0-or-later**. The transport statically links the vendored EasyTier `v2.7.1` source at commit `0d9c52b169dc2112687ddefcf571cd01d383193c`, which is **LGPL-3.0**. The Web overlay uses the corresponding EasyTier `@easytier/browser` and `@easytier/runtime` packages and embeds the LGPL-3.0 EasyTier core WASM.
+
+The complete MIT, Apache-2.0, LGPL-3.0 and GPL-3.0 texts are preserved in `licenses/cyberbus-MIT.txt`, `licenses/cyberbus-Apache-2.0.txt`, `licenses/cyberbus-transport-LGPL-3.0.txt`, `licenses/GPL-3.0.txt`, `licenses/easytier-LGPL-3.0.txt` and `licenses/easytier-js-Apache-2.0.txt`. The exact upstream source, `packaging/NOTICE.md`, `packaging/RELINK.md`, EasyTier build instructions and AnyWork's application source are distributed in `artifacts/corresponding-source.tar.gz` and `artifacts/anywork-source.tar.gz`; the public site exposes them at `/corresponding-source` and `/source`. Native users may modify the LGPL component and relink using the supplied instructions. Do not advertise the combined transport as MIT/Apache-only or prohibit reverse engineering for debugging modifications to the LGPL portion.
+
 ## DeepSeek Harness conversation UI
 
 Portions of `web/src/components/harness/` are extracted or adapted from [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness), commit `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`. See [the extraction record](docs/harness-ui-provenance.md) for exact source files and adaptations.

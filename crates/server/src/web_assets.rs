@@ -76,6 +76,10 @@ mod tests {
                 get(|| async { Json(json!({"status":"ok"})) }),
             )
             .route_service("/source", ServeFile::new(directory.join("source.tar.gz")))
+            .route_service(
+                "/corresponding-source",
+                ServeFile::new(directory.join("corresponding-source.tar.gz")),
+            )
             .fallback_service(router(directory));
         let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         (origin, Server(task))
@@ -151,9 +155,19 @@ mod tests {
         )
         .unwrap();
         std::fs::write(dir.path().join("source.tar.gz"), "source fixture").unwrap();
+        std::fs::write(
+            dir.path().join("corresponding-source.tar.gz"),
+            "corresponding source fixture",
+        )
+        .unwrap();
         let (origin, _server) = serve(dir.path()).await;
         let client = Client::builder().no_proxy().build().unwrap();
-        for path in ["/assets/entry-123.js", "/api/health", "/source"] {
+        for path in [
+            "/assets/entry-123.js",
+            "/api/health",
+            "/source",
+            "/corresponding-source",
+        ] {
             let response = client.get(format!("{origin}{path}")).send().await.unwrap();
             assert_eq!(response.status(), StatusCode::OK);
             assert!(

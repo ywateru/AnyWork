@@ -936,11 +936,6 @@ mod tests {
             "an older probe erased successful workspace preparation"
         );
         assert_eq!(handle.snapshot().service, Phase::Running);
-        // The account/provider fixture exists only on Unix; keep the manager
-        // ordering and readiness assertions above and below on every platform.
-        #[cfg(unix)]
-        crate::accounts::default_tests::assert_remote_enables_with_prepared_manager(handle.clone())
-            .await;
         // A newer failure must still close readiness; this is an ordering fence,
         // not a permanent exemption from the normal background health checks.
         worker.last_probe = Instant::now() - Duration::from_secs(4);

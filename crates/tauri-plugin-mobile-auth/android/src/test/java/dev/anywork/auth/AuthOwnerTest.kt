@@ -34,7 +34,7 @@ class AuthOwnerTest {
     private fun configure(owner: AuthOwner) = call(JSONObject().apply {
         put("endpoint", "https://auth.x.aixgg.com"); put("issuer", "https://auth.x.aixgg.com/oidc")
         put("clientId", "fixture-client"); put("product", "fixture-product")
-        put("gridUrl", "https://gateway.example.invalid"); put("resource", "https://resource.example.invalid")
+        put("resource", "https://resource.example.invalid")
         put("redirectUri", "http://127.0.0.1:17897/callback")
     }.toString(), owner::configure)
     @Test fun recreatedHostConfigureReturnsSnapshotWithoutWaitingForSdkOperation() {

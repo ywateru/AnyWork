@@ -22,6 +22,11 @@ export interface BusinessTransport {
   terminal(sessionId: string, events: TerminalEvents): TerminalChannel;
   close(): void;
 }
+export interface RemoteChannel {
+  readFrame(): Promise<Uint8Array>;
+  writeFrame(bytes: Uint8Array): Promise<void>;
+  close(): Promise<void>;
+}
 export class RemoteError extends Error {
   constructor(readonly code: string) {
     super(code);
@@ -32,6 +37,35 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const MAX_BODY = 22 * 1024 * 1024;
 const MAX_CHUNK = 32768;
+function waitFor<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+  timeoutCode: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: unknown, value?: T) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      if (error) reject(error);
+      else resolve(value as T);
+    };
+    const abort = () => finish(new DOMException("aborted", "AbortError"));
+    const timer = setTimeout(
+      () => finish(new RemoteError(timeoutCode)),
+      timeoutMs,
+    );
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    promise.then(
+      (value) => finish(undefined, value),
+      (error) => finish(error),
+    );
+  });
+}
 function random(length: number) {
   return crypto.getRandomValues(new Uint8Array(length));
 }
@@ -116,42 +150,56 @@ export class RemoteTransport implements BusinessTransport {
   private renewalSequence = 0;
   private renewing?: number;
   private freshToken?: () => Promise<string>;
+  private writeTail: Promise<void> = Promise.resolve();
+  private queuedWriteBytes = 0;
   private readonly checkResume = () => {
     if (this.expired())
       this.closeWithError(new RemoteError("AUTHORIZATION_EXPIRED"));
   };
   private constructor(
-    private ws: WebSocket,
+    private channel: RemoteChannel,
     private noise: TransportState,
   ) {
-    ws.onmessage = (event) => {
-      try {
-        if (
-          !(event.data instanceof ArrayBuffer) ||
-          event.data.byteLength > 65535
-        )
-          throw new RemoteError("INVALID_FRAME");
-        const data = JSON.parse(
-          decoder.decode(this.noise.receiveVec(new Uint8Array(event.data))),
-        );
-        this.receive(data);
-      } catch (error) {
-        this.closeWithError(
-          error instanceof RemoteError
-            ? error
-            : new RemoteError("INVALID_FRAME"),
-        );
-      }
-    };
-    ws.onerror = () =>
-      this.closeWithError(new RemoteError("CONNECTION_CLOSED"));
-    ws.onclose = () =>
-      this.closeWithError(new RemoteError("CONNECTION_CLOSED"));
     window.addEventListener("pageshow", this.checkResume);
     document.addEventListener("visibilitychange", this.checkResume);
+    void this.readLoop();
+  }
+  private async readLoop() {
+    try {
+      for (;;) {
+        const bytes = await this.channel.readFrame();
+        if (bytes.byteLength > 65535) throw new RemoteError("INVALID_FRAME");
+        const data = JSON.parse(decoder.decode(this.noise.receiveVec(bytes)));
+        this.receive(data);
+      }
+    } catch (error) {
+      this.closeWithError(
+        error instanceof RemoteError
+          ? error
+          : new RemoteError("CONNECTION_CLOSED"),
+      );
+    }
+  }
+  private enqueueWrite(bytes: Uint8Array) {
+    if (this.closed) throw new RemoteError("CONNECTION_CLOSED");
+    this.queuedWriteBytes += bytes.byteLength;
+    if (this.queuedWriteBytes > 2 * 1024 * 1024) {
+      this.closeWithError(new RemoteError("BACKPRESSURE"));
+      throw new RemoteError("BACKPRESSURE");
+    }
+    const write = this.writeTail.then(() => this.channel.writeFrame(bytes));
+    this.writeTail = write.then(
+      () => {
+        this.queuedWriteBytes -= bytes.byteLength;
+      },
+      () => {
+        this.queuedWriteBytes -= bytes.byteLength;
+        this.closeWithError(new RemoteError("CONNECTION_CLOSED"));
+      },
+    );
   }
   static async connect(options: {
-    url: string;
+    channel: RemoteChannel;
     installationId: string;
     publicKey: string;
     accessToken: string;
@@ -159,109 +207,81 @@ export class RemoteTransport implements BusinessTransport {
     signal?: AbortSignal;
   }): Promise<RemoteTransport> {
     options.signal?.throwIfAborted();
-    const address = new URL(options.url);
-    if (
-      address.protocol !== "https:" ||
-      address.username ||
-      address.password ||
-      address.search ||
-      address.hash ||
-      address.pathname !== "/" ||
-      !/^([a-z0-9]+-)*[a-z0-9]+\.trycloudflare\.com$/.test(address.hostname)
-    )
-      throw new RemoteError("INVALID_REMOTE_ADDRESS");
-    address.protocol = "wss:";
-    address.pathname = "/remote/v1/ws";
     const handshake = browserHandshake(
       options.installationId,
       options.publicKey,
     );
     const expected = publicKeyBytes(options.publicKey);
-    const ws = new WebSocket(address.href);
-    ws.binaryType = "arraybuffer";
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const cleanup = () => {
-        clearTimeout(timer);
-        options.signal?.removeEventListener("abort", cancel);
-      };
-      const fail = (code: string) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        ws.onclose = null;
-        ws.onerror = null;
-        ws.onmessage = null;
-        ws.onopen = null;
-        ws.close();
-        reject(new RemoteError(code));
-      };
-      const cancel = () => fail("CANCELLED");
-      const timer = setTimeout(() => fail("HANDSHAKE_TIMEOUT"), 10000);
-      options.signal?.addEventListener("abort", cancel, { once: true });
-      ws.onerror = () => fail("CONNECTION_FAILED");
-      ws.onclose = () => fail("CONNECTION_CLOSED");
-      ws.onopen = () => {
-        try {
-          const payload = encoder.encode(
-            JSON.stringify({
-              type: "auth",
-              installationId: options.installationId,
-              accessToken: options.accessToken,
-            }),
-          );
-          const out = new Uint8Array(
-            payload.length + handshake.getNextMessageOverhead(),
-          );
-          const length = handshake.writeMessage(payload, out);
-          ws.send(out.slice(0, length));
-        } catch {
-          fail("HANDSHAKE_FAILED");
-        }
-      };
-      ws.onmessage = (event) => {
-        try {
-          if (
-            !(event.data instanceof ArrayBuffer) ||
-            event.data.byteLength > 65535
-          )
-            throw new Error();
-          const out = new Uint8Array(event.data.byteLength);
-          const length = handshake.readMessage(new Uint8Array(event.data), out);
-          const actual = handshake.getRemoteStatic();
-          if (
-            !actual ||
-            actual.length !== expected.length ||
-            actual.some((v, i) => v !== expected[i]) ||
-            !handshake.isFinished()
-          )
-            throw new Error();
-          const ready = JSON.parse(decoder.decode(out.subarray(0, length)));
-          const ttl = ready.expiresAt * 1000 - Date.now();
-          if (
-            ready.type !== "ready" ||
-            !Number.isSafeInteger(ready.expiresAt) ||
-            ttl <= 0 ||
-            ttl > 301000
-          )
-            throw new Error();
-          if (options.signal?.aborted) {
-            fail("CANCELLED");
-            return;
-          }
-          settled = true;
-          cleanup();
-          const transport = new RemoteTransport(ws, handshake.finalize());
-          if (ready.authRenewal === 1)
-            transport.freshToken = options.getFreshAccessToken;
-          transport.armLease(ready.expiresAt);
-          resolve(transport);
-        } catch {
-          fail("HANDSHAKE_FAILED");
-        }
-      };
-      if (options.signal?.aborted) cancel();
-    });
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      void options.channel.close().catch(() => {});
+    };
+    try {
+      const payload = encoder.encode(
+        JSON.stringify({
+          type: "auth",
+          installationId: options.installationId,
+          accessToken: options.accessToken,
+        }),
+      );
+      const out = new Uint8Array(
+        payload.length + handshake.getNextMessageOverhead(),
+      );
+      const length = handshake.writeMessage(payload, out);
+      await waitFor(
+        options.channel.writeFrame(out.slice(0, length)),
+        options.signal,
+        10000,
+        "HANDSHAKE_TIMEOUT",
+      );
+      const incoming = await waitFor(
+        options.channel.readFrame(),
+        options.signal,
+        10000,
+        "HANDSHAKE_TIMEOUT",
+      );
+      if (incoming.byteLength > 65535) throw new Error();
+      const plain = new Uint8Array(incoming.byteLength);
+      const plainLength = handshake.readMessage(incoming, plain);
+      const actual = handshake.getRemoteStatic();
+      if (
+        !actual ||
+        actual.length !== expected.length ||
+        actual.some((value, index) => value !== expected[index]) ||
+        !handshake.isFinished()
+      )
+        throw new Error();
+      const ready = JSON.parse(decoder.decode(plain.subarray(0, plainLength)));
+      const ttl = ready.expiresAt * 1000 - Date.now();
+      if (
+        ready.type !== "ready" ||
+        !Number.isSafeInteger(ready.expiresAt) ||
+        ttl <= 0 ||
+        ttl > 301000
+      )
+        throw new Error();
+      options.signal?.throwIfAborted();
+      const transport = new RemoteTransport(
+        options.channel,
+        handshake.finalize(),
+      );
+      if (ready.authRenewal === 1)
+        transport.freshToken = options.getFreshAccessToken;
+      transport.armLease(ready.expiresAt);
+      return transport;
+    } catch (error) {
+      close();
+      if (error instanceof RemoteError) throw error;
+      if (options.signal?.aborted)
+        throw new DOMException("aborted", "AbortError");
+      throw new RemoteError(
+        error instanceof Error && error.name === "AbortError"
+          ? "HANDSHAKE_TIMEOUT"
+          : "HANDSHAKE_FAILED",
+      );
+    }
   }
   async request(path: string, options: RequestInit = {}): Promise<Response> {
     options.signal?.throwIfAborted();
@@ -393,11 +413,11 @@ export class RemoteTransport implements BusinessTransport {
   private send(value: unknown) {
     this.assertActive();
     const bytes = encoder.encode(JSON.stringify(value));
-    if (bytes.length > 65519 || this.ws.bufferedAmount > 2 * 1024 * 1024) {
+    if (bytes.length > 65519) {
       this.closeWithError(new RemoteError("BACKPRESSURE"));
       throw new RemoteError("BACKPRESSURE");
     }
-    this.ws.send(this.noise.sendVec(bytes));
+    this.enqueueWrite(this.noise.sendVec(bytes));
   }
   private waitAck(id: string, received: number) {
     const promise = new Promise<void>((resolve, reject) => {
@@ -558,10 +578,7 @@ export class RemoteTransport implements BusinessTransport {
     this.renewing = undefined;
     window.removeEventListener("pageshow", this.checkResume);
     document.removeEventListener("visibilitychange", this.checkResume);
-    this.ws.onmessage = null;
-    this.ws.onerror = null;
-    this.ws.onclose = null;
-    this.ws.close();
+    void this.channel.close().catch(() => {});
     for (const id of this.pending.keys()) this.reject(id, error);
     for (const events of this.terminals.values()) events.closed();
     this.terminals.clear();

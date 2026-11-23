@@ -180,8 +180,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci && npm run build
-      - run: python3 scripts/source-archive.py && python3 scripts/source-archive-test.py
-      - run: mkdir -p release && cp artifacts/anywork-source.tar.gz release/ && tar -czf release/anywork-web.tar.gz -C web dist
+      - run: python3 scripts/source-archive.py && python3 scripts/source-archive-test.py && python3 scripts/corresponding-source.py && python3 scripts/corresponding-source-test.py
+      - run: mkdir -p release && cp artifacts/anywork-source.tar.gz artifacts/corresponding-source.tar.gz artifacts/corresponding-source.tar.gz.sha256 release/ && tar -czf release/anywork-web.tar.gz -C web dist
       - uses: actions/upload-artifact@v4
         with:
           name: source-web

@@ -1,5 +1,4 @@
-//! Upstream CyberGrid's current Unix-only credential module cannot be compiled
-//! on Windows. Account-first Native startup is unavailable; CLI is independent.
+//! Account-first Native startup is currently Unix-only. The CLI is independent.
 use serde_json::{Value, json};
 use std::{
     path::PathBuf,
@@ -30,7 +29,7 @@ impl Handle {
     }
     fn snapshot(&self) -> Value {
         let name = self.name.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        json!({"authorizationStatus":"unsupported","transactionId":null,"signedIn":false,"subject":null,"accountLabel":null,"deviceName":name,"deviceNameSynced":false,"enabled":false,"busy":false,"error":unsupported(),"gridDeviceId":null,"installationId":null,"publicKey":null,"remoteClients":[],"accountPortalUrl":self.portal_url()})
+        json!({"authorizationStatus":"unsupported","transactionId":null,"signedIn":false,"subject":null,"accountLabel":null,"deviceName":name,"deviceNameSynced":false,"enabled":false,"busy":false,"error":unsupported(),"installationId":null,"publicKey":null,"remoteClients":[],"accountPortalUrl":self.portal_url()})
     }
     fn rename_device(&self, name: &str, expected: &str) -> Result<Value, String> {
         if self.read_only {

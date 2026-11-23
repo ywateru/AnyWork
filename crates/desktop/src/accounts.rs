@@ -1,12 +1,14 @@
-//! Native account lifecycle. This module owns all refresh operations; the SDK
-//! only asks its AuthProvider for a resource access token.
+//! Native account lifecycle. This module owns all refresh operations and uses
+//! CyberBus only as the encrypted device network beneath AnyWork's gateway.
 use crate::{
     config,
     device_name::{load_device_name, normalized_device_name, save_device_name, valid_device_name},
     manager,
-    process::{LaunchPlan, OwnedProcess},
 };
 use anyhow::{Result, bail};
+use anywork_cyberbus::{
+    DEFAULT_SERVICE_PORT, Locator, NetworkVerifier, Overlay, OverlayConfig, RealClock,
+};
 use anywork_remote::{AccountVerifier, Gateway, GatewayConfig, JwtVerifier, RemoteClient};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
@@ -15,7 +17,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::{Mutex, Notify, mpsc},
+    sync::{Mutex, Notify},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -28,9 +30,7 @@ mod restore;
 use restore::RestoreFixture;
 
 const CALLBACK: &str = "http://127.0.0.1:17897/callback";
-const GRID_SCOPES: [&str; 5] = ["openid", "offline_access", "profile", "email", "connect"];
-const GRID_CLEANUP_PENDING: &str =
-    "本地远程入口已关闭，但上次协调登记或撤销结果尚未确认；恢复网络后请重试。";
+const LOCATOR_LIFETIME_SECONDS: u64 = 600;
 // Fixed diagnostics only. Provider errors can contain credentials/URLs and are
 // deliberately discarded at the boundary rather than formatted or logged.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,18 +44,407 @@ enum EnableStage {
     AlreadyEnabled,
     Identity,
     Gateway,
-    Provider,
-    GridClient,
-    GridConfig,
-    GridConfigUnavailable,
-    ResourceToken,
-    GridRegister,
-    GridExpose,
+    NetworkToken,
+    NetworkStart,
     IndexToken,
     IndexRead,
     IndexSchema,
     IndexWrite,
     IndexReadback,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    pub(super) fn handle(support: &std::path::Path) -> Handle {
+        Handle::new(
+            support.to_path_buf(),
+            manager::Handle::preview(manager::Snapshot::new(
+                config::Config::default(),
+                String::new(),
+            )),
+            false,
+        )
+        .unwrap()
+    }
+
+    pub(super) fn transaction() -> Arc<Transaction> {
+        Arc::new(Transaction {
+            id: "test-login".into(),
+            expected_state: Mutex::new(None),
+            callback: Mutex::new(None),
+            notify: Notify::new(),
+            stop: CancellationToken::new(),
+            operation: Mutex::new(()),
+            latest: Mutex::new(None),
+            uncertain: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+
+    async fn provider(unknown: bool) -> (Arc<GrantOwner>, Arc<AtomicUsize>) {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let server_calls = calls.clone();
+        let latest = Arc::new(Mutex::new("initial-ram-grant".to_string()));
+        let app = axum::Router::new().route(
+            "/token",
+            axum::routing::post(
+                move |axum::Form(form): axum::Form<std::collections::HashMap<String, String>>| {
+                    let latest = latest.clone();
+                    let calls = server_calls.clone();
+                    async move {
+                        let mut latest = latest.lock().await;
+                        assert_eq!(form.get("refresh_token"), Some(&*latest));
+                        let n = calls.fetch_add(1, Ordering::SeqCst) + 1;
+                        *latest = format!("rotated-ram-{n}");
+                        if unknown {
+                            (axum::http::StatusCode::BAD_GATEWAY, "response lost".into())
+                        } else {
+                            (
+                                axum::http::StatusCode::OK,
+                                json!({"access_token":"test-access","refresh_token":latest.clone()})
+                                    .to_string(),
+                            )
+                        }
+                    }
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        (
+            Arc::new(
+                GrantOwner::new(Grant {
+                    config: PublicConfig {
+                        issuer: format!("http://127.0.0.1:{port}"),
+                        ..Default::default()
+                    },
+                    refresh: "initial-ram-grant".into(),
+                    subject: "test-owner".into(),
+                })
+                .unwrap(),
+            ),
+            calls,
+        )
+    }
+
+    #[test]
+    fn public_configuration_defaults_to_cyberbus_and_validates_every_endpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let defaults = PublicConfig::load(dir.path()).unwrap();
+        assert_eq!(defaults.resource, "https://cyberbus.x.aixgg.com/api");
+        assert_eq!(defaults.product_id, "anywork");
+        assert_eq!(defaults.bootstrap_peers, vec!["tcp://43.155.169.102:11010"]);
+        assert!(defaults.validate().is_ok());
+        let expected = defaults.namespace(dir.path()).unwrap();
+        for field in [
+            "endpoint",
+            "issuer",
+            "nativeClientId",
+            "spaClientId",
+            "resource",
+            "productId",
+            "frontendOrigin",
+        ] {
+            let mut modified = serde_json::to_value(&defaults).unwrap();
+            modified[field] = json!(format!("{}-different", modified[field].as_str().unwrap()));
+            let changed: PublicConfig = serde_json::from_value(modified).unwrap();
+            assert_ne!(changed.namespace(dir.path()).unwrap(), expected, "{field}");
+        }
+        let mut changed = defaults.clone();
+        changed.bootstrap_peers.push("tls://peer.invalid:1".into());
+        assert!(changed.validate().is_err());
+        let mut changed = defaults;
+        changed.endpoint = "http://remote.invalid".into();
+        assert!(changed.validate().is_err());
+    }
+
+    #[tokio::test]
+    async fn directory_record_and_short_lived_locator_preserve_unrelated_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let i = handle(dir.path()).installation("owner").await.unwrap();
+        let mut data = json!({
+            "otherApp":{"keep":true},
+            "anywork":{
+                "schemaVersion":1,
+                "preferences":{"appearance":"dark"},
+                "devices":{}
+            }
+        });
+        update_device_index(&mut data, &i, Some(("10.144.5.6", 11_001, 100, 700))).unwrap();
+        assert_eq!(data["anywork"]["devices"][&i.id]["keyVersion"], 1);
+        assert_eq!(
+            data["anywork"]["devices"][&i.id]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            ["keyVersion", "label", "platform", "publicKey"]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        );
+        let locator = &data["anywork"]["cyberbus"][&i.id];
+        assert_eq!(locator["version"], 1);
+        assert_eq!(locator["productId"], "anywork");
+        assert_eq!(locator["ipv4"], "10.144.5.6");
+        assert_eq!(locator["port"], 11_001);
+        assert_eq!(locator["keyVersion"], 1);
+        assert_eq!(locator["issuedAt"], 100);
+        assert_eq!(locator["expiresAt"], 700);
+        assert_eq!(data["otherApp"], json!({"keep":true}));
+        assert_eq!(data["anywork"]["preferences"], json!({"appearance":"dark"}));
+        remove_device_locator(&mut data, &i.id).unwrap();
+        assert!(data["anywork"]["cyberbus"].get(&i.id).is_none());
+        assert_eq!(data["anywork"]["devices"][&i.id]["keyVersion"], 1);
+    }
+
+    #[test]
+    fn directory_rejects_control_port_out_of_pool_and_oversized_locator() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let i = runtime
+            .block_on(handle(dir.path()).installation("owner"))
+            .unwrap();
+        for (ipv4, port, issued, expires) in [
+            ("10.144.5.6", 11_000, 100, 700),
+            ("10.145.5.6", 11_001, 100, 700),
+            ("10.144.5.6", 11_001, 700, 100),
+            ("10.144.5.6", 11_001, 100, 100 + 86_401),
+        ] {
+            let mut data = json!({"anywork":{"schemaVersion":1,"devices":{}}});
+            assert!(
+                update_device_index(&mut data, &i, Some((ipv4, port, issued, expires))).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn device_key_version_increments_and_exhaustion_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let i1 = runtime
+            .block_on(handle(dir.path()).installation("owner"))
+            .unwrap();
+        let mut data = json!({"anywork":{"schemaVersion":1,"devices":{}}});
+        update_device_index(&mut data, &i1, None).unwrap();
+        assert_eq!(data["anywork"]["devices"][&i1.id]["keyVersion"], 1);
+        data["anywork"]["devices"][&i1.id]["label"] = json!("办公电脑");
+        let i2 = runtime
+            .block_on(handle(dir.path()).installation("owner"))
+            .unwrap();
+        update_device_index(&mut data, &i2, None).unwrap();
+        assert_eq!(data["anywork"]["devices"].as_object().unwrap().len(), 1);
+        assert_eq!(data["anywork"]["devices"][&i1.id]["keyVersion"], 2);
+        assert_eq!(data["anywork"]["devices"][&i1.id]["label"], "办公电脑");
+        let mut exhausted = data["anywork"]["devices"][&i1.id].clone();
+        exhausted["keyVersion"] = json!(9_007_199_254_740_991u64);
+        assert!(device_record(&exhausted, &i1).is_err());
+        exhausted["keyVersion"] = json!(0);
+        assert!(device_record(&exhausted, &i2).is_err());
+    }
+
+    #[tokio::test]
+    async fn one_ram_owner_serializes_account_and_resource_rotation() {
+        let (owner, calls) = provider(false).await;
+        let mut tasks = Vec::new();
+        for n in 0..8 {
+            let owner = owner.clone();
+            tasks.push(tokio::spawn(async move {
+                owner.token(n % 2 == 0).await.unwrap()
+            }));
+        }
+        for task in tasks {
+            assert_eq!(task.await.unwrap(), "test-access");
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 8);
+        assert_eq!(owner.state.lock().await.grant.refresh, "rotated-ram-8");
+    }
+
+    #[tokio::test]
+    async fn unknown_rotation_never_replays_last_known_ram_grant() {
+        let (owner, calls) = provider(true).await;
+        assert!(owner.token(true).await.is_err());
+        assert!(owner.state.lock().await.uncertain);
+        assert!(owner.token(false).await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn enable_stage_codes_discard_underlying_errors_before_ipc() {
+        for (stage, code) in [
+            (
+                EnableStage::SignInRequired,
+                "REMOTE_ENABLE_SIGN_IN_REQUIRED",
+            ),
+            (EnableStage::ReauthRequired, "REMOTE_ENABLE_REAUTH_REQUIRED"),
+            (EnableStage::LocalService, "REMOTE_ENABLE_LOCAL_SERVICE"),
+            (
+                EnableStage::LocalServiceUpgrade,
+                "REMOTE_ENABLE_LOCAL_SERVICE_UPGRADE",
+            ),
+            (EnableStage::CleanupPending, "REMOTE_ENABLE_CLEANUP_PENDING"),
+            (EnableStage::Cancelled, "REMOTE_ENABLE_CANCELLED"),
+            (EnableStage::AlreadyEnabled, "REMOTE_ENABLE_ALREADY_ENABLED"),
+            (EnableStage::Identity, "REMOTE_ENABLE_IDENTITY"),
+            (EnableStage::Gateway, "REMOTE_ENABLE_GATEWAY"),
+            (EnableStage::NetworkToken, "REMOTE_ENABLE_NETWORK_TOKEN"),
+            (EnableStage::NetworkStart, "REMOTE_ENABLE_NETWORK_START"),
+            (EnableStage::IndexToken, "REMOTE_ENABLE_INDEX_TOKEN"),
+            (EnableStage::IndexRead, "REMOTE_ENABLE_INDEX_READ"),
+            (EnableStage::IndexSchema, "REMOTE_ENABLE_INDEX_SCHEMA"),
+            (EnableStage::IndexWrite, "REMOTE_ENABLE_INDEX_WRITE"),
+            (EnableStage::IndexReadback, "REMOTE_ENABLE_INDEX_READBACK"),
+        ] {
+            let error = stage
+                .at::<(), _>(Err("https://private.invalid/?token=never-display"))
+                .unwrap_err();
+            assert_eq!(error.chain().count(), 1);
+            assert_eq!(safe_error(error), code);
+        }
+        let generic = safe_error(anyhow::anyhow!(
+            "https://private.invalid/?token=never-display"
+        ));
+        assert!(!generic.contains("private.invalid") && !generic.contains("never-display"));
+    }
+
+    #[tokio::test]
+    async fn actual_locator_index_failures_have_specific_safe_stages_without_retries() {
+        for stage in [
+            EnableStage::IndexToken,
+            EnableStage::IndexRead,
+            EnableStage::IndexSchema,
+            EnableStage::IndexWrite,
+            EnableStage::IndexReadback,
+        ] {
+            let reads = Arc::new(AtomicUsize::new(0));
+            let writes = Arc::new(AtomicUsize::new(0));
+            let tokens = Arc::new(AtomicUsize::new(0));
+            let (get_reads, patch_writes, token_calls) =
+                (reads.clone(), writes.clone(), tokens.clone());
+            let app = axum::Router::new()
+                .route(
+                    "/oidc/token",
+                    axum::routing::post(move || {
+                        let calls = token_calls.clone();
+                        async move {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            if stage == EnableStage::IndexToken {
+                                (
+                                    axum::http::StatusCode::BAD_GATEWAY,
+                                    "private provider body".to_owned(),
+                                )
+                            } else {
+                                (
+                                    axum::http::StatusCode::OK,
+                                    json!({"access_token":"sample-access","refresh_token":"sample-rotated"})
+                                        .to_string(),
+                                )
+                            }
+                        }
+                    }),
+                )
+                .route(
+                    "/api/my-account",
+                    axum::routing::get(move || {
+                        let calls = get_reads.clone();
+                        async move {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            if stage == EnableStage::IndexRead {
+                                (
+                                    axum::http::StatusCode::BAD_GATEWAY,
+                                    "private read body".to_owned(),
+                                )
+                            } else {
+                                let data = if stage == EnableStage::IndexSchema {
+                                    json!({"anywork":{"schemaVersion":2,"devices":{}}})
+                                } else {
+                                    json!({})
+                                };
+                                (
+                                    axum::http::StatusCode::OK,
+                                    json!({"id":"sample-owner","customData":data}).to_string(),
+                                )
+                            }
+                        }
+                    })
+                    .patch(move || {
+                        let calls = patch_writes.clone();
+                        async move {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            let status = if stage == EnableStage::IndexWrite {
+                                axum::http::StatusCode::BAD_GATEWAY
+                            } else {
+                                axum::http::StatusCode::OK
+                            };
+                            (status, "{}")
+                        }
+                    }),
+                );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = tokio::spawn(async move {
+                let _ = axum::serve(listener, app).await;
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let mut h = handle(dir.path());
+            let config = &mut Arc::get_mut(&mut h.0).unwrap().config;
+            config.endpoint = format!("http://127.0.0.1:{port}");
+            config.issuer = format!("{}/oidc", config.endpoint);
+            let owner = Arc::new(
+                GrantOwner::new(Grant {
+                    config: h.0.config.clone(),
+                    refresh: "sample-initial".into(),
+                    subject: "sample-owner".into(),
+                })
+                .unwrap(),
+            );
+            let installation = h.installation("sample-owner").await.unwrap();
+            assert_eq!(
+                safe_error(
+                    h.publish_index(&owner, &installation, Some(("10.144.1.2", 11_001)))
+                        .await
+                        .unwrap_err()
+                ),
+                stage.code()
+            );
+            assert_eq!(tokens.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                reads.load(Ordering::SeqCst),
+                match stage {
+                    EnableStage::IndexToken => 0,
+                    EnableStage::IndexReadback => 2,
+                    _ => 1,
+                }
+            );
+            assert_eq!(
+                writes.load(Ordering::SeqCst),
+                usize::from(matches!(
+                    stage,
+                    EnableStage::IndexWrite | EnableStage::IndexReadback
+                ))
+            );
+            server.abort();
+        }
+    }
+
+    #[test]
+    fn account_label_uses_trusted_profile_and_never_an_opaque_id() {
+        assert_eq!(
+            account_label(&json!({"primaryEmail":"person@example.org","username":"name"})),
+            "name"
+        );
+        assert_eq!(
+            account_label(&json!({"profile":{"name":"显示名"}})),
+            "显示名"
+        );
+        assert_eq!(account_label(&json!({"id":"opaque-subject"})), "已登录账号");
+    }
 }
 impl EnableStage {
     fn code(self) -> &'static str {
@@ -69,13 +458,8 @@ impl EnableStage {
             Self::AlreadyEnabled => "REMOTE_ENABLE_ALREADY_ENABLED",
             Self::Identity => "REMOTE_ENABLE_IDENTITY",
             Self::Gateway => "REMOTE_ENABLE_GATEWAY",
-            Self::Provider => "REMOTE_ENABLE_PROVIDER",
-            Self::GridClient => "REMOTE_ENABLE_GRID_CLIENT",
-            Self::GridConfig => "REMOTE_ENABLE_GRID_CONFIG",
-            Self::GridConfigUnavailable => "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
-            Self::ResourceToken => "REMOTE_ENABLE_RESOURCE_TOKEN",
-            Self::GridRegister => "REMOTE_ENABLE_GRID_REGISTER",
-            Self::GridExpose => "REMOTE_ENABLE_GRID_EXPOSE",
+            Self::NetworkToken => "REMOTE_ENABLE_NETWORK_TOKEN",
+            Self::NetworkStart => "REMOTE_ENABLE_NETWORK_START",
             Self::IndexToken => "REMOTE_ENABLE_INDEX_TOKEN",
             Self::IndexRead => "REMOTE_ENABLE_INDEX_READ",
             Self::IndexSchema => "REMOTE_ENABLE_INDEX_SCHEMA",
@@ -93,179 +477,28 @@ impl std::fmt::Display for EnableStage {
     }
 }
 impl std::error::Error for EnableStage {}
-
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum GridFailureKind {
-    Deadline,
-    Timeout,
-    Connect,
-    Request,
-    Body,
-    Decode,
-    Redirect,
-    HttpStatus,
-    Protocol,
-    Configuration,
-    Binding,
-    Transport,
-    Sdk,
-}
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GridFailureDetail {
-    kind: GridFailureKind,
-    http_status: Option<u16>,
-    attempts: u8,
-}
-#[derive(Debug)]
-struct GridConfigFailure {
-    stage: EnableStage,
-    detail: GridFailureDetail,
-}
-impl std::fmt::Display for GridConfigFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.stage.code())
-    }
-}
-impl std::error::Error for GridConfigFailure {}
-impl GridFailureDetail {
-    fn from_sdk(error: &cybergrid_sdk::Error, attempts: u8) -> Self {
-        use cybergrid_sdk::Error;
-        let kind = match error {
-            Error::Http(error) if error.is_timeout() => GridFailureKind::Timeout,
-            Error::Http(error) if error.is_connect() => GridFailureKind::Connect,
-            Error::Http(error) if error.is_decode() => GridFailureKind::Decode,
-            Error::Http(error) if error.is_redirect() => GridFailureKind::Redirect,
-            Error::Http(error) if error.is_builder() => GridFailureKind::Configuration,
-            Error::Http(error) if error.is_body() => GridFailureKind::Body,
-            Error::Http(_) => GridFailureKind::Request,
-            Error::Api { .. } => GridFailureKind::HttpStatus,
-            Error::Timeout(_) => GridFailureKind::Timeout,
-            Error::Transport(_) => GridFailureKind::Transport,
-            Error::Protocol(_) => GridFailureKind::Protocol,
-            Error::Config(_) => GridFailureKind::Configuration,
-            _ => GridFailureKind::Sdk,
-        };
-        let http_status = match error {
-            Error::Api { status, .. } if (100..=599).contains(status) => Some(*status),
-            _ => None,
-        };
-        Self {
-            kind,
-            http_status,
-            attempts,
-        }
-    }
-    fn fail(self, stage: EnableStage) -> anyhow::Error {
-        GridConfigFailure {
-            stage,
-            detail: self,
-        }
-        .into()
-    }
-}
 // Only configuration failures gain structured, fixed diagnostics. Other IPC
 // errors retain the exact safe stage string accepted by existing renderers.
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum AccountActionError {
     Code(String),
-    Configuration {
-        code: &'static str,
-        detail: GridFailureDetail,
-    },
 }
 fn action_error(error: anyhow::Error) -> AccountActionError {
-    if let Some(failure) = error.downcast_ref::<GridConfigFailure>() {
-        return AccountActionError::Configuration {
-            code: failure.stage.code(),
-            detail: failure.detail,
-        };
-    }
     AccountActionError::Code(safe_error(error))
 }
 
-fn retryable_grid_config_error(error: &cybergrid_sdk::Error) -> bool {
-    match error {
-        cybergrid_sdk::Error::Http(error) => {
-            !error.is_builder() && !error.is_decode() && !error.is_redirect()
-        }
-        cybergrid_sdk::Error::Api { status, .. } => {
-            matches!(status, 408 | 429 | 500 | 502 | 503 | 504)
-        }
-        cybergrid_sdk::Error::Timeout(_) | cybergrid_sdk::Error::Transport(_) => true,
-        _ => false,
-    }
-}
-
-async fn verified_grid_config(
-    grid: &cybergrid_sdk::Client,
-    expected: &PublicConfig,
-    attempt_timeout: Duration,
-    retry_delays: [Duration; 2],
-) -> Result<cybergrid_sdk::AuthConfig> {
-    // Only the public, unauthenticated, idempotent configuration GET is retried.
-    // Never repeat OAuth exchanges, device registration or directory writes.
-    for attempt in 0..=retry_delays.len() {
-        let attempts = (attempt + 1) as u8;
-        let (retryable, detail) =
-            match tokio::time::timeout(attempt_timeout, grid.auth_config()).await {
-                Ok(Ok(auth)) => {
-                    if auth.issuer != expected.issuer
-                        || auth.resource != expected.resource
-                        || auth.client_id != expected.native_client_id
-                        || !grid_scopes_match(
-                            &auth
-                                .scope
-                                .split_whitespace()
-                                .map(str::to_owned)
-                                .collect::<Vec<_>>(),
-                        )
-                    {
-                        return Err(GridFailureDetail {
-                            kind: GridFailureKind::Binding,
-                            http_status: None,
-                            attempts,
-                        }
-                        .fail(EnableStage::GridConfig));
-                    }
-                    return Ok(auth);
-                }
-                Ok(Err(error)) => (
-                    retryable_grid_config_error(&error),
-                    GridFailureDetail::from_sdk(&error, attempts),
-                ),
-                Err(_) => (
-                    true,
-                    GridFailureDetail {
-                        kind: GridFailureKind::Deadline,
-                        http_status: None,
-                        attempts,
-                    },
-                ),
-            };
-        if !retryable {
-            return Err(detail.fail(EnableStage::GridConfig));
-        }
-        if let Some(delay) = retry_delays.get(attempt) {
-            tokio::time::sleep(*delay).await;
-        } else {
-            return Err(detail.fail(EnableStage::GridConfigUnavailable));
-        }
-    }
-    Err(EnableStage::GridConfigUnavailable.into())
-}
-
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct PublicConfig {
     pub endpoint: String,
     pub issuer: String,
     pub native_client_id: String,
     pub spa_client_id: String,
     pub resource: String,
-    pub cybergrid_url: String,
+    pub product_id: String,
+    #[serde(default)]
+    pub bootstrap_peers: Vec<String>,
     pub frontend_origin: String,
 }
 impl Default for PublicConfig {
@@ -275,8 +508,9 @@ impl Default for PublicConfig {
             issuer: "https://auth.x.aixgg.com/oidc".into(),
             native_client_id: "x7lzj58abb1sdp16lkd34".into(),
             spa_client_id: "5ere2kbu9mugfu3xd8e90".into(),
-            resource: "https://anywork-cybergrid-selfhost.vercel.app/api".into(),
-            cybergrid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
+            resource: "https://cyberbus.x.aixgg.com/api".into(),
+            product_id: "anywork".into(),
+            bootstrap_peers: vec!["tcp://43.155.169.102:11010".into()],
             frontend_origin: "https://anywork.aixgg.com".into(),
         }
     }
@@ -303,12 +537,7 @@ impl PublicConfig {
         Ok(format!("account-{:x}", Sha256::digest(&binding)))
     }
     fn validate(&self) -> Result<()> {
-        for value in [
-            &self.endpoint,
-            &self.issuer,
-            &self.resource,
-            &self.cybergrid_url,
-        ] {
+        for value in [&self.endpoint, &self.issuer, &self.resource] {
             let u = url::Url::parse(value)?;
             if u.scheme() != "https"
                 || u.host_str().is_none()
@@ -331,6 +560,21 @@ impl PublicConfig {
         if self.issuer != format!("{}/oidc", self.endpoint.trim_end_matches('/'))
             || self.native_client_id.is_empty()
             || self.spa_client_id.is_empty()
+            || self.product_id.is_empty()
+            || self.product_id.len() > 64
+            || self.bootstrap_peers.len() > 64
+            || self.bootstrap_peers.iter().any(|peer| {
+                let Ok(url) = url::Url::parse(peer) else {
+                    return true;
+                };
+                !matches!(url.scheme(), "tcp" | "udp" | "ws" | "wss")
+                    || url.host_str().is_none()
+                    || url.port_or_known_default().is_none()
+                    || !url.username().is_empty()
+                    || url.password().is_some()
+                    || url.query().is_some()
+                    || url.fragment().is_some()
+            })
         {
             bail!("INVALID_ACCOUNT_CONFIG")
         };
@@ -362,7 +606,6 @@ pub struct Snapshot {
     pub enabled: bool,
     pub busy: bool,
     pub error: Option<String>,
-    pub grid_device_id: Option<String>,
     pub installation_id: Option<String>,
     pub public_key: Option<String>,
     pub remote_clients: Vec<RemoteClient>,
@@ -565,97 +808,6 @@ impl GrantOwner {
     }
 }
 
-fn grid_scopes_match(scopes: &[String]) -> bool {
-    scopes.len() == GRID_SCOPES.len()
-        && GRID_SCOPES
-            .iter()
-            .all(|expected| scopes.iter().filter(|s| s.as_str() == *expected).count() == 1)
-}
-
-fn grid_publication_confirmed(grid: &cybergrid_sdk::Client) -> Result<()> {
-    let snapshot = grid.snapshot();
-    if !snapshot.remote_enabled
-        || snapshot.publication.phase != cybergrid_sdk::StatePhase::Ready
-        || snapshot.publication.reason != cybergrid_sdk::StateReason::PublicationConfirmed
-        || snapshot.confirmed_intent_revision != Some(snapshot.intent_revision)
-        || snapshot.server_publish_revision.is_none()
-    {
-        return Err(EnableStage::GridExpose.into());
-    }
-    Ok(())
-}
-
-// One SDK instance is bound to one host intent. It never owns or rotates a
-// second grant; all token work remains serialized by the existing RAM owner.
-struct GridAuthorization {
-    owner: Arc<GrantOwner>,
-    generation: Arc<()>,
-    client: std::sync::Weak<cybergrid_sdk::Client>,
-    retired: std::sync::atomic::AtomicBool,
-}
-impl GridAuthorization {
-    fn current(
-        &self,
-        client: &cybergrid_sdk::Client,
-        request: &cybergrid_sdk::AuthTokenRequest,
-    ) -> Result<()> {
-        let policy = self.owner.policy();
-        policy.check(&self.generation)?;
-        if policy.manual_off
-            || self.retired.load(std::sync::atomic::Ordering::SeqCst)
-            || !self
-                .client
-                .upgrade()
-                .is_some_and(|bound| std::ptr::eq(bound.as_ref(), client))
-            || client.snapshot().coordination.phase == cybergrid_sdk::StatePhase::Closed
-            || request.cancel.is_cancelled()
-            || client.snapshot().generation != request.generation
-            || !(1..=3600).contains(&request.min_validity)
-            || request.min_validity != client.config().auth_min_validity
-        {
-            bail!("ACCOUNT_TOKEN_REJECTED")
-        }
-        Ok(())
-    }
-    async fn token(
-        &self,
-        client: &cybergrid_sdk::Client,
-        request: &cybergrid_sdk::AuthTokenRequest,
-    ) -> Result<String> {
-        self.current(client, request)?;
-        let mut state = self.owner.state.lock().await;
-        self.current(client, request)?;
-        let config = &state.grant.config;
-        if request.issuer != config.issuer
-            || request.client_id != config.native_client_id
-            || request.resource != config.resource
-            || !grid_scopes_match(&request.scopes)
-        {
-            bail!("ACCOUNT_TOKEN_REJECTED")
-        }
-        // Every request obtains a fresh token (there is no access-token cache).
-        // The SDK may request force_refresh for Connect/CoordinationRecovery
-        // too, e.g. after finite-admission session expiry. It is a freshness
-        // instruction, not an identity constraint tied to a particular reason.
-        // Once dispatched, finish recording any rotation even if intent changes.
-        let token = self.owner.refresh(&mut state, true).await?;
-        self.current(client, request)?;
-        // Only freshness is read from this payload. Identity is still established
-        // by the original verified grant and the coordinator's verified session.
-        let payload = token
-            .split('.')
-            .nth(1)
-            .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))?;
-        let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload)?)?;
-        let expires = claims["exp"]
-            .as_u64()
-            .ok_or_else(|| anyhow::anyhow!("ACCOUNT_TOKEN_REJECTED"))?;
-        if expires < anywork_remote::auth::now().saturating_add(request.min_validity) {
-            bail!("ACCOUNT_TOKEN_REJECTED")
-        }
-        Ok(token)
-    }
-}
 fn profile_text(account: &Value, keys: &[&str]) -> Option<String> {
     // Account API responses from supported Logto versions may expose profile
     // attributes at the top level or under `profile`. Both arrive from the
@@ -728,25 +880,7 @@ fn public_installation_id(
     if let Some(id) = read_id(&path)? {
         return Ok(id);
     }
-    // Only the verified official domain alias changed. Keep the public device
-    // UUID for that exact binding; namespace isolation and gateway origins stay
-    // strict. This never reads a key, token or grant, and retains the old file.
-    let mut official = PublicConfig {
-        endpoint: "https://auth.x.aixgg.com".into(),
-        issuer: "https://auth.x.aixgg.com/oidc".into(),
-        native_client_id: "x7lzj58abb1sdp16lkd34".into(),
-        spa_client_id: "5ere2kbu9mugfu3xd8e90".into(),
-        resource: "https://anywork-cybergrid-selfhost.vercel.app/api".into(),
-        cybergrid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
-        frontend_origin: "https://anywork.aixgg.com".into(),
-    };
-    let legacy_id = if config == &official {
-        official.frontend_origin = "https://anywork-tau.vercel.app".into();
-        read_id(&path_for(&official)?)?
-    } else {
-        None
-    };
-    let id = legacy_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let id = uuid::Uuid::new_v4().to_string();
     config::atomic_private(
         &path,
         &serde_json::to_vec(&PublicIdentity {
@@ -755,7 +889,11 @@ fn public_installation_id(
     )?;
     Ok(id)
 }
-fn update_device_index(data: &mut Value, i: &Installation, grid_id: &str) -> Result<()> {
+fn update_device_index(
+    data: &mut Value,
+    i: &Installation,
+    locator: Option<(&str, u16, u64, u64)>,
+) -> Result<()> {
     if !data.is_object() {
         bail!("ACCOUNT_DATA_REJECTED")
     };
@@ -770,14 +908,46 @@ fn update_device_index(data: &mut Value, i: &Installation, grid_id: &str) -> Res
     {
         bail!("ACCOUNT_DEVICE_LIMIT")
     };
-    let record = device_record(&data["anywork"]["devices"][&i.id], i, grid_id)?;
+    let record = device_record(&data["anywork"]["devices"][&i.id], i)?;
+    let key_version = record["keyVersion"]
+        .as_u64()
+        .ok_or_else(|| anyhow::anyhow!("ACCOUNT_DEVICE_RECORD_REJECTED"))?;
     data["anywork"]["devices"][&i.id] = record;
+    if let Some((ipv4, port, issued_at, expires_at)) = locator {
+        let ipv4 = ipv4
+            .parse()
+            .map_err(|_| anyhow::anyhow!("DEVICE_LOCATOR_REJECTED"))?;
+        let locator = Locator::new(
+            i.config.product_id.clone(),
+            ipv4,
+            port,
+            key_version,
+            issued_at,
+            expires_at,
+        )
+        .map_err(|_| anyhow::anyhow!("DEVICE_LOCATOR_REJECTED"))?;
+        if !data["anywork"]["cyberbus"].is_object() {
+            data["anywork"]["cyberbus"] = json!({});
+        }
+        data["anywork"]["cyberbus"][&i.id] = serde_json::to_value(locator)?;
+    }
     if serde_json::to_vec(&data)?.len() > 32768 {
         bail!("ACCOUNT_DATA_LIMIT")
     };
     Ok(())
 }
-fn device_record(existing: &Value, installation: &Installation, grid_id: &str) -> Result<Value> {
+fn remove_device_locator(data: &mut Value, installation_id: &str) -> Result<()> {
+    let Some(locators) = data
+        .get_mut("anywork")
+        .and_then(|value| value.get_mut("cyberbus"))
+        .and_then(Value::as_object_mut)
+    else {
+        return Ok(());
+    };
+    locators.remove(installation_id);
+    Ok(())
+}
+fn device_record(existing: &Value, installation: &Installation) -> Result<Value> {
     let version = if existing.is_null() {
         1
     } else {
@@ -799,7 +969,7 @@ fn device_record(existing: &Value, installation: &Installation, grid_id: &str) -
         .filter(|label| valid_device_name(label))
         .unwrap_or(&installation.name);
     Ok(
-        json!({"label":label,"platform":std::env::consts::OS,"publicKey":installation.public_key,"keyVersion":version,"gridDeviceId":grid_id}),
+        json!({"label":label,"platform":std::env::consts::OS,"publicKey":installation.public_key,"keyVersion":version}),
     )
 }
 fn validate_directory_record(record: &Value) -> Result<()> {
@@ -818,26 +988,10 @@ fn validate_directory_record(record: &Value) -> Result<()> {
         || !record["keyVersion"]
             .as_u64()
             .is_some_and(|v| v > 0 && v <= 9_007_199_254_740_991)
-        || record
-            .get("gridDeviceId")
-            .is_some_and(|v| !safe_text(v, 128))
     {
         bail!("ACCOUNT_DEVICE_RECORD_REJECTED")
     }
     Ok(())
-}
-impl cybergrid_sdk::AuthProvider for GridAuthorization {
-    fn access_token_for<'a>(
-        &'a self,
-        client: &'a cybergrid_sdk::Client,
-        request: &'a cybergrid_sdk::AuthTokenRequest,
-    ) -> cybergrid_sdk::AuthFuture<'a> {
-        Box::pin(async move {
-            self.token(client, request)
-                .await
-                .map_err(|_| cybergrid_sdk::Error::AuthorizationUnavailable)
-        })
-    }
 }
 fn client() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
@@ -871,28 +1025,17 @@ struct Transaction {
 }
 struct Remote {
     gateway: Gateway,
-    provider: OwnedProcess,
-    grid: Arc<cybergrid_sdk::Client>,
+    accept: tokio::task::JoinHandle<()>,
     watcher: tokio::task::JoinHandle<()>,
-    authorization: Arc<GridAuthorization>,
+    locator: tokio::task::JoinHandle<()>,
 }
 impl Remote {
-    async fn close(&mut self) -> cybergrid_sdk::RemoteDisableOutcome {
-        self.authorization
-            .retired
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+    async fn close(&mut self) {
+        self.accept.abort();
+        self.locator.abort();
         self.gateway.close().await;
         self.watcher.abort();
-        self.provider.stop().await;
-        self.grid.disable_remote().await
     }
-}
-struct PendingGrid {
-    grid: Arc<cybergrid_sdk::Client>,
-    authorization: Arc<GridAuthorization>,
-    // Only an initial unknown registration, whose remote gate never opened,
-    // can be resumed. A retired client is retained for exact revocation retry.
-    retry_login: bool,
 }
 struct State {
     installation: Option<Installation>,
@@ -900,7 +1043,6 @@ struct State {
     owner: Option<Arc<GrantOwner>>,
     restoring_owner: Option<Arc<GrantOwner>>,
     remote: Option<Remote>,
-    pending_grid: Option<PendingGrid>,
     snapshot: Snapshot,
 }
 struct Inner {
@@ -917,8 +1059,6 @@ struct Inner {
     restore_fixture: Option<RestoreFixture>,
     #[cfg(test)]
     gateway_shutdowns: Mutex<Vec<anywork_remote::gateway::GatewayShutdown>>,
-    #[cfg(test)]
-    provider_spawned: Mutex<Option<tokio::sync::oneshot::Sender<u32>>>,
 }
 #[derive(Clone)]
 pub struct Handle(Arc<Inner>);
@@ -977,7 +1117,6 @@ impl Handle {
                 owner: None,
                 restoring_owner: None,
                 remote: None,
-                pending_grid: None,
                 snapshot: Snapshot {
                     device_name,
                     authorization_status: if needs_restore {
@@ -996,8 +1135,6 @@ impl Handle {
             restore_fixture: None,
             #[cfg(test)]
             gateway_shutdowns: Mutex::new(Vec::new()),
-            #[cfg(test)]
-            provider_spawned: Mutex::new(None),
         })))
     }
     pub fn portal_url(&self) -> String {
@@ -1024,9 +1161,6 @@ impl Handle {
                 continue;
             }
             let mut snapshot = state.snapshot.clone();
-            if state.pending_grid.is_some() {
-                snapshot.error = Some(GRID_CLEANUP_PENDING.into());
-            }
             snapshot.account_portal_url = self.portal_url();
             snapshot.remote_clients = match &state.remote {
                 Some(remote) => remote.gateway.remote_clients(),
@@ -1128,7 +1262,7 @@ impl Handle {
             issuer: c.issuer.clone(),
             app_id: c.native_client_id.clone(),
             resource: c.resource.clone(),
-            scope: "openid profile offline_access custom_data connect".into(),
+            scope: "openid profile offline_access custom_data connect network:join".into(),
             redirect_uri: CALLBACK.into(),
         }
     }
@@ -1542,7 +1676,7 @@ impl Handle {
         &self,
         owner: &Arc<GrantOwner>,
         i: &Installation,
-        grid_id: &str,
+        locator: Option<(&str, u16)>,
     ) -> Result<()> {
         let generation = owner.policy().generation.clone();
         let check = || {
@@ -1568,7 +1702,16 @@ impl Handle {
         if data.is_null() {
             data = json!({})
         };
-        EnableStage::IndexSchema.at(update_device_index(&mut data, i, grid_id))?;
+        let published_at = anywork_remote::auth::now();
+        let locator = locator.map(|(ipv4, port)| {
+            (
+                ipv4,
+                port,
+                published_at,
+                published_at.saturating_add(LOCATOR_LIFETIME_SECONDS),
+            )
+        });
+        EnableStage::IndexSchema.at(update_device_index(&mut data, i, locator))?;
         check()?;
         EnableStage::IndexWrite.at(self
             .account_request(
@@ -1646,17 +1789,6 @@ impl Handle {
         if !snapshot.workspace_ready() {
             return Err(EnableStage::LocalServiceUpgrade.into());
         }
-        let resumable = {
-            let state = self.0.state.lock().await;
-            state.pending_grid.as_ref().is_some_and(|pending| {
-                pending.retry_login
-                    && Arc::ptr_eq(&pending.authorization.owner, &owner)
-                    && Arc::ptr_eq(&pending.authorization.generation, &generation)
-            })
-        };
-        if !resumable {
-            self.cleanup_pending_grid().await?;
-        }
         let (run, stop) = {
             let state = self.0.state.lock().await;
             let mut policy = owner.policy();
@@ -1668,15 +1800,33 @@ impl Handle {
         }
         let subject = owner.state.lock().await.grant.subject.clone();
         let i = EnableStage::Identity.at(self.installation(&subject).await)?;
-        let verifier = EnableStage::Gateway.at(JwtVerifier::with_allowed_clients(
+        let gateway_verifier = EnableStage::Gateway.at(JwtVerifier::with_allowed_clients(
             self.0.config.issuer.clone(),
             self.0.config.resource.clone(),
             vec![
                 self.0.config.spa_client_id.clone(),
                 self.0.config.native_client_id.clone(),
             ],
-            subject,
+            subject.clone(),
         ))?;
+        let network_verifier = EnableStage::NetworkToken.at(NetworkVerifier::new(
+            self.0.config.issuer.clone(),
+            self.0.config.resource.clone(),
+            vec![self.0.config.native_client_id.clone()],
+            self.0.config.product_id.clone(),
+            Arc::new(RealClock),
+        ))?;
+        let network_token = tokio::select! {
+            biased;
+            _ = stop.cancelled() => return Err(EnableStage::Cancelled.into()),
+            token = owner.token(true) => EnableStage::NetworkToken.at(token)?,
+        };
+        let verified =
+            EnableStage::NetworkToken.at(network_verifier.verify(&network_token).await)?;
+        if verified.subject != subject {
+            return Err(EnableStage::Identity.into());
+        }
+        owner.policy().check(&generation)?;
         let private: [u8; 32] = URL_SAFE_NO_PAD
             .decode(&i.private_key)
             .map_err(|_| EnableStage::Identity)?
@@ -1692,7 +1842,7 @@ impl Handle {
             ],
             local_port: snapshot.config.port,
             local_token: snapshot.token,
-            verifier: Arc::new(verifier),
+            verifier: Arc::new(gateway_verifier),
         })
         .await)?;
         #[cfg(test)]
@@ -1701,174 +1851,52 @@ impl Handle {
             .lock()
             .await
             .push(gateway.shutdown_observer());
-        let (tx, mut rx) = mpsc::channel(8);
-        let prepared_provider = (|| {
-            owner.policy().check(&generation)?;
-            let binary = EnableStage::Provider.at(crate::cloudflared::resolve(
-                &snapshot.config.cloudflared_binary,
-                &self.0.support,
-                &config::resources_dir(),
-            ))?;
-            let path = self.0.support.join("account-tunnel.yml");
-            EnableStage::Provider.at(config::atomic_private(&path, b"{}\n"))?;
-            let plan = LaunchPlan {
-                program: binary,
-                args: vec![
-                    "tunnel".into(),
-                    "--config".into(),
-                    path.display().to_string(),
-                    "--no-autoupdate".into(),
-                    "--protocol".into(),
-                    "http2".into(),
-                    "--url".into(),
-                    format!("http://127.0.0.1:{}", gateway.port),
-                ],
-                env: BTreeMap::new(),
-                cwd: self.0.support.clone(),
-            };
-            EnableStage::Provider.at(OwnedProcess::spawn_account_provider(&plan, tx))
-        })();
-        let mut provider = match prepared_provider {
-            Ok(provider) => provider,
+        let mut overlay = match EnableStage::NetworkStart.at(Overlay::start(
+            &verified.credentials,
+            &i.id,
+            OverlayConfig {
+                bootstrap_peers: self.0.config.bootstrap_peers.clone(),
+                service_port: DEFAULT_SERVICE_PORT,
+                enable_p2p: true,
+            },
+        )
+        .await)
+        {
+            Ok(overlay) => overlay,
             Err(error) => {
                 gateway.close().await;
                 return Err(error);
             }
         };
-        #[cfg(test)]
-        if let Some(spawned) = self.0.provider_spawned.lock().await.take() {
-            let _ = spawned.send(provider.child.id().expect("new provider process has a PID"));
-        }
-        let received = tokio::select! {
-            biased;
-            _ = stop.cancelled() => None,
-            received = tokio::time::timeout(Duration::from_secs(45), rx.recv()) => received.ok().flatten(),
-        };
-        let url = match received {
-            Some(url) => url,
-            _ => {
-                gateway.close().await;
-                provider.stop().await;
-                return Err(EnableStage::Provider.into());
-            }
-        };
-        let prior = self.0.state.lock().await.pending_grid.take();
-        let (grid, authorization) = if let Some(prior) = prior {
-            (prior.grid, prior.authorization)
-        } else {
-            match EnableStage::GridClient.at(cybergrid_sdk::Client::new(cybergrid_sdk::Config {
-                base_url: self.0.config.cybergrid_url.clone(),
-                app_id: self.0.config.native_client_id.clone(),
-                cloudflared: None,
-                // AnyWork business traffic uses its Noise/Quick Tunnel gateway;
-                // SDK direct transports and STUN are not used by this host.
-                iroh_enabled: false,
-                stun_servers: vec![],
-                ..Default::default()
-            })) {
-                Ok(grid) => {
-                    let authorization = Arc::new(GridAuthorization {
-                        owner: owner.clone(),
-                        generation: generation.clone(),
-                        client: Arc::downgrade(&grid),
-                        retired: std::sync::atomic::AtomicBool::new(false),
-                    });
-                    (grid, authorization)
-                }
-                Err(error) => {
-                    gateway.close().await;
-                    provider.stop().await;
-                    return Err(error);
-                }
-            }
-        };
-        // Client::new leaves grant_store=None in the pinned official SDK. Only
-        // this RAM AuthProvider is installed: never call use_credential_store,
-        // SDK browser login/import, or credential loading on the account path.
-        grid.set_auth_provider(authorization.clone()).await;
-        let mut registration_unknown = false;
-        let result = async {
-            owner.policy().check(&generation)?;
-            tokio::select! {
-                biased;
-                _ = stop.cancelled() => bail!("REMOTE_OPERATION_CANCELLED"),
-                result = verified_grid_config(
-                &grid,
-                &self.0.config,
-                Duration::from_secs(8),
-                [Duration::from_millis(250), Duration::from_millis(750)],
-                ) => { result?; }
-            }
-            owner.policy().check(&generation)?;
-            let session = match grid.login_with_auth_provider(&i.name).await {
-                Ok(session) => session,
-                Err(error) => {
-                    registration_unknown =
-                        matches!(error, cybergrid_sdk::Error::ExchangeOutcomeUnknown);
-                    let stage = if matches!(error, cybergrid_sdk::Error::AuthorizationUnavailable) {
-                        EnableStage::ResourceToken
-                    } else {
-                        EnableStage::GridRegister
-                    };
-                    return Err(stage.into());
-                }
-            };
-            if session.user.id != i.subject {
-                return Err(EnableStage::Identity.into());
-            }
-            owner.policy().check(&generation)?;
-            let mut port =
-                cybergrid_sdk::Port::tcp("anywork-remote", gateway.port, "anywork-noise-v1");
-            port.tunnel_url = Some(url);
-            EnableStage::GridExpose.at(grid.expose(port).await)?;
-            owner.policy().check(&generation)?;
-            EnableStage::GridExpose.at(grid.enable_remote().await)?;
-            owner.policy().check(&generation)?;
-            grid_publication_confirmed(&grid)?;
-            self.publish_index(&owner, &i, &session.device_id).await?;
-            owner.policy().check(&generation)?;
-            grid_publication_confirmed(&grid)?;
-            Ok::<_, anyhow::Error>(session.device_id)
-        }
-        .await;
-        let device = match result {
-            Ok(id) => id,
-            Err(e) => {
-                if !registration_unknown {
-                    authorization
-                        .retired
-                        .store(true, std::sync::atomic::Ordering::SeqCst);
-                }
-                gateway.close().await;
-                provider.stop().await;
-                let mut pending = PendingGrid {
-                    grid,
-                    authorization,
-                    retry_login: registration_unknown,
+        let ipv4 = overlay.ipv4().to_string();
+        let port = overlay.service_port();
+        let acceptor = gateway.acceptor();
+        let accept_stop = stop.clone();
+        let overlay_alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let watched_alive = overlay_alive.clone();
+        let accept = tokio::spawn(async move {
+            loop {
+                let Ok((stream, _peer)) = overlay.accept(&accept_stop).await else {
+                    break;
                 };
-                if registration_unknown {
-                    self.0.state.lock().await.pending_grid = Some(pending);
-                } else {
-                    let outcome = pending.grid.disable_remote().await;
-                    pending.retry_login = false;
-                    if outcome.coordinator_revocation
-                        == cybergrid_sdk::CoordinatorRevocation::Pending
-                    {
-                        self.0.state.lock().await.pending_grid = Some(pending);
-                    }
-                }
-                return Err(e);
+                acceptor.accept_stream(stream);
             }
-        };
-        // Provider URL changes invalidate the advertised path; close rather than
-        // silently advertise an old URL or send business traffic in plaintext.
+            let _ = overlay.close().await;
+            watched_alive.store(false, std::sync::atomic::Ordering::SeqCst);
+        });
+        if let Err(error) = self.publish_index(&owner, &i, Some((&ipv4, port))).await {
+            accept.abort();
+            gateway.close().await;
+            return Err(error);
+        }
         let inner = Arc::downgrade(&self.0);
         let watched_owner = Arc::downgrade(&owner);
         let watched_generation = generation.clone();
         let watched_port = snapshot.config.port;
+        let watched_alive = overlay_alive.clone();
         let watcher = tokio::spawn(async move {
             loop {
-                let changed = tokio::select! {event=rx.recv()=>event.is_none()||event.is_some(),_=tokio::time::sleep(Duration::from_millis(500))=>false};
+                tokio::time::sleep(Duration::from_millis(500)).await;
                 let Some(inner) = inner.upgrade() else { break };
                 let local = inner.manager.snapshot();
                 let invalid_owner = {
@@ -1880,14 +1908,7 @@ impl Handle {
                         true
                     }
                 };
-                let failed = {
-                    let mut state = inner.state.lock().await;
-                    state.remote.as_mut().is_some_and(|remote| {
-                        remote.provider.child.try_wait().ok().flatten().is_some()
-                    })
-                };
-                if changed
-                    || failed
+                if !watched_alive.load(std::sync::atomic::Ordering::SeqCst)
                     || invalid_owner
                     || !local.authorized
                     || local.service != manager::Phase::Running
@@ -1905,12 +1926,37 @@ impl Handle {
                 }
             }
         });
+        let locator_owner = owner.clone();
+        let locator_installation = i.clone();
+        let locator_ipv4 = ipv4.clone();
+        let locator_stop = stop.clone();
+        let locator_handle = self.clone();
+        let locator = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = locator_stop.cancelled() => break,
+                    _ = tokio::time::sleep(Duration::from_secs(
+                        LOCATOR_LIFETIME_SECONDS / 2,
+                    )) => {}
+                }
+                if locator_handle
+                    .publish_index(
+                        &locator_owner,
+                        &locator_installation,
+                        Some((&locator_ipv4, port)),
+                    )
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
         let mut pending = Some(Remote {
             gateway,
-            provider,
-            grid,
+            accept,
             watcher,
-            authorization,
+            locator,
         });
         let installed = {
             let mut state = self.0.state.lock().await;
@@ -1918,7 +1964,6 @@ impl Handle {
             if policy.check(&generation).is_ok() {
                 state.remote = pending.take();
                 state.snapshot.enabled = true;
-                state.snapshot.grid_device_id = Some(device);
                 state.snapshot.installation_id = Some(i.id.clone());
                 state.snapshot.public_key = Some(i.public_key.clone());
                 state.snapshot.error = None;
@@ -1928,15 +1973,10 @@ impl Handle {
             }
         };
         if !installed {
-            let remote = pending.as_mut().unwrap();
-            let outcome = remote.close().await;
-            if outcome.coordinator_revocation == cybergrid_sdk::CoordinatorRevocation::Pending {
-                self.0.state.lock().await.pending_grid = Some(PendingGrid {
-                    grid: remote.grid.clone(),
-                    authorization: remote.authorization.clone(),
-                    retry_login: false,
-                });
+            if let Some(remote) = pending.as_mut() {
+                remote.close().await;
             }
+            self.remove_locator(&owner, &i).await;
             bail!("REMOTE_OPERATION_CANCELLED")
         }
         Ok(())
@@ -1961,56 +2001,52 @@ impl Handle {
     }
     // Caller holds operation; no public action can interleave with cleanup.
     async fn close_remote(&self) {
-        let remote = {
+        let (remote, owner, installation) = {
             let mut state = self.0.state.lock().await;
             state.snapshot.enabled = false;
-            state.snapshot.grid_device_id = None;
             state.snapshot.installation_id = None;
             state.snapshot.public_key = None;
-            state.remote.take()
+            (
+                state.remote.take(),
+                state.owner.clone(),
+                state.installation.clone(),
+            )
         };
         if let Some(mut remote) = remote {
-            let outcome = remote.close().await;
-            if outcome.coordinator_revocation == cybergrid_sdk::CoordinatorRevocation::Pending {
-                self.0.state.lock().await.pending_grid = Some(PendingGrid {
-                    grid: remote.grid.clone(),
-                    authorization: remote.authorization.clone(),
-                    retry_login: false,
-                });
+            remote.close().await;
+            if let (Some(owner), Some(installation)) = (owner, installation) {
+                self.remove_locator(&owner, &installation).await;
             }
-        } else {
-            let _ = self.cleanup_pending_grid().await;
         }
     }
-    // Caller owns operation. Reconciliation never enables the SDK remote gate.
-    // An unknown registration remains in its original Client, token and request.
-    async fn cleanup_pending_grid(&self) -> Result<()> {
-        let Some(mut pending) = self.0.state.lock().await.pending_grid.take() else {
-            return Ok(());
+    async fn remove_locator(&self, owner: &Arc<GrantOwner>, i: &Installation) {
+        if owner.state.lock().await.invalid {
+            return;
+        }
+        let _write = self.0.account_write.lock().await;
+        let Ok(token) = owner.token(false).await else {
+            return;
         };
-        if pending.retry_login
-            && matches!(
-                pending
-                    .grid
-                    .login_with_auth_provider("AnyWork desktop")
-                    .await,
-                Err(cybergrid_sdk::Error::ExchangeOutcomeUnknown)
+        let Ok(mut account) = self
+            .account_request(&token, reqwest::Method::GET, None)
+            .await
+        else {
+            return;
+        };
+        if account["id"].as_str() != Some(i.subject.as_str()) {
+            return;
+        }
+        let mut data = account["customData"].take();
+        if remove_device_locator(&mut data, &i.id).is_err() {
+            return;
+        }
+        let _ = self
+            .account_request(
+                &token,
+                reqwest::Method::PATCH,
+                Some(json!({"customData":data})),
             )
-        {
-            self.0.state.lock().await.pending_grid = Some(pending);
-            bail!("REMOTE_COORDINATION_CLEANUP_REQUIRED")
-        }
-        pending
-            .authorization
-            .retired
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        let outcome = pending.grid.disable_remote().await;
-        pending.retry_login = false;
-        if outcome.coordinator_revocation == cybergrid_sdk::CoordinatorRevocation::Pending {
-            self.0.state.lock().await.pending_grid = Some(pending);
-            bail!("REMOTE_COORDINATION_CLEANUP_REQUIRED")
-        }
-        Ok(())
+            .await;
     }
     pub async fn cancel(&self, id: &str) -> Result<()> {
         let _op = self.0.operation.lock().await;
@@ -2268,9 +2304,6 @@ async fn callback_listener(listener: tokio::net::TcpListener, tx: Arc<Transactio
 }
 
 fn safe_error(error: anyhow::Error) -> String {
-    if let Some(failure) = error.downcast_ref::<GridConfigFailure>() {
-        return failure.stage.code().into();
-    }
     if let Some(stage) = error.downcast_ref::<EnableStage>() {
         return stage.code().into();
     }
@@ -2384,1181 +2417,8 @@ pub async fn account_logout(state: tauri::State<'_, Handle>) -> Result<(), Strin
     state.logout().await.map_err(safe_error)
 }
 #[cfg(test)]
-#[path = "accounts_default_tests.rs"]
-pub(crate) mod default_tests;
-#[cfg(test)]
 #[path = "accounts_experience_tests.rs"]
 mod experience_tests;
 #[cfg(test)]
 #[path = "accounts_saved_tests.rs"]
 mod saved_tests;
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    #[tokio::test]
-    #[ignore = "explicit public-network diagnostic, no account or credentials"]
-    async fn public_grid_configuration_transport_probe() {
-        let config = PublicConfig::default();
-        let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
-            base_url: config.cybergrid_url.clone(),
-            app_id: config.native_client_id.clone(),
-            ..Default::default()
-        })
-        .unwrap();
-        let sdk = match tokio::time::timeout(Duration::from_secs(8), grid.auth_config()).await {
-            Ok(Ok(auth)) => format!(
-                "ok binding={}",
-                auth.issuer == config.issuer
-                    && auth.resource == config.resource
-                    && auth.client_id == config.native_client_id
-            ),
-            Ok(Err(cybergrid_sdk::Error::Api { status, .. })) => format!("http_{status}"),
-            Ok(Err(cybergrid_sdk::Error::Http(error))) => format!(
-                "http_transport connect={} timeout={}",
-                error.is_connect(),
-                error.is_timeout()
-            ),
-            Ok(Err(_)) => "other_fixed_class".into(),
-            Err(_) => "deadline".into(),
-        };
-        let mut url =
-            url::Url::parse(&format!("{}/api/v1/auth/config", config.cybergrid_url)).unwrap();
-        url.query_pairs_mut()
-            .append_pair("appId", &config.native_client_id);
-        let native =
-            match tokio::time::timeout(Duration::from_secs(8), client().unwrap().get(url).send())
-                .await
-            {
-                Ok(Ok(response)) => format!("http_{}", response.status().as_u16()),
-                Ok(Err(error)) => format!(
-                    "http_transport connect={} timeout={}",
-                    error.is_connect(),
-                    error.is_timeout()
-                ),
-                Err(_) => "deadline".into(),
-            };
-        println!("PUBLIC_CONFIG_PROBE sdk={sdk} native={native}");
-        grid.close().await.unwrap();
-    }
-
-    pub(super) fn auth_config_fixture(config: &PublicConfig) -> Value {
-        json!({
-            "provider":"logto", "clientId":config.native_client_id,
-            "issuer":config.issuer, "resource":config.resource,
-            "scope":"openid offline_access profile email connect",
-            "deviceAuthorizationEndpoint":format!("{}/device/auth",config.issuer),
-            "tokenEndpoint":format!("{}/token",config.issuer),
-        })
-    }
-
-    #[tokio::test]
-    async fn grid_config_retries_only_temporary_public_get_failures() {
-        for (statuses, expected_calls, expected_code, malformed, wrong_field) in [
-            (vec![503, 200], 2, None, false, None),
-            (vec![429, 502, 200], 3, None, false, None),
-            (
-                vec![504],
-                3,
-                Some("REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE"),
-                false,
-                None,
-            ),
-            (vec![401], 1, Some("REMOTE_ENABLE_GRID_CONFIG"), false, None),
-            (vec![403], 1, Some("REMOTE_ENABLE_GRID_CONFIG"), false, None),
-            (vec![404], 1, Some("REMOTE_ENABLE_GRID_CONFIG"), false, None),
-            (vec![200], 1, Some("REMOTE_ENABLE_GRID_CONFIG"), true, None),
-            (
-                vec![200],
-                1,
-                Some("REMOTE_ENABLE_GRID_CONFIG"),
-                false,
-                Some("issuer"),
-            ),
-            (
-                vec![200],
-                1,
-                Some("REMOTE_ENABLE_GRID_CONFIG"),
-                false,
-                Some("resource"),
-            ),
-            (
-                vec![200],
-                1,
-                Some("REMOTE_ENABLE_GRID_CONFIG"),
-                false,
-                Some("clientId"),
-            ),
-        ] {
-            let config = PublicConfig::default();
-            let mut body = auth_config_fixture(&config);
-            if let Some(field) = wrong_field {
-                body[field] = if field == "clientId" {
-                    json!("other-native")
-                } else {
-                    json!("https://other.invalid")
-                };
-            }
-            let body = if malformed {
-                "private invalid JSON response".into()
-            } else {
-                body.to_string()
-            };
-            let requests = Arc::new(AtomicUsize::new(0));
-            let unexpected = Arc::new(AtomicUsize::new(0));
-            let (calls, other) = (requests.clone(), unexpected.clone());
-            let app = axum::Router::new()
-                .route(
-                    "/api/v1/auth/config",
-                    axum::routing::get(move |request: axum::extract::Request| {
-                        let (statuses, body, calls) =
-                            (statuses.clone(), body.clone(), calls.clone());
-                        async move {
-                            assert!(request.uri().query().unwrap().starts_with("appId="));
-                            assert!(!request.headers().contains_key("authorization"));
-                            let index = calls.fetch_add(1, Ordering::SeqCst);
-                            (
-                                axum::http::StatusCode::from_u16(
-                                    statuses[index.min(statuses.len() - 1)],
-                                )
-                                .unwrap(),
-                                body,
-                            )
-                        }
-                    }),
-                )
-                .fallback(move || {
-                    let other = other.clone();
-                    async move {
-                        other.fetch_add(1, Ordering::SeqCst);
-                        axum::http::StatusCode::NOT_FOUND
-                    }
-                });
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let address = listener.local_addr().unwrap();
-            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-            let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
-                base_url: format!("http://{address}"),
-                app_id: config.native_client_id.clone(),
-                ..Default::default()
-            })
-            .unwrap();
-            let result =
-                verified_grid_config(&grid, &config, Duration::from_secs(2), [Duration::ZERO; 2])
-                    .await;
-            match expected_code {
-                Some(code) => assert_eq!(safe_error(result.unwrap_err()), code),
-                None => assert_eq!(result.unwrap().issuer, config.issuer),
-            }
-            assert_eq!(requests.load(Ordering::SeqCst), expected_calls);
-            assert_eq!(unexpected.load(Ordering::SeqCst), 0);
-            grid.close().await.unwrap();
-            server.abort();
-        }
-    }
-
-    #[tokio::test]
-    async fn grid_config_stalled_response_is_bounded_and_keeps_safe_diagnostics() {
-        let calls = Arc::new(AtomicUsize::new(0));
-        let requests = calls.clone();
-        let app = axum::Router::new().route(
-            "/api/v1/auth/config",
-            axum::routing::get(move || {
-                let requests = requests.clone();
-                async move {
-                    requests.fetch_add(1, Ordering::SeqCst);
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                    "private response must never become a diagnostic"
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
-            base_url: format!("http://{address}"),
-            app_id: "native-fixture".into(),
-            ..Default::default()
-        })
-        .unwrap();
-        let result = tokio::time::timeout(
-            Duration::from_secs(2),
-            verified_grid_config(
-                &grid,
-                &PublicConfig::default(),
-                Duration::from_millis(30),
-                [Duration::ZERO; 2],
-            ),
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            serde_json::to_value(action_error(result.unwrap_err())).unwrap(),
-            json!({"code":"REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE","detail":{"kind":"DEADLINE","httpStatus":null,"attempts":3}})
-        );
-        assert_eq!(calls.load(Ordering::SeqCst), 3);
-        grid.close().await.unwrap();
-        server.abort();
-    }
-
-    #[tokio::test]
-    async fn grid_config_connection_failure_is_retryable_and_never_exposes_url() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        drop(listener);
-        let grid = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
-            base_url: format!("http://{address}"),
-            app_id: "native-fixture".into(),
-            ..Default::default()
-        })
-        .unwrap();
-        let error = verified_grid_config(
-            &grid,
-            &PublicConfig::default(),
-            Duration::from_secs(1),
-            [Duration::ZERO; 2],
-        )
-        .await
-        .unwrap_err();
-        assert_eq!(error.chain().count(), 1);
-        let projection = serde_json::to_value(action_error(error)).unwrap();
-        assert_eq!(projection["code"], "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE");
-        assert_eq!(projection["detail"]["attempts"], 3);
-        // The pinned SDK retains system proxy discovery. A closed loopback
-        // socket may be reported directly or as an upstream proxy's 502; this
-        // test must not mutate process proxy configuration to force one path.
-        assert!(
-            projection["detail"] == json!({"kind":"CONNECT","httpStatus":null,"attempts":3})
-                || projection["detail"]
-                    == json!({"kind":"HTTP_STATUS","httpStatus":502,"attempts":3})
-        );
-        grid.close().await.unwrap();
-    }
-    #[test]
-    fn configuration_projection_never_includes_provider_text_or_out_of_range_status() {
-        for error in [
-            cybergrid_sdk::Error::Protocol("private-provider-body".into()),
-            cybergrid_sdk::Error::Transport("https://private.invalid/?token=hidden".into()),
-            cybergrid_sdk::Error::Api {
-                status: 65535,
-                code: "PRIVATE_PROVIDER_CODE".into(),
-            },
-        ] {
-            let detail = GridFailureDetail::from_sdk(&error, 1);
-            assert!(detail.http_status.is_none());
-            let projected =
-                serde_json::to_value(action_error(detail.fail(EnableStage::GridConfig))).unwrap();
-            let text = projected.to_string();
-            for private in [
-                "private-provider-body",
-                "private.invalid",
-                "hidden",
-                "PRIVATE_PROVIDER_CODE",
-                "65535",
-            ] {
-                assert!(!text.contains(private));
-            }
-            assert_eq!(projected["code"], "REMOTE_ENABLE_GRID_CONFIG");
-            assert_eq!(projected["detail"]["attempts"], 1);
-        }
-    }
-    #[test]
-    fn enable_stage_codes_discard_underlying_errors_before_ipc() {
-        for (stage, code) in [
-            (
-                EnableStage::SignInRequired,
-                "REMOTE_ENABLE_SIGN_IN_REQUIRED",
-            ),
-            (EnableStage::ReauthRequired, "REMOTE_ENABLE_REAUTH_REQUIRED"),
-            (EnableStage::LocalService, "REMOTE_ENABLE_LOCAL_SERVICE"),
-            (
-                EnableStage::LocalServiceUpgrade,
-                "REMOTE_ENABLE_LOCAL_SERVICE_UPGRADE",
-            ),
-            (EnableStage::CleanupPending, "REMOTE_ENABLE_CLEANUP_PENDING"),
-            (EnableStage::Cancelled, "REMOTE_ENABLE_CANCELLED"),
-            (EnableStage::AlreadyEnabled, "REMOTE_ENABLE_ALREADY_ENABLED"),
-            (EnableStage::Identity, "REMOTE_ENABLE_IDENTITY"),
-            (EnableStage::Gateway, "REMOTE_ENABLE_GATEWAY"),
-            (EnableStage::Provider, "REMOTE_ENABLE_PROVIDER"),
-            (EnableStage::GridClient, "REMOTE_ENABLE_GRID_CLIENT"),
-            (EnableStage::GridConfig, "REMOTE_ENABLE_GRID_CONFIG"),
-            (
-                EnableStage::GridConfigUnavailable,
-                "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
-            ),
-            (EnableStage::ResourceToken, "REMOTE_ENABLE_RESOURCE_TOKEN"),
-            (EnableStage::GridRegister, "REMOTE_ENABLE_GRID_REGISTER"),
-            (EnableStage::GridExpose, "REMOTE_ENABLE_GRID_EXPOSE"),
-            (EnableStage::IndexToken, "REMOTE_ENABLE_INDEX_TOKEN"),
-            (EnableStage::IndexRead, "REMOTE_ENABLE_INDEX_READ"),
-            (EnableStage::IndexSchema, "REMOTE_ENABLE_INDEX_SCHEMA"),
-            (EnableStage::IndexWrite, "REMOTE_ENABLE_INDEX_WRITE"),
-            (EnableStage::IndexReadback, "REMOTE_ENABLE_INDEX_READBACK"),
-        ] {
-            let error = stage
-                .at::<(), _>(Err("https://private.invalid/?token=never-display"))
-                .unwrap_err();
-            assert_eq!(error.chain().count(), 1);
-            assert_eq!(safe_error(error), code);
-            assert_eq!(stage.at::<_, String>(Ok(3)).unwrap(), 3);
-        }
-        let generic = safe_error(anyhow::anyhow!(
-            "https://private.invalid/?token=never-display"
-        ));
-        assert!(!generic.contains("private.invalid") && !generic.contains("never-display"));
-    }
-    #[tokio::test]
-    async fn actual_index_failures_have_specific_safe_stages_without_retries() {
-        for stage in [
-            EnableStage::IndexToken,
-            EnableStage::IndexRead,
-            EnableStage::IndexSchema,
-            EnableStage::IndexWrite,
-            EnableStage::IndexReadback,
-        ] {
-            let reads = Arc::new(AtomicUsize::new(0));
-            let writes = Arc::new(AtomicUsize::new(0));
-            let tokens = Arc::new(AtomicUsize::new(0));
-            let (get_reads, patch_writes, token_calls) =
-                (reads.clone(), writes.clone(), tokens.clone());
-            let app = axum::Router::new()
-                .route("/oidc/token", axum::routing::post(move || {
-                    let calls = token_calls.clone();
-                    async move {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        if stage == EnableStage::IndexToken {
-                            (axum::http::StatusCode::BAD_GATEWAY, "private provider body".to_owned())
-                        } else {
-                            (axum::http::StatusCode::OK, json!({"access_token":"sample-access","refresh_token":"sample-rotated"}).to_string())
-                        }
-                    }
-                }))
-                .route("/api/my-account", axum::routing::get(move || {
-                    let calls = get_reads.clone();
-                    async move {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        if stage == EnableStage::IndexRead {
-                            (axum::http::StatusCode::BAD_GATEWAY, "private read body".to_owned())
-                        } else {
-                            let data = if stage == EnableStage::IndexSchema {
-                                json!({"anywork":{"schemaVersion":2,"devices":{}}})
-                            } else { json!({}) };
-                            // Readback intentionally returns old data after a successful PATCH.
-                            (axum::http::StatusCode::OK, json!({"id":"sample-owner","customData":data}).to_string())
-                        }
-                    }
-                }).patch(move || {
-                    let calls = patch_writes.clone();
-                    async move {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        let status = if stage == EnableStage::IndexWrite { axum::http::StatusCode::BAD_GATEWAY }
-                        else { axum::http::StatusCode::OK };
-                        (status, "{}")
-                    }
-                }));
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let port = listener.local_addr().unwrap().port();
-            let server = tokio::spawn(async move {
-                let _ = axum::serve(listener, app).await;
-            });
-            let dir = tempfile::tempdir().unwrap();
-            let mut h = handle(dir.path());
-            let config = &mut Arc::get_mut(&mut h.0).unwrap().config;
-            config.endpoint = format!("http://127.0.0.1:{port}");
-            config.issuer = format!("{}/oidc", config.endpoint);
-            let owner = Arc::new(
-                GrantOwner::new(Grant {
-                    config: h.0.config.clone(),
-                    refresh: "sample-initial".into(),
-                    subject: "sample-owner".into(),
-                })
-                .unwrap(),
-            );
-            let installation = h.installation("sample-owner").await.unwrap();
-            assert_eq!(
-                safe_error(
-                    h.publish_index(&owner, &installation, "sample-grid")
-                        .await
-                        .unwrap_err()
-                ),
-                stage.code()
-            );
-            assert_eq!(tokens.load(Ordering::SeqCst), 1);
-            assert_eq!(
-                reads.load(Ordering::SeqCst),
-                match stage {
-                    EnableStage::IndexToken => 0,
-                    EnableStage::IndexReadback => 2,
-                    _ => 1,
-                }
-            );
-            assert_eq!(
-                writes.load(Ordering::SeqCst),
-                usize::from(matches!(
-                    stage,
-                    EnableStage::IndexWrite | EnableStage::IndexReadback
-                ))
-            );
-            server.abort();
-        }
-    }
-    pub(super) fn handle(support: &std::path::Path) -> Handle {
-        Handle::new(
-            support.to_path_buf(),
-            manager::Handle::preview(manager::Snapshot::new(
-                config::Config::default(),
-                String::new(),
-            )),
-            false,
-        )
-        .unwrap()
-    }
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn native_ipc_requires_current_account_then_prepares_without_browser_ticket() {
-        let dir = tempfile::tempdir().unwrap();
-        let port = {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            listener.local_addr().unwrap().port()
-        };
-        // A real child process and HTTP boundary, confined to this fixture.
-        let fixture = crate::test_service::Service::new(dir.path(), "normal");
-        let config = config::Config {
-            workspace: dir.path().display().to_string(),
-            data_directory: dir.path().join("data").display().to_string(),
-            server_binary: fixture.executable.display().to_string(),
-            port,
-            ..Default::default()
-        };
-        config::save(&dir.path().join("manager.json"), &config).unwrap();
-        let cloud = PublicConfig {
-            frontend_origin: "https://portal.example.test".into(),
-            ..Default::default()
-        };
-        std::fs::write(
-            dir.path().join("account-cloud.json"),
-            serde_json::to_vec(&cloud).unwrap(),
-        )
-        .unwrap();
-        let manager = manager::start(manager::Options {
-            support: dir.path().into(),
-            resources: dir.path().into(),
-        })
-        .unwrap();
-        let account = Handle::new(dir.path().into(), manager.clone(), false).unwrap();
-        let app = tauri::test::mock_builder()
-            .manage(account.clone())
-            .manage(crate::bridge::DesktopState {
-                handle: manager.clone(),
-                preview: None,
-            })
-            .manage(crate::updates::Handle::new(dir.path(), false))
-            .invoke_handler(tauri::generate_handler![
-                crate::bridge::desktop_start,
-                crate::bridge::desktop_open,
-                account_snapshot
-            ])
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))
-            .unwrap();
-        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap();
-        let invoke = |cmd: &str| {
-            tauri::test::get_ipc_response(
-                &webview,
-                tauri::webview::InvokeRequest {
-                    cmd: cmd.into(),
-                    callback: tauri::ipc::CallbackFn(0),
-                    error: tauri::ipc::CallbackFn(1),
-                    url: "tauri://localhost".parse().unwrap(),
-                    body: tauri::ipc::InvokeBody::default(),
-                    headers: Default::default(),
-                    invoke_key: tauri::test::INVOKE_KEY.into(),
-                },
-            )
-        };
-        for status in [
-            AuthorizationStatus::SignedOut,
-            AuthorizationStatus::Authorizing,
-            AuthorizationStatus::LoginInterrupted,
-            AuthorizationStatus::ReauthRequired,
-        ] {
-            account.0.state.lock().await.snapshot.authorization_status = status;
-            for command in ["desktop_start", "desktop_open"] {
-                assert_eq!(
-                    invoke(command).err(),
-                    Some(json!("DESKTOP_SIGN_IN_REQUIRED"))
-                );
-            }
-        }
-        assert!(
-            tokio::net::TcpStream::connect(("127.0.0.1", port))
-                .await
-                .is_err()
-        );
-        assert!(!dir.path().join("data/access-token").exists());
-        let owner = Arc::new(
-            GrantOwner::new(Grant {
-                config: cloud,
-                refresh: "synthetic-unused-grant".into(),
-                subject: "fixture-owner".into(),
-            })
-            .unwrap(),
-        );
-        account.0.state.lock().await.owner = Some(owner.clone());
-        let initial = invoke("account_snapshot")
-            .unwrap()
-            .deserialize::<Value>()
-            .unwrap();
-        assert_eq!(
-            initial["accountPortalUrl"],
-            "https://portal.example.test/app/"
-        );
-        assert_eq!(initial["remoteClients"], json!([]));
-        assert!(initial["signedIn"].as_bool().unwrap());
-        assert!(
-            invoke("desktop_start")
-                .unwrap_or_else(|error| panic!("{error:?}; {}", fixture.diagnostics()))
-                .deserialize::<Value>()
-                .unwrap()
-                .is_null()
-        );
-        assert_eq!(fixture.status()["stage"], "ready");
-        assert!(fixture.status()["authorizedInfoRequests"].as_u64().unwrap() > 0);
-        assert_eq!(fixture.status()["unauthorizedInfoRequests"], 0);
-        assert_eq!(fixture.status()["ticketRequests"], 0);
-        assert!(manager.snapshot().owned && manager.snapshot().authorized);
-        assert!(!manager.snapshot().external);
-        assert!(!dir.path().join("data/unexpected-ticket").exists());
-        // Reauthorization fences both new commands; an accepted local service
-        // remains alive and unchanged. No browser is opened by this test.
-        owner.state.lock().await.invalid = true;
-        for command in ["desktop_start", "desktop_open"] {
-            assert_eq!(
-                invoke(command).err(),
-                Some(json!("DESKTOP_SIGN_IN_REQUIRED"))
-            );
-        }
-        assert!(
-            tokio::net::TcpStream::connect(("127.0.0.1", port))
-                .await
-                .is_ok()
-        );
-        assert!(!dir.path().join("data/unexpected-ticket").exists());
-        let token = config::read_token(&config);
-        account.0.state.lock().await.owner = None;
-        assert_eq!(
-            invoke("desktop_start").err(),
-            Some(json!("DESKTOP_SIGN_IN_REQUIRED"))
-        );
-        assert_eq!(config::read_token(&config), token);
-        assert!(manager.snapshot().owned);
-        manager.shutdown().await;
-        assert!(
-            tokio::net::TcpStream::connect(("127.0.0.1", port))
-                .await
-                .is_err()
-        );
-    }
-    pub(super) fn transaction() -> Arc<Transaction> {
-        Arc::new(Transaction {
-            id: "test-login".into(),
-            expected_state: Mutex::new(None),
-            callback: Mutex::new(None),
-            notify: Notify::new(),
-            stop: CancellationToken::new(),
-            operation: Mutex::new(()),
-            latest: Mutex::new(None),
-            uncertain: std::sync::atomic::AtomicBool::new(false),
-        })
-    }
-    async fn provider(unknown: bool) -> (Arc<GrantOwner>, Arc<AtomicUsize>) {
-        let calls = Arc::new(AtomicUsize::new(0));
-        let server_calls = calls.clone();
-        let latest = Arc::new(Mutex::new("initial-ram-grant".to_string()));
-        let app=axum::Router::new().route("/token",axum::routing::post(move |axum::Form(form):axum::Form<BTreeMap<String,String>>| {
-            let latest=latest.clone();let calls=server_calls.clone();async move {
-                let mut latest=latest.lock().await;
-                assert_eq!(form.get("refresh_token"),Some(&*latest));
-                let n=calls.fetch_add(1,Ordering::SeqCst)+1;*latest=format!("rotated-ram-{n}");
-                if unknown { (axum::http::StatusCode::BAD_GATEWAY, "response lost".into()) }
-                else { (axum::http::StatusCode::OK,json!({"access_token":"test-access","refresh_token":latest.clone()}).to_string()) }
-            }
-        }));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-        (
-            Arc::new(
-                GrantOwner::new(Grant {
-                    config: PublicConfig {
-                        issuer: format!("http://127.0.0.1:{port}"),
-                        ..Default::default()
-                    },
-                    refresh: "initial-ram-grant".into(),
-                    subject: "test-owner".into(),
-                })
-                .unwrap(),
-            ),
-            calls,
-        )
-    }
-    #[tokio::test]
-    async fn one_ram_owner_serializes_account_and_resource_rotation() {
-        let (owner, calls) = provider(false).await;
-        let mut tasks = Vec::new();
-        for n in 0..8 {
-            let owner = owner.clone();
-            tasks.push(tokio::spawn(async move {
-                owner.token(n % 2 == 0).await.unwrap()
-            }));
-        }
-        for task in tasks {
-            assert_eq!(task.await.unwrap(), "test-access");
-        }
-        assert_eq!(calls.load(Ordering::SeqCst), 8);
-        assert_eq!(owner.state.lock().await.grant.refresh, "rotated-ram-8");
-    }
-    #[tokio::test]
-    async fn unknown_rotation_never_replays_last_known_ram_grant() {
-        let (owner, calls) = provider(true).await;
-        assert!(owner.token(true).await.is_err());
-        assert!(owner.state.lock().await.uncertain);
-        assert!(owner.token(false).await.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-    }
-    #[tokio::test]
-    async fn unsaved_fixture_restart_has_no_account_but_same_public_id_and_fresh_keys() {
-        let dir = tempfile::tempdir().unwrap();
-        let first = handle(dir.path());
-        let (owner, _) = provider(false).await;
-        first.0.state.lock().await.owner = Some(owner);
-        let i1 = first.installation("test-owner").await.unwrap();
-        assert_eq!(
-            first.installation("test-owner").await.unwrap().public_key,
-            i1.public_key
-        );
-        assert!(first.snapshot().await.signed_in);
-        drop(first);
-        let second = handle(dir.path());
-        let snapshot = second.snapshot().await;
-        assert_eq!(
-            snapshot.authorization_status,
-            AuthorizationStatus::SignedOut
-        );
-        assert!(snapshot.subject.is_none() && !snapshot.enabled);
-        assert!(second.0.state.lock().await.owner.is_none());
-        let i2 = second.installation("test-owner").await.unwrap();
-        assert_eq!(i1.id, i2.id);
-        assert_ne!(i1.private_key, i2.private_key);
-        assert_ne!(i1.public_key, i2.public_key);
-        let paths = std::fs::read_dir(dir.path().join("account-installations"))
-            .unwrap()
-            .map(|p| p.unwrap().path())
-            .collect::<Vec<_>>();
-        assert_eq!(paths.len(), 1);
-        let contents = std::fs::read_to_string(&paths[0]).unwrap();
-        assert_eq!(
-            serde_json::from_str::<Value>(&contents).unwrap(),
-            json!({"installationId":i1.id})
-        );
-        for secret in [
-            &i1.private_key,
-            &i1.public_key,
-            &i2.private_key,
-            &i2.public_key,
-            "initial-ram-grant",
-            "test-owner",
-        ] {
-            assert!(!contents.contains(secret));
-        }
-        for _ in 0..4 {
-            assert_eq!(
-                handle(dir.path())
-                    .installation("test-owner")
-                    .await
-                    .unwrap()
-                    .id,
-                i1.id
-            );
-        }
-        assert_eq!(
-            std::fs::read_dir(dir.path().join("account-installations"))
-                .unwrap()
-                .count(),
-            1
-        );
-    }
-    #[tokio::test]
-    async fn owner_and_full_config_isolate_public_installations() {
-        let dir = tempfile::tempdir().unwrap();
-        let first = handle(dir.path());
-        let a = first.installation("owner-a").await.unwrap();
-        let b = first.installation("owner-b").await.unwrap();
-        assert_ne!(a.id, b.id);
-        assert_ne!(a.public_key, b.public_key);
-        let config = PublicConfig {
-            spa_client_id: "different-public-app".into(),
-            ..Default::default()
-        };
-        std::fs::write(
-            dir.path().join("account-cloud.json"),
-            serde_json::to_vec(&config).unwrap(),
-        )
-        .unwrap();
-        let changed = handle(dir.path()).installation("owner-a").await.unwrap();
-        assert_ne!(a.id, changed.id);
-    }
-    fn public_identity_path(
-        support: &std::path::Path,
-        config: &PublicConfig,
-        subject: &str,
-    ) -> PathBuf {
-        let binding = format!("{}\0{subject}", config.namespace(support).unwrap());
-        support
-            .join("account-installations")
-            .join(format!("{:x}.json", Sha256::digest(binding.as_bytes())))
-    }
-    fn legacy_official_config() -> PublicConfig {
-        PublicConfig {
-            frontend_origin: "https://anywork-tau.vercel.app".into(),
-            ..Default::default()
-        }
-    }
-    #[test]
-    fn official_domain_upgrade_keeps_public_id_and_device_names() {
-        let dir = tempfile::tempdir().unwrap();
-        let old = legacy_official_config();
-        let new = PublicConfig::default();
-        let id = public_installation_id(dir.path(), &old, "owner").unwrap();
-        let old_path = public_identity_path(dir.path(), &old, "owner");
-        let before = std::fs::read(&old_path).unwrap();
-        save_device_name(dir.path(), "Saved local name").unwrap();
-        assert_ne!(
-            old.namespace(dir.path()).unwrap(),
-            new.namespace(dir.path()).unwrap()
-        );
-        assert_eq!(
-            public_installation_id(dir.path(), &new, "owner").unwrap(),
-            id
-        );
-        assert_eq!(std::fs::read(&old_path).unwrap(), before);
-        assert_eq!(
-            std::fs::read(public_identity_path(dir.path(), &new, "owner")).unwrap(),
-            before
-        );
-        assert_eq!(
-            load_device_name(dir.path(), false).unwrap(),
-            "Saved local name"
-        );
-        let installation = Installation {
-            config: new,
-            subject: "owner".into(),
-            id: id.clone(),
-            private_key: "ram-only".into(),
-            public_key: "fresh-key".into(),
-            name: "Saved local name".into(),
-        };
-        let mut data = json!({"anywork":{"schemaVersion":1,"devices":{
-            id.clone():{"label":"Web renamed","publicKey":"previous-key","keyVersion":4}
-        }}});
-        update_device_index(&mut data, &installation, "new-grid-device").unwrap();
-        assert_eq!(data["anywork"]["devices"].as_object().unwrap().len(), 1);
-        assert_eq!(data["anywork"]["devices"][&id]["keyVersion"], 5);
-        assert_eq!(
-            directory_name(&json!({"customData":data}), &id).as_deref(),
-            Some("Web renamed")
-        );
-    }
-    #[test]
-    fn official_domain_upgrade_prefers_existing_new_identity_without_reading_old() {
-        let dir = tempfile::tempdir().unwrap();
-        let new = PublicConfig::default();
-        let new_id = public_installation_id(dir.path(), &new, "owner").unwrap();
-        let old = legacy_official_config();
-        let old_id = public_installation_id(dir.path(), &old, "owner").unwrap();
-        assert_ne!(new_id, old_id);
-        let old_path = public_identity_path(dir.path(), &old, "owner");
-        std::fs::write(&old_path, "corrupt old identity").unwrap();
-        assert_eq!(
-            public_installation_id(dir.path(), &new, "owner").unwrap(),
-            new_id
-        );
-        assert_eq!(
-            std::fs::read_to_string(old_path).unwrap(),
-            "corrupt old identity"
-        );
-    }
-    #[test]
-    fn official_domain_upgrade_does_not_alias_other_bindings_or_owners() {
-        for field in [
-            "endpoint",
-            "issuer",
-            "nativeClientId",
-            "spaClientId",
-            "resource",
-            "cybergridUrl",
-            "frontendOrigin",
-        ] {
-            let dir = tempfile::tempdir().unwrap();
-            let mut value = serde_json::to_value(PublicConfig::default()).unwrap();
-            value[field] = json!(format!("{}-different", value[field].as_str().unwrap()));
-            let changed: PublicConfig = serde_json::from_value(value).unwrap();
-            let old = PublicConfig {
-                frontend_origin: "https://anywork-tau.vercel.app".into(),
-                ..changed.clone()
-            };
-            let old_id = public_installation_id(dir.path(), &old, "owner").unwrap();
-            assert_ne!(
-                public_installation_id(dir.path(), &changed, "owner").unwrap(),
-                old_id,
-                "{field}"
-            );
-        }
-        let dir = tempfile::tempdir().unwrap();
-        let old_id =
-            public_installation_id(dir.path(), &legacy_official_config(), "owner-a").unwrap();
-        assert_ne!(
-            public_installation_id(dir.path(), &PublicConfig::default(), "owner-b").unwrap(),
-            old_id
-        );
-        let elsewhere = tempfile::tempdir().unwrap();
-        assert_ne!(
-            public_installation_id(elsewhere.path(), &PublicConfig::default(), "owner-a").unwrap(),
-            old_id
-        );
-    }
-    #[test]
-    fn official_domain_upgrade_rejects_corrupt_or_symlink_legacy_identity() {
-        let dir = tempfile::tempdir().unwrap();
-        let old = legacy_official_config();
-        let new = PublicConfig::default();
-        public_installation_id(dir.path(), &old, "owner").unwrap();
-        let old_path = public_identity_path(dir.path(), &old, "owner");
-        let new_path = public_identity_path(dir.path(), &new, "owner");
-        for corrupt in [
-            "not json",
-            r#"{"installationId":"not-a-uuid"}"#,
-            r#"{"installationId":"00000000-0000-4000-8000-000000000001","refresh":"forbidden"}"#,
-        ] {
-            std::fs::write(&old_path, corrupt).unwrap();
-            assert!(public_installation_id(dir.path(), &new, "owner").is_err());
-            assert!(!new_path.exists());
-            assert_eq!(std::fs::read_to_string(&old_path).unwrap(), corrupt);
-        }
-        std::fs::remove_file(&old_path).unwrap();
-        let outside = dir.path().join("outside");
-        let bytes = r#"{"installationId":"00000000-0000-4000-8000-000000000001"}"#;
-        std::fs::write(&outside, bytes).unwrap();
-        std::os::unix::fs::symlink(&outside, &old_path).unwrap();
-        assert!(public_installation_id(dir.path(), &new, "owner").is_err());
-        assert!(!new_path.exists());
-        assert_eq!(std::fs::read_to_string(outside).unwrap(), bytes);
-    }
-    #[test]
-    fn official_domain_upgrade_without_legacy_generates_and_reuses_new_identity() {
-        let dir = tempfile::tempdir().unwrap();
-        let new = PublicConfig::default();
-        let id = public_installation_id(dir.path(), &new, "owner").unwrap();
-        uuid::Uuid::parse_str(&id).unwrap();
-        assert_eq!(
-            public_installation_id(dir.path(), &new, "owner").unwrap(),
-            id
-        );
-        assert!(!public_identity_path(dir.path(), &legacy_official_config(), "owner").exists());
-        assert_eq!(
-            std::fs::read_dir(dir.path().join("account-installations"))
-                .unwrap()
-                .count(),
-            1
-        );
-    }
-    #[test]
-    fn public_identity_rejects_corruption_and_symlinks_without_replacing_them() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = PublicConfig::default();
-        public_installation_id(dir.path(), &config, "owner").unwrap();
-        let directory = dir.path().join("account-installations");
-        let path = std::fs::read_dir(&directory)
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap()
-            .path();
-        for corrupt in [
-            "not json",
-            r#"{"installationId":"not-a-uuid"}"#,
-            r#"{"installationId":"00000000-0000-4000-8000-000000000001","refresh":"forbidden"}"#,
-        ] {
-            std::fs::write(&path, corrupt).unwrap();
-            assert!(public_installation_id(dir.path(), &config, "owner").is_err());
-            assert_eq!(std::fs::read_to_string(&path).unwrap(), corrupt);
-        }
-        std::fs::remove_file(&path).unwrap();
-        let outside = dir.path().join("outside");
-        std::fs::write(&outside, "untouched").unwrap();
-        std::os::unix::fs::symlink(&outside, &path).unwrap();
-        assert!(public_installation_id(dir.path(), &config, "owner").is_err());
-        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "untouched");
-        std::fs::remove_file(&path).unwrap();
-        std::fs::remove_dir(&directory).unwrap();
-        std::os::unix::fs::symlink(dir.path(), &directory).unwrap();
-        assert!(public_installation_id(dir.path(), &config, "owner").is_err());
-    }
-    #[tokio::test]
-    async fn logout_clears_local_owner_even_on_remote_revocation_failure() {
-        let calls = Arc::new(AtomicUsize::new(0));
-        let server_calls = calls.clone();
-        let app = axum::Router::new().route(
-            "/token/revocation",
-            axum::routing::post(
-                move |axum::Form(form): axum::Form<BTreeMap<String, String>>| {
-                    let calls = server_calls.clone();
-                    async move {
-                        assert_eq!(form["token"], "known-ram-grant");
-                        if calls.fetch_add(1, Ordering::SeqCst) == 0 {
-                            axum::http::StatusCode::SERVICE_UNAVAILABLE
-                        } else {
-                            axum::http::StatusCode::OK
-                        }
-                    }
-                },
-            ),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-        let dir = tempfile::tempdir().unwrap();
-        let mut h = handle(dir.path());
-        Arc::get_mut(&mut h.0).unwrap().config.issuer = format!("http://127.0.0.1:{port}");
-        let owner = Arc::new(
-            GrantOwner::new(Grant {
-                config: h.0.config.clone(),
-                refresh: "known-ram-grant".into(),
-                subject: "owner".into(),
-            })
-            .unwrap(),
-        );
-        owner.state.lock().await.uncertain = true;
-        h.0.state.lock().await.owner = Some(owner);
-        assert!(h.logout().await.is_err());
-        assert!(h.0.state.lock().await.owner.is_none());
-        assert_eq!(
-            h.snapshot().await.authorization_status,
-            AuthorizationStatus::SignedOut
-        );
-        h.logout().await.unwrap();
-        assert!(h.0.state.lock().await.owner.is_none());
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(
-            handle(dir.path()).snapshot().await.authorization_status,
-            AuthorizationStatus::SignedOut
-        );
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
-    }
-    #[tokio::test]
-    async fn restarting_updates_one_directory_record_and_increments_key_version() {
-        let dir = tempfile::tempdir().unwrap();
-        let i1 = handle(dir.path()).installation("owner").await.unwrap();
-        let mut data = json!({"otherApp":{"keep":true},"anywork":{"schemaVersion":1,"preferences":{"appearance":"dark"},"devices":{}}});
-        update_device_index(&mut data, &i1, "grid-1").unwrap();
-        assert_eq!(data["anywork"]["devices"][&i1.id]["keyVersion"], 1);
-        data["anywork"]["devices"][&i1.id]["label"] = json!("办公电脑");
-        let i2 = handle(dir.path()).installation("owner").await.unwrap();
-        update_device_index(&mut data, &i2, "grid-2").unwrap();
-        assert_eq!(data["anywork"]["devices"].as_object().unwrap().len(), 1);
-        let record = &data["anywork"]["devices"][&i1.id];
-        assert_eq!(record["keyVersion"], 2);
-        assert_eq!(record["publicKey"], i2.public_key);
-        assert_eq!(record["label"], "办公电脑");
-        update_device_index(&mut data, &i2, "grid-3").unwrap();
-        assert_eq!(data["anywork"]["devices"][&i1.id]["keyVersion"], 2);
-        assert_eq!(data["otherApp"], json!({"keep":true}));
-        assert_eq!(data["anywork"]["preferences"], json!({"appearance":"dark"}));
-        let mut exhausted = data["anywork"]["devices"][&i1.id].clone();
-        exhausted["keyVersion"] = json!(9_007_199_254_740_991u64);
-        assert!(device_record(&exhausted, &i1, "grid").is_err());
-        exhausted["keyVersion"] = json!(0);
-        assert!(device_record(&exhausted, &i2, "grid").is_err());
-    }
-    #[tokio::test]
-    async fn interrupted_login_without_grant_can_cancel_and_no_secret_files_are_read() {
-        let dir = tempfile::tempdir().unwrap();
-        let old = dir.path().join("account-grant-v1");
-        std::fs::write(&old, "ignored-old-sentinel").unwrap();
-        let handle = handle(dir.path());
-        let tx = transaction();
-        handle.0.state.lock().await.transaction = Some(tx.clone());
-        assert_eq!(
-            handle.snapshot().await.authorization_status,
-            AuthorizationStatus::Authorizing
-        );
-        tx.stop.cancel();
-        assert_eq!(
-            handle.snapshot().await.authorization_status,
-            AuthorizationStatus::LoginInterrupted
-        );
-        handle.cancel(&tx.id).await.unwrap();
-        assert_eq!(
-            handle.snapshot().await.authorization_status,
-            AuthorizationStatus::SignedOut
-        );
-        assert_eq!(
-            std::fs::read_to_string(old).unwrap(),
-            "ignored-old-sentinel"
-        );
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
-    }
-    #[tokio::test]
-    async fn broker_unknown_exchange_cannot_retry_the_code_or_grant() {
-        let calls = Arc::new(AtomicUsize::new(0));
-        let server_calls = calls.clone();
-        let app = axum::Router::new().route(
-            "/oidc/token",
-            axum::routing::post(move || {
-                let calls = server_calls.clone();
-                async move {
-                    calls.fetch_add(1, Ordering::SeqCst);
-                    (axum::http::StatusCode::BAD_GATEWAY, "unknown result")
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-        let dir = tempfile::tempdir().unwrap();
-        let mut h = handle(dir.path());
-        Arc::get_mut(&mut h.0).unwrap().config.issuer = format!("http://127.0.0.1:{port}/oidc");
-        let tx = transaction();
-        h.0.state.lock().await.transaction = Some(tx.clone());
-        let request = || BrowserRequest {
-            url: format!("{}/token", h.0.config.issuer),
-            method: "POST".into(),
-            headers: BTreeMap::new(),
-            body: Some(format!(
-                "grant_type=authorization_code&client_id={}",
-                h.0.config.native_client_id
-            )),
-        };
-        assert!(h.fetch(&tx.id, request()).await.is_err());
-        assert!(h.fetch(&tx.id, request()).await.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(
-            h.snapshot().await.authorization_status,
-            AuthorizationStatus::LoginInterrupted
-        );
-        h.cancel(&tx.id).await.unwrap();
-        assert_eq!(
-            h.snapshot().await.authorization_status,
-            AuthorizationStatus::SignedOut
-        );
-    }
-    #[test]
-    fn public_configuration_is_complete_validated_and_fully_isolated() {
-        let dir = tempfile::tempdir().unwrap();
-        let defaults = PublicConfig::load(dir.path()).unwrap();
-        assert_eq!(
-            serde_json::to_value(&defaults).unwrap(),
-            json!({
-                "endpoint":"https://auth.x.aixgg.com",
-                "issuer":"https://auth.x.aixgg.com/oidc",
-                "nativeClientId":"x7lzj58abb1sdp16lkd34",
-                "spaClientId":"5ere2kbu9mugfu3xd8e90",
-                "resource":"https://anywork-cybergrid-selfhost.vercel.app/api",
-                "cybergridUrl":"https://anywork-cybergrid-selfhost.vercel.app",
-                "frontendOrigin":"https://anywork.aixgg.com"
-            })
-        );
-        let expected = defaults.namespace(dir.path()).unwrap();
-        for field in [
-            "endpoint",
-            "issuer",
-            "nativeClientId",
-            "spaClientId",
-            "resource",
-            "cybergridUrl",
-            "frontendOrigin",
-        ] {
-            let mut modified = serde_json::to_value(&defaults).unwrap();
-            modified[field] = json!(format!("{}-different", modified[field].as_str().unwrap()));
-            let changed: PublicConfig = serde_json::from_value(modified).unwrap();
-            assert_ne!(changed.namespace(dir.path()).unwrap(), expected);
-        }
-        let custom = PublicConfig {
-            endpoint: "https://identity.example.org".into(),
-            issuer: "https://identity.example.org/oidc".into(),
-            native_client_id: "self-native".into(),
-            spa_client_id: "self-spa".into(),
-            resource: "https://grid.example.org/api".into(),
-            cybergrid_url: "https://grid.example.org".into(),
-            frontend_origin: "https://work.example.org".into(),
-        };
-        let path = dir.path().join("account-cloud.json");
-        std::fs::write(&path, serde_json::to_vec(&custom).unwrap()).unwrap();
-        assert!(PublicConfig::load(dir.path()).unwrap() == custom);
-        let mut incomplete = serde_json::to_value(custom).unwrap();
-        incomplete.as_object_mut().unwrap().remove("spaClientId");
-        std::fs::write(&path, serde_json::to_vec(&incomplete).unwrap()).unwrap();
-        assert!(PublicConfig::load(dir.path()).is_err());
-        let mut bad = defaults;
-        bad.endpoint = "http://remote.invalid".into();
-        assert!(bad.validate().is_err());
-    }
-    #[tokio::test]
-    async fn self_hosted_default_does_not_reuse_cloud_installation_or_restore_an_account() {
-        let dir = tempfile::tempdir().unwrap();
-        let current = PublicConfig::default();
-        let cloud = PublicConfig {
-            endpoint: "https://ueg42e.logto.app".into(),
-            issuer: "https://ueg42e.logto.app/oidc".into(),
-            // Keep every other field identical to isolate the issuer boundary.
-            ..current.clone()
-        };
-        cloud.validate().unwrap();
-        let old_id = public_installation_id(dir.path(), &cloud, "same-owner").unwrap();
-        let h = handle(dir.path());
-        assert_eq!(
-            h.snapshot().await.authorization_status,
-            AuthorizationStatus::SignedOut
-        );
-        assert!(h.0.state.lock().await.owner.is_none());
-        assert!(h.0.config == current);
-        let new_id = h.installation("same-owner").await.unwrap().id;
-        assert_ne!(new_id, old_id);
-        assert_eq!(
-            public_installation_id(dir.path(), &cloud, "same-owner").unwrap(),
-            old_id
-        );
-        assert_eq!(
-            public_installation_id(dir.path(), &current, "same-owner").unwrap(),
-            new_id
-        );
-    }
-    #[test]
-    fn account_label_uses_trusted_profile_and_never_an_opaque_id() {
-        assert_eq!(
-            account_label(&json!({"primaryEmail":"person@example.org","username":"name"})),
-            "name"
-        );
-        assert_eq!(
-            account_label(&json!({"username":"login", "profile":{"name":"显示名"}})),
-            "显示名"
-        );
-        assert_eq!(
-            account_label(&json!({"profile":{"username":"nested"},"primaryEmail":"mail"})),
-            "nested"
-        );
-        assert_eq!(account_label(&json!({"id":"opaque-subject"})), "已登录账号");
-        assert_eq!(
-            account_label(&json!({"name":" ","username":"bad\nname","email":"person@example.org"})),
-            "person@example.org"
-        );
-    }
-}

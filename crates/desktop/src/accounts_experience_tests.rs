@@ -199,7 +199,7 @@ impl DirectoryFixture {
         let i = handle.installation("fixture-owner").await.unwrap();
         handle.remember_name("Web 自定义名称", true).await.unwrap();
         let data = Arc::new(Mutex::new(
-            json!({"otherApp":{"keep":true},"anywork":{"schemaVersion":1,"preferences":{"appearance":"dark"},"devices":{i.id.clone():{"label":"Web 自定义名称","platform":"macos","publicKey":i.public_key,"keyVersion":7,"gridDeviceId":"grid-stable","extra":"retain"},"another":{"label":"another","platform":"linux","publicKey":i.public_key,"keyVersion":2}}}}),
+            json!({"otherApp":{"keep":true},"anywork":{"schemaVersion":1,"preferences":{"appearance":"dark"},"devices":{i.id.clone():{"label":"Web 自定义名称","platform":"macos","publicKey":i.public_key,"keyVersion":7,"extra":"retain"},"another":{"label":"another","platform":"linux","publicKey":i.public_key,"keyVersion":2}}}}),
         ));
         let mode = Arc::new(AtomicUsize::new(0));
         let patches = Arc::new(AtomicUsize::new(0));
@@ -266,7 +266,7 @@ async fn directory_name_publication_preserves_web_name_then_rename_changes_only_
     let i = f.handle.installation("fixture-owner").await.unwrap();
     let owner = f.handle.0.state.lock().await.owner.clone().unwrap();
     f.handle
-        .publish_index(&owner, &i, "grid-stable")
+        .publish_index(&owner, &i, Some(("10.144.5.6", 11_001)))
         .await
         .unwrap();
     assert_eq!(f.handle.snapshot().await.device_name, "Web 自定义名称");

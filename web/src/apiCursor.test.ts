@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "./types";
+import type { BusinessTransport } from "./remoteTransport";
 
 let Api: typeof import("./api").Api;
 beforeAll(async () => {
@@ -17,8 +18,9 @@ const event = (seq: number): AgentEvent => ({
 });
 function pollFixture() {
   const api = new Api({
-    url: "https://fixture.trycloudflare.com",
+    url: "https://remote.fixture.invalid",
     token: "test",
+    transport: {} as BusinessTransport,
   });
   const controller = new AbortController();
   const receive = vi.fn();

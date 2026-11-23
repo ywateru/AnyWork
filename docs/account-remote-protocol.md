@@ -1,50 +1,151 @@
 # Account remote protocol v1
 
-This protocol is a local-device boundary. Vercel/Logto/CyberGrid never terminate business encryption. The gateway binds loopback separately from the existing AnyWork HTTP service and exposes only `/remote/v1/ws`. CyberGrid port ID is `anywork-remote`, type `anywork-noise-v1`; its port URL points to this gateway, never the existing API listener.
+This protocol is a local-device boundary. Logto and CyberBus never receive
+workspace plaintext. The desktop gateway binds loopback separately from the
+AnyWork HTTP service and listens on the CyberBus overlay at virtual TCP port
+`11001` (`anywork-noise-v1`). The same gateway retains the loopback
+`/remote/v1/ws` entry for local diagnostics.
+
+## Discovery and channel
+
+The Web client reads the target installation's public device record and
+CyberBus locator from the signed-in user's Logto `customData.anywork`.
+
+1. The device record supplies the pinned 32-byte X25519 `publicKey`,
+   `keyVersion`, label and platform.
+2. The locator supplies overlay `ipv4`, service port `11001`, product and a
+   bounded expiry. It is not authorization.
+3. The Web client derives the account overlay material from its own Logto
+   `network:join` resource token, joins the EasyTier network through configured
+   WSS peers and opens a raw TCP stream to `locator.ipv4:11001`.
+
+The Web transport then uses one consistent frame everywhere:
+
+```text
+4-byte unsigned big-endian length | payload
+```
+
+Length must be 1..65535. A cancelled read cannot discard a half frame because
+the decoder keeps its prefix buffer across consumer cancellation. Writes are
+serialized. A Noise ciphertext frame remains limited to 65,535 bytes, so the
+plaintext application frame is smaller by the Noise tag.
 
 ## Authentication and cryptography
 
-A browser obtains the device installation ID and 32-byte X25519 `publicKey` (unpadded base64url) from its own Logto `customData.anywork.devices`. It pins that value locally; a changed key requires explicit confirmation. The browser connects WSS to the published port root plus `/remote/v1/ws`. Origins are exact configured SPA HTTPS origins (loopback allowed only in explicit test configuration); missing/unknown Origin is rejected. Origin is an additional browser boundary, never account authorization.
+Frame 1 is a Noise IK initiator handshake with suite
+`Noise_IK_25519_ChaChaPoly_SHA256`. The initiator uses a fresh static key for
+each connection; the responder uses the installation private key kept only on
+the device. The prologue is UTF-8 `AnyWork\0remote-v1\0` followed by the
+installation ID, with literal zero bytes. The responder accepts the initiator
+key only after decrypting and validating the handshake payload. Payload JSON is:
 
-Binary WS message 1 is Noise IK initiator handshake, suite `Noise_IK_25519_ChaChaPoly_SHA256`. The initiator uses a fresh static key for each connection; the responder uses the installation's private key kept only on the device. Prologue is UTF-8 `AnyWork\0remote-v1\0` followed by installation ID, with literal zero bytes at `\0`. The responder accepts the initiator key only after decrypting and validating its handshake payload. Payload JSON is `{ "type":"auth", "installationId":"…", "accessToken":"…" }`.
+```json
+{ "type": "auth", "installationId": "…", "accessToken": "…" }
+```
 
-The JWT must have ES384 signature from the configured issuer's HTTPS JWKS, exact issuer/audience, `connect` scope, exact SPA `client_id` (or `azp` when provider uses it), current exp/nbf and the owner sub bound by an explicit local action. ID tokens and tokens from another app/account/resource are rejected. No local bearer is sent to the browser. The response is Noise IK handshake message 2 with payload `{ "type":"ready", "expiresAt": <Unix seconds>, "authRenewal":1 }`. Each authorization lease expires at min(JWT exp, now+300s); this remains a short authorization bound rather than a five-minute workspace lifetime. Handshake timeout 10s; unrenewed expiry, local disable, transport failure and authentication errors close the WS and all its RPC/PTY children. No plaintext fallback or credential recovery from cloud data.
+The JWT must be signed by the configured issuer's HTTPS JWKS and have an exact
+issuer, audience, `connect` scope, allowed SPA/Native client ID, current
+exp/nbf and the owner subject bound by the local enable action. ID tokens and
+tokens from another app, account or resource are rejected. No local bearer is
+sent to the browser.
+
+Handshake frame 2 decrypts to:
+
+```json
+{ "type": "ready", "expiresAt": 1760000300, "authRenewal": 1 }
+```
+
+Each authorization lease ends at `min(JWT exp, now + 300s)`. Handshake timeout
+is 10 seconds. Local disable, an unrenewed expiry, transport failure or an
+authentication error closes the stream and all HTTP/PTY children. There is no
+plaintext fallback.
 
 ### Authorization renewal
 
-Only a gateway advertising `authRenewal:1` receives renewal control frames. Before expiry the browser requests a fresh resource JWT from the official Logto SDK, then sends encrypted `{ "type":"auth.renew", "id":1, "accessToken":"…" }` on the existing Noise connection. The positive safe-integer control ID increases exactly by one and is independent of business request IDs. The gateway rejects an identical token, revalidates the complete JWT boundary above, and additionally requires the same subject as the initial handshake. The new lease must advance the previous expiration. Its encrypted acknowledgment is `{ "type":"auth.renewed", "id":1, "expiresAt":<Unix seconds> }`.
+Only a gateway advertising `authRenewal: 1` accepts renewal frames. Before
+expiry the browser obtains a fresh resource JWT through the official Logto
+owner and sends an encrypted frame:
 
-Verification and acknowledgment are bounded by the **old** lease and local disable; a late success cannot revive an expired connection. The browser keeps its old expiry armed until the matching ACK, rejects non-advancing/uncorrelated ACKs, and checks both wall-clock expiration and a monotonic lease deadline when sending, receiving or resuming. A failed/unknown refresh closes the connection and does not replay a grant or business request. Successful renewal preserves the existing HTTP/PTY children and Noise counters. Each HTTP operation retains its original 240-second operation budget; a new lease does not restart that budget. Older gateways without the capability retain their bounded, nonrenewable behavior.
+```json
+{ "type": "auth.renew", "id": 1, "accessToken": "…" }
+```
 
-The pinned SDK caches access tokens until their exact expiry. All browser opaque/resource token requests therefore share one serialized owner; initial connection and renewal use the SDK's public `clearAccessToken()` followed by `getAccessToken(resource)` within that owner. No refresh grant is extracted or manually replayed. A failed token exchange blocks further token requests for that authorization. Logout fences pending requests immediately, waits for the sole in-flight exchange, then performs SDK cleanup/revocation, preventing late token storage recreation.
-
-Subsequent binary WS messages are Noise transport messages, each decrypting to a single UTF-8 JSON object below. Maximum ciphertext 65,535 bytes; no plaintext frame above 65,519 bytes. Noise implicit ordered counters reject modified/replayed/out-of-order frames; keys never reused after reconnect. Ping/Pong WS controls carry no application data. Text frames are rejected.
+The positive safe-integer control ID advances exactly by one and is independent
+of business request IDs. The gateway rejects an identical token, revalidates
+the complete JWT boundary and requires the same subject. The new lease must
+advance the previous expiration. A successful encrypted
+`{ "type":"auth.renewed", "id":1, "expiresAt":… }` preserves existing HTTP/PTY
+children and Noise counters. Verification and acknowledgment are bounded by
+the old lease and local disable; a late success cannot revive an expired
+connection. Business operations are never replayed on a new session.
 
 ## HTTP multiplexing
 
-Client:
+Client frames:
 
-- `{type:"request",id,method,path,contentType?,size}` starts a request. `size` is raw body byte count, max22MiB, including multipart encoded bytes. Methods GET/POST/PUT/PATCH/DELETE. Only existing `/api/` business route patterns are allowed; no `/api/service/*`, `/api/health`, arbitrary URL, host, authorization header, fragments, path traversal or encoded path separators. Query strings remain endpoint-specific existing AnyWork semantics. Header `contentType` is the only browser supplied HTTP header. The gateway assigns a fresh stable ID to each Noise connection, injects it as `X-AnyWork-Client-Id` and uses the fixed `AnyWork encrypted browser` user agent on local API requests. The local presence view therefore observes the loopback gateway, not the browser IP. IDs match `[A-Za-z0-9_-]{1,64}` and cannot be reused for this WS. Product-generated IDs are canonical `rN`, where N is a positive safe integer up to 2^53−1 and each new request/PTY ID strictly advances the connection high-water mark. This uses constant memory through many renewals. Other legacy IDs (including noncanonical `r01`) retain a bounded set of at most1024 entries; canonical decimal IDs above the safe bound are rejected.
-- `{type:"chunk",id,data}` appends canonical standard-base64 body bytes, max32,768 raw bytes. Sender awaits `{type:"ack",id,received}` before its next chunk. No chunk may exceed declared size or connection-wide22MiB reassembly budget.
-- `{type:"end",id}` submits exactly declared body bytes; a zero body still sends request then end.
-- `{type:"cancel",id}` cancels assembly/in-flight response. Cancellation does not undo actions already accepted by the local API. No automatic replay. The browser retains at most1024 cancelled chunk ACK exceptions; exhausting this exceptional bound closes the connection instead of accumulating memory across renewals.
+- `{type:"request",id,method,path,contentType?,size}` starts a request. `size`
+  is the raw body byte count, max 22 MiB. Methods are GET/POST/PUT/PATCH/DELETE.
+  Only existing `/api/` business routes are allowed; no service/health routes,
+  arbitrary hosts, authorization headers, fragments or encoded path
+  separators. Query strings retain endpoint-specific semantics.
+- `{type:"chunk",id,data}` appends canonical standard-base64 bytes, max 32,768
+  raw bytes. The sender awaits `{type:"ack",id,received}` before the next chunk.
+- `{type:"end",id}` submits exactly the declared bytes.
+- `{type:"cancel",id}` cancels assembly or the in-flight response. It does not
+  undo actions already accepted by the local API.
 
-Server: `{type:"response",id,status,contentType}` starts the response, followed by `{type:"chunk",id,data}` (same32,768 byte limit) and `{type:"end",id}`. Response headers are limited to Content-Type. HTTP errors preserve status/body. Protocol/transport/local failures use `{type:"error",id,code}` with fixed codes, no tokens/paths/response diagnostics. Responses are bounded22MiB; outbound backpressure uses a bounded queue. Concurrent IDs may interleave; order within one ID is strict. Event polling uses existing `/api/events/poll` and `/api/sessions/<id>/events/poll`, preserving cursors/has_more. Streaming SSE is not exposed.
+Server frames start with `{type:"response",id,status,contentType}`, followed by
+`chunk` and `end`. Response headers are limited to Content-Type. Protocol or
+local failures use `{type:"error",id,code}` with fixed codes and no token,
+path or response diagnostics. IDs are canonical `rN` and strictly advance a
+connection high-water mark; legacy noncanonical IDs remain bounded to 1024.
+Responses are max 22 MiB and use bounded backpressure.
+
+Event polling uses the existing `/api/events/poll` and
+`/api/sessions/<id>/events/poll` routes, preserving cursors and `has_more`.
+Streaming SSE is not exposed through the remote gateway.
 
 ## PTY multiplexing
 
-Client `{type:"pty.open",id,sessionId}` opens existing `/ws/terminal/<sessionId>` on the fixed local service. Server sends its own local bearer as the local socket's first authentication frame and never relays it. After local WS opens, server sends `{type:"pty.ready",id}`. Client input is `{type:"pty.input",id,data:<UTF-8 string>}` (max16KiB); resize is `{type:"pty.resize",id,cols,rows}` (cols2..500, rows2..200). Server output is `{type:"pty.data",id,data:<standard base64 bytes>}`. `{type:"pty.close",id}` or cancel closes local socket, causing existing terminal handler to kill the shell. Server emits `{type:"pty.closed",id}` when closed. Max2 PTYs per connection.
+`{type:"pty.open",id,sessionId}` opens the existing local
+`/ws/terminal/<sessionId>` route. The gateway sends its own local bearer as the
+local socket's first authentication frame and never relays it. After the local
+socket opens, it sends `{type:"pty.ready",id}`. Client input is
+`{type:"pty.input",id,data:<UTF-8>}` (max 16 KiB); resize is
+`{type:"pty.resize",id,cols,rows}` (2..500 by 2..200). Server output is
+`{type:"pty.data",id,data:<base64>}`. Close or cancel closes the local socket,
+which terminates the existing shell. A connection holds at most two PTYs.
 
-## Bounds and lifecycle
+## Limits and lifecycle
 
-Maximum4 active authenticated-or-handshaking sockets,8 concurrent HTTP requests per socket,2 PTYs; generated IDs use the monotonic bound above and legacy IDs remain limited to1024. Connection body assemblies collectively max22MiB. Exceeding limits returns a fixed error or closes the offending socket. An outbound queue holds max16 bounded application frames. Response/read/send operations remain bounded by the current verified authorization lease. A socket shutdown drops/aborts every in-flight task and local terminal socket. Local disable cancels the entire gateway before withdrawing CyberGrid publication. Reconnect requires a fresh Noise key exchange and fresh account proof; it never retries business writes.
+The gateway allows at most four authenticated-or-handshaking connections, eight
+concurrent HTTP requests per connection, two PTYs and 22 MiB aggregate body
+assembly. An outbound queue holds at most 16 bounded application frames.
+Exceeding a limit returns a fixed error or closes the offending connection.
+Shutdown aborts every in-flight request and local terminal socket.
+
+The overlay derives its virtual address from the CyberBus network name and a
+random 32-byte Web installation seed using `cyberbus/address/v1`; only
+addresses inside `10.144.0.0/20` are accepted. Port `11000` is reserved for the
+CyberBus control plane and is rejected by both Web and desktop.
 
 ## Trust and availability
 
-Initial responder key discovery trusts the current user's Logto directory. A user-editable directory does not authorize access to the device: the local owner JWT check does. The first-key directory trust and hosted JavaScript supply chain remain explicit security limits. Cloudflare Quick Tunnels carry ciphertext and necessary network metadata and have no production SLA. Device-level CyberGrid encrypted WS addresses are not browser port URLs.
+Initial responder-key discovery trusts the signed-in user's Logto device
+record. The directory does not authorize access: the local owner JWT check
+does. First-directory trust and the hosted JavaScript supply chain remain
+explicit security limits. CyberBus relays carry ciphertext and necessary
+network metadata; their availability is part of the deployment acceptance.
 
-## Isolated regression verification
+## Regression verification
 
-`cargo test -p anywork-remote` covers fixed absolute token expiration, non-advancing/same-token/other-owner denial, late verification and local disable, two renewals on one Noise connection, and more than1024 generated requests. Targeted browser tests cover SDK cross-resource serialization/logout fences, renewal scheduling, suspended tabs, legacy capability, ACK correlation and the bounded cancelled-ACK state.
+`cargo test -p anywork-remote` covers fixed absolute token expiration,
+non-advancing/same-token/other-owner denial, late verification, local disable,
+renewal and generated-ID bounds. Web Vitest covers credential derivation,
+framing, cancellation safety, renewal scheduling and business framing.
 
-`web/scripts/remote-interop.mjs` runs the actual browser clatterjs against the isolated Rust snow fixture, including two short leases, an HTTP request and original PTY spanning the first expiration, ciphertext-only renewal, and denied renewal tearing down HTTP plus the original local PTY socket. Run a task-owned Vite listener and set `ANYWORK_REMOTE_WORKTREE`, optional `ANYWORK_INTEROP_ORIGIN` (default `http://127.0.0.1:5173`), and `PLAYWRIGHT_CHANNEL=chrome`. The fixture never uses a product account, local service or workspace. This verification does not constitute a public-cloud rollout or a real account acceptance test.
+The production WSS relay is available and has passed TLS, WebSocket upgrade and
+EasyTier cross-transport smoke checks. Real browser-to-host 20 MiB HTTP/PTY
+interop and a real three-endpoint desktop/Android/browser workspace session
+remain deployment gates. The migration record distinguishes those gates from
+passing unit and simulated tests.

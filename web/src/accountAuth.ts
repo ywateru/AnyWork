@@ -1,6 +1,5 @@
 import LogtoClient, {
   UserScope,
-  decodeAccessToken,
   type LogtoConfig,
   type SignInOptions,
 } from "@logto/browser";
@@ -9,7 +8,6 @@ import {
   accountStorageNamespace,
   type AccountConfig,
 } from "./accountConfig";
-import type { AccessTokenRequest } from "./vendor/cybergrid";
 import { AccountGrantStorage } from "./accountGrantStorage";
 
 // The SDK already includes profile by default. Declare it explicitly for the
@@ -19,6 +17,7 @@ export const accountScopes = [
   UserScope.Email,
   UserScope.CustomData,
   "connect",
+  "network:join",
 ];
 
 /** Capture the owner before the first await, including a delayed claims read. */
@@ -38,21 +37,6 @@ export async function withAccountSubject<T>(
   return value;
 }
 
-function sufficientValidity(token: string, seconds: number): boolean {
-  try {
-    // Unverified exp is only a cache freshness hint. Identity remains verified by
-    // Logto/our subject fence and the receiving service, never by this decode.
-    const { exp } = decodeAccessToken(token);
-    return (
-      typeof exp === "number" &&
-      Number.isFinite(exp) &&
-      exp * 1000 - Date.now() >= seconds * 1000
-    );
-  } catch {
-    return false;
-  }
-}
-
 /** Keep the official browser adapter, isolating persisted grants across issuers. */
 export class AccountLogtoClient extends LogtoClient {
   // The SDK installs a memoized instance field, not a prototype method.
@@ -62,22 +46,13 @@ export class AccountLogtoClient extends LogtoClient {
   private accountEpoch = 0;
   private tokenAccessBlocked = false;
   private readonly grantStorage: AccountGrantStorage;
-  private readonly gridBinding: Pick<
-    AccountConfig,
-    "issuer" | "appId" | "resource"
-  >;
   constructor(config: LogtoConfig, account: AccountConfig) {
     super(config);
     this.sdkAccessToken = this.getAccessToken.bind(this);
     // Official fetchUserInfo() calls this field. Its token acquisition shares
-    // the refresh owner with directory/Grid and sign-out, without queue nesting.
+    // the refresh owner with directory/CyberBus and sign-out, without nesting.
     this.getAccessToken = (resource, organizationId) =>
-      this.accountToken(resource, false, undefined, organizationId);
-    this.gridBinding = {
-      issuer: account.issuer,
-      appId: account.appId,
-      resource: account.resource,
-    };
+      this.accountToken(resource, false, organizationId);
     // Official client defers persisted token reads to first use, explicitly allowing
     // subclasses to replace adapter.storage in their constructor.
     this.grantStorage = new AccountGrantStorage(
@@ -126,42 +101,14 @@ export class AccountLogtoClient extends LogtoClient {
       throw new AccountError("IDENTITY_CHANGED");
     return info;
   }
-  /** Only the official Grid callback can request this fixed resource binding. */
-  getCyberGridAccessToken(request: AccessTokenRequest): Promise<string> {
-    const binding = this.gridBinding;
-    if (
-      request.issuer !== binding.issuer ||
-      request.clientId !== binding.appId ||
-      request.resource !== binding.resource ||
-      !Array.isArray(request.scopes) ||
-      request.scopes.length !== 1 ||
-      request.scopes[0] !== "connect" ||
-      !Number.isSafeInteger(request.minValidity) ||
-      request.minValidity < 1 ||
-      request.minValidity > 3600 ||
-      typeof request.forceRefresh !== "boolean" ||
-      !["connect", "coordination-recovery", "authorization-rejected"].includes(
-        request.requestReason,
-      ) ||
-      request.forceRefresh !==
-        (request.requestReason === "authorization-rejected") ||
-      !Number.isSafeInteger(request.generation) ||
-      request.generation < 0 ||
-      !(request.signal instanceof AbortSignal)
-    )
-      return Promise.reject(new AccountError("INVALID_TOKEN_REQUEST"));
-    return this.accountToken(request.resource, request.forceRefresh, request);
-  }
   private accountToken(
     resource?: string,
     fresh = false,
-    request?: AccessTokenRequest,
     organizationId?: string,
   ): Promise<string> {
     const epoch = this.accountEpoch;
     return this.serialize(async () => {
       const current = () => {
-        request?.signal.throwIfAborted();
         this.grantStorage.assertCurrent();
         if (epoch !== this.accountEpoch || this.tokenAccessBlocked)
           throw new Error("ACCOUNT_REAUTH_REQUIRED");
@@ -189,16 +136,8 @@ export class AccountLogtoClient extends LogtoClient {
             : this.sdkAccessToken(resource, organizationId),
         );
       };
-      let token = await acquire(fresh);
+      const token = await acquire(fresh);
       current();
-      if (request && !sufficientValidity(token, request.minValidity)) {
-        if (!fresh) {
-          token = await acquire(true);
-          current();
-        }
-        if (!sufficientValidity(token, request.minValidity))
-          throw new AccountError("TOKEN_VALIDITY_INSUFFICIENT");
-      }
       return token;
     });
   }

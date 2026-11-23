@@ -34,16 +34,15 @@ server="$build_target/$profile/anywork$suffix"
 # SKIP_SERVER_BUILD can reuse the already built release server for UI iterations.
 if [[ ! -f "$server" && "${ANYWORK_DESKTOP_SKIP_SERVER_BUILD:-0}" == 1 ]]; then server="$build_target/release/anywork$suffix"; fi
 install -m 755 "$server" "$resources/bin/anywork$suffix"
-cloudflared="${ANYWORK_CLOUDFLARED_BIN:-$(command -v cloudflared || true)}"
-if [[ -n "$cloudflared" ]]; then install -m 755 "$cloudflared" "$resources/bin/cloudflared$suffix"; fi
-# Retired standalone routes are never bundled in fresh packages. Account transport
-# resolves its own pinned cloudflared provider; preserve existing user config.
-rm -f "$resources/bin/tunwg$suffix"
+# Account transport runs EasyTier over CyberBus; no tunnel provider binary is
+# bundled and retired standalone route binaries are never copied.
+rm -f "$resources/bin/tunwg$suffix" "$resources/bin/cloudflared$suffix"
 cp -R licenses "$resources/"
 cp NOTICE LICENSE "$resources/"
 rm -rf "$resources/web"
 cp -R "$web" "$resources/web"
 if [[ -f artifacts/anywork-source.tar.gz ]]; then cp artifacts/anywork-source.tar.gz "$resources/artifacts/"; fi
+if [[ -f artifacts/corresponding-source.tar.gz ]]; then cp artifacts/corresponding-source.tar.gz artifacts/corresponding-source.tar.gz.sha256 "$resources/artifacts/"; fi
 if [[ "$platform" == Darwin ]]; then
   cp desktop/Info.plist "$app/Contents/Info.plist"
   cp desktop/icon.icns "$resources/AnyWork.icns"

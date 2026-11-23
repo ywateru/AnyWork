@@ -32,11 +32,11 @@ AnyWork                            账号名称 [语言] [退出]
 
 ## 账号与数据
 
-官方Logto SPA SDK持有其授权；全部resource/opaque token请求共享序列化刷新所有者。页面配置必须完整，issuer/client独立存储命名空间；不复制旧授权。业务连接与本机bearer不写WebStorage。Logto只存账号和公开设备目录，目录数据不作为访问授权；CyberGrid只交换连接信息；工作内容在设备间加密。协议、安全界限和续期以[加密协议](account-remote-protocol.md)为准。
+官方 Logto SPA SDK 持有其授权；resource/opaque token 请求共享序列化刷新所有者。页面配置必须完整，issuer/client 使用独立存储命名空间；不复制旧授权。业务连接与本机 bearer 不写 WebStorage。Logto 只存账号和公开设备目录，目录与 CyberBus locator 不作为访问授权；浏览器通过出站 WSS 加入账号 overlay，再与桌面 Noise Gateway 建立加密业务会话。协议、安全界限和续期以[加密协议](account-remote-protocol.md)为准。
 
 ## 官网及Android
 
-官网保留双语、工作界面预览、下载与隐私说明，指导顺序统一为登录、找到电脑、继续工作。线路标签不再作为产品选择。Android新版本是固定正式HTTPS `/app/` Custom Tab入口，注册添加固定`?signup=1`；无provider时使用同一URL的系统浏览器，无浏览器明确报错。无WebView、Native桥接、VPN、deep link或旧凭据恢复。详见[Android入口](android-account-entry.md)。
+官网保留双语、工作界面预览、下载与隐私说明，指导顺序统一为登录、找到电脑、继续工作。线路标签不再作为产品选择。Android 当前源码是随包 Rust/Tauri 2 客户端，使用应用内 Logto、原生设备目录和 CyberBus overlay；手机浏览器/PWA 仍使用同一正式 HTTPS 账号页。无 VPN、deep link、Grid 或旧凭据恢复。详见 [Android 入口](android-account-entry.md)。
 
 ## 验证界限
 

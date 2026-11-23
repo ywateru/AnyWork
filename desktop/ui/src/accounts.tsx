@@ -35,7 +35,6 @@ export type AccountSnapshot = {
   enabled: boolean;
   busy: boolean;
   error: string | null;
-  gridDeviceId: string | null;
   installationId: string | null;
   publicKey: string | null;
   accountPortalUrl: string;
@@ -86,86 +85,34 @@ const enableMessages: Record<string, string> = {
   REMOTE_ENABLE_ALREADY_ENABLED: "远程访问已经开启，请刷新当前状态。",
   REMOTE_ENABLE_IDENTITY: "本机设备身份准备失败。",
   REMOTE_ENABLE_GATEWAY: "本机加密入口启动失败。",
-  REMOTE_ENABLE_PROVIDER: "公网连接入口未就绪，请检查网络。",
-  REMOTE_ENABLE_GRID_CLIENT: "设备协调客户端启动失败。",
-  REMOTE_ENABLE_GRID_CONFIG:
-    "设备协调服务配置校验未通过，请核对客户端与服务配置。",
-  REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE: "暂时无法连接设备协调服务。",
-  REMOTE_ENABLE_RESOURCE_TOKEN: "远程访问授权更新未完成，请查看账号状态。",
-  REMOTE_ENABLE_GRID_REGISTER: "设备协调注册未完成。",
-  REMOTE_ENABLE_GRID_EXPOSE: "加密入口发布未完成。",
+  REMOTE_ENABLE_NETWORK_TOKEN:
+    "CyberBus 网络授权更新未完成，请核对 Logto 资源、scope 与角色。",
+  REMOTE_ENABLE_NETWORK_START:
+    "CyberBus 安全网络启动失败，请检查中继配置与网络后重试。",
   REMOTE_ENABLE_INDEX_TOKEN: "设备目录授权更新未完成，请查看账号状态。",
   REMOTE_ENABLE_INDEX_READ: "设备目录读取或账号校验未完成。",
   REMOTE_ENABLE_INDEX_SCHEMA: "设备目录格式或容量校验未通过。",
   REMOTE_ENABLE_INDEX_WRITE: "设备目录更新未完成。",
   REMOTE_ENABLE_INDEX_READBACK: "设备目录更新后的核对未通过。",
 };
-const configFailureKinds = new Set([
-  "DEADLINE",
-  "TIMEOUT",
-  "CONNECT",
-  "REQUEST",
-  "BODY",
-  "DECODE",
-  "REDIRECT",
-  "HTTP_STATUS",
-  "PROTOCOL",
-  "CONFIGURATION",
-  "BINDING",
-  "TRANSPORT",
-  "SDK",
-]);
-type ConfigFailureDetail = {
-  kind: string;
-  httpStatus: number | null;
-  attempts: number;
-};
 function actionError(error: unknown): {
   message: string;
   code: string | null;
-  detail: ConfigFailureDetail | null;
 } {
   // Accept only exact native stage codes, never display an arbitrary IPC error,
   // SDK body, URL or token. Retrying remains an explicit user action.
   if (typeof error === "string" && Object.hasOwn(enableMessages, error))
-    return { message: enableMessages[error], code: error, detail: null };
+    return { message: enableMessages[error], code: error };
   if (
     error &&
     typeof error === "object" &&
-    Object.keys(error).sort().join() === "code,detail"
+    Object.keys(error).join() === "code"
   ) {
-    const { code, detail } = error as { code: unknown; detail: unknown };
-    if (
-      (code === "REMOTE_ENABLE_GRID_CONFIG" ||
-        code === "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE") &&
-      detail &&
-      typeof detail === "object" &&
-      Object.keys(detail).sort().join() === "attempts,httpStatus,kind"
-    ) {
-      const { kind, httpStatus, attempts } = detail as Record<string, unknown>;
-      if (
-        typeof kind === "string" &&
-        configFailureKinds.has(kind) &&
-        typeof attempts === "number" &&
-        Number.isInteger(attempts) &&
-        attempts >= 1 &&
-        attempts <= 3 &&
-        (httpStatus === null ||
-          (kind === "HTTP_STATUS" &&
-            typeof httpStatus === "number" &&
-            Number.isInteger(httpStatus) &&
-            httpStatus >= 100 &&
-            httpStatus <= 599))
-      ) {
-        return {
-          message: enableMessages[code],
-          code,
-          detail: { kind, httpStatus: httpStatus as number | null, attempts },
-        };
-      }
-    }
+    const { code } = error as { code: unknown };
+    if (typeof code === "string" && Object.hasOwn(enableMessages, code))
+      return { message: enableMessages[code], code };
   }
-  return { message, code: null, detail: null };
+  return { message, code: null };
 }
 
 let loginOwner:
@@ -455,7 +402,6 @@ export function useAccountController() {
     remotePending: remoteOperations > 0,
     error: remoteIssue?.message ?? error,
     errorCode: remoteIssue ? remoteIssue.code : errorCode,
-    errorDetail: remoteIssue?.detail ?? null,
     action,
     remoteAction: (fn: () => Promise<unknown>, valid?: () => boolean) =>
       action(fn, true, valid),
@@ -663,18 +609,10 @@ export function AccountError({
         <details className="error-details">
           <summary>诊断详情</summary>
           <code>{code}</code>
-          {controller.errorDetail && (
-            <p className="hint">
-              失败类别：<code>{controller.errorDetail.kind}</code>
-              {controller.errorDetail.httpStatus !== null &&
-                ` · HTTP ${controller.errorDetail.httpStatus}`}
-              {` · 已尝试 ${controller.errorDetail.attempts} 次（最多 3 次）`}
-            </p>
-          )}
           <p className="hint">
             {code === "REMOTE_ENABLE_REAUTH_REQUIRED"
               ? "不要重试旧令牌；完成重新登录后再开启远程访问。"
-              : "检查网络、账号与设备协调配置后，手动重试。"}
+              : "检查网络、账号与 CyberBus 配置后，手动重试。"}
           </p>
         </details>
       )}

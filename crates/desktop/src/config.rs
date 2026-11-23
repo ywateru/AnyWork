@@ -15,12 +15,6 @@ pub struct Config {
     #[serde(rename = "allowLAN")]
     pub allow_lan: bool,
     pub server_binary: String,
-    pub cloudflared_binary: String,
-    pub tunwg_binary: String,
-    #[serde(rename = "publicURL")]
-    pub public_url: String,
-    pub relay_domain: String,
-    pub force_relay: bool,
     pub welcomed: bool,
 }
 impl Default for Config {
@@ -31,11 +25,6 @@ impl Default for Config {
             port: 3210,
             allow_lan: false,
             server_binary: String::new(),
-            cloudflared_binary: String::new(),
-            tunwg_binary: String::new(),
-            public_url: String::new(),
-            relay_domain: String::new(),
-            force_relay: false,
             welcomed: false,
         }
     }
@@ -193,9 +182,9 @@ mod tests {
         let c: Config = serde_json::from_value(serde_json::json!({"workspace":"/tmp", "dataDirectory":"/tmp/data", "port":3210, "allowLAN":true, "publicURL":"https://example.com", "tunnelMode":"tunwg"})).unwrap();
         assert!(c.allow_lan);
         assert!(!c.welcomed);
-        assert_eq!(c.public_url, "https://example.com");
         let json = serde_json::to_string(&c).unwrap();
         assert!(!json.contains("tunnelMode"));
+        assert!(!json.contains("publicURL"));
         assert!(!json.contains("token"));
     }
     #[test]

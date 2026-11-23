@@ -20,7 +20,7 @@ Access local agent conversations from your browser or Android phone.<br />Your w
 
 AnyWork gives agents running on your computer a remote workspace: streaming conversations, approvals, tool activity, files and previews. Codex also integrates subagents, diffs and a terminal. Open the same work on another screen, send a follow-up, or respond when the agent needs you.
 
-The Rust desktop app starts your local workspace and opens it in your browser. For remote access, sign in on the host and allow your other devices to connect, then sign in to the same account on the website or phone. Logto manages accounts and minimal device settings; CyberGrid coordinates connections. Conversations, files, terminal content and endpoint private keys stay on your devices. Model calls continue to use your own model account and provider.
+The Rust desktop app starts your local workspace and opens it in your browser. For remote access, sign in on the host and allow your other devices to connect, then sign in to the same account on the website or phone. Logto manages accounts and minimal device settings; CyberBus provides the account-scoped EasyTier device network and encrypted connection path. Conversations, files, terminal content and endpoint private keys stay on your devices. Model calls continue to use your own model account and provider.
 
 DeepSeek Harness is also available through its existing local Web/Desktop host: [shared-host setup and verification](docs/harness-setup.md). It preserves native session ownership and keeps Codex available alongside it.
 
@@ -93,7 +93,7 @@ bash scripts/build-desktop.sh
 bash scripts/build-android.sh
 ```
 
-Release packages are built by [GitHub Actions](.github/workflows/release.yml). Each desktop package includes the local server, Web client, licenses and corresponding source archive. Cloudflared can be used internally by the encrypted account connection. Standalone anonymous/named tunnels and WireGuard are retired from the desktop user flow; see [desktop and mobile behavior](docs/desktop-manager.md).
+Release packages are built by [GitHub Actions](.github/workflows/release.yml). Each desktop package includes the local server, Web client, licenses and corresponding source archive. CyberBus runs the encrypted device overlay in process; standalone anonymous/named tunnels, cloudflared and WireGuard are retired from the desktop user flow. See [desktop and mobile behavior](docs/desktop-manager.md).
 
 ## How it connects
 

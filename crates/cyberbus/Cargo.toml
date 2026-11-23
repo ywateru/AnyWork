@@ -1,0 +1,26 @@
+[package]
+name = "anywork-cyberbus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+base64 = "0.22"
+cyberbus-transport = { git = "https://github.com/osd-pub/CyberBus.git", rev = "a2b5be3b2c3cd8d21e6a0c5bf2b4da2040f36c11", features = ["websocket"] }
+hex = "0.4"
+hkdf = "0.12"
+jsonwebtoken = "9.3"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror = "2"
+tokio.workspace = true
+tokio-util = { version = "0.7", features = ["rt"] }
+url = "2"
+zeroize = "1.8"
+
+[dev-dependencies]
+rcgen = "0.13"
+tokio = { workspace = true, features = ["test-util"] }

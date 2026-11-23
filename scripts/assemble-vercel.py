@@ -34,6 +34,9 @@ def main():
     (DIST / 'build.json').write_text(json.dumps({'source': source, 'version': version}, separators=(',', ':')) + '\n')
     subprocess.run(['python3', 'scripts/source-archive.py', '--revision', source], cwd=ROOT, check=True)
     shutil.copy2(ROOT / 'artifacts/anywork-source.tar.gz', DIST / 'anywork-source.tar.gz')
+    subprocess.run(['python3', 'scripts/corresponding-source.py'], cwd=ROOT, check=True)
+    for name in ['corresponding-source.tar.gz', 'corresponding-source.tar.gz.sha256']:
+        shutil.copy2(ROOT / 'artifacts' / name, DIST / name)
     print('Assembled static website and account application with exact-source offer')
 
 if __name__ == '__main__':

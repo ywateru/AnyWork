@@ -13,9 +13,10 @@ describe("account deployment selection", () => {
       endpoint: "https://auth.x.aixgg.com",
       issuer: "https://auth.x.aixgg.com/oidc",
       appId: "5ere2kbu9mugfu3xd8e90",
-      nativeAppId: "x7lzj58abb1sdp16lkd34",
-      resource: "https://anywork-cybergrid-selfhost.vercel.app/api",
-      gridUrl: "https://anywork-cybergrid-selfhost.vercel.app",
+      resource: "https://cyberbus.x.aixgg.com/api",
+      productId: "anywork",
+      bootstrapPeers: ["wss://cyberbus.x.aixgg.com/"],
+      easyTierUrl: "/easytier-browser.js",
     });
     expect(() =>
       resolveAccountConfig({ VITE_LOGTO_ENDPOINT: "https://identity.example" }),
@@ -28,18 +29,55 @@ describe("account deployment selection", () => {
     const config = resolveAccountConfig({
       VITE_LOGTO_ENDPOINT: "https://identity.example",
       VITE_LOGTO_APP_ID: "selfhosted-spa",
-      VITE_LOGTO_RESOURCE: "https://grid.example/api",
-      VITE_CYBERGRID_URL: "https://grid.example",
-      VITE_CYBERGRID_NATIVE_APP_ID: "selfhosted-native",
+      VITE_LOGTO_RESOURCE: "https://bus.example/api",
+      VITE_CYBERBUS_PRODUCT_ID: "anywork",
+      VITE_CYBERBUS_BOOTSTRAP_PEERS:
+        "wss://relay.example/,ws://127.0.0.1:8787/",
+      VITE_CYBERBUS_EASYTIER_URL: "/runtime/easytier.js",
     });
     expect(config).toEqual({
       endpoint: "https://identity.example",
       issuer: "https://identity.example/oidc",
       appId: "selfhosted-spa",
-      resource: "https://grid.example/api",
-      gridUrl: "https://grid.example",
-      nativeAppId: "selfhosted-native",
+      resource: "https://bus.example/api",
+      productId: "anywork",
+      bootstrapPeers: ["wss://relay.example/", "ws://127.0.0.1:8787/"],
+      easyTierUrl: "/runtime/easytier.js",
     });
+  });
+  it("rejects plain non-loopback relays and cross-origin runtime scripts", () => {
+    const base = {
+      VITE_LOGTO_ENDPOINT: "https://identity.example",
+      VITE_LOGTO_APP_ID: "selfhosted-spa",
+      VITE_LOGTO_RESOURCE: "https://bus.example/api",
+      VITE_CYBERBUS_PRODUCT_ID: "anywork",
+      VITE_CYBERBUS_EASYTIER_URL: "/easytier-browser.js",
+    };
+    for (const peers of [
+      "ws://relay.example/",
+      "https://relay.example/",
+      `wss://user:${"pass" + "word"}@relay.example/`,
+      "wss://relay.example/?token=value",
+    ])
+      expect(() =>
+        resolveAccountConfig({
+          ...base,
+          VITE_CYBERBUS_BOOTSTRAP_PEERS: peers,
+        }),
+      ).toThrow("INVALID_CONFIGURATION");
+    for (const easyTierUrl of [
+      "https://cdn.example/easytier.js",
+      "/easytier-browser.js?",
+      "/../easytier-browser.js",
+      "/easytier-browser.mjs",
+    ])
+      expect(() =>
+        resolveAccountConfig({
+          ...base,
+          VITE_CYBERBUS_BOOTSTRAP_PEERS: "wss://relay.example/",
+          VITE_CYBERBUS_EASYTIER_URL: easyTierUrl,
+        }),
+      ).toThrow("INVALID_CONFIGURATION");
   });
   it("validates the public portal without accepting untrusted credentials or redirects", () => {
     expect(accountPortalUrl()).toBe("https://anywork.aixgg.com/app/");

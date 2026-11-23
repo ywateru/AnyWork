@@ -30,9 +30,9 @@ An independently started service is reused after identity verification; select i
 3. Select a ready computer. For a first connection or changed key, verify its identity against the host before opening the workspace.
 4. Return to **My devices** to choose another computer. Signing out remotely ends that remote connection. Disabling remote access on the host leaves local work available.
 
-Keep the host awake and connected. Native account credentials and endpoint keys stay in RAM; after exiting the desktop app, sign in, enable remote access and confirm the new key again. Normal short authorization updates happen inside the encrypted connection. A disconnected operation is never automatically replayed; check history if its result is unknown.
+Keep the host awake and connected. Desktop and Android save the login grant in the OS credential store or Android Keystore and attempt restoration after restart; endpoint Noise keys, CyberBus network material and active connections stay in memory. Normal short authorization updates happen inside the encrypted connection. A disconnected operation is never automatically replayed; check history if its result is unknown.
 
-Standalone anonymous/named tunnels, WireGuard and manual address/key connections are retired from the new user flow. Old settings are retained for explicit rollback, without automatically running them. See [desktop and Android behavior](desktop-manager.md) for handoff, authorization and migration boundaries.
+Standalone anonymous/named tunnels, WireGuard and manual address/key connections are retired from the new user flow. Account device connectivity uses the Logto device directory, CyberBus/EasyTier overlay and the AnyWork Noise Gateway. See [desktop and Android behavior](desktop-manager.md) for handoff, authorization and migration boundaries.
 
 ## Choose a backend agent
 
@@ -119,7 +119,7 @@ The CLI bearer remains for internal desktop/API authentication; the Web UI does 
 - The desktop follower path can read/pause a goal. Creating, resuming, editing or deleting goals requires a compatible shared engine. See [shared engine setup](desktop-shared-start.md) and [adapter reference](desktop-adapter.md) (Chinese).
 - Queued messages belong to AnyWork; native desktop queue migration is not claimed. Voice dictation/read-aloud and FCM/server push after the browser closes are not included.
 - The server has its OS user's terminal and filesystem privileges. Workspace path checks are not a multi-tenant sandbox. Use your own remote account; endpoint encryption does not remove device, initial-directory or hosted-frontend trust boundaries.
-- Logto stores account and minimal device settings; CyberGrid/Upstash stores necessary coordination metadata. Business contents stay on endpoints and relays carry ciphertext. Model providers continue to process calls under your existing account terms.
+- Logto stores account and minimal device settings; CyberBus/EasyTier relays carry encrypted overlay traffic and necessary network metadata. Business contents stay on endpoints. Model providers continue to process calls under your existing account terms.
 
 ## Troubleshooting
 
@@ -129,7 +129,7 @@ The CLI bearer remains for internal desktop/API authentication; the Web UI does 
 
 **Remote access cannot start:** inspect the fixed failure stage on the host. Check local service readiness, authorization and networking. Temporary service failures can be retried; a binding mismatch needs configuration correction, without bypassing verification.
 
-**The phone cannot find the host:** confirm the same account, a running host and enabled remote access. Coordination failures may show an unknown status. Refresh devices inside Android; older hosts need an update for Native mobile authorization. Sign in again after an app process restart. Do not bypass TLS errors or import old VPN settings.
+**The phone cannot find the host:** confirm the same account, a running host and enabled remote access. Relay or locator failures may show an unknown status. Refresh devices inside Android; older hosts need an update for the CyberBus product mapping and locator. Do not bypass TLS errors or import old WireGuard/Grid settings.
 
 **A local browser session ended:** click **Open workspace** in the desktop app to create a new local session. No service key entry is needed. Restarting the service invalidates its old local sessions.
 

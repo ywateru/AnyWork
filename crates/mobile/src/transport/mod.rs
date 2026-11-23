@@ -1,6 +1,5 @@
 //! Mobile outbound business transport. No Tauri or credential persistence here.
 mod connection;
-mod tls;
 mod types;
 pub use types::*;
 

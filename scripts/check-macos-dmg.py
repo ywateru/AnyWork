@@ -47,7 +47,9 @@ def check(platform, directory):
                 subprocess.run(['lipo', str(binary), '-verify_arch', expected_arch], check=True)
                 if not os.access(binary, os.X_OK):
                     raise ValueError(f'Binary is not executable: {binary.name}')
-            for name in ['web/index.html', 'artifacts/anywork-source.tar.gz', 'LICENSE', 'NOTICE']:
+            for name in ['web/index.html', 'artifacts/anywork-source.tar.gz',
+                         'artifacts/corresponding-source.tar.gz',
+                         'artifacts/corresponding-source.tar.gz.sha256', 'LICENSE', 'NOTICE']:
                 if not (app / 'Contents/Resources' / name).is_file():
                     raise ValueError(f'Missing bundled resource: {name}')
             subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)

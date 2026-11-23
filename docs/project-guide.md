@@ -38,19 +38,19 @@ python3 scripts/source-archive.py
 
 ## 远程访问与后台运行
 
-互联网访问应使用 HTTPS 反向代理、VPN 或 HTTPS 隧道，浏览器和 Android 填写相同的服务器地址。终端与文件操作使用服务端系统用户权限，仅向可信设备提供令牌。
+本地浏览器仍使用 loopback 和一次性本机会话交接。账号远程访问由桌面启用 CyberBus/EasyTier overlay 和本机 Noise Gateway；浏览器通过固定 WSS 中继连接，Android 使用 Native peer。不要把本机服务端口直接暴露到公网，也不要恢复旧 cloudflared/WireGuard 线路。终端与文件操作使用服务端系统用户权限，仅向可信设备提供访问。
 
 可选的 Supervisor 配置：
 
 ```bash
 cp supervisord.example.conf supervisord.conf
-# 修改工作区、工具路径；需要公网隧道时再启用对应进程
+# 修改工作区、工具路径
 bash scripts/service.sh start
 bash scripts/service.sh status
 bash scripts/service.sh restart anywork
 ```
 
-需事先安装 Supervisor；启用隧道还需安装 cloudflared。仅重启 `anywork` 可保留正在运行的隧道；重启临时隧道可能改变公网地址。模板不代表已设置系统开机启动。详细部署见 [部署说明](deployment.md)。
+需事先安装 Supervisor。模板只管理本机 AnyWork 服务，不启动旧隧道 provider；账号远程连接由桌面应用内 CyberBus 生命周期管理。模板不代表已设置系统开机启动。详细部署见[部署说明](deployment.md)。
 
 ## 开发、验证与交付
 
@@ -74,7 +74,7 @@ sha256sum -c artifacts/SHA256SUMS
 | `crates/agent-sdk` | 插件清单与 JSON-RPC 传输 |
 | `crates/agent-codex` | Codex 启动及审批映射 |
 | `web` | 浏览器、PWA 与 Android 共用界面 |
-| `android` | Android 宿主与系统桥接 |
+| `crates/mobile`、`crates/tauri-plugin-mobile-*` | Android Rust/Tauri 宿主、原生账号与系统桥接 |
 | `scripts`、`e2e` | 构建、打包及隔离验收 |
 | `docs` | 架构、协议、接口、调研与运维说明 |
 

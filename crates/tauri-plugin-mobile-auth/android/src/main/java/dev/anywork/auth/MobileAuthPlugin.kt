@@ -39,7 +39,6 @@ class ConfigureArgs {
     lateinit var redirectUri: String
     lateinit var product: String
     lateinit var issuer: String
-    lateinit var gridUrl: String
 }
 
 @InvokeArg class SignInArgs { var register: Boolean = false }
@@ -111,7 +110,7 @@ internal class AuthOwner(private val application: Application,
 
     private fun sameConfiguration(a: ConfigureArgs, b: ConfigureArgs) =
         a.endpoint == b.endpoint && a.clientId == b.clientId && a.resource == b.resource &&
-        a.redirectUri == b.redirectUri && a.product == b.product && a.issuer == b.issuer && a.gridUrl == b.gridUrl
+        a.redirectUri == b.redirectUri && a.product == b.product && a.issuer == b.issuer
 
     fun configure(invoke: Invoke) {
         val args = try { invoke.parseArgs(ConfigureArgs::class.java) }
@@ -127,8 +126,6 @@ internal class AuthOwner(private val application: Application,
                 try {
                     val resource = Uri.parse(args.resource)
                     check(args.endpoint == "https://auth.x.aixgg.com" && args.issuer == args.endpoint + "/oidc")
-                    val grid = Uri.parse(args.gridUrl)
-                    check(grid.scheme == "https" && grid.host != null && grid.userInfo == null && grid.query == null && grid.fragment == null)
                     check(resource.scheme == "https" && resource.host != null && resource.userInfo == null &&
                         resource.query == null && resource.fragment == null)
                     check(args.clientId.matches(Regex("[A-Za-z0-9_-]{1,21}")))
@@ -139,11 +136,11 @@ internal class AuthOwner(private val application: Application,
                         invoke.resolve(jsonSnapshot()); return@withLock
                     }
                     configuration = args
-                    val binding = org.json.JSONArray(listOf(args.endpoint, args.issuer, args.clientId, args.resource, args.gridUrl,
-                        args.product, args.redirectUri, "openid offline_access profile email custom_data connect")).toString()
+                    val binding = org.json.JSONArray(listOf(args.endpoint, args.issuer, args.clientId, args.resource,
+                        args.product, args.redirectUri, "openid offline_access profile email custom_data connect network:join")).toString()
                     store = GrantStore(bytes(application, binding), binding)
                     client = RamClient(LogtoConfig(endpoint = args.endpoint, appId = args.clientId,
-                        scopes = listOf("profile", "email", "custom_data", "connect"),
+                        scopes = listOf("profile", "email", "custom_data", "connect", "network:join"),
                         resources = listOf(args.resource), usingPersistStorage = false), application)
                     if (logoutRequested) {
                         // Logout can win the JNI race before initial configuration exists.
@@ -355,7 +352,12 @@ internal class AuthOwner(private val application: Application,
                     }
                     check(grant.expiresAt - System.currentTimeMillis() / 1000 >= args.minValidity)
                     check(grant.token.isNotEmpty() && grant.token.length <= 16384)
-                    check(grant.scope.split(Regex("\\s+")).contains(if (args.resource) "connect" else "custom_data"))
+                    if (args.resource) {
+                        val scopes = grant.scope.split(Regex("\\s+")).toSet()
+                        check(scopes.contains("connect") && scopes.contains("network:join"))
+                    } else {
+                        check(grant.scope.split(Regex("\\s+")).contains("custom_data"))
+                    }
                     val claims = readClaims(sdk)
                     requireOwner(args.generation)
                     check(claims.optString("sub") == profileValue?.optString("subject"))

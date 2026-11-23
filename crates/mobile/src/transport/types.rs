@@ -1,5 +1,7 @@
+use anywork_cyberbus::AsyncStream;
 use serde::{Deserialize, Serialize};
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{future::Future, net::Ipv4Addr, pin::Pin, sync::Arc};
+use tokio_util::sync::CancellationToken;
 
 pub const CHUNK: usize = 32_768;
 pub const MAX_BODY: usize = 22 * 1024 * 1024;
@@ -22,9 +24,25 @@ pub trait Authorization: Send + Sync {
 
 pub use Authorization as TransportAuthorization;
 
+pub type OverlayFuture<'a> =
+    Pin<Box<dyn Future<Output = anyhow::Result<Box<dyn AsyncStream>>> + Send + 'a>>;
+/// Outbound-only overlay capability. It never exposes credentials or a caller
+/// supplied destination; the account layer constructs the exact peer target.
+pub trait Overlay: Send + Sync {
+    fn connect<'a>(
+        &'a self,
+        ipv4: Ipv4Addr,
+        port: u16,
+        cancel: &'a CancellationToken,
+    ) -> OverlayFuture<'a>;
+    fn close(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+}
+
 /// Only constructed by the native account/directory layer; never a command DTO.
 pub struct VerifiedTarget {
-    pub gateway_url: String,
+    pub overlay: Arc<dyn Overlay>,
+    pub ipv4: Ipv4Addr,
+    pub port: u16,
     pub installation_id: String,
     pub public_key: String,
     pub account_epoch: u64,

@@ -15,9 +15,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
 import {
   openPrivateBrowserState,
   withPrivateBrowserState,
@@ -249,25 +248,4 @@ test("parsing, browser and checkpoint errors expose only fixed safe errors", asy
     { message: "Private browser state checkpoint failed." },
   );
   assert.equal(closed, true);
-});
-
-test("CLI rejects private credential paths inside real Git checkout and redacts path/parsing failures", async (t) => {
-  const { path } = await fixture(t);
-  const root = fileURLToPath(new URL("../../", import.meta.url));
-  const script = resolve(root, "web/scripts/account-cloud-check.mjs");
-  for (const candidate of [resolve(root, "public/fake-secret-path"), path]) {
-    if (candidate === path) await writeFile(path, "fake-secret-json");
-    await assert.rejects(
-      promisify(execFile)(process.execPath, [script], {
-        env: { ...process.env, ANYWORK_DEV_BROWSER_STATE: candidate },
-      }),
-      (error) => {
-        assert.equal(error.code, 1);
-        assert.equal(error.stdout, "");
-        assert.equal(error.stderr, "Private browser state rejected.\n");
-        assert.ok(!error.stderr.includes("fake-secret"));
-        return true;
-      },
-    );
-  }
 });

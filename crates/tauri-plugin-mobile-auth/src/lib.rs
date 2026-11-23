@@ -33,7 +33,6 @@ pub struct Configuration {
     pub redirect_uri: String,
     pub product: String,
     pub issuer: String,
-    pub grid_url: String,
 }
 
 // Deliberately neither Debug nor Serialize. Returned only to Rust native callers.

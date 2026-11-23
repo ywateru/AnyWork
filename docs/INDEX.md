@@ -1,5 +1,8 @@
 # Documentation index
 
+- [CyberGrid → CyberBus 迁移实施记录](cyberbus-migration-review.md) · 当前三端连接层、固定版本、Logto/WSS 部署、locator、raw TCP/Noise、测试与上线门槛。
+- [当前云服务配置](cloud-configuration.md) · Logto resource/scope/产品映射、CyberBus TCP/UDP/WSS 中继、Vercel 公开变量、CSP 与回滚。
+
 - [手机文件侧栏与菜单关闭](plan/tasks/mobile-file-sidebar-menu.md)：ADB复现文件页目录顺序/对齐与“更多”菜单外点不关闭；统一移动布局并保留数据更新供手测。
 
 - [Android 间距与发送按钮](plan/tasks/mobile-spacing-send.md)：0.1.44 实机手测补充，收紧会话列表行距并保持发送/停止控件圆形；独立验证后同签名覆盖安装供用户手测。
@@ -24,7 +27,7 @@
 
 - [开源说明与正式域名](plan/tasks/open-source-ui.md)：已随 v0.1.29 发布；官网、Web 与桌面补充服务端和客户端开源说明及 GitHub，默认入口统一为 `https://anywork.aixgg.com`，[最终独立验收](plan/reviews/open-source-release.md)通过。
 
-- [CyberGrid v0.8.0 集成更新](plan/tasks/cybergrid-v080.md)：官方 Rust/JS SDK 与宿主远程门禁、令牌新鲜度适配已随 v0.1.28 交付；[最终独立验收](plan/reviews/ui-login-cybergrid-v28-release.md)通过，服务端迁移另行验证。
+- **历史：** [CyberGrid v0.8.0 集成更新](plan/tasks/cybergrid-v080.md)只记录 v0.1.28 时点；当前连接层已由 [CyberBus 迁移](cyberbus-migration-review.md)取代。
 
 - [登录、窗口与设备体验修订](plan/tasks/ui-login-device-followup.md)：弹窗居中、回调页、浏览器 SSO、原生标题栏、用户名和可编辑设备名已随 v0.1.28 交付，实证边界见最终独立验收。
 
@@ -32,20 +35,16 @@
 
 - [统一界面 v2 实施与发布](plan/tasks/ui-refactor-v2.md) · [线上验收](plan/reviews/ui-v2-production.md)：已发布 v0.1.26，正式 Web 与各平台安装包核验通过；旧构建缓存已清理。
 
-- [登录后默认远程与精简控制台](plan/tasks/desktop-default-remote.md)：当前用户修订，修正协调配置读取失败，支持会话内手动关闭。
-- [自部署 TLS Redis 切换](plan/tasks/cybergrid-selfhost-redis.md) · [独立验收](plan/reviews/cybergrid-selfhost-redis-independent.md)：替代已耗尽免费月额度的 Upstash，保持账号与端到端授权绑定。
+- [登录后默认远程与精简控制台](plan/tasks/desktop-default-remote.md)：历史任务记录；当前 CyberBus 启用/关闭语义见[迁移记录](cyberbus-migration-review.md)。
+- **历史：** [自部署 TLS Redis 切换](plan/tasks/cybergrid-selfhost-redis.md) · [独立验收](plan/reviews/cybergrid-selfhost-redis-independent.md)。该 CyberGrid/Upstash 路径已退役。
 
 - [桌面启动介绍、登录与连接控制台](desktop-onboarding-layout.md) · [Native 任务](plan/tasks/desktop-onboarding-native.md) · [UI 任务](plan/tasks/desktop-onboarding-ui.md)：当前新一轮用户要求，先介绍和登录，随后准备服务并显示真实连接。
-- [给 CyberGrid 开发组的使用反馈与改进要求（2026-11-10）](cybergrid-product-feedback.md)：统一账号连接前的能力、分工与验收讨论稿。
 - [统一账号与工作区体验](account-unified-experience.md) · [实施与验收任务](plan/tasks/account-unified-experience.md)
 - [桌面控制台布局与访问说明](desktop-workspace-layout.md) · [界面优化任务](plan/tasks/desktop-workspace-layout.md) · [界面独立审查](plan/reviews/desktop-workspace-layout-independent.md) · [本机采用记录](plan/reviews/desktop-workspace-layout-live.md)
 - [统一入口合并检查](plan/reviews/account-unified-merged.md) · [运行与产物独立验收](plan/reviews/account-unified-runtime-artifacts.md) · [正式 Web 上线记录](plan/reviews/account-unified-web-live.md) · [Mac 本机上线记录](plan/reviews/account-unified-native-live.md)
 - [统一账号上线独立核验](plan/reviews/account-unified-live-independent.md)：正式域名、实际 Mac 包与进程、原环境、配置及会话标识保留的最终核对。
-- [账号、设备发现与 Vercel 云入口专家评审方案（2026-11-09）](account-device-cloud-review.md) · [调研证据](plan/analysis/account-device-cloud.md) · [实施拆分](plan/tasks/account-device-cloud.md)
-- [账号入口验收状态](plan/reviews/account-device-acceptance.md) · [云配置与费用](cloud-configuration.md) · [桌面账号与隔离验收](account-desktop.md) · [加密协议](account-remote-protocol.md) · [官网/设备页布局](account-web-layout.md)
-- [当前自部署切换与验收](plan/reviews/account-selfhost-cutover-01.md) · [自部署CyberGrid上线证据](plan/reviews/account-selfhost-grid-live.md) · [正式主页发布证据](plan/reviews/account-homepage-selfhost-live.md)
-- [本机更新与恢复记录](plan/reviews/account-selfhost-local-rollout-01.md) · [本机更新独立验收](plan/reviews/account-local-update-01.md)
-- [账号连接可靠性修正](plan/tasks/account-live-reliability.md) · [本次故障调查](plan/analysis/account-live-reliability.md)
+- [账号数据边界与设备连接](account-device-cloud-review.md) · [桌面账号与保存登录](account-desktop.md) · [加密协议](account-remote-protocol.md) · [官网/设备页布局](account-web-layout.md)
+- **历史：** [账号入口验收](plan/reviews/account-device-acceptance.md)、[自部署 CyberGrid 上线证据](plan/reviews/account-selfhost-grid-live.md)、[本机更新记录](plan/reviews/account-selfhost-local-rollout-01.md)和[账号连接可靠性调查](plan/analysis/account-live-reliability.md)。这些记录不代表 CyberBus 当前状态。
 - [全项目改进与专家评审稿（2026-11-07）](project-improvement-review.md)
 - [当前支持与验收矩阵 / Support matrix](support-matrix.md)
 - [Architecture](architecture.md), [API](api.md), [plugin protocol](plugin-protocol.md)

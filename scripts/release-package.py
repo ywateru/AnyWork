@@ -25,6 +25,7 @@ def main():
     windows = args.platform.startswith('windows')
     suffix = '.exe' if windows else ''
     subprocess.run(['python3', 'scripts/source-archive.py'], cwd=ROOT, check=True)
+    subprocess.run(['python3', 'scripts/corresponding-source.py'], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory(prefix='anywork-release-') as temp:
         folder = pathlib.Path(temp) / 'AnyWork'
         folder.mkdir()
@@ -38,9 +39,11 @@ def main():
         shutil.copy2(ROOT / 'plugins/README.md', resources / 'plugins/README.md')
         (resources / 'artifacts').mkdir()
         shutil.copy2(ROOT / 'artifacts/anywork-source.tar.gz', resources / 'artifacts/anywork-source.tar.gz')
+        for name in ['corresponding-source.tar.gz', 'corresponding-source.tar.gz.sha256']:
+            shutil.copy2(ROOT / 'artifacts' / name, resources / 'artifacts' / name)
         for name in ['LICENSE', 'NOTICE']:
             shutil.copy2(ROOT / name, resources / name)
-        (folder / 'START-HERE.txt').write_text('AnyWork ' + json.loads((ROOT / 'package.json').read_text())['version'] + '\n\nEnglish: https://ywateru.github.io/AnyWork/en/\n中文: https://ywateru.github.io/AnyWork/zh/\n\nInstall and sign into Codex on the host first.\nOpen AnyWork.app (macOS) or anywork-desktop (Linux/Windows).\nKeep the resources directory beside the portable executable.\nmacOS: ad-hoc signed, not notarized. Windows: unsigned, requires WebView2.\nLinux: requires GTK 3 and WebKitGTK 4.1; see the installation guide.\nDesktop sharing uses version-dependent local Codex interfaces on Unix.\n\nCLI: cd into the resources directory, then run:\n  ./bin/anywork --web-dir web --workspace /absolute/path/to/projects\nWindows: .\\bin\\anywork.exe --web-dir web --workspace C:\\Projects\n\nThe token is in .anywork/access-token. Keep it private.\nLicense: AGPL-3.0-only. Source is included in resources/artifacts.\n', encoding='utf-8')
+        (folder / 'START-HERE.txt').write_text('AnyWork ' + json.loads((ROOT / 'package.json').read_text())['version'] + '\n\nEnglish: https://ywateru.github.io/AnyWork/en/\n中文: https://ywateru.github.io/AnyWork/zh/\n\nInstall and sign into Codex on the host first.\nOpen AnyWork.app (macOS) or anywork-desktop (Linux/Windows).\nKeep the resources directory beside the portable executable.\nmacOS: ad-hoc signed, not notarized. Windows: unsigned, requires WebView2.\nLinux: requires GTK 3 and WebKitGTK 4.1; see the installation guide.\nDesktop sharing uses version-dependent local Codex interfaces on Unix.\n\nCLI: cd into the resources directory, then run:\n  ./bin/anywork --web-dir web --workspace /absolute/path/to/projects\nWindows: .\\bin\\anywork.exe --web-dir web --workspace C:\\Projects\n\nThe token is in .anywork/access-token. Keep it private.\nLicense: AGPL-3.0-only. AnyWork source is in resources/artifacts/anywork-source.tar.gz.\nCyberBus/EasyTier LGPL corresponding source is in resources/artifacts/corresponding-source.tar.gz.\n', encoding='utf-8')
         if windows:
             with zipfile.ZipFile(output / f'anywork-{args.platform}.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
                 for path in sorted(folder.rglob('*')):

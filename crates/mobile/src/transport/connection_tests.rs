@@ -1,6 +1,7 @@
 // Regression cases adapted from independent review reproductions.
 
 use super::*;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 struct Auth;
 impl Authorization for Auth {
     fn token(&self, _: bool, _: u64) -> AuthFuture<'_, AccessGrant> {
@@ -16,11 +17,7 @@ impl Authorization for Auth {
         Box::pin(async { Ok(()) })
     }
 }
-async fn actor() -> (
-    Actor,
-    tokio_tungstenite::WebSocketStream<TcpStream>,
-    snow::TransportState,
-) {
+async fn actor() -> (Actor, tokio::net::TcpStream, snow::TransportState) {
     let keys = snow::Builder::new(NOISE_SUITE.parse().unwrap())
         .generate_keypair()
         .unwrap();
@@ -49,9 +46,9 @@ async fn actor() -> (
     let port = listener.local_addr().unwrap().port();
     let remote = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
-        tokio_tungstenite::accept_async(stream).await.unwrap()
+        stream
     });
-    let (socket, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}"))
+    let socket = tokio::net::TcpStream::connect(("127.0.0.1", port))
         .await
         .unwrap();
     let remote = remote.await.unwrap();
@@ -61,7 +58,7 @@ async fn actor() -> (
             connection_id: "fixture".into(),
             generation: 1,
         },
-        socket,
+        socket: Wire::new(Box::new(socket)),
         noise: client.into_transport_mode().unwrap(),
         auth: Arc::new(Auth),
         epoch: 1,
@@ -89,17 +86,21 @@ async fn actor() -> (
 }
 
 async fn remote_frame(
-    remote: &mut tokio_tungstenite::WebSocketStream<TcpStream>,
+    remote: &mut tokio::net::TcpStream,
     noise: &mut snow::TransportState,
 ) -> Value {
-    let Message::Binary(bytes) = tokio::time::timeout(Duration::from_secs(2), remote.next())
+    let mut length = [0; 4];
+    tokio::time::timeout(Duration::from_secs(2), remote.read_exact(&mut length))
         .await
         .unwrap()
+        .unwrap();
+    let length = u32::from_be_bytes(length) as usize;
+    assert!(length > 0 && length <= 65_535);
+    let mut bytes = vec![0; length];
+    tokio::time::timeout(Duration::from_secs(2), remote.read_exact(&mut bytes))
+        .await
         .unwrap()
-        .unwrap()
-    else {
-        panic!("expected encrypted frame")
-    };
+        .unwrap();
     let mut plain = vec![0; 65_535];
     let n = noise.read_message(&bytes, &mut plain).unwrap();
     serde_json::from_slice(&plain[..n]).unwrap()
@@ -254,5 +255,17 @@ async fn foreground_cannot_revive_expired_wall_or_monotonic_lease() {
             "AUTHORIZATION_EXPIRED"
         );
         assert_eq!((a.expires, a.deadline), previous);
+    }
+}
+
+#[tokio::test]
+async fn raw_wire_rejects_empty_and_oversized_frames() {
+    let (left, mut peer) = tokio::io::duplex(128);
+    let mut wire = Wire::new(Box::new(left));
+    assert!(wire.send(&[]).await.is_err());
+    assert!(wire.send(&vec![0; 65_536]).await.is_err());
+    for length in [0u32, 65_536u32] {
+        peer.write_all(&length.to_be_bytes()).await.unwrap();
+        assert!(wire.recv().await.is_err());
     }
 }

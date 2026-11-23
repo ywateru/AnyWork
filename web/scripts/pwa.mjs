@@ -92,7 +92,7 @@ self.addEventListener('notificationclick',event=>{
 });
 self.addEventListener('fetch',event=>{
  const request=event.request,url=new URL(request.url);
- if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/api/')||url.pathname.startsWith('/ws/')||url.pathname==='/source'||url.pathname.endsWith('/callback')||url.searchParams.has('code')||url.searchParams.has('state'))return;
+if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/api/')||url.pathname.startsWith('/ws/')||url.pathname==='/source'||url.pathname==='/corresponding-source'||url.pathname.endsWith('/callback')||url.searchParams.has('code')||url.searchParams.has('state'))return;
  if(request.mode==='navigate'||url.pathname.endsWith('.html')){event.respondWith(fetch(request,{cache:'no-store'}).catch(()=>caches.open(CACHE).then(cache=>cache.match(${JSON.stringify(base + "index.html")}))));return;}
  if(ASSETS.includes(url.pathname))event.respondWith((async()=>{
    const cache=await caches.open(CACHE),cached=await cache.match(request);

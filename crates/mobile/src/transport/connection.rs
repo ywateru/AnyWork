@@ -1,9 +1,9 @@
 use super::*;
+use anywork_cyberbus::AsyncStream;
 use base64::{
     Engine,
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
 };
-use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -11,19 +11,87 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
-    net::TcpStream,
+    io::{AsyncReadExt, AsyncWriteExt},
     sync::{mpsc, oneshot, watch},
     time::Instant,
-};
-use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, connect_async_tls_with_config,
-    tungstenite::{Message, client::IntoClientRequest, protocol::WebSocketConfig},
 };
 
 const MAX_IDS: usize = 65_536;
 const OPERATION_TIME: Duration = Duration::from_secs(240);
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
-type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+struct Wire {
+    stream: Box<dyn AsyncStream>,
+    length: [u8; 4],
+    length_read: usize,
+    payload: Vec<u8>,
+    payload_read: usize,
+}
+impl Wire {
+    fn new(stream: Box<dyn AsyncStream>) -> Self {
+        Self {
+            stream,
+            length: [0; 4],
+            length_read: 0,
+            payload: Vec::new(),
+            payload_read: 0,
+        }
+    }
+    async fn recv(&mut self) -> std::io::Result<Vec<u8>> {
+        loop {
+            if self.length_read < self.length.len() {
+                let read = self
+                    .stream
+                    .read(&mut self.length[self.length_read..])
+                    .await?;
+                if read == 0 {
+                    return Err(std::io::ErrorKind::UnexpectedEof.into());
+                }
+                self.length_read += read;
+                continue;
+            }
+            if self.payload.is_empty() {
+                let length = u32::from_be_bytes(self.length) as usize;
+                if length == 0 || length > 65_535 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "invalid frame length",
+                    ));
+                }
+                self.payload.resize(length, 0);
+            }
+            if self.payload_read < self.payload.len() {
+                let read = self
+                    .stream
+                    .read(&mut self.payload[self.payload_read..])
+                    .await?;
+                if read == 0 {
+                    return Err(std::io::ErrorKind::UnexpectedEof.into());
+                }
+                self.payload_read += read;
+                continue;
+            }
+            self.length_read = 0;
+            self.payload_read = 0;
+            return Ok(std::mem::take(&mut self.payload));
+        }
+    }
+    async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        if bytes.is_empty() || bytes.len() > 65_535 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid frame length",
+            ));
+        }
+        self.stream
+            .write_all(&(bytes.len() as u32).to_be_bytes())
+            .await?;
+        self.stream.write_all(bytes).await?;
+        self.stream.flush().await
+    }
+    async fn close(&mut self) {
+        let _ = tokio::time::timeout(Duration::from_secs(1), self.stream.shutdown()).await;
+    }
+}
 pub(super) type Reply<T> = oneshot::Sender<Result<T>>;
 pub(super) enum Command {
     Begin(HttpBegin, Reply<()>),
@@ -127,7 +195,6 @@ impl Peer {
         {
             return Err(error("INVALID_TARGET"));
         }
-        let url = address(&target.gateway_url)?;
         let operation = async {
             auth.ensure_epoch(epoch)
                 .await
@@ -146,26 +213,12 @@ impl Peer {
             {
                 return Err(error("AUTHORIZATION_REJECTED"));
             }
-            let mut request = url
-                .into_client_request()
-                .map_err(|_| error("INVALID_TARGET"))?;
-            request
-                .headers_mut()
-                .insert("origin", MOBILE_ORIGIN.parse().unwrap());
-            request
-                .headers_mut()
-                .insert("user-agent", "AnyWork Android native".parse().unwrap());
-            let config = WebSocketConfig::default()
-                .max_message_size(Some(65_535))
-                .max_frame_size(Some(65_535));
-            let (mut socket, _) = connect_async_tls_with_config(
-                request,
-                Some(config),
-                true,
-                Some(super::tls::connector()?),
-            )
-            .await
-            .map_err(|_| error("CONNECTION_FAILED"))?;
+            let stream = target
+                .overlay
+                .connect(target.ipv4, target.port, &stop)
+                .await
+                .map_err(|_| error("CONNECTION_FAILED"))?;
+            let mut socket = Wire::new(stream);
             auth.ensure_epoch(epoch)
                 .await
                 .map_err(|_| error("IDENTITY_CHANGED"))?;
@@ -192,22 +245,13 @@ impl Peer {
                 .write_message(&payload, &mut buf)
                 .map_err(|_| error("HANDSHAKE_FAILED"))?;
             socket
-                .send(Message::Binary(buf[..n].to_vec().into()))
+                .send(&buf[..n])
                 .await
                 .map_err(|_| error("HANDSHAKE_FAILED"))?;
             auth.ensure_epoch(epoch)
                 .await
                 .map_err(|_| error("IDENTITY_CHANGED"))?;
-            let incoming = loop {
-                match socket.next().await {
-                    Some(Ok(Message::Binary(data))) => break data,
-                    Some(Ok(Message::Ping(data))) => socket
-                        .send(Message::Pong(data))
-                        .await
-                        .map_err(|_| error("HANDSHAKE_FAILED"))?,
-                    _ => return Err(error("HANDSHAKE_FAILED")),
-                }
-            };
+            let incoming = socket.recv().await.map_err(|_| error("HANDSHAKE_FAILED"))?;
             auth.ensure_epoch(epoch)
                 .await
                 .map_err(|_| error("IDENTITY_CHANGED"))?;
@@ -369,7 +413,7 @@ struct Pty {
 }
 struct Actor {
     reference: ConnectionRef,
-    socket: Socket,
+    socket: Wire,
     noise: snow::TransportState,
     auth: Arc<dyn Authorization>,
     epoch: u64,
@@ -394,7 +438,7 @@ struct Actor {
     token: String,
 }
 impl Actor {
-    async fn check(&self) -> Result<()> {
+    async fn check(&mut self) -> Result<()> {
         if self.stop.is_cancelled()
             || self.lifetime.is_cancelled()
             || self.service_lifetime.is_cancelled()
@@ -446,7 +490,7 @@ impl Actor {
             _ = self.service_lifetime.cancelled() => return Err(error("CONNECTION_CLOSED")),
             _ = self.lifetime.cancelled() => return Err(error("IDENTITY_CHANGED")),
             _ = tokio::time::sleep_until(deadline) => return Err(error(expired)),
-            result = tokio::time::timeout(Duration::from_secs(10),self.socket.send(Message::Binary(buf[..n].to_vec().into()))) => {
+            result = tokio::time::timeout(Duration::from_secs(10),self.socket.send(&buf[..n])) => {
                 result.map_err(|_|error("SEND_TIMEOUT"))?.map_err(|_|error("CONNECTION_CLOSED"))?;
             }
         }
@@ -522,20 +566,15 @@ impl Actor {
                 _ = self.service_lifetime.cancelled() => return Ok(()),
                 _ = tokio::time::sleep_until(self.deadline) => return Err(error("AUTHORIZATION_EXPIRED")),
                 command = self.receiver.recv() => match command { Some(c) => self.command(c).await?, None => return Ok(()) },
-                message = self.socket.next() => {
+                message = self.socket.recv() => {
                     self.check().await?;
                     match message {
-                        Some(Ok(Message::Binary(bytes))) => {
+                        Ok(bytes) => {
                             let mut buf=vec![0;65_535];
                             let n=self.noise.read_message(&bytes,&mut buf).map_err(|_|error("PROTOCOL_ERROR"))?;
                             let frame:Frame=serde_json::from_slice(&buf[..n]).map_err(|_|error("INVALID_FRAME"))?;
                             self.frame(frame).await?;
                         }
-                        Some(Ok(Message::Ping(bytes))) => {
-                            tokio::time::timeout(Duration::from_secs(1),self.socket.send(Message::Pong(bytes))).await
-                                .map_err(|_|error("SEND_TIMEOUT"))?.map_err(|_|error("CONNECTION_CLOSED"))?;
-                        }
-                        Some(Ok(Message::Pong(_))) => (),
                         _ => return Err(error("CONNECTION_CLOSED")),
                     }
                 }
@@ -1086,7 +1125,7 @@ impl Actor {
         });
         // No command (including a renewal result) is admitted after this point.
         self.receiver.close();
-        let _ = tokio::time::timeout(Duration::from_secs(1), self.socket.close(None)).await;
+        self.socket.close().await;
     }
 }
 fn error(code: &'static str) -> TransportError {
@@ -1132,43 +1171,6 @@ fn decode(data: &str) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-fn address(raw: &str) -> Result<String> {
-    let mut url = url::Url::parse(raw).map_err(|_| error("INVALID_TARGET"))?;
-    #[cfg(test)]
-    let fixture = url.scheme() == "http" && url.host_str() == Some("127.0.0.1");
-    #[cfg(not(test))]
-    let fixture = false;
-    let quick = url
-        .host_str()
-        .and_then(|s| s.strip_suffix(".trycloudflare.com"))
-        .is_some_and(|s| {
-            !s.is_empty()
-                && s.len() <= 63
-                && s.split('-').all(|p| {
-                    !p.is_empty()
-                        && p.bytes()
-                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
-                })
-        });
-    if (!fixture && (url.scheme() != "https" || !quick || url.port().is_some()))
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.path() != "/"
-        || url.query().is_some()
-        || url.fragment().is_some()
-    {
-        return Err(error("INVALID_TARGET"));
-    }
-    url.set_scheme(if fixture { "ws" } else { "wss" })
-        .map_err(|_| error("INVALID_TARGET"))?;
-    url.set_path("/remote/v1/ws");
-    Ok(url.to_string())
-}
-#[cfg(test)]
-pub(super) fn test_address(raw: &str) -> Result<String> {
-    address(raw)
-}
-
 #[cfg(test)]
 #[path = "connection_tests.rs"]
 mod tests;

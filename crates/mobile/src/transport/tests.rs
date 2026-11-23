@@ -1,4 +1,5 @@
 use super::*;
+use anywork_cyberbus::AsyncStream;
 use anywork_remote::{
     AccountVerifier, Gateway, GatewayConfig, VerifiedAccount, auth::VerifyFuture,
 };
@@ -21,7 +22,29 @@ use std::{
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+struct TestOverlay {
+    port: u16,
+}
+impl Overlay for TestOverlay {
+    fn connect<'a>(
+        &'a self,
+        _: std::net::Ipv4Addr,
+        _: u16,
+        _: &'a CancellationToken,
+    ) -> OverlayFuture<'a> {
+        Box::pin(async move {
+            let stream = TcpStream::connect(("127.0.0.1", self.port))
+                .await
+                .map_err(|_| anyhow::anyhow!("fixture overlay connect failed"))?;
+            Ok(Box::new(stream) as Box<dyn AsyncStream>)
+        })
+    }
+    fn close(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(async {})
+    }
+}
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -92,10 +115,12 @@ struct Fixture {
     events: mpsc::UnboundedReceiver<TransportEvent>,
     calls: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
+    raw_task: tokio::task::JoinHandle<()>,
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
         self.task.abort();
+        self.raw_task.abort();
     }
 }
 impl Fixture {
@@ -164,6 +189,14 @@ impl Fixture {
         })
         .await
         .unwrap();
+        let raw_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let raw_port = raw_listener.local_addr().unwrap().port();
+        let acceptor = gateway.acceptor();
+        let raw_task = tokio::spawn(async move {
+            while let Ok((stream, _)) = raw_listener.accept().await {
+                acceptor.accept_stream(stream);
+            }
+        });
         let auth = Arc::new(Auth {
             epoch: AtomicU64::new(1),
             tokens: AtomicUsize::new(0),
@@ -174,7 +207,9 @@ impl Fixture {
         let info = service
             .connect(
                 VerifiedTarget {
-                    gateway_url: format!("http://127.0.0.1:{}/", gateway.port),
+                    overlay: Arc::new(TestOverlay { port: raw_port }),
+                    ipv4: "127.0.0.1".parse().unwrap(),
+                    port: raw_port,
                     installation_id: "fixture-installation".into(),
                     public_key: URL_SAFE_NO_PAD.encode(keys.public),
                     account_epoch: 1,
@@ -196,6 +231,7 @@ impl Fixture {
             events,
             calls,
             task,
+            raw_task,
         }
     }
     fn op(&self, id: &str) -> OperationRef {
@@ -525,14 +561,6 @@ async fn renewal_preserves_existing_pty_and_later_http() {
 fn ipc_flat_dtos_and_target_boundaries() {
     let begin:HttpBegin=serde_json::from_value(json!({"connection":{"connectionId":"x","generation":1},"operationId":"id","method":"GET","path":"/api/info","size":0})).unwrap();
     assert_eq!(begin.operation.operation_id, "id");
-    for raw in [
-        "http://evil.example/",
-        "https://evil.example/",
-        "https://x.trycloudflare.com/path",
-        "https://x.trycloudflare.com/?token=x",
-    ] {
-        assert!(super::connection::test_address(raw).is_err());
-    }
 }
 
 #[tokio::test]
@@ -699,6 +727,18 @@ impl Authorization for DelayedAuth {
     }
 }
 
+async fn raw_listener(gateway: &Gateway) -> (u16, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let acceptor = gateway.acceptor();
+    let task = tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            acceptor.accept_stream(stream);
+        }
+    });
+    (port, task)
+}
+
 #[tokio::test]
 async fn close_all_fences_pending_handshake_and_waits_for_its_cleanup() {
     let keys = snow::Builder::new(NOISE_SUITE.parse().unwrap())
@@ -714,8 +754,11 @@ async fn close_all_fences_pending_handshake_and_waits_for_its_cleanup() {
     })
     .await
     .unwrap();
+    let (raw_port, raw_task) = raw_listener(&gateway).await;
     let target = || VerifiedTarget {
-        gateway_url: format!("http://127.0.0.1:{}/", gateway.port),
+        overlay: Arc::new(TestOverlay { port: raw_port }),
+        ipv4: "127.0.0.1".parse().unwrap(),
+        port: raw_port,
         installation_id: "fixture-installation".into(),
         public_key: URL_SAFE_NO_PAD.encode(&keys.public),
         account_epoch: 1,
@@ -760,5 +803,6 @@ async fn close_all_fences_pending_handshake_and_waits_for_its_cleanup() {
         .await
         .unwrap();
     assert!(!service.close_all().await.cleanup_pending);
+    raw_task.abort();
     gateway.close().await;
 }

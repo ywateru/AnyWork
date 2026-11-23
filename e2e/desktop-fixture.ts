@@ -88,11 +88,6 @@ export async function manager(page: Page, options: Options = {}) {
       port: opts.port ?? 3210,
       allowLAN: false,
       serverBinary: "",
-      cloudflaredBinary: "",
-      tunwgBinary: "",
-      publicURL: "",
-      relayDomain: "",
-      forceRelay: false,
       welcomed: true,
     };
     const snapshot = {
@@ -127,7 +122,6 @@ export async function manager(page: Page, options: Options = {}) {
       enabled: !!opts.enabled,
       busy: false,
       error: null,
-      gridDeviceId: null,
       installationId: opts.enabled ? "public-installation" : null,
       publicKey: opts.enabled ? "public-key" : null,
       accountPortalUrl: opts.portal ?? "https://devices.fixture.invalid/app/",
@@ -243,7 +237,7 @@ export async function manager(page: Page, options: Options = {}) {
               );
             if (owner !== grantEpoch) return;
             if (opts.failEnable && command !== "account_disable")
-              throw "REMOTE_ENABLE_GRID_CONFIG";
+              throw "REMOTE_ENABLE_NETWORK_TOKEN";
             Object.assign(account, {
               enabled: command !== "account_disable",
               installationId: "public-installation",

@@ -47,7 +47,6 @@ try {
       busy: false,
       accountLabel: null,
       error: null,
-      gridDeviceId: null,
       installationId: null,
       publicKey: null,
       accountPortalUrl: "https://devices.fixture.invalid/app/",
@@ -70,11 +69,6 @@ try {
                 port: 9000,
                 allowLAN: false,
                 serverBinary: "",
-                cloudflaredBinary: "",
-                tunwgBinary: "",
-                publicURL: "",
-                relayDomain: "",
-                forceRelay: false,
                 welcomed: true,
               },
               token: "",
@@ -146,8 +140,9 @@ try {
               endpoint: "https://identity.fixture.invalid",
               issuer: "https://identity.fixture.invalid/oidc",
               appId: "fixture-native",
-              resource: "https://grid.fixture.invalid/api",
-              scope: "openid profile offline_access custom_data connect",
+              resource: "https://cyberbus.fixture.invalid/api",
+              scope:
+                "openid profile offline_access custom_data connect network:join",
               redirectUri: "http://127.0.0.1:17897/callback",
             };
           }
@@ -411,10 +406,11 @@ try {
     "REMOTE_ENABLE_CLEANUP_PENDING",
     "REMOTE_ENABLE_CANCELLED",
     "REMOTE_ENABLE_ALREADY_ENABLED",
-    "REMOTE_ENABLE_PROVIDER",
-    "REMOTE_ENABLE_GRID_CONFIG",
-    "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
-    "REMOTE_ENABLE_GRID_REGISTER",
+    "REMOTE_ENABLE_IDENTITY",
+    "REMOTE_ENABLE_GATEWAY",
+    "REMOTE_ENABLE_NETWORK_TOKEN",
+    "REMOTE_ENABLE_NETWORK_START",
+    "REMOTE_ENABLE_INDEX_TOKEN",
     "REMOTE_ENABLE_INDEX_READ",
     "REMOTE_ENABLE_INDEX_SCHEMA",
     "REMOTE_ENABLE_INDEX_WRITE",
@@ -442,21 +438,8 @@ try {
   }
   await page.evaluate(() => {
     window.fixtureEnableError = {
-      code: "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
-      detail: { kind: "HTTP_STATUS", httpStatus: 503, attempts: 3 },
-    };
-  });
-  await enable.click();
-  const diagnostic = page.locator(".error-details");
-  if ((await diagnostic.getAttribute("open")) === null)
-    await diagnostic.locator("summary").click();
-  await expect(diagnostic).toContainText("HTTP_STATUS");
-  await expect(diagnostic).toContainText("HTTP 503");
-  await expect(diagnostic).toContainText("已尝试 3 次");
-  await page.evaluate(() => {
-    window.fixtureEnableError = {
-      code: "REMOTE_ENABLE_GRID_CONFIG_UNAVAILABLE",
-      detail: { kind: "private-provider-body", httpStatus: 503, attempts: 3 },
+      code: "REMOTE_ENABLE_NETWORK_TOKEN",
+      detail: { kind: "private-provider-body", attempts: 3 },
     };
   });
   await enable.click();

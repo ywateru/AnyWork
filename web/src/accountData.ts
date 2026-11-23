@@ -6,7 +6,15 @@ export interface DeviceRecord {
   platform: string;
   publicKey: string;
   keyVersion: number;
-  gridDeviceId?: string;
+}
+export interface DeviceLocator {
+  version: 1;
+  productId: string;
+  ipv4: string;
+  port: number;
+  keyVersion: number;
+  issuedAt: number;
+  expiresAt: number;
 }
 export interface AnyWorkData {
   schemaVersion: 1;
@@ -15,6 +23,7 @@ export interface AnyWorkData {
     appearance?: "light" | "dark" | "system";
   };
   devices: Record<string, DeviceRecord>;
+  cyberbus: Record<string, DeviceLocator>;
 }
 export interface AccountProfile {
   customData: Record<string, unknown>;
@@ -23,11 +32,58 @@ export interface AccountProfile {
 const MAX_BYTES = 32 * 1024;
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+const safeId = (value: string) =>
+  !["__proto__", "constructor", "prototype", "toString"].includes(value) &&
+  /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const safeText = (value: unknown, max: number): value is string =>
   typeof value === "string" &&
   value.length > 0 &&
   value.length <= max &&
   !/[\u0000-\u001f\u007f]/.test(value);
+function parseLocator(value: unknown): DeviceLocator {
+  if (
+    !object(value) ||
+    Object.keys(value).length !== 7 ||
+    value.version !== 1 ||
+    !safeText(value.productId, 64) ||
+    !/^[A-Za-z0-9_-]+$/.test(value.productId) ||
+    typeof value.ipv4 !== "string" ||
+    typeof value.port !== "number" ||
+    !Number.isSafeInteger(value.port) ||
+    value.port < 1 ||
+    value.port > 65535 ||
+    value.port === 11000 ||
+    typeof value.keyVersion !== "number" ||
+    !Number.isSafeInteger(value.keyVersion) ||
+    value.keyVersion < 1 ||
+    typeof value.issuedAt !== "number" ||
+    !Number.isSafeInteger(value.issuedAt) ||
+    value.issuedAt < 0 ||
+    typeof value.expiresAt !== "number" ||
+    !Number.isSafeInteger(value.expiresAt) ||
+    value.expiresAt <= value.issuedAt ||
+    value.expiresAt - value.issuedAt > 86400
+  )
+    throw new AccountError("INVALID_ACCOUNT_DATA");
+  const octets = value.ipv4.split(".").map(Number);
+  if (
+    octets.length !== 4 ||
+    octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255) ||
+    octets[0] !== 10 ||
+    octets[1] !== 144 ||
+    (octets[2]! & 0xf0) !== 0
+  )
+    throw new AccountError("INVALID_ACCOUNT_DATA");
+  return {
+    version: 1,
+    productId: value.productId,
+    ipv4: value.ipv4,
+    port: value.port,
+    keyVersion: value.keyVersion,
+    issuedAt: value.issuedAt,
+    expiresAt: value.expiresAt,
+  };
+}
 export function parseAccountProfile(value: unknown): AccountProfile {
   if (
     !object(value) ||
@@ -38,28 +94,31 @@ export function parseAccountProfile(value: unknown): AccountProfile {
     throw new AccountError("INVALID_ACCOUNT_DATA");
   const customData = value.customData;
   if (customData.anywork === undefined)
-    return { customData, anywork: { schemaVersion: 1, devices: {} } };
+    return {
+      customData,
+      anywork: { schemaVersion: 1, devices: {}, cyberbus: {} },
+    };
   const raw = customData.anywork;
   if (
     !object(raw) ||
     raw.schemaVersion !== 1 ||
     !object(raw.devices) ||
-    Object.keys(raw.devices).length > 32
+    Object.keys(raw.devices).length > 32 ||
+    (raw.cyberbus !== undefined && !object(raw.cyberbus)) ||
+    (object(raw.cyberbus) && Object.keys(raw.cyberbus).length > 32)
   )
     throw new AccountError("INVALID_ACCOUNT_DATA");
   const devices: Record<string, DeviceRecord> = Object.create(null);
   for (const [id, item] of Object.entries(raw.devices)) {
     if (
-      ["__proto__", "constructor", "prototype", "toString"].includes(id) ||
-      !/^[A-Za-z0-9_-]{1,128}$/.test(id) ||
+      !safeId(id) ||
       !object(item) ||
       !safeText(item.label, 80) ||
       !safeText(item.platform, 32) ||
       typeof item.publicKey !== "string" ||
       !/^[A-Za-z0-9_-]{43}$/.test(item.publicKey) ||
       !Number.isSafeInteger(item.keyVersion) ||
-      (item.keyVersion as number) < 1 ||
-      (item.gridDeviceId !== undefined && !safeText(item.gridDeviceId, 128))
+      (item.keyVersion as number) < 1
     )
       throw new AccountError("INVALID_ACCOUNT_DATA");
     try {
@@ -72,10 +131,15 @@ export function parseAccountProfile(value: unknown): AccountProfile {
       platform: item.platform,
       publicKey: item.publicKey,
       keyVersion: item.keyVersion as number,
-      ...(item.gridDeviceId
-        ? { gridDeviceId: item.gridDeviceId as string }
-        : {}),
     };
+  }
+  const cyberbus: Record<string, DeviceLocator> = Object.create(null);
+  for (const [id, item] of Object.entries(
+    object(raw.cyberbus) ? raw.cyberbus : {},
+  )) {
+    if (!safeId(id) || !devices[id])
+      throw new AccountError("INVALID_ACCOUNT_DATA");
+    cyberbus[id] = parseLocator(item);
   }
   let preferences: AnyWorkData["preferences"];
   if (raw.preferences !== undefined) {
@@ -106,6 +170,7 @@ export function parseAccountProfile(value: unknown): AccountProfile {
     anywork: {
       schemaVersion: 1,
       devices,
+      cyberbus,
       ...(preferences ? { preferences } : {}),
     },
   };

@@ -1,0 +1,24 @@
+{
+  "artifact": "easytier-browser.js",
+  "bytes": 5288976,
+  "sha256": "e8a1d53b2b4451de013c291bc3c53b04148d90345c81f28b8f70d569bd850469",
+  "source": "https://github.com/EasyTier/EasyTier",
+  "tag": "v2.7.1",
+  "commit": "0d9c52b169dc2112687ddefcf571cd01d383193c",
+  "packages": [
+    "@easytier/browser 0.1.0",
+    "@easytier/runtime 0.1.0"
+  ],
+  "toolchain": {
+    "node": "22.16.0",
+    "pnpm": "10.15.0",
+    "rust": "1.95",
+    "esbuild": "0.28.2"
+  },
+  "build": "scripts/build-easytier-browser.sh",
+  "notes": [
+    "The upstream dist/index.js is rebuilt with @easytier/runtime bundled.",
+    "The EasyTier WASM core is embedded as base64 by the upstream build.",
+    "Browser use requires WebAssembly JSPI and Uint8Array.fromBase64."
+  ]
+}

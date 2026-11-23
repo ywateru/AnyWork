@@ -57,10 +57,10 @@ export function presenceStageLabel(
 ) {
   const labels = {
     account: ["账号设备资料", "Account device records"],
-    configuration: ["在线状态服务配置", "Presence service configuration"],
-    "host-authorization": ["在线状态授权", "Presence authorization"],
-    exchange: ["在线状态服务会话", "Presence service session"],
-    directory: ["设备在线状态查询", "Device presence query"],
+    configuration: ["CyberBus 网络配置", "CyberBus network configuration"],
+    "host-authorization": ["CyberBus 网络授权", "CyberBus authorization"],
+    exchange: ["CyberBus 网络凭据", "CyberBus credentials"],
+    directory: ["设备定位信息", "Device locator"],
   };
   return labels[stage][locale === "zh-CN" ? 0 : 1];
 }

@@ -1,7 +1,28 @@
 //! Synthetic identities and loopback Account API fixtures; no real OAuth login.
 use super::*;
+use network::NetworkStarter;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+struct FixtureOverlay;
+impl crate::transport::Overlay for FixtureOverlay {
+    fn connect<'a>(
+        &'a self,
+        _: std::net::Ipv4Addr,
+        _: u16,
+        _: &'a CancellationToken,
+    ) -> crate::transport::OverlayFuture<'a> {
+        Box::pin(async { bail!("fixture overlay is not connected") })
+    }
+    fn close(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async {})
+    }
+}
+struct FixtureStarter;
+impl network::NetworkStarter for FixtureStarter {
+    fn start<'a>(&'a self, _: &'a str, _: &'a str, _: &'a str) -> network::NetworkFuture<'a> {
+        Box::pin(async { Ok(Arc::new(FixtureOverlay) as Arc<dyn crate::transport::Overlay>) })
+    }
+}
 fn profile(subject: &str) -> tauri_plugin_mobile_auth::Profile {
     tauri_plugin_mobile_auth::Profile {
         subject: subject.into(),
@@ -96,7 +117,12 @@ impl AuthBackend for Backend {
 fn handle(config: Config) -> (Handle, Arc<Backend>) {
     let backend = Arc::new(Backend::default());
     (
-        Handle::with_backend(config, backend.clone(), Arc::new(|_| {})),
+        Handle::with_network(
+            config,
+            backend.clone(),
+            Arc::new(FixtureStarter),
+            Arc::new(|_| {}),
+        ),
         backend,
     )
 }
@@ -110,13 +136,12 @@ fn key(byte: u8) -> String {
 fn account_data() -> Value {
     json!({"id":"fixture-subject","customData":{"unrelated":{"retain":true},"anywork":{
         "schemaVersion":1,"future":{"retain":true},"preferences":{"locale":"en"},
-        "devices":{"fixture-install":{"label":"Laptop","platform":"macos","publicKey":key(1),"keyVersion":1,"gridDeviceId":"fixture-grid","future":"retain"}}
+        "devices":{"fixture-install":{"label":"Laptop","platform":"macos","publicKey":key(1),"keyVersion":1,"future":"retain"}},
+        "cyberbus":{"fixture-install":{"version":1,"productId":"anywork","ipv4":"10.144.5.6","port":11001,"keyVersion":1,"issuedAt":now().saturating_sub(10),"expiresAt":now()+590}}
     }}})
 }
 async fn install_target(handle: &Handle) -> (String, u64, u64) {
-    let mut records = Handle::account_devices(&account_data()).unwrap();
-    records[0].online = Some(true);
-    records[0].gateway_url = Some("https://fixture.trycloudflare.com".into());
+    let records = Handle::account_devices(&account_data(), &handle.0.config.product_id).unwrap();
     let scope = handle.scope_id().await.unwrap();
     let device_ref = digest(&["mobile-device-ref-v1", &scope, &records[0].installation_id]);
     let mut state = handle.0.state.lock().await;
@@ -216,29 +241,64 @@ async fn unknown_rotation_retires_targets_and_blocks_old_owner() {
 #[test]
 fn directory_schema_is_bounded_and_distinguishes_missing_from_empty() {
     assert!(
-        Handle::account_devices(&json!({"customData":{}}))
+        Handle::account_devices(&json!({"customData":{}}), "anywork")
             .unwrap()
             .is_empty()
     );
-    assert!(Handle::account_devices(&json!({})).is_err());
+    assert!(Handle::account_devices(&json!({}), "anywork").is_err());
     let mut value = account_data();
     value["customData"]["anywork"]["devices"]["fixture-install"]["publicKey"] = json!("bad");
-    assert!(Handle::account_devices(&value).is_err());
+    assert!(Handle::account_devices(&value, "anywork").is_err());
     let mut value = account_data();
     value["customData"]["anywork"]["devices"]["fixture-install"]["keyVersion"] = json!(0);
-    assert!(Handle::account_devices(&value).is_err());
+    assert!(Handle::account_devices(&value, "anywork").is_err());
     let mut value = account_data();
     value["customData"]["anywork"]["preferences"]["locale"] = json!("invalid");
-    assert!(Handle::account_devices(&value).is_err());
+    assert!(Handle::account_devices(&value, "anywork").is_err());
     let mut value = account_data();
     let devices = value["customData"]["anywork"]["devices"]
         .as_object_mut()
         .unwrap();
     devices.insert("__proto__".into(), devices["fixture-install"].clone());
-    assert!(Handle::account_devices(&value).is_err());
+    assert!(Handle::account_devices(&value, "anywork").is_err());
     let mut value = account_data();
     value["customData"]["oversized"] = json!("x".repeat(32768));
-    assert!(Handle::account_devices(&value).is_err());
+    assert!(Handle::account_devices(&value, "anywork").is_err());
+}
+
+#[test]
+fn cyberbus_locator_is_product_bound_and_rejects_stale_or_wrong_records() {
+    let mut value = account_data();
+    let records = Handle::account_devices(&value, "anywork").unwrap();
+    assert_eq!(records[0].online, Some(true));
+    assert_eq!(records[0].locator.as_ref().unwrap().ipv4, "10.144.5.6");
+    assert!(
+        Handle::account_devices(&value, "other")
+            .unwrap()
+            .first()
+            .is_some_and(|record| record.online == Some(false) && record.locator.is_none())
+    );
+    value["customData"]["anywork"]["cyberbus"]["fixture-install"]["port"] = json!(11000);
+    assert!(
+        Handle::account_devices(&value, "anywork").unwrap()[0]
+            .locator
+            .is_none()
+    );
+    let mut value = account_data();
+    value["customData"]["anywork"]["cyberbus"]["fixture-install"]["keyVersion"] = json!(2);
+    assert!(
+        Handle::account_devices(&value, "anywork").unwrap()[0]
+            .locator
+            .is_none()
+    );
+    let mut value = account_data();
+    value["customData"]["anywork"]["cyberbus"]["fixture-install"]["expiresAt"] =
+        json!(now().saturating_sub(1));
+    assert!(
+        Handle::account_devices(&value, "anywork").unwrap()[0]
+            .locator
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -364,22 +424,12 @@ fn trust_file_contains_only_public_pins_and_rejects_corrupt_storage() {
     assert!(TrustStore::load(Some(path)).is_err());
 }
 
-fn native_config() -> Value {
-    let config = Config::default();
-    json!({"provider":"logto","issuer":config.issuer,"clientId":config.client_id,"resource":config.resource,
-        "deviceAuthorizationEndpoint":format!("{}/device/auth",config.issuer),"tokenEndpoint":format!("{}/token",config.issuer),
-        "revocationEndpoint":format!("{}/token/revocation",config.issuer),"scope":"openid offline_access profile email connect",
-        "coordination":{"protocol":"memory-v1","epoch":"00000000-0000-4000-8000-000000000001"}})
-}
-
 #[tokio::test]
-async fn gateway_transport_preserves_native_audience_policy_and_account_scope() {
+async fn mobile_uses_the_cyberbus_resource_and_product_without_transport_derivation() {
     let config = Config::default();
-    assert_eq!(config.grid_url, "https://anywork.aixgg.com");
-    let original_audience = "https://anywork-cybergrid-selfhost.vercel.app/api";
-    assert_eq!(config.resource, original_audience);
-    let gateway_audience = format!("{}/api", config.grid_url);
-    assert_ne!(config.resource, gateway_audience);
+    assert_eq!(config.resource, "https://cyberbus.x.aixgg.com/api");
+    assert_eq!(config.product_id, "anywork");
+    assert_eq!(config.bootstrap_peers, ["tcp://43.155.169.102:11010"]);
 
     let (gateway, backend) = handle(config.clone());
     gateway.prepare().await.unwrap();
@@ -387,28 +437,13 @@ async fn gateway_transport_preserves_native_audience_policy_and_account_scope() 
         // Exercise the real native configuration projection, not just defaults.
         let configured = backend.configuration.lock().unwrap();
         let configured = configured.as_ref().unwrap();
-        assert_eq!(configured.resource, original_audience);
+        assert_eq!(configured.resource, config.resource);
+        assert_eq!(configured.product, config.product_id);
         assert_eq!(configured.endpoint, config.endpoint);
         assert_eq!(configured.client_id, config.client_id);
         assert_eq!(configured.redirect_uri, config.redirect_uri);
     }
-
-    let mut auth = native_config();
-    assert!(EndpointPolicy::parse(&auth, &config).is_ok());
-    auth["resource"] = json!(gateway_audience);
-    assert_eq!(
-        EndpointPolicy::parse(&auth, &config)
-            .err()
-            .unwrap()
-            .to_string(),
-        "MOBILE_COORDINATION_CONFIGURATION"
-    );
-
-    // The same account keeps its trust scope across a transport-only change.
-    let (direct, _) = handle(Config {
-        grid_url: "https://anywork-cybergrid-selfhost.vercel.app".into(),
-        ..config
-    });
+    let (direct, _) = handle(config.clone());
     signed_in(&gateway).await;
     signed_in(&direct).await;
     assert_eq!(
@@ -418,63 +453,31 @@ async fn gateway_transport_preserves_native_audience_policy_and_account_scope() 
 }
 
 #[tokio::test]
-#[ignore = "Explicit public-service probe only; no credentials or device registration"]
-async fn public_native_configuration_sdk_roundtrip() {
-    let config = Config::default();
-    let client = cybergrid_sdk::Client::new(cybergrid_sdk::Config {
-        base_url: config.grid_url.clone(),
-        app_id: config.client_id.clone(),
-        iroh_enabled: false,
-        stun_servers: vec![],
-        cloudflared: None,
-        ..Default::default()
-    })
-    .unwrap();
-    let typed = tokio::time::timeout(Duration::from_secs(20), client.auth_config())
-        .await
-        .expect("public Native configuration request timed out")
-        .expect("public Native configuration rejected by the pinned SDK");
-    EndpointPolicy::parse(&serde_json::to_value(&typed).unwrap(), &config)
-        .expect("typed Native configuration rejected by the mobile policy");
-    assert!(client.device_session().await.is_none());
-}
-#[test]
-fn native_configuration_requires_issuer_client_resource_and_no_console_fields() {
-    let value = native_config();
-    assert!(EndpointPolicy::parse(&value, &Config::default()).is_ok());
-    for field in [
-        "issuer",
-        "clientId",
-        "resource",
-        "tokenEndpoint",
-        "deviceAuthorizationEndpoint",
-    ] {
-        let mut changed = value.clone();
-        changed[field] = json!("invalid");
-        assert!(EndpointPolicy::parse(&changed, &Config::default()).is_err());
-    }
-    assert!(value.get("authorizationEndpoint").is_none());
-    assert!(value.get("jwksUri").is_none());
-}
-
-#[test]
-fn gateway_rejects_untrusted_origins_noncanonical_paths_and_wrong_business_port() {
-    let policy = EndpointPolicy { providers: vec![] };
-    assert!(policy.endpoint("https://fixture.trycloudflare.com").is_ok());
-    for invalid in [
-        "http://fixture.trycloudflare.com",
-        "https://example.com",
-        "https://fixture.trycloudflare.com/evil",
-        "https://fixture.trycloudflare.com/%2f",
-        "https://fixture.trycloudflare.com?secret=x",
-        "https://fixture.trycloudflare.com:8443",
-    ] {
-        assert!(policy.endpoint(invalid).is_err());
-    }
-    let mut device = json!({"devices":[{"id":"fixture-grid","online":true,"lastSeen":"2026-01-01T00:00:00Z","ports":[{"id":"anywork-remote","transport":"tcp","port":4000,"type":"wrong","tunnelUrl":"https://fixture.trycloudflare.com"}]}]});
-    assert!(GridDevice::parse(&device, &policy).is_err());
-    device["devices"][0]["ports"][0]["type"] = json!("anywork-noise-v1");
-    assert!(GridDevice::parse(&device, &policy).unwrap()[0].online);
+async fn cyberbus_starter_rejects_invalid_bootstrap_and_tokens_before_starting_a_network() {
+    let invalid = Config {
+        bootstrap_peers: vec!["https://relay.example.invalid".into()],
+        ..Config::default()
+    };
+    let starter = network::CyberbusNetworkStarter::new(&invalid);
+    assert_eq!(
+        starter
+            .start("not-a-token", "subject", "installation")
+            .await
+            .err()
+            .unwrap()
+            .to_string(),
+        "MOBILE_NETWORK_CONFIGURATION"
+    );
+    let starter = network::CyberbusNetworkStarter::new(&Config::default());
+    assert_eq!(
+        starter
+            .start("not-a-token", "subject", "installation")
+            .await
+            .err()
+            .unwrap()
+            .to_string(),
+        "MOBILE_NETWORK_TOKEN_REJECTED"
+    );
 }
 
 /// Minimal real HTTP fixture for the Account API, separate from OAuth/native UI.
@@ -547,7 +550,6 @@ async fn account_rename_and_remove_preserve_unknown_fields_and_verify_writes() {
     let (url, data, task) = server(account_data(), false).await;
     let (handle, _) = handle(Config {
         endpoint: url.clone(),
-        grid_url: url,
         ..Config::default()
     });
     signed_in(&handle).await;
@@ -563,7 +565,7 @@ async fn account_rename_and_remove_preserve_unknown_fields_and_verify_writes() {
         .await
         .unwrap();
     assert_eq!(renamed.devices[0].label, "Renamed");
-    assert!(renamed.directory_state == DirectoryState::Unknown); // Account-only fixture has no Native API.
+    assert!(renamed.directory_state == DirectoryState::Ready);
     {
         let data = data.lock().await;
         assert_eq!(data["customData"]["unrelated"]["retain"], true);
@@ -584,6 +586,11 @@ async fn account_rename_and_remove_preserve_unknown_fields_and_verify_writes() {
         .unwrap();
     assert!(removed.devices.is_empty());
     assert!(removed.directory_state == DirectoryState::Ready);
+    assert!(
+        data.lock().await["customData"]["anywork"]["cyberbus"]
+            .get("fixture-install")
+            .is_none()
+    );
     assert_eq!(
         data.lock().await["customData"]["anywork"]["future"]["retain"],
         true
@@ -596,7 +603,6 @@ async fn account_write_readback_conflict_is_not_reported_as_success() {
     let (url, _, task) = server(account_data(), true).await;
     let (handle, _) = handle(Config {
         endpoint: url.clone(),
-        grid_url: url,
         ..Config::default()
     });
     signed_in(&handle).await;
@@ -621,7 +627,6 @@ async fn userinfo_warning_preserves_owner_and_retries_on_refresh() {
     let (url, _, task) = server(json!({"id":"fixture-subject","customData":{}}), false).await;
     let (handle, backend) = handle(Config {
         endpoint: url.clone(),
-        grid_url: url,
         ..Config::default()
     });
     signed_in(&handle).await;
@@ -640,9 +645,6 @@ async fn userinfo_warning_preserves_owner_and_retries_on_refresh() {
     task.abort();
 }
 
-#[path = "grid_tests.rs"]
-mod native_grid;
-
 #[test]
 fn directory_log_codes_never_include_unknown_or_private_error_values() {
     for code in [
@@ -654,10 +656,11 @@ fn directory_log_codes_never_include_unknown_or_private_error_values() {
         assert_eq!(directory_diagnostic_code(code), "MOBILE_OPERATION_FAILED");
     }
     for code in [
-        "MOBILE_COORDINATION_CONFIG_FETCH_FAILED",
-        "MOBILE_COORDINATION_REGISTRATION_FAILED",
-        "MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED",
-        "MOBILE_INVALID_ENDPOINT_POLICY",
+        "MOBILE_NETWORK_CONFIGURATION",
+        "MOBILE_NETWORK_TOKEN",
+        "MOBILE_NETWORK_TOKEN_REJECTED",
+        "MOBILE_NETWORK_START",
+        "MOBILE_NETWORK_CONNECT",
         "MOBILE_NETWORK_ERROR",
     ] {
         assert_eq!(directory_diagnostic_code(Some(code)), code);

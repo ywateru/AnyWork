@@ -18,8 +18,9 @@ jobs:
       VITE_LOGTO_ENDPOINT: ${{ vars.VITE_LOGTO_ENDPOINT }}
       VITE_LOGTO_APP_ID: ${{ vars.VITE_LOGTO_APP_ID }}
       VITE_LOGTO_RESOURCE: ${{ vars.VITE_LOGTO_RESOURCE }}
-      VITE_CYBERGRID_URL: ${{ vars.VITE_CYBERGRID_URL }}
-      VITE_CYBERGRID_NATIVE_APP_ID: ${{ vars.VITE_CYBERGRID_NATIVE_APP_ID }}
+      VITE_CYBERBUS_PRODUCT_ID: ${{ vars.VITE_CYBERBUS_PRODUCT_ID }}
+      VITE_CYBERBUS_BOOTSTRAP_PEERS: ${{ vars.VITE_CYBERBUS_BOOTSTRAP_PEERS }}
+      VITE_CYBERBUS_EASYTIER_URL: ${{ vars.VITE_CYBERBUS_EASYTIER_URL }}
     runs-on: ubuntu-latest
     steps:
       - name: Require account and transport acceptance

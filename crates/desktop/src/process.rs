@@ -162,19 +162,6 @@ pub struct OwnedProcess {
 }
 impl OwnedProcess {
     pub fn spawn(plan: &LaunchPlan) -> Result<Self> {
-        Self::spawn_inner(plan, None)
-    }
-    /// Account gateway provider only. No standalone route configuration or recovery.
-    pub fn spawn_account_provider(
-        plan: &LaunchPlan,
-        output: tokio::sync::mpsc::Sender<String>,
-    ) -> Result<Self> {
-        Self::spawn_inner(plan, Some(output))
-    }
-    fn spawn_inner(
-        plan: &LaunchPlan,
-        output: Option<tokio::sync::mpsc::Sender<String>>,
-    ) -> Result<Self> {
         let mut child = plan
             .command()
             .spawn()
@@ -182,8 +169,8 @@ impl OwnedProcess {
         let stdout = child.stdout.take().context("无法读取程序输出")?;
         let stderr = child.stderr.take().context("无法读取程序输出")?;
         let readers = vec![
-            tokio::spawn(read_provider(stdout, output.clone())),
-            tokio::spawn(read_provider(stderr, output)),
+            tokio::spawn(drain_output(stdout)),
+            tokio::spawn(drain_output(stderr)),
         ];
         Ok(Self { child, readers })
     }
@@ -219,64 +206,13 @@ impl Drop for OwnedProcess {
     }
 }
 
-async fn read_provider(
-    mut reader: impl tokio::io::AsyncRead + Unpin,
-    output: Option<tokio::sync::mpsc::Sender<String>>,
-) {
+async fn drain_output(mut reader: impl tokio::io::AsyncRead + Unpin) {
     use tokio::io::AsyncReadExt;
     let mut buf = [0; 4096];
-    let mut line = Vec::new();
-    let mut overflow = false;
     loop {
-        let n = match reader.read(&mut buf).await {
-            Ok(n) => n,
-            Err(_) => return,
-        };
-        if n == 0 {
-            if !overflow {
-                publish_provider(&line, &output);
-            }
-            return;
-        }
-        for byte in &buf[..n] {
-            if *byte == b'\n' {
-                if !overflow {
-                    publish_provider(&line, &output);
-                }
-                line.clear();
-                overflow = false;
-            } else if line.len() < 16384 && !overflow {
-                line.push(*byte);
-            } else {
-                overflow = true;
-            }
-        }
-    }
-}
-fn publish_provider(line: &[u8], output: &Option<tokio::sync::mpsc::Sender<String>>) {
-    let Some(output) = output else { return };
-    let line = String::from_utf8_lossy(line);
-    for (start, _) in line.match_indices("https://") {
-        let value: String = line[start..]
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || ":/.-".contains(*c))
-            .collect();
-        if let Ok(u) = url::Url::parse(&value)
-            && u.scheme() == "https"
-            && u.path() == "/"
-            && u.query().is_none()
-            && u.fragment().is_none()
-            && u.username().is_empty()
-            && u.port().is_none()
-            && u.host_str().is_some_and(|h| {
-                h.strip_suffix(".trycloudflare.com").is_some_and(|p| {
-                    !p.is_empty()
-                        && p.bytes()
-                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-                })
-            })
-        {
-            let _ = output.try_send(u.origin().ascii_serialization());
+        match reader.read(&mut buf).await {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {}
         }
     }
 }
@@ -297,15 +233,5 @@ mod tests {
         assert!(p.args.windows(2).any(|p| p == ["--bind", "127.0.0.1:3210"]));
         assert!(p.args.windows(2).any(|p| p == ["--agent-scope", "all"]));
         assert!(!p.args.iter().any(|x| x.contains("tunwg")));
-    }
-    #[tokio::test]
-    async fn account_provider_only_emits_verified_root_tunnel_origins() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
-        read_provider(&b"INF | https://owned-provider.trycloudflare.com |\nhttps://bad.trycloudflare.com.evil.test\nhttps://nested.bad.trycloudflare.com\nhttps://bad.trycloudflare.com/path\n"[..],Some(tx)).await;
-        assert_eq!(
-            rx.recv().await.as_deref(),
-            Some("https://owned-provider.trycloudflare.com")
-        );
-        assert!(rx.recv().await.is_none());
     }
 }

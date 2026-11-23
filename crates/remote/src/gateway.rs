@@ -27,6 +27,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf},
     net::TcpListener,
     sync::{Semaphore, mpsc},
     task::{AbortHandle, JoinHandle},
@@ -145,7 +146,138 @@ impl Clients {
 enum SessionEvent {
     Completed(Option<String>),
     Output(Option<Value>),
-    Message(Option<Result<Message, axum::Error>>),
+    Message(Result<WireMessage, anyhow::Error>),
+}
+#[derive(Debug)]
+enum WireMessage {
+    Data(Vec<u8>),
+    Ping(Vec<u8>),
+    Pong,
+}
+pub trait RawStream: AsyncRead + AsyncWrite + Send + Unpin {}
+impl<T: AsyncRead + AsyncWrite + Send + Unpin> RawStream for T {}
+struct BoxedStream(Box<dyn RawStream>);
+impl AsyncRead for BoxedStream {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut *self.0).poll_read(cx, buf)
+    }
+}
+impl AsyncWrite for BoxedStream {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut *self.0).poll_write(cx, buf)
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut *self.0).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut *self.0).poll_shutdown(cx)
+    }
+}
+#[derive(Default)]
+struct RawFraming {
+    length: [u8; 4],
+    length_read: usize,
+    payload: Vec<u8>,
+    payload_read: usize,
+}
+enum Wire {
+    WebSocket(Box<WebSocket>),
+    Tcp {
+        stream: BoxedStream,
+        framing: RawFraming,
+    },
+}
+impl Wire {
+    async fn recv(&mut self) -> Result<WireMessage> {
+        match self {
+            Self::WebSocket(socket) => match socket.recv().await {
+                Some(Ok(Message::Binary(bytes))) => Ok(WireMessage::Data(bytes.to_vec())),
+                Some(Ok(Message::Ping(bytes))) => Ok(WireMessage::Ping(bytes.to_vec())),
+                Some(Ok(Message::Pong(_))) => Ok(WireMessage::Pong),
+                Some(Ok(Message::Text(_))) | None => bail!("REMOTE_CLOSED"),
+                Some(Err(error)) => Err(error.into()),
+                Some(Ok(Message::Close(_))) => bail!("REMOTE_CLOSED"),
+            },
+            Self::Tcp { stream, framing } => loop {
+                if framing.length_read < framing.length.len() {
+                    let read = stream
+                        .read(&mut framing.length[framing.length_read..])
+                        .await?;
+                    if read == 0 {
+                        bail!("REMOTE_CLOSED")
+                    }
+                    framing.length_read += read;
+                    continue;
+                }
+                if framing.payload.is_empty() {
+                    let length = u32::from_be_bytes(framing.length) as usize;
+                    if length == 0 || length > 65_535 {
+                        bail!("FRAME_TOO_LARGE")
+                    }
+                    framing.payload.resize(length, 0);
+                }
+                if framing.payload_read < framing.payload.len() {
+                    let read = stream
+                        .read(&mut framing.payload[framing.payload_read..])
+                        .await?;
+                    if read == 0 {
+                        bail!("REMOTE_CLOSED")
+                    }
+                    framing.payload_read += read;
+                    continue;
+                }
+                framing.length_read = 0;
+                framing.payload_read = 0;
+                return Ok(WireMessage::Data(std::mem::take(&mut framing.payload)));
+            },
+        }
+    }
+    async fn send(&mut self, bytes: Vec<u8>) -> Result<()> {
+        match self {
+            Self::WebSocket(socket) => socket.send(Message::Binary(bytes.into())).await?,
+            Self::Tcp { stream, .. } => {
+                if bytes.is_empty() || bytes.len() > 65_535 {
+                    bail!("FRAME_TOO_LARGE")
+                }
+                stream
+                    .write_all(&(bytes.len() as u32).to_be_bytes())
+                    .await?;
+                stream.write_all(&bytes).await?;
+                stream.flush().await?;
+            }
+        }
+        Ok(())
+    }
+    async fn pong(&mut self, bytes: Vec<u8>) -> Result<()> {
+        if let Self::WebSocket(socket) = self {
+            socket.send(Message::Pong(bytes.into())).await?;
+        }
+        Ok(())
+    }
+    async fn close(&mut self) {
+        match self {
+            Self::WebSocket(socket) => {
+                let _ = tokio::time::timeout(Duration::from_secs(1), socket.close()).await;
+            }
+            Self::Tcp { stream, .. } => {
+                let _ = tokio::time::timeout(Duration::from_secs(1), stream.shutdown()).await;
+            }
+        }
+    }
 }
 struct Context {
     cfg: GatewayConfig,
@@ -171,6 +303,39 @@ pub struct Gateway {
     task: Option<JoinHandle<()>>,
     shutdown: GatewayShutdown,
     clients: Arc<Clients>,
+    context: Arc<Context>,
+}
+/// Borrow-free entry into one running gateway. Clones share its limits,
+/// authentication context and connection accounting.
+#[derive(Clone)]
+pub struct GatewayAcceptor {
+    context: Arc<Context>,
+}
+impl GatewayAcceptor {
+    /// Serves one authenticated raw byte stream through the same Noise and
+    /// business policy as the browser WebSocket entry.
+    pub fn accept_stream<S>(&self, stream: S) -> JoinHandle<()>
+    where
+        S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    {
+        let ctx = self.context.clone();
+        tokio::spawn(async move {
+            let Ok(permit) = ctx.permits.clone().try_acquire_owned() else {
+                return;
+            };
+            let _permit = permit;
+            let result = connection(
+                ctx,
+                Wire::Tcp {
+                    stream: BoxedStream(Box::new(stream)),
+                    framing: RawFraming::default(),
+                },
+                ClientKind::Unknown,
+            )
+            .await;
+            let _ = result;
+        })
+    }
 }
 impl Gateway {
     pub async fn start(cfg: GatewayConfig) -> Result<Self> {
@@ -207,7 +372,7 @@ impl Gateway {
         });
         let router = Router::new()
             .route("/remote/v1/ws", get(upgrade))
-            .with_state(context);
+            .with_state(context.clone());
         let task_stop = stop.clone();
         let task = tokio::spawn(async move {
             let _ = axum::serve(listener, router)
@@ -221,6 +386,7 @@ impl Gateway {
             task: Some(task),
             shutdown,
             clients,
+            context,
         })
     }
     /// Retains this task's completion identity, including after `close` or drop.
@@ -228,11 +394,24 @@ impl Gateway {
     pub fn shutdown_observer(&self) -> GatewayShutdown {
         self.shutdown.clone()
     }
+    pub fn acceptor(&self) -> GatewayAcceptor {
+        GatewayAcceptor {
+            context: self.context.clone(),
+        }
+    }
     pub fn remote_clients(&self) -> Vec<RemoteClient> {
         if self.stop.is_cancelled() {
             return vec![];
         }
         self.clients.snapshot()
+    }
+    /// Serves one authenticated raw byte stream through the same Noise and
+    /// business policy as the browser WebSocket entry.
+    pub fn accept_stream<S>(&self, stream: S) -> JoinHandle<()>
+    where
+        S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    {
+        self.acceptor().accept_stream(stream)
     }
     pub async fn close(&mut self) {
         self.stop.cancel();
@@ -268,16 +447,16 @@ async fn upgrade(
         .max_frame_size(65535)
         .on_upgrade(move |socket| async move {
             let _permit = permit;
-            let _ = connection(ctx, socket, kind).await;
+            let _ = connection(ctx, Wire::WebSocket(Box::new(socket)), kind).await;
         })
         .into_response()
 }
-async fn binary(socket: &mut WebSocket) -> Result<Vec<u8>> {
+async fn binary(wire: &mut Wire) -> Result<Vec<u8>> {
     loop {
-        match socket.recv().await {
-            Some(Ok(Message::Binary(bytes))) => return Ok(bytes.to_vec()),
-            Some(Ok(Message::Ping(p))) => socket.send(Message::Pong(p)).await?,
-            _ => bail!("REMOTE_CLOSED"),
+        match wire.recv().await? {
+            WireMessage::Data(bytes) => return Ok(bytes),
+            WireMessage::Ping(bytes) => wire.pong(bytes).await?,
+            WireMessage::Pong => {}
         }
     }
 }
@@ -303,7 +482,7 @@ fn lease_duration(expires_at: u64) -> Result<Duration> {
     Ok(Duration::from_secs(expires_at)
         .saturating_sub(SystemTime::now().duration_since(UNIX_EPOCH)?))
 }
-async fn connection(ctx: Arc<Context>, mut socket: WebSocket, kind: ClientKind) -> Result<()> {
+async fn connection(ctx: Arc<Context>, mut wire: Wire, kind: ClientKind) -> Result<()> {
     let mut handshake = snow::Builder::new(protocol::NOISE_SUITE.parse()?)
         .local_private_key(&ctx.cfg.private_key)?
         .prologue(&protocol::prologue(&ctx.cfg.installation_id))?
@@ -311,7 +490,7 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket, kind: ClientKind) 
     let (account, mut authorization_token, mut authorization_expires_at) = tokio::select! {
         _=ctx.stop.cancelled()=>return Ok(()),
         result=tokio::time::timeout(Duration::from_secs(10),async {
-            let first=binary(&mut socket).await?;
+            let first=binary(&mut wire).await?;
             let mut plain=vec![0;65535]; let length=handshake.read_message(&first,&mut plain)?;
             let auth:Authentication=serde_json::from_slice(&plain[..length])?;
             if auth.r#type!="auth" || auth.installation_id!=ctx.cfg.installation_id { bail!("AUTH_REJECTED") }
@@ -320,7 +499,7 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket, kind: ClientKind) 
             let expires_at=account.expires_at.min(now()+300);
             let payload=serde_json::to_vec(&json!({"type":"ready","expiresAt":expires_at,"authRenewal":1}))?;
             let length=handshake.write_message(&payload,&mut plain)?;
-            socket.send(Message::Binary(plain[..length].to_vec().into())).await?;
+            wire.send(plain[..length].to_vec()).await?;
             Ok::<_,anyhow::Error>((account,auth.access_token,expires_at))
         })=>result??,
     };
@@ -361,7 +540,7 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket, kind: ClientKind) 
                 tokio::select! {
                     id=completed.recv()=>SessionEvent::Completed(id),
                     value=output.recv()=>SessionEvent::Output(value),
-                    message=socket.recv()=>SessionEvent::Message(message),
+                    message=wire.recv()=>SessionEvent::Message(message),
                 }
             }=>match event {
             SessionEvent::Completed(Some(id))=>{children.tasks.remove(&id);children.terminals.remove(&id);},
@@ -370,10 +549,10 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket, kind: ClientKind) 
                 if plain.len()>65519 {bail!("FRAME_TOO_LARGE")}
                 let length=noise.write_message(&plain,&mut buffer)?;
                 // A slow receiver must not hold a session beyond its authorization.
-                tokio::select!{biased;_=&mut deadline=>break,_=ctx.stop.cancelled()=>break,result=tokio::time::timeout(Duration::from_secs(10),socket.send(Message::Binary(buffer[..length].to_vec().into())))=>{result??;}}
+                tokio::select!{biased;_=&mut deadline=>break,_=ctx.stop.cancelled()=>break,result=tokio::time::timeout(Duration::from_secs(10),wire.send(buffer[..length].to_vec()))=>{result??;}}
             },
-            SessionEvent::Message(Some(Ok(message)))=>{
-                let bytes=match message {Message::Binary(bytes)=>bytes,Message::Ping(p)=>{tokio::select!{biased;_=&mut deadline=>break,_=ctx.stop.cancelled()=>break,result=tokio::time::timeout(Duration::from_secs(1),socket.send(Message::Pong(p)))=>{result??;}}continue},Message::Pong(_)=>continue,_=>break};
+            SessionEvent::Message(Ok(message))=>{
+                let bytes=match message {WireMessage::Data(bytes)=>bytes,WireMessage::Ping(p)=>{tokio::select!{biased;_=&mut deadline=>break,_=ctx.stop.cancelled()=>break,result=tokio::time::timeout(Duration::from_secs(1),wire.pong(p))=>{result??;}}continue},WireMessage::Pong=>continue};
                 let length=noise.read_message(&bytes,&mut buffer)?;
                 let incoming:Incoming=serde_json::from_slice(&buffer[..length])?;
                 if now() >= authorization_expires_at || tokio::time::Instant::now() >= deadline.deadline() {
@@ -399,7 +578,7 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket, kind: ClientKind) 
                         biased;
                         _=&mut deadline=>break,
                         _=ctx.stop.cancelled()=>break,
-                        result=tokio::time::timeout(Duration::from_secs(10),socket.send(Message::Binary(buffer[..length].to_vec().into())))=>result??,
+                        result=tokio::time::timeout(Duration::from_secs(10),wire.send(buffer[..length].to_vec()))=>result??,
                     }
                     if now() >= authorization_expires_at || tokio::time::Instant::now() >= deadline.deadline() || ctx.stop.is_cancelled() {
                         break;
@@ -412,12 +591,12 @@ async fn connection(ctx: Arc<Context>, mut socket: WebSocket, kind: ClientKind) 
                 }
                 incoming_frame(incoming,&ctx,&client_id,&out,&done,&mut assemblies,&mut children,&mut used).await?;
             },
-            _=>break,
+            SessionEvent::Completed(None) | SessionEvent::Output(None) | SessionEvent::Message(Err(_))=>break,
             }
         }
     }
     drop(children);
-    let _ = tokio::time::timeout(Duration::from_secs(1), socket.close()).await;
+    wire.close().await;
     Ok(())
 }
 // All mutable protocol state belongs to this connection dispatcher.
@@ -659,6 +838,7 @@ async fn terminal(
 mod connection_id_tests {
     use super::*;
     use std::thread;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[test]
     fn concurrent_ids_are_unique_and_monotonic_without_reuse() {
@@ -707,5 +887,54 @@ mod connection_id_tests {
             "REMOTE_CONNECTION_LIMIT"
         );
         assert_eq!(counter.load(Ordering::Relaxed), u64::MAX);
+    }
+
+    #[tokio::test]
+    async fn raw_wire_round_trips_length_prefixed_binary_frames() {
+        let (local, mut peer) = tokio::io::duplex(1024);
+        let mut wire = Wire::Tcp {
+            stream: BoxedStream(Box::new(local)),
+            framing: RawFraming::default(),
+        };
+        wire.send(vec![1, 2, 3]).await.unwrap();
+        let mut length = [0; 4];
+        peer.read_exact(&mut length).await.unwrap();
+        assert_eq!(u32::from_be_bytes(length), 3);
+        let mut payload = [0; 3];
+        peer.read_exact(&mut payload).await.unwrap();
+        assert_eq!(payload, [1, 2, 3]);
+
+        peer.write_all(&5_u32.to_be_bytes()).await.unwrap();
+        peer.write_all(b"hello").await.unwrap();
+        assert!(matches!(wire.recv().await.unwrap(), WireMessage::Data(data) if data == b"hello"));
+    }
+
+    #[tokio::test]
+    async fn raw_wire_rejects_empty_and_oversized_frames() {
+        for length in [0_u32, 65_536] {
+            let (local, mut peer) = tokio::io::duplex(16);
+            let mut wire = Wire::Tcp {
+                stream: BoxedStream(Box::new(local)),
+                framing: RawFraming::default(),
+            };
+            peer.write_all(&length.to_be_bytes()).await.unwrap();
+            assert_eq!(
+                wire.recv().await.unwrap_err().to_string(),
+                "FRAME_TOO_LARGE"
+            );
+        }
+        let (local, _peer) = tokio::io::duplex(16);
+        let mut wire = Wire::Tcp {
+            stream: BoxedStream(Box::new(local)),
+            framing: RawFraming::default(),
+        };
+        assert_eq!(
+            wire.send(Vec::new()).await.unwrap_err().to_string(),
+            "FRAME_TOO_LARGE"
+        );
+        assert_eq!(
+            wire.send(vec![0; 65_536]).await.unwrap_err().to_string(),
+            "FRAME_TOO_LARGE"
+        );
     }
 }

@@ -38,11 +38,6 @@ async function desktop(page: Page, overlay = false) {
       port: 3210,
       allowLAN: false,
       serverBinary: "",
-      cloudflaredBinary: "",
-      tunwgBinary: "",
-      publicURL: "",
-      relayDomain: "",
-      forceRelay: false,
       welcomed: true,
     };
     const account = {
@@ -56,7 +51,6 @@ async function desktop(page: Page, overlay = false) {
       enabled: true,
       busy: false,
       error: null,
-      gridDeviceId: "fixture-grid",
       installationId: "fixture-installation",
       publicKey: "fixture-public-key",
       accountPortalUrl: "https://devices.fixture.invalid/app/",

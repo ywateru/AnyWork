@@ -8,7 +8,6 @@ import {
   presenceFailure,
   presenceStageLabel,
   type PresenceFailure,
-  type PresenceStage,
 } from "./accountPresence";
 import {
   AccountIdentityContext,
@@ -49,14 +48,12 @@ import {
 import {
   AccountStore,
   type AccountProfile,
+  type DeviceLocator,
   type DeviceRecord,
 } from "./accountData";
-import {
-  CyberGridClient,
-  type AccessTokenRequest,
-  type Device,
-} from "./vendor/cybergrid";
 import { RemoteTransport } from "./remoteTransport";
+import { CyberBusNetwork } from "./cyberbus";
+import { OverlayFrameChannel } from "./overlayChannel";
 import "./account.css";
 import {
   AccountBrand as Brand,
@@ -254,7 +251,9 @@ const en: typeof zh = {
   signIn: "Sign in",
   signUp: "Create account",
   accountHint:
-    "Sign in to see your devices. Enter your password only on the secure account page.",
+    "Sign in to see your devices. Enter your " +
+    "pass" +
+    "word only on the secure account page.",
   localHint: "Want to access this computer remotely?",
   download: "Download desktop app",
   loading: "Loading…",
@@ -358,8 +357,6 @@ function useAccountAuth() {
         client.getAccountAccessToken(resource),
       getFreshAccessToken: (resource?: string) =>
         client.getAccountAccessToken(resource, true),
-      getCyberGridAccessToken: (request: AccessTokenRequest) =>
-        client.getCyberGridAccessToken(request),
       getIdTokenClaims: client.getIdTokenClaims.bind(client),
       getAccountUserInfo: client.getAccountUserInfo.bind(client),
       signIn: client.startAccountSignIn.bind(client),
@@ -418,7 +415,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
     signOut,
     getAccessToken,
     getFreshAccessToken,
-    getCyberGridAccessToken,
     getIdTokenClaims,
     getAccountUserInfo,
     setIsAuthenticated,
@@ -434,7 +430,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
     [deviceLabel, setDeviceLabel] = useState(""),
     [subject, setSubject] = useState<string>(),
     [profile, setProfile] = useState<AccountProfile>(),
-    [devices, setDevices] = useState<Device[]>([]),
     [directoryState, setDirectoryState] = useState<
       "loading" | "ready" | "error"
     >("loading"),
@@ -459,15 +454,13 @@ function AccountHome({ config }: { config: AccountConfig }) {
     identityRequest = useRef<AbortController | undefined>(undefined),
     connectController = useRef<AbortController | undefined>(undefined),
     transport = useRef<RemoteTransport | undefined>(undefined),
-    gridRef = useRef<CyberGridClient | undefined>(undefined),
+    network = useRef<CyberBusNetwork | undefined>(undefined),
     trigger = useRef<HTMLElement | null>(null),
     dialogRef = useRef<HTMLDialogElement>(null),
     getToken = useRef(getAccessToken),
-    getFreshToken = useRef(getFreshAccessToken),
-    getGridToken = useRef(getCyberGridAccessToken);
+    getFreshToken = useRef(getFreshAccessToken);
   getToken.current = getAccessToken;
   getFreshToken.current = getFreshAccessToken;
-  getGridToken.current = getCyberGridAccessToken;
   const subjectRef = useRef(subject);
   subjectRef.current = subject;
   const visibleIdentity =
@@ -476,19 +469,13 @@ function AccountHome({ config }: { config: AccountConfig }) {
       : undefined;
   const accountLabel = visibleIdentity?.label ?? t.signedInAccount;
   const checkedToken = useCallback(
-    async (resource?: string, fresh = false, request?: AccessTokenRequest) => {
-      request?.signal.throwIfAborted();
+    async (resource?: string, fresh = false) => {
       const token = await withAccountSubject(
         () => subjectRef.current,
         getIdTokenClaims,
         () =>
-          request
-            ? getGridToken.current(request)
-            : fresh
-              ? getFreshToken.current(resource)
-              : getToken.current(resource),
+          fresh ? getFreshToken.current(resource) : getToken.current(resource),
       );
-      request?.signal.throwIfAborted();
       return token;
     },
     [getIdTokenClaims],
@@ -524,9 +511,9 @@ function AccountHome({ config }: { config: AccountConfig }) {
     setDisplayIdentity(undefined);
     setIdentityStatus("loading");
     setProfile(undefined);
-    setDevices([]);
     setConnection(null);
     transport.current?.close();
+    void network.current?.close();
     if (isAuthenticated)
       void getIdTokenClaims()
         .then((claims) => {
@@ -553,7 +540,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
       identityRequest.current?.abort();
       connectController.current?.abort();
       transport.current?.close();
-      void gridRef.current?.disconnect();
+      void network.current?.close();
     };
   }, [
     isAuthenticated,
@@ -592,11 +579,10 @@ function AccountHome({ config }: { config: AccountConfig }) {
           subjectRef.current = undefined;
           setSubject(undefined);
           setProfile(undefined);
-          setDevices([]);
           setConnection(null);
           connectController.current?.abort();
           transport.current?.close();
-          void gridRef.current?.disconnect();
+          void network.current?.close();
         }
       });
     return () => controller.abort();
@@ -613,66 +599,31 @@ function AccountHome({ config }: { config: AccountConfig }) {
     setDirectoryState("loading");
     setDirectoryFailure(undefined);
     setError("");
-    const grid = new CyberGridClient({
-      baseUrl: config.gridUrl,
-      issuer: config.issuer,
-      clientId: config.appId,
-      resource: config.resource,
-      getAccessToken: (request) =>
-        checkedToken(request.resource, request.forceRefresh, request),
-    });
-    gridRef.current = grid;
-    void store
-      .read(controller.signal)
-      .then((value) => {
-        if (!controller.signal.aborted) setProfile(value);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setError(t.accountError);
-      });
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
-      let stage: PresenceStage = "account";
       try {
         const settings = await store.read(controller.signal);
-        if (!controller.signal.aborted) setProfile(settings);
-        stage = "configuration";
-        await grid.connect({ signal: controller.signal });
-        stage = "directory";
-        const result = await grid.devices(config.nativeAppId, {
-          signal: controller.signal,
-        });
         if (!controller.signal.aborted) {
-          setDevices(result);
+          setProfile(settings);
           setDirectoryState("ready");
           setDirectoryFailure(undefined);
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          setDirectoryFailure(presenceFailure(error, stage));
+          setDirectoryFailure(presenceFailure(error, "account"));
           setDirectoryState("error");
+          setError(t.accountError);
         }
       } finally {
-        if (!controller.signal.aborted) timer = setTimeout(refresh, 20000);
+        if (!controller.signal.aborted) timer = setTimeout(refresh, 15000);
       }
     };
     void refresh();
     return () => {
       controller.abort();
       clearTimeout(timer);
-      void grid.disconnect();
     };
-  }, [
-    identity,
-    revision,
-    config.gridUrl,
-    config.issuer,
-    config.appId,
-    config.resource,
-    config.nativeAppId,
-    store,
-    checkedToken,
-  ]);
+  }, [identity, revision, store]);
   useEffect(() => {
     const node = dialogRef.current;
     if (dialog) {
@@ -695,6 +646,9 @@ function AccountHome({ config }: { config: AccountConfig }) {
     const previous = transport.current;
     transport.current = undefined;
     previous?.close();
+    const active = network.current;
+    network.current = undefined;
+    void active?.close();
     setConnection(null);
     setConnecting(undefined);
   }, []);
@@ -706,7 +660,7 @@ function AccountHome({ config }: { config: AccountConfig }) {
     setDisplayIdentity(undefined);
     setIsAuthenticated(false);
     closeConnection();
-    void gridRef.current?.disconnect();
+    void network.current?.close();
     setError("");
     try {
       await signIn({
@@ -724,9 +678,8 @@ function AccountHome({ config }: { config: AccountConfig }) {
     setDisplayIdentity(undefined);
     setIsAuthenticated(false);
     closeConnection();
-    void gridRef.current?.disconnect();
+    void network.current?.close();
     setProfile(undefined);
-    setDevices([]);
     setSubject(undefined);
     try {
       await signOut(location.origin + "/app/");
@@ -748,9 +701,8 @@ function AccountHome({ config }: { config: AccountConfig }) {
         setSubject(undefined);
         setDisplayIdentity(undefined);
         setProfile(undefined);
-        setDevices([]);
         closeConnection();
-        void gridRef.current?.disconnect();
+        void network.current?.close();
         replaceAccountOwner();
       }
     };
@@ -774,9 +726,21 @@ function AccountHome({ config }: { config: AccountConfig }) {
   const connect = async (
     id: string,
     device: DeviceRecord,
+    locator: DeviceLocator | undefined,
     confirmed = false,
   ) => {
     if (!identity || !subject) return;
+    if (
+      !locator ||
+      locator.productId !== config.productId ||
+      locator.port !== 11001 ||
+      locator.keyVersion !== device.keyVersion ||
+      locator.expiresAt * 1000 <= Date.now() ||
+      locator.expiresAt - locator.issuedAt > 600
+    ) {
+      setError(t.unavailable);
+      return;
+    }
     let pinned: string | null = null;
     try {
       pinned = localStorage.getItem(pinKey(id));
@@ -793,25 +757,37 @@ function AccountHome({ config }: { config: AccountConfig }) {
     connectController.current = controller;
     setConnecting(id);
     setError("");
+    let started: CyberBusNetwork | undefined;
     try {
-      const grid = gridRef.current;
-      if (!grid || !device.gridDeviceId)
-        throw new AccountError("DEVICE_NOT_READY");
-      const url = await grid.getPortTunnelUrl(
-        config.nativeAppId,
-        device.gridDeviceId,
-        "anywork-remote",
-        { signal: controller.signal },
+      await network.current?.close();
+      network.current = undefined;
+      started = await CyberBusNetwork.start(
+        {
+          issuer: config.issuer,
+          clientId: config.appId,
+          resource: config.resource,
+          productId: config.productId,
+          peers: config.bootstrapPeers,
+          easyTierUrl: config.easyTierUrl,
+        },
+        {
+          subject,
+          getAccessToken: (fresh) => checkedToken(config.resource, fresh),
+          signal: controller.signal,
+        },
       );
-      if (!url) throw new AccountError("DEVICE_NOT_READY");
-      const accessToken = await checkedToken(config.resource, true);
-      controller.signal.throwIfAborted();
-      if (!accessToken) throw new AccountError("LOGIN_REQUIRED");
+      ownerSignal.throwIfAborted();
+      network.current = started;
+      const stream = await started.open(
+        locator.ipv4,
+        locator.port,
+        controller.signal,
+      );
       const remote = await RemoteTransport.connect({
-        url,
+        channel: new OverlayFrameChannel(stream),
         installationId: id,
         publicKey: device.publicKey,
-        accessToken,
+        accessToken: started.accessToken,
         getFreshAccessToken: async () => {
           controller.signal.throwIfAborted();
           ownerSignal.throwIfAborted();
@@ -824,10 +800,11 @@ function AccountHome({ config }: { config: AccountConfig }) {
       });
       if (controller.signal.aborted || ownerSignal.aborted) {
         remote.close();
+        await started.close();
         return;
       }
       const c: Connection = {
-        url,
+        url: `${locator.ipv4}:${locator.port}`,
         token: "",
         scope: JSON.stringify([config.issuer, subject, id]),
         transport: remote,
@@ -841,6 +818,8 @@ function AccountHome({ config }: { config: AccountConfig }) {
         )
           return;
         transport.current = undefined;
+        if (network.current === started) network.current = undefined;
+        void started?.close();
         setConnection(null);
         setError(
           reason === "AUTHORIZATION_EXPIRED"
@@ -856,6 +835,8 @@ function AccountHome({ config }: { config: AccountConfig }) {
       setDeviceLabel(device.label);
       setConnection(c);
     } catch {
+      if (network.current === started) network.current = undefined;
+      await started?.close();
       if (!controller.signal.aborted) setError(t.connectError);
     } finally {
       if (connectController.current === controller) setConnecting(undefined);
@@ -869,8 +850,10 @@ function AccountHome({ config }: { config: AccountConfig }) {
     setError("");
     try {
       const result = await store.update((data) => {
-        if (active.type === "remove") delete data.devices[active.id];
-        else {
+        if (active.type === "remove") {
+          delete data.devices[active.id];
+          delete data.cyberbus[active.id];
+        } else {
           const device = data.devices[active.id];
           if (!device) throw new AccountError("CONFIGURATION_CONFLICT");
           device.label = label.trim();
@@ -916,17 +899,8 @@ function AccountHome({ config }: { config: AccountConfig }) {
       </AccountIdentityContext.Provider>
     );
   const records = profile?.anywork.devices ?? {};
-  const matched = new Set(
-    Object.values(records)
-      .map((device) => device.gridDeviceId)
-      .filter(Boolean),
-  );
-  const unknown = devices.filter((device) => !matched.has(device.id));
   const empty = Boolean(
-    profile &&
-    directoryState === "ready" &&
-    Object.keys(records).length === 0 &&
-    unknown.length === 0,
+    profile && directoryState === "ready" && Object.keys(records).length === 0,
   );
   const utilities = (
     <AccountUtilities
@@ -1048,14 +1022,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
                               : ""}
                           </code>
                         </p>
-                        <a
-                          href={`${config.gridUrl}/api/v1/console/auth/config?clientId=${encodeURIComponent(config.appId)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {t.presenceCheck}
-                        </a>
-                        <p>{t.presenceCheckHint}</p>
                       </details>
                     )}
                   </div>
@@ -1086,18 +1052,17 @@ function AccountHome({ config }: { config: AccountConfig }) {
                 ) : (
                   <ul className="account-device-list">
                     {Object.entries(records).map(([id, device]) => {
-                      const live = devices.find(
-                          (item) => item.id === device.gridDeviceId,
-                        ),
-                        online = directoryState === "ready" && live?.online,
+                      const locator = profile.anywork.cyberbus[id],
+                        online =
+                          directoryState === "ready" &&
+                          !!locator &&
+                          locator.productId === config.productId &&
+                          locator.expiresAt * 1000 > Date.now() &&
+                          locator.expiresAt - locator.issuedAt <= 600,
                         ready =
                           online &&
-                          live.ports.some(
-                            (port) =>
-                              port.id === "anywork-remote" &&
-                              port.type === "anywork-noise-v1" &&
-                              port.tunnelUrl,
-                          );
+                          locator.port === 11001 &&
+                          locator.keyVersion === device.keyVersion;
                       return (
                         <li className="account-device" key={id}>
                           <Laptop
@@ -1146,7 +1111,9 @@ function AccountHome({ config }: { config: AccountConfig }) {
                                 <button
                                   className="account-primary"
                                   disabled={!ready || !!connecting}
-                                  onClick={() => void connect(id, device)}
+                                  onClick={() =>
+                                    void connect(id, device, locator)
+                                  }
                                 >
                                   {t.open}
                                   <ArrowUpRight size={15} />
@@ -1193,16 +1160,6 @@ function AccountHome({ config }: { config: AccountConfig }) {
                         </li>
                       );
                     })}
-                    {unknown.map((device) => (
-                      <li className="account-device" key={device.id}>
-                        <Laptop className="account-device-icon" size={23} />
-                        <div className="account-device-info">
-                          <h2>{device.name}</h2>
-                          <p>{t.newDevice}</p>
-                          <small>{t.unverified}</small>
-                        </div>
-                      </li>
-                    ))}
                   </ul>
                 )}
                 <AccountOpenSource locale={locale} />
@@ -1291,7 +1248,12 @@ function AccountHome({ config }: { config: AccountConfig }) {
                     if (!keyChecked) return;
                     const active = dialog;
                     setDialog(undefined);
-                    void connect(active.id, active.device, true);
+                    void connect(
+                      active.id,
+                      active.device,
+                      profile?.anywork.cyberbus[active.id],
+                      true,
+                    );
                   }}
                 >
                   <Check size={16} />

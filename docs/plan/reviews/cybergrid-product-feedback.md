@@ -1,6 +1,6 @@
 # CyberGrid 产品反馈文档独立复核
 
-日期：2026-11-10。结论：接受 `docs/cybergrid-product-feedback.md` 作为开发组讨论材料，无阻断项。本结论为文档与源码核对，不是部署、原生手机或新接口验收，也不授权向上游发送消息。
+日期：2026-11-10。历史结论：曾接受 `docs/cybergrid-product-feedback.md` 作为开发组讨论材料。该反馈文档和 CyberGrid 连接路径均已退役，当前实现见[CyberBus 迁移记录](../../cyberbus-migration-review.md)。本记录不是部署、原生手机或新接口验收。
 
 独立核对 CyberGrid `50a12e0d7b58e3f8dd84b9d9a97fe650faaac691`、其与 AnyWork 固定版本 `2bd6729` 的完整差异，以及 JS/Rust SDK 说明、服务会话和 Redis 实现。新差异限于部署/验收说明及静态文档页面；SDK、协议和服务运行代码未变。文档准确保留已有单飞恢复、严格绑定、原生三级加密传输、SPA只读目录等能力，将浏览器安全流/桥接扩展、产品级应用集合、可观察状态和生产入口作为建议，未错误描述为既有能力。
 

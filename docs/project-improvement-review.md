@@ -1,5 +1,7 @@
 # AnyWork 全项目改进评审稿
 
+> **历史评审（2026-11-07）。** 本文的 CyberGrid、cloudflared、Upstash 和旧远程入口描述只代表当时状态。当前实现见 [CyberBus 迁移记录](cyberbus-migration-review.md)、[云配置](cloud-configuration.md)和[支持矩阵](support-matrix.md)。
+
 > 日期：2026-11-07 · 文档状态：待专家评审，建议尚未批准为实施承诺。
 > 源码基线：`db7f2ab`（应用版本 0.1.12，包含刚完成的一键发布脚本）。
 > 目的：让产品、架构、安全、Agent 集成、客户端及测试专家基于同一份事实讨论后续改进。

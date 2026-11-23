@@ -12,6 +12,5 @@ case "${1:-status}" in
     fi
     ;;
   stop|status|restart) supervisorctl -c supervisord.conf "$1" "${2:-all}" ;;
-  url) python3 -c 'import pathlib,re; matches=re.findall(r"https://[a-z0-9-]+\.trycloudflare\.com",pathlib.Path(".remote-agent/tunnel.log").read_text()); print(matches[-1] if matches else "Tunnel URL not available yet")' ;;
-  *) echo "Usage: bash scripts/service.sh {start|stop|status|restart|url} [service]"; exit 2 ;;
+  *) echo "Usage: bash scripts/service.sh {start|stop|status|restart} [service]"; exit 2 ;;
 esac

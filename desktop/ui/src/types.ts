@@ -13,11 +13,6 @@ export type Config = {
   port: number;
   allowLAN: boolean;
   serverBinary: string;
-  cloudflaredBinary: string;
-  tunwgBinary: string;
-  publicURL: string;
-  relayDomain: string;
-  forceRelay: boolean;
   welcomed: boolean;
 };
 export type Snapshot = {

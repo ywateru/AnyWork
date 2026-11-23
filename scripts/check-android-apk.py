@@ -81,6 +81,8 @@ def main():
     notice = ROOT / 'web/dist-mobile/THIRD_PARTY_NOTICES.txt'
     if not notice.is_file() or 'Logto' not in notice.read_text():
         raise ValueError('Mobile bundle lacks the Logto SDK third party notice')
+    if 'CyberBus' not in notice.read_text() or 'LGPL-3.0' not in notice.read_text():
+        raise ValueError('Mobile bundle lacks the CyberBus LGPL third party notice')
     with zipfile.ZipFile(args.apk) as archive:
         libraries = check_native_layout(archive, args.abi)
         for info in libraries:

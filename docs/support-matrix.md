@@ -1,6 +1,6 @@
 # 支持与验收矩阵 / Support and acceptance matrix
 
-更新日期：2026-11-16。维护位置：本文是当前 Agent/拓扑、平台和验收边界的统一入口；原生协议细节与历史测试计数保留在链接的专门契约/验收记录中。公开版本以 [GitHub Release](https://github.com/ywateru/AnyWork/releases/latest) 为准，源码改进及对应验收见[交付进度](plan/improvement-progress.md)。不把源码已合并自动视为已发布或已实机验收。
+更新日期：2026-11-22。维护位置：本文是当前 Agent/拓扑、平台和验收边界的统一入口；原生协议细节与历史测试计数保留在链接的专门契约/验收记录中。账号连接层已切换为 CyberBus，见[迁移记录](cyberbus-migration-review.md)。公开版本以 [GitHub Release](https://github.com/ywateru/AnyWork/releases/latest) 为准；不把源码已合并自动视为已发布或已实机验收。
 
 ## 状态的含义 / State definitions
 
@@ -44,7 +44,7 @@ Claude Desktop 的实现与独立源码审查已完成；用户明确将真机�
 
 ## 连接、权限和持续可用性 / Connection boundaries
 
-- 本地工作不依赖AnyWork云账号，不表示模型推理离线。当前源码统一远程账号入口，独立匿名/固定/WireGuard连接退役；底层provider可传输业务密文，不向用户公开独立业务URL。
+- 本地工作不依赖 AnyWork 云账号，不表示模型推理离线。当前源码统一远程账号入口，独立匿名/固定/WireGuard 连接退役；CyberBus/EasyTier 只承载加密 overlay 流量，不向用户公开独立业务 URL。
 - 本服务面向个人可信设备，使用宿主系统用户的工作权限。本机Web使用受限cookie会话；远程在加密通道内校验同账号短期证明。在线设备表是presence，不是业务授权。首次目录、设备和托管前端均属于信任边界。
 - 短期授权可在原加密通道内更新；失效或本机关闭会终止子请求/PTY。传输断开不保证原字节流无缝恢复，不自动重放业务写入。
 - Web 前台事件与浏览器通知已有实现；浏览器关闭/Android 进程被杀后的原生后台推送未实现。语音听写/朗读继续延后。
@@ -56,14 +56,14 @@ Claude Desktop 的实现与独立源码审查已完成；用户明确将真机�
 
 | 范围 | 当前目标与限制 | 证据状态 |
 | --- | --- | --- |
-| Web/手机浏览器 → 用户电脑 | Logto 登录、CyberGrid 发现；浏览器到本机 Noise 加密网关；业务仍由本机服务执行 | 自部署真实原生启用/发现/换钥/公网加密空工作区/关闭与退出、正式域名390/1440视口通过；22项浏览器/Rust业务互操作夹具另记；物理手机蜂窝未实测 |
+| Web/手机浏览器 → 用户电脑 | Logto 登录、公开设备目录和 CyberBus locator；浏览器通过 WSS 加入 EasyTier overlay，到本机 Noise 加密网关；业务仍由本机服务执行 | CyberBus JWT/HKDF/分帧、WSS TLS/Upgrade 和 EasyTier 跨传输互通已验证；真实 Chrome JSPI + 公网 WSS + 桌面工作区尚未完成，旧 Grid 浏览器验收不能替代 |
 | macOS 桌面账号宿主 | 官方 Native 注册/登录；Keychain 保存恢复授权，重启验证后恢复；端点私钥与连接仅内存 | 保存登录源码独立审查、合成轮换及实际 Keychain 六进程读写/清除通过；安装版真实登录重启由用户手测，见[记录](plan/reviews/login-session-persistence-independent.md) |
 | Linux 桌面账号宿主 | 保存恢复授权使用系统 Secret Service，无明文回退；端点私钥与连接仅内存 | Linux 实际编译/运行及 provider 矩阵待验证，不据 macOS 验收声称所有发行版支持 |
 | Windows 桌面账号宿主 | 上游 Rust SDK 凭据模块当前依赖 Unix；账号远程访问明确不可用 | 本地工作仍可用；不以恢复旧手动入口假装平台支持完成，SDK支持另立阶段 |
-| Android 原生客户端 | 当前源码重构为应用内登录、账号/目录和业务连接的原生 owner；页面随包，完整工作区在应用内使用；Keystore 保护恢复授权，重启尝试恢复登录 | [契约与验收](android-account-entry.md)区分源码、隔离互通、浏览器与真实 APK；本轮保存登录通过实际 SDK 与 Keystore 合成授权独立审查，正常账号重启由用户手测。电脑端需支持移动 Native client。网页支持目标包含 iOS 浏览器，不等于新增原生 iOS 客户端 |
-| 当前账号云服务 | 最新配置已改自部署Logto default业务租户，独立CyberGrid项目/Upstash namespace；旧Cloud Development资源保留 | 新应用/权限/Account API已配置并独立读回；协调服务与正式主页READY；真实CORS/Redis/Native-Web加密链通过，本机更新见[当前记录](plan/reviews/account-selfhost-cutover-01.md)；无Cloud付费升级 |
+| Android 原生客户端 | Rust/Tauri 2、随包界面、应用内 Logto、Keystore 恢复授权、公开设备目录、CyberBus overlay 和 Noise 业务连接；Kotlin 是唯一 grant owner | CyberBus Rust 单元/编译验证已过；真实 APK 登录、目录、连接和 Keystore 重启恢复仍须实体设备验收。旧 Grid/协调转发记录只代表历史版本 |
+| 当前账号云服务 | 自部署 Logto + CyberBus TCP/UDP/WSS relay；公开设备记录在 `customData.anywork`，无 AnyWork 业务数据库 | Logto Native/SPA 实签、双 scope、同产品 claim、refresh 一致性通过；WSS TLS、`101` Upgrade 和 EasyTier 互通通过；三端真实工作区与生产前端发布仍待验收 |
 
-账号数据与最少配置在 Logto，Upstash 仅作 CyberGrid 协调；业务正文和端到端私钥留在用户两端。HTTPS 本身不等于端到端加密。首次公钥目录、浏览器托管代码及终端仍是信任边界，详情见[方案](account-device-cloud-review.md)。
+账号数据与最少设备配置在 Logto；CyberBus 中继只转发 EasyTier 密文和必要网络元数据，业务正文和端点私钥留在用户两端。HTTPS/WSS 本身不等于端到端加密。首次公钥目录、浏览器托管代码及终端仍是信任边界，详情见[数据边界](account-device-cloud-review.md)。
 
 ## 发布与证据维护 / Publishing and evidence
 

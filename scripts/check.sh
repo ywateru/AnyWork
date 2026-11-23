@@ -32,22 +32,15 @@ python3 scripts/desktop-host-http-test.py
 python3 scripts/goal-editor-test.py
 python3 scripts/goal-mode-test.py
 python3 scripts/review-test.py
-python3 scripts/cloud/test_configure.py
-python3 scripts/cloud/test_selfhost.py
 python3 scripts/cloud/test_frontend.py
-python3 scripts/cloud/test_deploy.py
-python3 scripts/cloud/test_prebuilt.py
-python3 scripts/cloud/test_materialize.py
-python3 -m unittest discover -s scripts/cloud -p 'test_redis_*.py'
-node --test scripts/cloud/test-redis-tls-probe.mjs
 python3 scripts/source-archive-test.py
+python3 scripts/corresponding-source-test.py
 python3 scripts/release-version-test.py
 python3 scripts/build-site-test.py
 python3 scripts/test-check-android-apk.py
 python3 scripts/publish-test.py
 python3 scripts/release-ci-test.py
 python3 scripts/container-smoke-script-test.py
-ANYWORK_ACCOUNT_PRESENCE_OUTPUT_DIR=test-results/account-presence npm run test:e2e:account-presence
 npm run test:e2e:mobile
 npm run test:e2e
 node scripts/desktop-updater-test.mjs

@@ -41,7 +41,8 @@ class SdkGrantRestoreTest {
     }
     @After fun resetObserver() { RefreshObservation.observer = null }
     private fun client(endpoint: String) = RamClient(LogtoConfig(endpoint = endpoint, appId = "fixture-client",
-        scopes = listOf("profile", "email", "custom_data", "connect"), resources = listOf("https://resource.invalid"),
+        scopes = listOf("profile", "email", "custom_data", "connect", "network:join"),
+        resources = listOf("https://resource.invalid"),
         usingPersistStorage = false), RuntimeEnvironment.getApplication())
     private fun refresh(sdk: RamClient): Exception? {
         val done = CountDownLatch(1); val failure = AtomicReference<Exception?>()
@@ -82,7 +83,7 @@ class SdkGrantRestoreTest {
                             else -> MockResponse().setBodyDelay(if (mode == "delayed") 250 else 0, TimeUnit.MILLISECONDS).setBody(JSONObject().apply {
                                 put("access_token", "fixture-access"); put("refresh_token", "fixture-new-refresh")
                                 if (mode != "no-id-info-fail") put("id_token", if (mode == "invalid-id") "malformed.fixture.token" else token(if (mode == "different-subject") "other-subject" else "fixture-subject"))
-                                put("scope", "openid profile custom_data connect"); put("expires_in", 3600)
+                                put("scope", "openid profile custom_data connect network:join"); put("expires_in", 3600)
                             }.toString())
                         }
                         else -> MockResponse().setResponseCode(404)

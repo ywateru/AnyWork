@@ -53,3 +53,28 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+The browser overlay runtime `easytier-browser.js` is built from EasyTier
+v2.7.1 (commit 0d9c52b169dc2112687ddefcf571cd01d383193c).
+https://github.com/EasyTier/EasyTier
+
+The JavaScript host packages are offered under Apache License 2.0. The
+embedded EasyTier core WASM is distributed under GNU Lesser General Public
+License 3.0. Complete texts are shipped as
+licenses/easytier-js-Apache-2.0.txt and licenses/easytier-LGPL-3.0.txt.
+The pinned source above is the corresponding source; rebuild instructions are
+in scripts/build-easytier-browser.sh. The browser bundle embeds the WASM core
+as base64 and adds no modifications to EasyTier source.
+
+The native desktop and Android transport uses CyberBus v0.2.0
+(commit a2b5be3b2c3cd8d21e6a0c5bf2b4da2040f36c11).
+https://github.com/osd-pub/CyberBus
+
+The CyberBus workspace is offered under MIT OR Apache-2.0, but the
+`cyberbus-transport` crate is LGPL-3.0-or-later and its vendored EasyTier
+component is LGPL-3.0. AnyWork statically links this transport in native
+builds. The corresponding CyberBus and EasyTier source, license texts,
+build commands and packaging/RELINK.md instructions are shipped with the
+release and available from /corresponding-source. Do not describe the
+combined transport as MIT/Apache-only, and do not prohibit reverse
+engineering for debugging modifications to the LGPL portion.

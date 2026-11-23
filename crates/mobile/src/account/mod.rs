@@ -14,26 +14,9 @@ use tauri::{Emitter, Runtime};
 use tauri_plugin_mobile_auth::{MobileAuthExt, Snapshot as NativeSnapshot};
 use tokio::sync::{Mutex, OnceCell};
 
-#[cfg(any(target_os = "android", test))]
-mod grid;
+mod network;
 mod trust;
 mod types;
-#[cfg(not(any(target_os = "android", test)))]
-mod grid {
-    use super::*;
-    pub(super) struct NativeDirectory;
-    impl NativeDirectory {
-        pub fn epoch(&self) -> u64 {
-            0
-        }
-        pub async fn close(self) -> bool {
-            true
-        }
-    }
-    pub(super) async fn devices(_: &Handle, _: u64, _: &str) -> Result<Vec<GridDevice>> {
-        bail!("SYSTEM_UNAVAILABLE")
-    }
-}
 use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 use trust::{Pin as TrustPin, TrustStore};
@@ -104,8 +87,8 @@ pub struct Config {
     pub issuer: String,
     pub client_id: String,
     pub resource: String,
-    pub grid_url: String,
-    pub host_product_id: String,
+    pub product_id: String,
+    pub bootstrap_peers: Vec<String>,
     pub redirect_uri: String,
 }
 impl Default for Config {
@@ -114,9 +97,9 @@ impl Default for Config {
             endpoint: "https://auth.x.aixgg.com".into(),
             issuer: "https://auth.x.aixgg.com/oidc".into(),
             client_id: "x7lzj58abb1sdp16lkd34".into(),
-            resource: "https://anywork-cybergrid-selfhost.vercel.app/api".into(),
-            grid_url: "https://anywork.aixgg.com".into(),
-            host_product_id: "x7lzj58abb1sdp16lkd34".into(),
+            resource: "https://cyberbus.x.aixgg.com/api".into(),
+            product_id: "anywork".into(),
+            bootstrap_peers: vec!["tcp://43.155.169.102:11010".into()],
             redirect_uri: "http://127.0.0.1:17897/callback".into(),
         }
     }
@@ -138,12 +121,18 @@ struct Inner {
     http: reqwest::Client,
     configured: OnceCell<()>,
     state: Mutex<State>,
-    grid: Mutex<Option<grid::NativeDirectory>>,
+    network: Mutex<Option<NetworkSlot>>,
+    network_starter: Arc<dyn network::NetworkStarter>,
     writes: Mutex<()>,
     refreshes: Mutex<()>,
     trust: Mutex<std::result::Result<TrustStore, String>>,
     notify: Arc<dyn Fn(AccountSnapshot) + Send + Sync>,
     retire: std::sync::Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
+}
+struct NetworkSlot {
+    epoch: u64,
+    subject: String,
+    overlay: Arc<dyn crate::transport::Overlay>,
 }
 #[derive(Clone)]
 pub struct Handle(Arc<Inner>);
@@ -214,16 +203,14 @@ impl Handle {
     pub fn set_retire_hook(&self, hook: Arc<dyn Fn() + Send + Sync>) {
         *self.0.retire.lock().unwrap_or_else(|e| e.into_inner()) = Some(hook);
     }
-    fn retire_grid(&self, epoch: u64) {
+    fn retire_network(&self, epoch: u64) {
         let owner = self.clone();
         tokio::spawn(async move {
-            let mut slot = owner.0.grid.lock().await;
-            if slot
-                .as_ref()
-                .is_some_and(|directory| directory.epoch() < epoch)
-                && let Some(directory) = slot.take()
+            let mut slot = owner.0.network.lock().await;
+            if slot.as_ref().is_some_and(|network| network.epoch < epoch)
+                && let Some(network) = slot.take()
             {
-                directory.close().await;
+                network.overlay.close().await;
             }
         });
     }
@@ -243,6 +230,24 @@ impl Handle {
         backend: Arc<dyn AuthBackend>,
         notify: Arc<dyn Fn(AccountSnapshot) + Send + Sync>,
     ) -> Self {
+        let network_starter = Arc::new(network::CyberbusNetworkStarter::new(&config));
+        Self::with_parts(config, backend, network_starter, notify)
+    }
+    #[cfg(test)]
+    fn with_network(
+        config: Config,
+        backend: Arc<dyn AuthBackend>,
+        network_starter: Arc<dyn network::NetworkStarter>,
+        notify: Arc<dyn Fn(AccountSnapshot) + Send + Sync>,
+    ) -> Self {
+        Self::with_parts(config, backend, network_starter, notify)
+    }
+    fn with_parts(
+        config: Config,
+        backend: Arc<dyn AuthBackend>,
+        network_starter: Arc<dyn network::NetworkStarter>,
+        notify: Arc<dyn Fn(AccountSnapshot) + Send + Sync>,
+    ) -> Self {
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
@@ -255,7 +260,8 @@ impl Handle {
             config,
             http,
             configured: OnceCell::new(),
-            grid: Mutex::new(None),
+            network: Mutex::new(None),
+            network_starter,
             writes: Mutex::new(()),
             refreshes: Mutex::new(()),
             notify,
@@ -296,9 +302,8 @@ impl Handle {
                         client_id: c.client_id.clone(),
                         resource: c.resource.clone(),
                         redirect_uri: c.redirect_uri.clone(),
-                        product: c.host_product_id.clone(),
+                        product: c.product_id.clone(),
                         issuer: c.issuer.clone(),
-                        grid_url: c.grid_url.clone(),
                     })
                     .await?;
                 let initializing = self.0.state.lock().await.snapshot.phase == Phase::Restoring;
@@ -405,7 +410,7 @@ impl Handle {
         let snapshot = state.snapshot.clone();
         drop(state);
         if changed {
-            self.retire_grid(snapshot.epoch);
+            self.retire_network(snapshot.epoch);
             self.retired();
         }
         (self.0.notify)(snapshot.clone());
@@ -472,24 +477,14 @@ impl Handle {
         self.retired();
         (self.0.notify)(snapshot);
         // Native fencing begins immediately; started token rotation is never cancelled.
-        let mut native = self.0.backend.logout().await;
-        let cleanup_confirmed = {
-            let mut slot = self.0.grid.lock().await;
-            if slot
-                .as_ref()
-                .is_some_and(|directory| directory.epoch() < epoch)
+        let native = self.0.backend.logout().await;
+        {
+            let mut slot = self.0.network.lock().await;
+            if slot.as_ref().is_some_and(|network| network.epoch < epoch)
+                && let Some(network) = slot.take()
             {
-                if let Some(directory) = slot.take() {
-                    directory.close().await
-                } else {
-                    true
-                }
-            } else {
-                true
+                network.overlay.close().await;
             }
-        };
-        if !cleanup_confirmed && let Ok(snapshot) = &mut native {
-            snapshot.error_code = Some("MOBILE_REVOCATION_UNCONFIRMED".into());
         }
         match native {
             Ok(native) => self.apply(epoch, native).await,
@@ -524,6 +519,40 @@ impl Handle {
                 .ok_or_else(|| anyhow::anyhow!("MOBILE_PROFILE_UNAVAILABLE"))?,
         ))
     }
+    async fn overlay(
+        &self,
+        epoch: u64,
+        subject: &str,
+        installation_id: &str,
+    ) -> Result<Arc<dyn crate::transport::Overlay>> {
+        let mut slot = self.0.network.lock().await;
+        if let Some(network) = slot
+            .as_ref()
+            .filter(|network| network.epoch == epoch && network.subject == subject)
+        {
+            return Ok(network.overlay.clone());
+        }
+        if let Some(network) = slot.take() {
+            network.overlay.close().await;
+        }
+        let grant = self
+            .token(TokenResource::Coordination, false, 60)
+            .await
+            .map_err(|_| anyhow::anyhow!("MOBILE_NETWORK_TOKEN"))?;
+        self.ensure_epoch(epoch).await?;
+        let overlay = self
+            .0
+            .network_starter
+            .start(&grant.access_token, subject, installation_id)
+            .await?;
+        self.ensure_epoch(epoch).await?;
+        *slot = Some(NetworkSlot {
+            epoch,
+            subject: subject.into(),
+            overlay: overlay.clone(),
+        });
+        Ok(overlay)
+    }
     async fn reauth(&self, epoch: u64) {
         let mut state = self.0.state.lock().await;
         if state.snapshot.epoch != epoch {
@@ -538,7 +567,7 @@ impl Handle {
         state.snapshot.error_code = Some("MOBILE_AUTH_REAUTH_REQUIRED".into());
         let snapshot = state.snapshot.clone();
         drop(state);
-        self.retire_grid(snapshot.epoch);
+        self.retire_network(snapshot.epoch);
         self.retired();
         (self.0.notify)(snapshot);
     }
@@ -644,7 +673,7 @@ impl Handle {
         );
         Ok(value)
     }
-    fn account_devices(account: &Value) -> Result<Vec<DeviceRecord>> {
+    fn account_devices(account: &Value, handle_product: &str) -> Result<Vec<DeviceRecord>> {
         let custom = account
             .get("customData")
             .ok_or_else(|| anyhow::anyhow!("MOBILE_INVALID_DIRECTORY"))?;
@@ -687,19 +716,26 @@ impl Handle {
                     .filter(|n| *n >= 1 && *n <= 9_007_199_254_740_991)
                     .ok_or_else(|| anyhow::anyhow!("MOBILE_INVALID_DEVICE_KEY"))?;
                 ensure!(key_valid(&public_key), "MOBILE_INVALID_DEVICE_KEY");
-                let grid_device_id = value
-                    .get("gridDeviceId")
-                    .map(|_| text(value, "gridDeviceId", 128).map(str::to_owned))
-                    .transpose()?;
+                let locator = anywork
+                    .get("cyberbus")
+                    .and_then(|value| value.get(id))
+                    .and_then(|value| {
+                        serde_json::from_value::<anywork_cyberbus::Locator>(value.clone()).ok()
+                    })
+                    .filter(|locator| {
+                        locator.product_id == handle_product
+                            && locator.port == anywork_cyberbus::DEFAULT_SERVICE_PORT
+                            && locator.key_version == key_version
+                            && locator.validate(now()).is_ok()
+                    });
                 Ok(DeviceRecord {
                     installation_id: id.clone(),
                     label: text(value, "label", 80)?.into(),
                     platform: text(value, "platform", 32)?.into(),
                     public_key,
                     key_version,
-                    grid_device_id,
-                    online: None,
-                    gateway_url: None,
+                    online: Some(locator.is_some()),
+                    locator,
                 })
             })
             .collect()
@@ -766,32 +802,12 @@ impl Handle {
         }
         let result = async {
             let account = self.account_read(epoch, &subject).await?;
-            let mut records = Self::account_devices(&account)?;
-            let online = if records.is_empty() {
-                Ok(vec![])
-            } else {
-                grid::devices(self, epoch, &subject).await
-            };
-            // Retain only the boundary's fixed public error code. Never expose
-            // an SDK error, service response, URL or authorization material.
-            let (online, failure) = match online {
-                Ok(grid) => (Some(grid), None),
-                Err(error) => (None, Some(public_error(error))),
-            };
-            if let Some(grid) = online {
-                for record in &mut records {
-                    let remote = grid
-                        .iter()
-                        .find(|g| record.grid_device_id.as_deref() == Some(&g.id));
-                    record.online = Some(remote.is_some_and(|g| g.online));
-                    record.gateway_url = remote.and_then(|g| g.gateway.clone());
-                }
-            }
-            Ok::<_, anyhow::Error>((records, failure))
+            let records = Self::account_devices(&account, &self.0.config.product_id)?;
+            Ok::<_, anyhow::Error>(records)
         }
         .await;
         self.ensure_epoch(epoch).await?;
-        let (records, failure) = match result {
+        let records = match result {
             Ok(value) => value,
             Err(error) => {
                 let mut state = self.0.state.lock().await;
@@ -810,7 +826,6 @@ impl Handle {
                 return Ok(snapshot);
             }
         };
-        let unknown = failure.is_some();
         let scope = self.scope_id().await?;
         let hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&records)?));
         let devices = {
@@ -839,7 +854,7 @@ impl Handle {
             state.snapshot.epoch == epoch && state.snapshot.phase == Phase::SignedIn,
             "CANCELLED"
         );
-        if hash != state.directory_hash || (!unknown && state.lifetime.is_cancelled()) {
+        if hash != state.directory_hash || state.lifetime.is_cancelled() {
             state.lifetime.cancel();
             state.lifetime = CancellationToken::new();
             state.snapshot.revision = next(state.snapshot.revision);
@@ -848,16 +863,8 @@ impl Handle {
         state.records = records;
         state.sampled_at = now();
         state.snapshot.devices = devices;
-        state.snapshot.directory_state = if unknown {
-            DirectoryState::Unknown
-        } else {
-            DirectoryState::Ready
-        };
-        state.snapshot.error_code = failure.or_else(|| state.profile_warning.clone());
-        if unknown {
-            state.lifetime.cancel();
-            log_directory_failure(state.snapshot.error_code.as_deref());
-        }
+        state.snapshot.directory_state = DirectoryState::Ready;
+        state.snapshot.error_code = state.profile_warning.clone();
         let snapshot = state.snapshot.clone();
         drop(state);
         (self.0.notify)(snapshot.clone());
@@ -891,65 +898,106 @@ impl Handle {
         expected_revision: u64,
         key_confirmation: Option<&str>,
     ) -> Result<PreparedTarget> {
-        let state = self.0.state.lock().await;
-        ensure!(
-            state.snapshot.epoch == expected_epoch && state.snapshot.phase == Phase::SignedIn,
-            "CANCELLED"
-        );
-        ensure!(
-            state.snapshot.revision == expected_revision,
-            "DIRECTORY_CONFLICT"
-        );
-        ensure!(
-            state.snapshot.directory_state == DirectoryState::Ready,
-            "DEVICE_NOT_READY"
-        );
-        let device = state
-            .snapshot
-            .devices
-            .iter()
-            .find(|d| d.device_ref == device_ref)
-            .ok_or_else(|| anyhow::anyhow!("DEVICE_NOT_FOUND"))?;
-        let record = state
-            .records
-            .iter()
-            .find(|d| d.installation_id == device.installation_id)
-            .ok_or_else(|| anyhow::anyhow!("DEVICE_NOT_FOUND"))?;
-        ensure!(record.online == Some(true), "DEVICE_NOT_READY");
-        let gateway = record
-            .gateway_url
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("DEVICE_NOT_READY"))?;
-        let scope = state
-            .snapshot
-            .account
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("LOGIN_REQUIRED"))?
-            .scope_id
-            .clone();
+        let (installation_id, public_key, key_version, scope, subject, ipv4, port, lifetime) = {
+            let state = self.0.state.lock().await;
+            ensure!(
+                state.snapshot.epoch == expected_epoch && state.snapshot.phase == Phase::SignedIn,
+                "CANCELLED"
+            );
+            ensure!(
+                state.snapshot.revision == expected_revision,
+                "DIRECTORY_CONFLICT"
+            );
+            ensure!(
+                state.snapshot.directory_state == DirectoryState::Ready,
+                "DEVICE_NOT_READY"
+            );
+            let device = state
+                .snapshot
+                .devices
+                .iter()
+                .find(|d| d.device_ref == device_ref)
+                .ok_or_else(|| anyhow::anyhow!("DEVICE_NOT_FOUND"))?;
+            let record = state
+                .records
+                .iter()
+                .find(|d| d.installation_id == device.installation_id)
+                .ok_or_else(|| anyhow::anyhow!("DEVICE_NOT_FOUND"))?;
+            ensure!(record.online == Some(true), "DEVICE_NOT_READY");
+            let locator = record
+                .locator
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("DEVICE_NOT_READY"))?;
+            ensure!(
+                locator.product_id == self.0.config.product_id
+                    && locator.port == anywork_cyberbus::DEFAULT_SERVICE_PORT
+                    && locator.key_version == record.key_version
+                    && locator.validate(now()).is_ok(),
+                "DEVICE_NOT_READY"
+            );
+            let ipv4 = locator
+                .ipv4
+                .parse()
+                .map_err(|_| anyhow::anyhow!("DEVICE_NOT_READY"))?;
+            let scope = state
+                .snapshot
+                .account
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("LOGIN_REQUIRED"))?
+                .scope_id
+                .clone();
+            let subject = state
+                .subject
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("LOGIN_REQUIRED"))?;
+            let lifetime = state.lifetime.child_token();
+            ensure!(!lifetime.is_cancelled(), "DEVICE_NOT_READY");
+            (
+                record.installation_id.clone(),
+                record.public_key.clone(),
+                record.key_version,
+                scope,
+                subject,
+                ipv4,
+                locator.port,
+                lifetime,
+            )
+        };
+        let overlay = self
+            .overlay(expected_epoch, &subject, &installation_id)
+            .await?;
         let trust = self.0.trust.lock().await;
         let trust = trust
             .as_ref()
             .map_err(|_| anyhow::anyhow!("TRUST_STORAGE_UNAVAILABLE"))?;
-        let pinned = trust.get(&scope, &record.installation_id);
-        let needs_confirmation = pinned.is_none_or(|p| {
-            p.public_key != record.public_key || p.key_version != record.key_version
-        });
+        let pinned = trust.get(&scope, &installation_id);
+        let needs_confirmation =
+            pinned.is_none_or(|p| p.public_key != public_key || p.key_version != key_version);
         if needs_confirmation {
             ensure!(
-                key_confirmation == Some(record.public_key.as_str()),
+                key_confirmation == Some(public_key.as_str()),
                 "KEY_CONFIRMATION_REQUIRED"
             );
         } else if let Some(key) = key_confirmation {
-            ensure!(key == record.public_key, "KEY_CONFIRMATION_REQUIRED");
+            ensure!(key == public_key, "KEY_CONFIRMATION_REQUIRED");
         }
-        let lifetime = state.lifetime.child_token();
-        ensure!(!lifetime.is_cancelled(), "DEVICE_NOT_READY");
+        {
+            let state = self.0.state.lock().await;
+            ensure!(
+                state.snapshot.epoch == expected_epoch
+                    && state.snapshot.revision == expected_revision
+                    && state.snapshot.phase == Phase::SignedIn
+                    && !lifetime.is_cancelled(),
+                "CANCELLED"
+            );
+        }
         Ok(PreparedTarget {
             target: crate::transport::VerifiedTarget {
-                gateway_url: gateway,
-                installation_id: record.installation_id.clone(),
-                public_key: record.public_key.clone(),
+                overlay,
+                ipv4,
+                port,
+                installation_id: installation_id.clone(),
+                public_key: public_key.clone(),
                 account_epoch: expected_epoch,
                 scope_id: scope.clone(),
                 lifetime,
@@ -962,9 +1010,9 @@ impl Handle {
                 epoch: expected_epoch,
                 revision: expected_revision,
                 scope_id: scope,
-                installation_id: record.installation_id.clone(),
-                public_key: record.public_key.clone(),
-                key_version: record.key_version,
+                installation_id,
+                public_key,
+                key_version,
             },
         })
     }
@@ -1041,7 +1089,7 @@ impl Handle {
         let (epoch, _, subject) = self.owner().await?;
         ensure!(epoch == request.expected_epoch, "CANCELLED");
         let mut account = self.account_read(epoch, &subject).await?;
-        let records = Self::account_devices(&account)?;
+        let records = Self::account_devices(&account, &self.0.config.product_id)?;
         let record = records
             .iter()
             .find(|d| d.installation_id == device.installation_id)
@@ -1064,6 +1112,9 @@ impl Handle {
             map.get_mut(&device.installation_id).unwrap()["label"] = label.into();
         } else {
             map.remove(&device.installation_id);
+            if let Some(locators) = account["customData"]["anywork"]["cyberbus"].as_object_mut() {
+                locators.remove(&device.installation_id);
+            }
         }
         let custom = account["customData"].clone();
         ensure!(
@@ -1137,275 +1188,15 @@ impl crate::transport::Authorization for AccountAuthorization {
     }
 }
 
-// The Android native directory and host conformance tests share these parsers.
-#[cfg(any(target_os = "android", test))]
-fn timestamp(value: &str) -> Result<u64> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .ok()
-        .and_then(|v| u64::try_from(v.timestamp()).ok())
-        .ok_or_else(|| anyhow::anyhow!("MOBILE_INVALID_RESPONSE"))
-}
-
-#[cfg(any(target_os = "android", test))]
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Provider {
-    id: String,
-    origins: Vec<String>,
-    paths: Vec<String>,
-}
-#[cfg(any(target_os = "android", test))]
-struct EndpointPolicy {
-    providers: Vec<Provider>,
-}
-#[cfg(any(target_os = "android", test))]
-impl EndpointPolicy {
-    fn parse(value: &Value, config: &Config) -> Result<Self> {
-        ensure!(
-            value["provider"] == "logto"
-                && value["issuer"] == config.issuer
-                && value["clientId"] == config.client_id
-                && value["resource"] == config.resource
-                && value["deviceAuthorizationEndpoint"] == format!("{}/device/auth", config.issuer)
-                && value["tokenEndpoint"] == format!("{}/token", config.issuer)
-                && value["revocationEndpoint"] == format!("{}/token/revocation", config.issuer),
-            "MOBILE_COORDINATION_CONFIGURATION"
-        );
-        ensure!(
-            value["coordination"]["protocol"] == "memory-v1"
-                && uuid::Uuid::parse_str(text(&value["coordination"], "epoch", 36)?).is_ok(),
-            "MOBILE_COORDINATION_CONFIGURATION"
-        );
-        let scopes: Vec<_> = text(value, "scope", 512)?.split_whitespace().collect();
-        ensure!(
-            scopes.contains(&"connect")
-                && scopes.len() <= 8
-                && scopes.iter().all(|s| [
-                    "openid",
-                    "profile",
-                    "offline_access",
-                    "email",
-                    "phone",
-                    "custom_data",
-                    "identities",
-                    "connect"
-                ]
-                .contains(s))
-                && scopes
-                    .iter()
-                    .collect::<std::collections::HashSet<_>>()
-                    .len()
-                    == scopes.len(),
-            "MOBILE_COORDINATION_CONFIGURATION"
-        );
-        if let Some(products) = value.get("products") {
-            let products = products
-                .as_array()
-                .ok_or_else(|| anyhow::anyhow!("MOBILE_COORDINATION_CONFIGURATION"))?;
-            ensure!(
-                !products.is_empty()
-                    && products.len() <= 32
-                    && products.iter().any(|p| p["id"] == config.host_product_id),
-                "MOBILE_COORDINATION_CONFIGURATION"
-            );
-        }
-        let Some(policy) = value.get("endpointPolicy") else {
-            return Ok(Self { providers: vec![] });
-        };
-        ensure!(policy["version"] == 1, "MOBILE_INVALID_ENDPOINT_POLICY");
-        let mut providers: Vec<Provider> = serde_json::from_value(policy["providers"].clone())
-            .map_err(|_| anyhow::anyhow!("MOBILE_INVALID_ENDPOINT_POLICY"))?;
-        ensure!(
-            providers.len() <= 16 && serde_json::to_vec(&policy["providers"])?.len() <= 32768,
-            "MOBILE_INVALID_ENDPOINT_POLICY"
-        );
-        for p in &mut providers {
-            ensure!(
-                identifier(&p.id, 64)
-                    && p.id != "quick-tunnel"
-                    && !p.origins.is_empty()
-                    && p.origins.len() <= 16
-                    && !p.paths.is_empty()
-                    && p.paths.len() <= 16,
-                "MOBILE_INVALID_ENDPOINT_POLICY"
-            );
-            for origin in &p.origins {
-                let u = url::Url::parse(origin)
-                    .map_err(|_| anyhow::anyhow!("MOBILE_INVALID_ENDPOINT_POLICY"))?;
-                ensure!(
-                    u.scheme() == "https" && u.origin().ascii_serialization() == *origin,
-                    "MOBILE_INVALID_ENDPOINT_POLICY"
-                );
-            }
-            for path in &p.paths {
-                ensure!(
-                    path.starts_with('/')
-                        && path.len() <= 256
-                        && path.is_ascii()
-                        && !path.contains(['%', '?', '#', '\\'])
-                        && !path.contains("//")
-                        && !path.split('/').any(|s| s == "." || s == ".."),
-                    "MOBILE_INVALID_ENDPOINT_POLICY"
-                );
-            }
-            p.origins.sort();
-            p.paths.sort();
-            ensure!(
-                p.origins.windows(2).all(|w| w[0] != w[1])
-                    && p.paths.windows(2).all(|w| w[0] != w[1]),
-                "MOBILE_INVALID_ENDPOINT_POLICY"
-            );
-        }
-        providers.sort_by(|a, b| a.id.cmp(&b.id));
-        ensure!(
-            providers.windows(2).all(|w| w[0].id != w[1].id),
-            "MOBILE_INVALID_ENDPOINT_POLICY"
-        );
-        let normalized: Vec<_> = providers
-            .iter()
-            .map(|p| json!([p.id, p.origins, p.paths]))
-            .collect();
-        let digest = format!(
-            "{:x}",
-            Sha256::digest(serde_json::to_vec(&json!([
-                "cybergrid-endpoint-policy-v1",
-                normalized
-            ]))?)
-        );
-        ensure!(
-            policy["policyVersion"].as_str() == Some(&digest),
-            "MOBILE_INVALID_ENDPOINT_POLICY"
-        );
-        Ok(Self { providers })
-    }
-    fn endpoint(&self, raw: &str) -> Result<String> {
-        ensure!(
-            raw.len() <= 1024
-                && raw.is_ascii()
-                && !raw.contains(['%', '?', '#', '\\'])
-                && raw.bytes().all(|b| b > 32 && b < 127),
-            "MOBILE_INVALID_GATEWAY"
-        );
-        let url = url::Url::parse(raw).map_err(|_| anyhow::anyhow!("MOBILE_INVALID_GATEWAY"))?;
-        ensure!(
-            url.scheme() == "https"
-                && url.username().is_empty()
-                && url.password().is_none()
-                && url.query().is_none()
-                && url.fragment().is_none(),
-            "MOBILE_INVALID_GATEWAY"
-        );
-        ensure!(
-            raw == url.as_str() || (url.path() == "/" && raw == url.origin().ascii_serialization()),
-            "MOBILE_INVALID_GATEWAY"
-        );
-        let host = url
-            .host_str()
-            .ok_or_else(|| anyhow::anyhow!("MOBILE_INVALID_GATEWAY"))?;
-        let quick = host
-            .strip_suffix(".trycloudflare.com")
-            .is_some_and(|label| {
-                identifier(label, 63)
-                    && label
-                        .bytes()
-                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-                    && !label.starts_with('-')
-                    && !label.ends_with('-')
-            })
-            && url.port().is_none()
-            && url.path() == "/";
-        ensure!(
-            quick
-                || self
-                    .providers
-                    .iter()
-                    .any(|p| p.origins.contains(&url.origin().ascii_serialization())
-                        && p.paths.iter().any(|p| p == url.path())),
-            "MOBILE_INVALID_GATEWAY"
-        );
-        Ok(if url.path() == "/" {
-            url.origin().ascii_serialization()
-        } else {
-            url.to_string()
-        })
-    }
-}
-struct GridDevice {
-    id: String,
-    online: bool,
-    gateway: Option<String>,
-}
-#[cfg(any(target_os = "android", test))]
-impl GridDevice {
-    fn parse(value: &Value, policy: &EndpointPolicy) -> Result<Vec<Self>> {
-        let devices = value["devices"]
-            .as_array()
-            .ok_or_else(|| anyhow::anyhow!("MOBILE_INVALID_DIRECTORY"))?;
-        ensure!(devices.len() <= 5000, "MOBILE_INVALID_DIRECTORY");
-        let mut ids = std::collections::HashSet::new();
-        devices
-            .iter()
-            .map(|device| {
-                let id = text(device, "id", 96)?.to_owned();
-                ensure!(ids.insert(id.clone()), "MOBILE_INVALID_DIRECTORY");
-                let online = device["online"]
-                    .as_bool()
-                    .ok_or_else(|| anyhow::anyhow!("MOBILE_INVALID_DIRECTORY"))?;
-                let last_seen = text(device, "lastSeen", 40)?.to_owned();
-                timestamp(&last_seen)?;
-                let ports = device["ports"]
-                    .as_array()
-                    .ok_or_else(|| anyhow::anyhow!("MOBILE_INVALID_DIRECTORY"))?;
-                ensure!(ports.len() <= 32, "MOBILE_INVALID_DIRECTORY");
-                let mut gateway = None;
-                let mut port_ids = std::collections::HashSet::new();
-                for port in ports {
-                    let id = text(port, "id", 64)?;
-                    ensure!(
-                        port_ids.insert(id)
-                            && port["transport"] == "tcp"
-                            && port["port"]
-                                .as_u64()
-                                .is_some_and(|n| (1..=65535).contains(&n)),
-                        "MOBILE_INVALID_DIRECTORY"
-                    );
-                    let kind = text(port, "type", 128)?;
-                    let url = if port["tunnelUrl"].is_null() {
-                        None
-                    } else {
-                        Some(policy.endpoint(text(port, "tunnelUrl", 1024)?)?)
-                    };
-                    if id == "anywork-remote" {
-                        ensure!(kind == "anywork-noise-v1", "MOBILE_INVALID_GATEWAY");
-                        gateway = url;
-                    }
-                }
-                Ok(Self {
-                    id,
-                    online,
-                    gateway,
-                })
-            })
-            .collect()
-    }
-}
-
 fn directory_diagnostic_code(code: Option<&str>) -> &'static str {
     match code {
-        Some("MOBILE_COORDINATION_CONFIG_FETCH_FAILED") => {
-            "MOBILE_COORDINATION_CONFIG_FETCH_FAILED"
-        }
-        Some("MOBILE_COORDINATION_CONFIGURATION") => "MOBILE_COORDINATION_CONFIGURATION",
-        Some("MOBILE_COORDINATION_REGISTRATION_FAILED") => {
-            "MOBILE_COORDINATION_REGISTRATION_FAILED"
-        }
-        Some("MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED") => {
-            "MOBILE_COORDINATION_DIRECTORY_FETCH_FAILED"
-        }
+        Some("MOBILE_NETWORK_CONFIGURATION") => "MOBILE_NETWORK_CONFIGURATION",
+        Some("MOBILE_NETWORK_TOKEN") => "MOBILE_NETWORK_TOKEN",
+        Some("MOBILE_NETWORK_TOKEN_REJECTED") => "MOBILE_NETWORK_TOKEN_REJECTED",
+        Some("MOBILE_NETWORK_START") => "MOBILE_NETWORK_START",
+        Some("MOBILE_NETWORK_CONNECT") => "MOBILE_NETWORK_CONNECT",
         Some("MOBILE_IDENTITY_MISMATCH") => "MOBILE_IDENTITY_MISMATCH",
-        Some("MOBILE_INVALID_ENDPOINT_POLICY") => "MOBILE_INVALID_ENDPOINT_POLICY",
         Some("MOBILE_INVALID_DIRECTORY") => "MOBILE_INVALID_DIRECTORY",
-        Some("MOBILE_INVALID_GATEWAY") => "MOBILE_INVALID_GATEWAY",
         Some("MOBILE_INVALID_RESPONSE") => "MOBILE_INVALID_RESPONSE",
         Some("MOBILE_NETWORK_ERROR") => "MOBILE_NETWORK_ERROR",
         Some("MOBILE_SERVICE_REJECTED") => "MOBILE_SERVICE_REJECTED",

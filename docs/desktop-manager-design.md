@@ -1,5 +1,7 @@
 # AnyWork Rust 桌面设计
 
+> **历史设计（2026-11-06）。** 本文描述已退役的 cloudflared/WireGuard 多线路界面，不代表当前实现。当前账号远程访问见[CyberBus 迁移记录](cyberbus-migration-review.md)和[桌面与手机账号入口](desktop-manager.md)。
+
 2026-11-06：根据新版 UI 讨论稿重构桌面管理程序。当前 Agent 仅支持 Codex；桌面管理程序继续使用 Rust + Tauri 2，服务端、Web 会话和 Android 协议保持兼容。
 
 ## 讨论稿要求与设计约定

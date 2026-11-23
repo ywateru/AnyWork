@@ -33,71 +33,47 @@ Foreground refresh is a read operation; it never silently logs in or replays a
 business request. Native refresh keeps one serial owner even if a Rust caller
 drops its future.
 
-## Native coordination, not SPA console
+## CyberBus network, not SPA console
 
-Android uses the existing desktop Native client and resource configuration.
-`grid.rs` wraps the pinned official CyberGrid Rust SDK revision
-`f2a3961536e5c69b13c7dbc661953d9243becbae`. An external AuthProvider validates
-client identity, issuer, resource, scope, SDK generation/cancellation and account
-epoch before and after acquiring a resource token from Kotlin. The SDK never
-receives a refresh token; no CredentialStore, browser/device login, credential
-import, provider executable, STUN or iroh endpoint is enabled by this lane.
-The SDK's `force_refresh` flag is passed to the native token owner independently
-of its reason: natural session expiry and admission recovery can request a
-forced refresh as well as an authorization rejection.
+Android keeps the existing Kotlin Logto grant owner and obtains the CyberBus
+resource token with both `connect` and `network:join`. `network.rs` verifies the
+JWT, credential claim and account subject before deriving CyberBus network
+material through the local `anywork-cyberbus` crate. The refresh token never
+enters Rust, CyberBus, or WebView storage.
 
-The SDK implements Native `/auth/config`, admission challenge/admit, Native
-`/auth/exchange`, real ephemeral certificate identity, device lease/heartbeat,
-directory and coordinator epoch recovery, and exact `/session` revocation.
-An unknown registration retains the same SDK instance and its RAM request IDs,
-registration key and admission operation. It is not converted into a fresh
-console exchange or a newly generated idempotency key.
+The derived material starts a native EasyTier overlay, opens the AnyWork Noise
+Gateway on the selected locator address and port `11001`, and exposes only an
+outbound byte stream. Control port `11000` is rejected. The device directory
+contains public labels, platform, public key and key version; its versioned
+`anywork.cyberbus[installationId]` locator is short-lived and independently
+validated for product, overlay pool, service port, key version and expiry.
+Missing, stale or mismatched locators are never treated as online evidence.
 
-Source evidence at that pinned revision: `sdk-rust/src/client.rs` (external
-provider, admission, registration, heartbeat, recovery and close), `auth.rs`
-(Native config), `capabilities.rs` (Native devices/versioned directory),
-`secure.rs` (real certificate) and `types.rs` (wire DTOs). The source is pinned
-in the Android-only Cargo dependency maintained by the shell owner. Runtime
-disabled iroh does not remove its compile dependencies. Shell owner reported a
-real `cargo check --offline --locked --target aarch64-linux-android -p
-cybergrid-sdk` success, NDK 27.2/clang API26, debug=0/incremental=0; this verifies
-the SDK dependencies, not the complete app or a production login. No platform
-patch was needed. Non-Android production builds return explicit
-`SYSTEM_UNAVAILABLE` for Native coordination. Host tests compile the same
-`grid.rs` with the same pinned SDK through a test-only dependency, and use
-loopback HTTP rather than this stub.
+The existing Account API token remains opaque and has no resource. Only fixed
+`/api/my-account` is used. Replies are bounded, redirects are disabled, subject
+and account epoch are checked, and directory parsing follows the existing Web
+schema/bounds. Update operations retain unknown customData and device fields,
+reread before writing and verify the full result after writing. Device removal
+also deletes that installation's CyberBus locator. Unknown write outcomes are
+reported and never automatically retried.
 
-The separate Account API token has no resource and includes the granted
-`custom_data` scope. Only fixed `/api/my-account` is used. Replies are bounded,
-redirects are disabled, subject and account epoch are checked, and directory
-parsing follows the existing Web schema/bounds. Update operations retain unknown
-customData and device fields, reread before writing and verify the full result
-after writing. The service does not expose atomic conditional updates; another
-writer between reread and PATCH is an unavoidable server-side limitation.
-Unknown write outcomes are reported and never automatically retried.
-
-Directory identity and online information remain separate. A failed account read
-or Native directory fetch is `unknown`, not empty/offline. Connection targets
-require a current ready directory, correct business port and a canonical HTTPS
-endpoint permitted by the Native server policy (or its supported Quick Tunnel
-pattern). JS supplies a device reference, never a URL or token.
-The redacted snapshot retains fixed failure codes for Native config fetching,
-binding validation, registration, directory fetching and directory/endpoint
-parsing. SDK error strings and service response bodies are never projected.
+Directory identity and locator availability remain separate. A failed account
+read is `unknown`, not empty/offline. JS supplies a device reference, never an
+address, URL or token. The redacted snapshot retains fixed CyberBus
+configuration, token, startup and connect failure codes. JWT, seed, network
+secret, PSK and service response bodies are never projected.
 
 ## Validation boundary
 
-`tests.rs` uses synthetic identities, a loopback Account API and pure state/trust
-checks. It covers late login after cancellation, unknown rotation retirement,
-snapshot redaction, schema limits, first/changed key confirmation, no pin on
-failed handshake, stale commit rejection, scope isolation, atomic pin loading,
-Native config bindings, endpoint restrictions, rename/remove preservation and
-write readback conflict. `grid_tests.rs` also drives the actual pinned Native SDK
-through config, optional admission, exchange, ephemeral identity/publication and
-device querying. It covers session-expiry recovery with a forced token refresh,
-owner reuse, fixed failure stages, subject mismatch and fail-closed targets.
-These loopback fixtures are not live Logto or production Native registration
-acceptance. Plugin lifecycle tests use the pinned SDK Activity in
-Robolectric. Full APK compilation, emulator/device behavior, real registered
-callback login and production device directory acceptance must be reported
-separately; no existing user account has been operated during development.
+`tests.rs` uses synthetic identities, a loopback Account API, a real loopback
+raw Gateway listener and pure state/trust checks. It covers late login after
+cancellation, unknown rotation retirement, snapshot redaction, schema limits,
+first/changed key confirmation, no pin on failed handshake, stale commit
+rejection, locator product/staleness/port/key-version validation,
+rename/remove preservation and write readback conflict. Transport tests exercise
+JSON, binary, HTTP errors, PTY, renewal across the old lease, cancellation,
+backpressure, malformed frames, maximum body size and the 22 MiB exact
+round-trip. These loopback fixtures are not live Logto, CyberBus relay or
+production device acceptance. Plugin lifecycle tests use Robolectric. Full APK
+compilation, emulator/device behavior, real registered callback login and
+production overlay connectivity must be reported separately.

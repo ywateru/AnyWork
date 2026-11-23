@@ -1,2 +1,0 @@
-# Preserve upstream unified-diff context bytes and its verified digest.
-cybergrid-public-directory.patch -whitespace

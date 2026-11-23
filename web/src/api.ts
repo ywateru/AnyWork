@@ -129,12 +129,9 @@ export class Api {
     onEvent: (e: AgentEvent) => void,
     signal: AbortSignal,
   ) {
-    // Accountless Cloudflare tunnels do not support SSE. Keep event cursors and
-    // use bounded JSON responses through that transport instead.
-    if (
-      this.connection.transport ||
-      new URL(this.connection.url).hostname.endsWith(".trycloudflare.com")
-    ) {
+    // Remote transports do not expose SSE. Keep event cursors and use bounded
+    // JSON responses through the encrypted channel instead.
+    if (this.connection.transport) {
       let cursor = after;
       while (!signal.aborted) {
         const before = cursor;

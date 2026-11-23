@@ -91,9 +91,8 @@ pub(super) struct DeviceRecord {
     pub platform: String,
     pub public_key: String,
     pub key_version: u64,
-    pub grid_device_id: Option<String>,
+    pub locator: Option<anywork_cyberbus::Locator>,
     pub online: Option<bool>,
-    pub gateway_url: Option<String>,
 }
 
 pub struct PreparedTarget {

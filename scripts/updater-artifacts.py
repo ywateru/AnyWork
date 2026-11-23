@@ -34,11 +34,14 @@ def prepare():
     (destination / 'plugins').mkdir()
     shutil.copy2(ROOT / 'plugins/README.md', destination / 'plugins/README.md')
     subprocess.run([sys.executable, 'scripts/source-archive.py'], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, 'scripts/corresponding-source.py'], cwd=ROOT, check=True)
     (destination / 'artifacts').mkdir()
     shutil.copy2(ROOT / 'artifacts/anywork-source.tar.gz', destination / 'artifacts/anywork-source.tar.gz')
+    for name in ['corresponding-source.tar.gz', 'corresponding-source.tar.gz.sha256']:
+        shutil.copy2(ROOT / 'artifacts' / name, destination / 'artifacts' / name)
     for name in ['LICENSE', 'NOTICE']:
         shutil.copy2(ROOT / name, destination / name)
-    print('Staged server, web, licenses and corresponding source for native updater bundles')
+    print('Staged server, web, licenses and complete corresponding source for native updater bundles')
 
 def signature_version(signature):
     text = base64.b64decode(signature, validate=True).decode()

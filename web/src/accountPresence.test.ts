@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { AccountError } from "./accountConfig";
 import { presenceFailure, presenceStageLabel } from "./accountPresence";
-import { CyberGridError } from "./vendor/cybergrid";
 
 describe("redacted account presence failures", () => {
-  it("retains the SDK stage/code/status and the separate Account API stage", () => {
+  it("retains a bounded CyberBus stage/code/status and the Account API stage", () => {
     expect(
       presenceFailure(
-        new CyberGridError("FORBIDDEN", 403, { stage: "exchange" }),
+        Object.assign(new Error("private body"), {
+          code: "FORBIDDEN",
+          stage: "exchange",
+          status: 403,
+        }),
         "configuration",
       ),
     ).toEqual({ stage: "exchange", code: "FORBIDDEN", status: 403 });
@@ -15,9 +18,9 @@ describe("redacted account presence failures", () => {
       presenceFailure(new AccountError("ACCOUNT_UNAVAILABLE"), "account"),
     ).toEqual({ stage: "account", code: "ACCOUNT_UNAVAILABLE" });
     expect(presenceStageLabel("host-authorization", "zh-CN")).toBe(
-      "在线状态授权",
+      "CyberBus 网络授权",
     );
-    expect(presenceStageLabel("directory", "en")).toBe("Device presence query");
+    expect(presenceStageLabel("directory", "en")).toBe("Device locator");
   });
   it("never includes arbitrary exception text, codes, stages or status values", () => {
     for (const error of [

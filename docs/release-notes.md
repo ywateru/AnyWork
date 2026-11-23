@@ -2,7 +2,17 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.46 / 本次更新**
+**New in 0.1.47 / 本次更新**
+
+CyberGrid has been removed from the active desktop, Android and Web paths. Logto now issues the `connect` and `network:join` scopes for the CyberBus resource; CyberBus/EasyTier provides the account-scoped overlay, and the existing AnyWork Noise gateway serves HTTP, events and PTY on virtual port `11001`. The browser runtime is pinned to EasyTier v2.7.1 with a reproducible 5.29 MB bundle. Legacy Grid SDKs, vendored browser code, Upstash/Vercel Function configuration, cloudflared/tunwg/WireGuard packaging and old remote tests are removed. See the [migration record](https://github.com/ywateru/AnyWork/blob/main/docs/cyberbus-migration-review.md).
+
+CyberGrid 已从桌面、Android 和 Web 的活动路径移除。Logto 为 CyberBus resource 签发 `connect` 与 `network:join`，CyberBus/EasyTier 提供按账号隔离的 overlay，既有 AnyWork Noise Gateway 在虚拟端口 `11001` 承载 HTTP、事件和 PTY。浏览器运行时固定到 EasyTier v2.7.1，可重现生成约 5.29 MB bundle。旧 Grid SDK、浏览器 vendor、Upstash/Vercel Function 配置、cloudflared/tunwg/WireGuard 打包及旧远程测试已删除。详见[迁移记录](https://github.com/ywateru/AnyWork/blob/main/docs/cyberbus-migration-review.md)。
+
+This release makes CyberBus/EasyTier the active account device transport. The source migration, automated regression, Logto issuance and the production WSS relay have passed. Real macOS, Android and browser workspace acceptance, network transitions and production-device operation remain pending and are not claimed by these notes. The publication workflow deploys and verifies the Vercel frontend and signed release assets.
+
+本版将 CyberBus/EasyTier 设为账号设备连接的活动传输层。源码迁移、自动化回归、Logto 签发和生产 WSS 中继已通过；真实 macOS、Android 和浏览器工作区验收、网络切换及生产设备操作仍待完成，本说明不作已验收承诺。发布流程会部署并核验 Vercel 前端、签名发行文件和下载元数据。
+
+**Previous test candidate 0.1.46 / 上轮测试候选**
 
 Test candidate for manual verification; no public Release has been created. 本轮为手动验收测试候选，尚未创建公开 Release。
 

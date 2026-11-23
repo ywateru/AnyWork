@@ -40,13 +40,29 @@ from the user-supplied local Codex desktop reference; original compiled app
 modules are excluded from source and release archives. The reference bundle's
 exact Pierre package version has not been established.
 
-AnyWork desktop can bundle cloudflared (Cloudflare, Apache-2.0). Historical
-packages used tunwg (Nitin Jain and contributors, MIT) and the Android
-WireGuard library (WireGuard LLC, Apache-2.0; embedded wireguard-go components
-retain their MIT notices); those Android dependencies are retired in the
-current native client. The Android embedded authorization uses Logto
-Kotlin/Android SDK 2.0.3, Copyright (c) 2022 Silverhand Inc., MIT. See
-licenses/logto-kotlin-MIT.txt, THIRD_PARTY_NOTICES.md and docs/desktop-manager.md.
+The Android embedded authorization uses Logto Kotlin/Android SDK 2.0.3,
+Copyright (c) 2022 Silverhand Inc., MIT. See licenses/logto-kotlin-MIT.txt,
+THIRD_PARTY_NOTICES.md and docs/desktop-manager.md.
+
+The desktop, Android and Web account transport uses CyberBus. The CyberBus
+workspace is MIT OR Apache-2.0, but its `cyberbus-transport` crate is
+LGPL-3.0-or-later and the vendored EasyTier component is LGPL-3.0. AnyWork
+statically links that transport in native builds. The browser overlay runtime
+embeds EasyTier's LGPL-3.0 core WASM.
+
+Complete license texts are in licenses/cyberbus-MIT.txt,
+licenses/cyberbus-Apache-2.0.txt, licenses/cyberbus-transport-LGPL-3.0.txt,
+licenses/GPL-3.0.txt, licenses/easytier-LGPL-3.0.txt and
+licenses/easytier-js-Apache-2.0.txt. The exact CyberBus v0.2.0 commit
+a2b5be3b2c3cd8d21e6a0c5bf2b4da2040f36c11 and EasyTier v2.7.1 commit
+0d9c52b169dc2112687ddefcf571cd01d383193c, their build and relink instructions,
+and the browser WASM provenance are shipped in
+artifacts/corresponding-source.tar.gz, scripts/corresponding-source.py,
+scripts/build-easytier-browser.sh and
+web/public/easytier-browser.PROVENANCE.json. Do not describe the combined
+transport as MIT/Apache-only, and do not prohibit reverse engineering for
+debugging modifications to the LGPL portion.
+See licenses/cyberbus-LGPL-COMPLIANCE.md for the release checklist.
 
 The Rust/Tauri desktop manager bundles Noto Sans SC Regular from the official
 Noto CJK subset distribution. Copyright and SIL Open Font License 1.1 are

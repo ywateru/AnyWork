@@ -20,7 +20,7 @@
 
 AnyWork 为电脑上的 Agent 提供远程工作界面：流式对话、权限审批、工具活动、文件和预览。Codex 还集成子 Agent、差异和终端。换一个屏幕继续同一项工作，补充指令，在 Agent 需要你时及时回应。
 
-Rust 桌面应用负责启动本地工作区，一键在浏览器打开。需要远程访问时，在电脑上登录并允许其他设备访问，然后在网页或手机登录同一账号、选择电脑即可继续工作。Logto 管理账号与最少设备配置，CyberGrid 负责协调连接；对话、文件、终端内容和端点私钥留在用户设备上。模型调用继续使用你自己的模型账号和服务。
+Rust 桌面应用负责启动本地工作区，一键在浏览器打开。需要远程访问时，在电脑上登录并允许其他设备访问，然后在网页或手机登录同一账号、选择电脑即可继续工作。Logto 管理账号与最少设备配置，CyberBus 提供按账号隔离的 EasyTier 设备网络与加密连接；对话、文件、终端内容和端点私钥留在用户设备上。模型调用继续使用你自己的模型账号和服务。
 
 也可接入已有 DeepSeek Harness Web/桌面主机，与 Codex 并列使用，保留同一原生会话：[共享主机接入与验证](docs/harness-setup.md)。
 
@@ -93,7 +93,7 @@ bash scripts/build-desktop.sh
 bash scripts/build-android.sh
 ```
 
-[GitHub Actions](.github/workflows/release.yml) 自动生成发行包。每个桌面包包含本地服务、Web 界面、许可证和对应源码归档。Cloudflared可作为账号加密通道的内部实现；桌面不再提供独立匿名/固定隧道及WireGuard连接，详见[桌面和手机体验](docs/desktop-manager.md)。
+[GitHub Actions](.github/workflows/release.yml) 自动生成发行包。每个桌面包包含本地服务、Web 界面、许可证和对应源码归档。CyberBus 在应用内运行加密设备网络；桌面不再提供独立匿名/固定隧道、cloudflared 及 WireGuard 连接，详见[桌面和手机体验](docs/desktop-manager.md)。
 
 ## 连接原理
 

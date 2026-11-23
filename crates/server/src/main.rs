@@ -502,6 +502,10 @@ async fn main() -> Result<()> {
         )
         .route("/ws/terminal/{id}", get(terminal::upgrade))
         .route_service("/source", ServeFile::new("artifacts/anywork-source.tar.gz"))
+        .route_service(
+            "/corresponding-source",
+            ServeFile::new("artifacts/corresponding-source.tar.gz"),
+        )
         .fallback_service(web_assets::router(&args.web_dir))
         .layer(DefaultBodyLimit::max(22 * 1024 * 1024))
         .layer(cors)

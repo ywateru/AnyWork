@@ -6,7 +6,7 @@
 
 ## 结构与边界
 
-`crates/mobile` 是独立 Tauri library crate，Android 工程位于 `crates/mobile/gen/android`，本地界面由 `web/mobile.html` 构建至 `web/dist-mobile`。不打包桌面服务管理器、cloudflared 或桌面工作区托管逻辑，不在启动时加载远程 `/app/` 作为应用主界面。
+`crates/mobile` 是独立 Tauri library crate，Android 工程位于 `crates/mobile/gen/android`，本地界面由 `web/mobile.html` 构建至 `web/dist-mobile`。不打包桌面服务管理器、旧隧道 provider 或桌面工作区托管逻辑，不在启动时加载远程 `/app/` 作为应用主界面。
 
 - `account`：单一原生授权 owner、账号摘要、目录、可信设备及已核验连接目标。
 - `transport`：Rust Noise IK、HTTP 分块、事件轮询与 PTY；前端只持有不透明句柄。
@@ -17,7 +17,7 @@
 
 ## 账号与生命周期
 
-使用内嵌登录能力的官方 Logto Android SDK 2.0.3；3.x 已改用 Custom Tabs，不能静默升级。原生层为唯一 grant owner，显式设置 usingPersistStorage=false，应用 token 与协调材料仅保留于内存；这不表示 IdP SSO cookie 也只存内存。SDK/Android WebView 管理授权页 cookie，可能跨进程保留，显式注销走 SDK 的 cookie 清理；进程重启不能据 cookie 自动恢复应用 grant，仍回到登录入口。不读取、迁移或删除旧 Android 加密文件及 KeyStore。信任与偏好可保存非秘密资料，必须按 issuer、subject、设备及密钥版本隔离。授权开始前提示固定登录站点来源，SDK 登录窗口使用系统返回取消，不承诺 SDK 不提供的来源顶栏。登录/注册、取消、失败重试均有应用内路径；第三方身份提供者拒绝嵌入时准确报告，不绕过其限制。
+使用内嵌登录能力的官方 Logto Android SDK 2.0.3；3.x 已改用 Custom Tabs，不能静默升级。原生层为唯一 grant owner，禁用 SDK 自带普通 SharedPreferences 授权存储，改由 Kotlin 在 Android Keystore 保护的存储中保存 refresh grant、ID token 和恢复日志；进程重启先尝试安全恢复。IdP SSO cookie 由 SDK/Android WebView 管理，可能跨进程保留；显式注销走 SDK cookie 清理并删除 AnyWork 保存授权。不读取、迁移或删除旧 Android 加密文件及 KeyStore。信任与偏好可保存非秘密资料，必须按 issuer、subject、设备及密钥版本隔离。授权开始前提示固定登录站点来源，SDK 登录窗口使用系统返回取消，不承诺 SDK 不提供的来源顶栏。登录/注册、取消、失败重试均有应用内路径；第三方身份提供者拒绝嵌入时准确报告，不绕过其限制。
 
 原始 2.0.3 core 的默认 OkHttp 会在部分 I/O、HTTP 408/503/421 或重定向条件下再次发送 POST，不满足未知 grant 结果不重放。Android 授权 UI 仍使用原版 SDK；其 JVM core 改为本仓库携带的同版本固定源码，仅公开修改 HTTP 传输策略：禁止自动连接重试和重定向，POST body 标记 one-shot，并设置有界超时。保留 SDK 的 PKCE、state、ID token 验证与串行凭据逻辑，不通过反射替换私有字段，不重写 OAuth 流程。保留完整上游源码来源、许可证、文件摘要和可审查 patch；Gradle 排除原始 kotlin core artifact，明确接入本地 core module，避免重复 class 或误用未修补版本。隔离 MockWebServer 必须验证请求字节已发送后断线及上述 follow-up 只有一次 POST；外层 owner 仍在结果未知时退役 grant。
 
@@ -27,13 +27,14 @@
 
 ## 设备和远程协议
 
-目录合并 Logto customData 中的安装身份、公钥及 CyberGrid 在线/端口资料；离线、目录未知与空列表分开显示。当前部署采用与电脑相同的既有 Native client，通过 Native registration/device session 获取同应用设备；不得把 Native token 发往仅支持 SPA 的 console exchange，也不得假设有未部署的跨产品映射。注册/admission、RAM registrationKey、heartbeat 与协调 epoch 恢复必须完整实现。目录 schema、大小上限与保留未知字段行为沿用 Web 契约。修改名称/移除目录记录必须核对写后结果，移除记录不等于撤销电脑远程权限。
+目录读取 Logto `customData.anywork` 中的安装身份、公开 Noise 公钥和独立 `cyberbus` locator；离线、未知与空列表分开显示。locator 必须在 `10.144.0.0/20`、端口 `11001`、产品匹配且未过期。当前部署使用与电脑相同的 CyberBus resource、Native client 和 `anywork` 产品；Kotlin 从唯一 refresh owner 取得 `network:join` token，Rust 验签、派生材料并建立 EasyTier overlay，再把 raw TCP 交给同一 Noise/HTTP/PTY 协议。不得把 Native token 发往 SPA console，也不接受任意地址。目录 schema、32 设备/32 KiB 上限与保留未知字段行为沿用 Web 契约。修改名称/移除目录记录必须核对写后结果，移除记录不等于撤销电脑远程权限。
 
 | 用途 | 原生授权边界 |
 | --- | --- |
 | 登录与账号资料 | 固定 issuer 与现有 Native client；openid/profile/email/custom_data，SDK PKCE/state 与已注册 callback |
 | Account API customData | 不带 resource 的 Account API token；固定 issuer 的 /api/my-account；subject 与当前 epoch 栅栏 |
-| CyberGrid/电脑业务证明 | 固定 resource 的 connect JWT；Native session 和短期 gateway 授权，不使用 SPA client 冒充 |
+| CyberBus 网络加入 | 固定 resource 的 `network:join` JWT；Native client、产品 claim 和 HKDF 材料 |
+| 电脑业务证明 | 固定 resource 的 `connect` JWT；Native client 和短期 gateway 授权，不使用 SPA client 冒充 |
 | 本地业务 Origin | Tauri useHttpsScheme=true 对应 https://tauri.localhost；Rust wire Origin 同值，可信常量，不来自 JS |
 
 首次公钥和密钥变化均需明确核验；确认绑定账号、设备、目录 revision 与公钥快照，成功握手后才保存信任。Rust 从已核验目录构造连接目标，JS 不提供任意 URL/token。网关精确增加配置中的 Native client 与本地可信 Origin，仍校验签名、issuer、audience、scope、owner、期限及 client；不删除 Origin/client 检查。协议继续使用[remote v1](account-remote-protocol.md)。旧版电脑需要升级后才能接受移动 Native client。

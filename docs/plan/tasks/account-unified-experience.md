@@ -13,7 +13,7 @@ depends-on: [account-live-reliability]
 
 ## context
 
-阅读 `docs/INDEX.md`、`docs/account-unified-experience.md`、`docs/account-desktop.md`、`docs/account-remote-protocol.md`、`docs/account-web-layout.md`、`docs/cybergrid-product-feedback.md`。新契约优先于旧文档保留高级连接的历史表述。账号秘密RAM-only、业务内容不进云、单一刷新所有者、无写重放等安全约束保持。
+阅读 `docs/INDEX.md`、`docs/account-unified-experience.md`、`docs/account-desktop.md`、`docs/account-remote-protocol.md`、`docs/account-web-layout.md` 和 `docs/cyberbus-migration-review.md`。新契约优先于旧文档保留高级连接的历史表述。业务内容不进云、单一刷新所有者、端点私钥和 CyberBus 派生材料仅内存、无写重放等安全约束保持。
 
 ## path
 
@@ -28,7 +28,7 @@ depends-on: [account-live-reliability]
 
 ## delivery evidence
 
-- [给 CyberGrid 的反馈](../../cybergrid-product-feedback.md)已完成，可独立转发；未自动向上游发送。
+- 旧 CyberGrid 反馈已随连接层退役从活动树移除；当前状态见[CyberBus 迁移记录](../../cyberbus-migration-review.md)。
 - 产品源码冻结于 `113ddba1433e6437f73bdfebc6a4ea1d6e2fa74f`；后续报告提交不改变已构建产物。[独立源码审查](../reviews/account-unified-independent.md)和[合并检查](../reviews/account-unified-merged.md)覆盖 Native/server、Web、Android 与旧连接退役。
 - [运行与产物验收](../reviews/account-unified-runtime-artifacts.md)记录实际本机 Cookie/PTY、真实自托管授权的两次续期、精确 Mac/Web 产物审查及测试边界。
 - [正式 Web 上线记录](../reviews/account-unified-web-live.md)：正式 `/app/` 已绑定新静态部署，桌面/移动尺寸及图片字节验证通过。

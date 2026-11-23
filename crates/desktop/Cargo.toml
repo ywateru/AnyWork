@@ -6,6 +6,7 @@ license.workspace = true
 default-run = "anywork-desktop"
 
 [dependencies]
+anywork-cyberbus = { path = "../cyberbus" }
 anywork-remote = { path = "../remote" }
 axum = "0.8"
 base64 = "0.22"
@@ -39,7 +40,6 @@ tauri-build = { version = "=2.7.4", features = [] }
 tauri = { version = "=2.12.5", features = ["test"] }
 
 [target.'cfg(unix)'.dependencies]
-cybergrid-sdk = { git = "https://github.com/ywateru/CyberGrid.git", rev = "f2a3961536e5c69b13c7dbc661953d9243becbae" }
 keyring-core = "=1.0.1"
 
 libc = "0.2"
