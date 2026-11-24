@@ -2,7 +2,7 @@ AnyWork brings local coding-agent workspaces to browsers and Android, with a Rus
 
 AnyWork 将本机编码 Agent 工作区带到浏览器与 Android，使用 Rust 桌面管理器管理服务与连接。当前内置后端包括 Codex、Claude Code、Claude Desktop Code、DeepSeek Harness 和 WorkBuddy，各自遵守实际连接与能力要求。
 
-**New in 0.1.47 / 本次更新**
+**New in 0.1.48 / 本次更新**
 
 CyberGrid has been removed from the active desktop, Android and Web paths. Logto now issues the `connect` and `network:join` scopes for the CyberBus resource; CyberBus/EasyTier provides the account-scoped overlay, and the existing AnyWork Noise gateway serves HTTP, events and PTY on virtual port `11001`. The browser runtime is pinned to EasyTier v2.7.1 with a reproducible 5.29 MB bundle. Legacy Grid SDKs, vendored browser code, Upstash/Vercel Function configuration, cloudflared/tunwg/WireGuard packaging and old remote tests are removed. See the [migration record](https://github.com/ywateru/AnyWork/blob/main/docs/cyberbus-migration-review.md).
 
