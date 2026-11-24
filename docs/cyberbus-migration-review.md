@@ -282,7 +282,8 @@ CyberBus workspace 根声明 MIT OR Apache-2.0，但 `cyberbus-transport` 为 `L
 - `licenses/cyberbus-MIT.txt`、`licenses/cyberbus-Apache-2.0.txt`、`licenses/cyberbus-transport-LGPL-3.0.txt`、`licenses/GPL-3.0.txt`、`licenses/easytier-LGPL-3.0.txt` 和 `licenses/easytier-js-Apache-2.0.txt` 提供完整文本；
 - `scripts/corresponding-source.py` 从固定 Git revision 生成 `artifacts/corresponding-source.tar.gz` 和 SHA-256 sidecar；包内含 CyberBus `packaging/NOTICE.md`、`packaging/RELINK.md`、vendored EasyTier、Cargo lock 和完整 EasyTier 源码；
 - AnyWork 应用源码继续由 `scripts/source-archive.py` 生成 `artifacts/anywork-source.tar.gz`；
-- 发布包、原生 updater、Vercel 静态站点和自托管服务分别通过 `artifacts/`、`/corresponding-source` 和 `/source` 提供两份源码。
+- 发布包、原生 updater、Vercel 静态站点和自托管服务分别通过 `artifacts/`、`/corresponding-source` 和 `/source` 提供两份源码；
+- 从 v0.1.49 起，GitHub Release 直接提供 `corresponding-source.tar.gz` 与 `.sha256`，共 25 项资产、24 条 `SHA256SUMS` 记录；除 `SHA256SUMS` 自身外每个资产均有校验值。
 
 许可证、`NOTICE`、`THIRD_PARTY_NOTICES.md` 和 Web 发行说明必须与本文和实际锁文件一致。上游 `packaging/NOTICE.md` 与 `packaging/RELINK.md` 的约束纳入发行检查。不得把 `cyberbus-transport` 或完整 native transport 描述为仅 MIT/Apache-2.0。
 

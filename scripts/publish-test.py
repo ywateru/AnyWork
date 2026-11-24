@@ -179,7 +179,7 @@ class PublisherTest(unittest.TestCase):
         original = publish.versions.current_version(self.root)
         state = self.pub.publish()
         self.assertEqual(state['phase'], 'complete')
-        self.assertEqual(state['verified'], {'assets': 23, 'checksums': 22, 'version_bound_signature_files': 5})
+        self.assertEqual(state['verified'], {'assets': 25, 'checksums': 24, 'version_bound_signature_files': 5})
         self.assertEqual(len(self.api.pushed), 2)
         self.assertEqual(state['source'], self.run_git('rev-parse', 'HEAD'))
         self.assertEqual(self.run_git('rev-list', '-n', '1', state['tag']), state['source'])
@@ -400,7 +400,8 @@ class PublisherTest(unittest.TestCase):
         self.assertEqual(self.pub.state['phase'], 'complete')
 
     def test_versioned_android_assets_checksums_and_website_recovery(self):
-        for tag, count in [('v0.1.13', 20), ('v0.1.34', 20), ('v0.1.35', 23), ('v0.1.100', 23), ('v0.2.0', 23), ('v1.0.0', 23)]:
+        for tag, count in [('v0.1.13', 20), ('v0.1.34', 20), ('v0.1.35', 23), ('v0.1.48', 23),
+                           ('v0.1.49', 25), ('v0.1.100', 25), ('v0.2.0', 25), ('v1.0.0', 25)]:
             with self.subTest(tag=tag):
                 self.api.published(tag, self.api.main)
                 self.pub.verify_release(tag)
@@ -409,7 +410,7 @@ class PublisherTest(unittest.TestCase):
                 sums = self.api.payloads[publish.WEB + '/releases/download/' + tag + '/SHA256SUMS']
                 self.assertEqual(len(sums.splitlines()), count - 1)
                 apks = {a['name'] for a in self.api.release['assets'] if a['name'].endswith('.apk')}
-                self.assertEqual(apks, publish.ANDROID_APKS if count == 23 else {'anywork-android.apk'})
+                self.assertEqual(apks, publish.ANDROID_APKS if count >= 23 else {'anywork-android.apk'})
                 self.pub.pages_only(tag)
                 self.assertEqual(self.api.pushed, [])
                 self.api.release['assets'].pop()
@@ -473,10 +474,29 @@ class PublisherTest(unittest.TestCase):
             with self.assertRaisesRegex(publish.Failure, 'checksum entry|22 checksum entries'):
                 self.pub.verify_release(tag)
 
+    def test_corresponding_source_is_required_from_v0_1_49_and_checksummed(self):
+        tag = 'v0.1.49'
+        self.api.published(tag, self.api.main)
+        self.pub.verify_release(tag)
+        base = publish.WEB + '/releases/download/' + tag + '/'
+        sums = self.api.payloads[base + 'SHA256SUMS'].decode().splitlines()
+        self.assertIn('  corresponding-source.tar.gz', '\n'.join(sums))
+        self.assertIn('  corresponding-source.tar.gz.sha256', '\n'.join(sums))
+        self.assertEqual(len(sums), 24)
+        for damaged in [publish.assets_for_tag(tag) - {'corresponding-source.tar.gz'},
+                        publish.assets_for_tag(tag) - {'corresponding-source.tar.gz.sha256'}]:
+            with self.subTest(damaged=damaged):
+                self.api.published(tag, self.api.main, damaged)
+                with self.assertRaisesRegex(publish.Failure, '25 assets'):
+                    self.pub.verify_release(tag)
+        self.api.published('v0.1.48', self.api.main)
+        self.assertNotIn('corresponding-source.tar.gz', publish.assets_for_tag('v0.1.48'))
+
     def test_workflow_checks_exact_merged_files_before_checksumming_or_publishing(self):
         workflow = (publish.ROOT / '.github/workflows/release.yml').read_text()
         check = textwrap.dedent(workflow.split("          python3 - <<'PY'\n")[1].split('\n          PY')[0])
         self.assertLess(workflow.index("import publish"), workflow.index('sha256sum anywork-*'))
+        self.assertIn('sha256sum anywork-* corresponding-source.tar.gz corresponding-source.tar.gz.sha256 latest.json > SHA256SUMS', workflow)
         self.assertIn('path: release/anywork-android-${{ matrix.abi }}.apk', workflow)
         self.assertIn('--target ${{ matrix.target }}', workflow)
         self.assertIn('name: android-${{ matrix.abi }}', workflow)

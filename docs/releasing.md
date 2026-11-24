@@ -49,9 +49,9 @@ Progress is stored atomically under Git's private common directory, protected by
 
 After committing a source fix, use `--new` to start a fresh version once the previous release build is no longer active. Existing tags are never moved. If installers are already published but the Vercel website failed, use `--site-only vX.Y.Z` to verify the immutable release and repair the website without rebuilding or creating another Release. The original failed workflow remains visible.
 
-从 v0.1.35 起，轻量核验要求精确的 23 个发行文件、22 个 SHA-256 条目与 GitHub 文件摘要；v0.1.34 及更早版本仍按 20 个文件、19 个条目核验和恢复官网。所有版本继续核验 5 个更新目标的 `.sig`／清单一致性和版本绑定，以及官网静态内嵌版本和下载链接。它不把签名元数据检查描述为完整安装验收，也不默认运行需要下载大型更新包的可选真实升级测试。真实设备、网络和升级安装验收仍可按需单独执行。
+从 v0.1.49 起，轻量核验要求精确的 25 个发行文件、24 个 SHA-256 条目与 GitHub 文件摘要，其中包括 CyberBus/EasyTier 对应源码归档及其 `.sha256` sidecar；v0.1.35 至 v0.1.48 仍按 23 个文件、22 个条目核验，v0.1.34 及更早版本仍按 20 个文件、19 个条目核验和恢复官网。所有版本继续核验 5 个更新目标的 `.sig`／清单一致性和版本绑定，以及官网静态内嵌版本和下载链接。它不把签名元数据检查描述为完整安装验收，也不默认运行需要下载大型更新包的可选真实升级测试。真实设备、网络和升级安装验收仍可按需单独执行。
 
-From v0.1.35, light verification requires exactly 23 assets and 22 checksum entries against GitHub digests. Verification and website recovery for v0.1.34 and older retain the 20-asset / 19-checksum contract. Every version also checks five updater signature-file/manifest/version bindings and the website's embedded version and download URLs. It does not claim full binary signature or installed-upgrade testing without downloading the packages. Optional live-upgrade and hardware tests remain separate from publication.
+From v0.1.49, light verification requires exactly 25 assets and 24 checksum entries against GitHub digests, including the CyberBus/EasyTier corresponding-source archive and its `.sha256` sidecar. Versions v0.1.35 through v0.1.48 retain the 23-asset / 22-checksum contract, and v0.1.34 and older retain 20 assets and 19 checksums. Every version also checks five updater signature-file/manifest/version bindings and the website's embedded version and download URLs. It does not claim full binary signature or installed-upgrade testing without downloading the packages. Optional live-upgrade and hardware tests remain separate from publication.
 
 ## 手动排查检查 / Manual diagnostic checks
 

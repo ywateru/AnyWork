@@ -222,7 +222,7 @@ jobs:
           actual = {path.name for path in pathlib.Path('.').iterdir()}
           publish.require(actual == expected, 'Release files differ from the versioned asset contract')
           PY
-          sha256sum anywork-* latest.json > SHA256SUMS
+          sha256sum anywork-* corresponding-source.tar.gz corresponding-source.tar.gz.sha256 latest.json > SHA256SUMS
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}

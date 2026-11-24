@@ -46,7 +46,9 @@ INSTALLERS = DESKTOP_INSTALLERS | ANDROID_APKS
 ASSETS = set(TARGETS.values()) | {name + '.sig' for name in TARGETS.values()} | INSTALLERS | {
     'anywork-linux-x86_64.tar.gz', 'anywork-linux-arm64.tar.gz',
     'anywork-windows-x86_64.zip', 'anywork-source.tar.gz', 'anywork-web.tar.gz',
+    'corresponding-source.tar.gz', 'corresponding-source.tar.gz.sha256',
     'latest.json', 'SHA256SUMS'}
+CORRESPONDING_SOURCE = {'corresponding-source.tar.gz', 'corresponding-source.tar.gz.sha256'}
 
 
 class Failure(Exception):
@@ -70,6 +72,9 @@ def installers_for_tag(tag):
 
 
 def assets_for_tag(tag):
+    # v0.1.35-v0.1.48 predate the LGPL corresponding-source release assets.
+    if versions.version_tuple(tag[1:]) < (0, 1, 49):
+        return (ASSETS - INSTALLERS - CORRESPONDING_SOURCE) | installers_for_tag(tag)
     return (ASSETS - INSTALLERS) | installers_for_tag(tag)
 
 
