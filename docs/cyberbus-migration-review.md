@@ -22,6 +22,7 @@ AnyWork 已从 CyberGrid 切换到 CyberBus。当前源码不再包含 CyberGrid
 | EasyTier | `v2.7.1`，commit `0d9c52b169dc2112687ddefcf571cd01d383193c` | Native overlay 与浏览器 WASM |
 | 浏览器 bundle | `web/public/easytier-browser.js` | 5,288,976 bytes；SHA-256 `e8a1d53b2b4451de013c291bc3c53b04148d90345c81f28b8f70d569bd850469` |
 | 浏览器工具链 | Node `22.16.0`、pnpm `10.15.0`、Rust `1.95`、esbuild `0.28.2` | 由 `scripts/build-easytier-browser.sh` 重建 |
+| Native 构建依赖 | Protocol Buffers compiler（`protoc`） | CyberBus/EasyTier 的 `easytier-proto` 构建脚本需要；CI 由 `arduino/setup-protoc@v3` 安装 |
 
 CyberBus 通过 Cargo Git revision 锁定，EasyTier 浏览器产物通过 provenance、文件大小和 SHA-256 锁定。`web/public/easytier-browser.PROVENANCE.json`、`web/public/easytier-browser.NOTICE.md` 和构建脚本必须与二进制一起维护。
 

@@ -6,9 +6,9 @@ Thank you for helping make local agents easier to reach. Start with a reproducib
 
 ## Development / 开发
 
-Use Node.js 22+, Rust stable, and the Tauri system dependencies. Run `npm ci`, `npm run build:desktop-ui`, and the checks relevant to your change. `./scripts/check.sh` runs the broader isolated integration/browser suite. Android needs JDK 17 and SDK 36. Website changes use `python3 scripts/build-site.py` and `node scripts/site-test.mjs`.
+Use Node.js 22+, Rust stable, Protocol Buffers compiler (`protoc`), and the Tauri system dependencies. Run `npm ci`, `npm run build:desktop-ui`, and the checks relevant to your change. `./scripts/check.sh` runs the broader isolated integration/browser suite. Android needs JDK 17 and SDK 36. Website changes use `python3 scripts/build-site.py` and `node scripts/site-test.mjs`.
 
-使用 Node.js 22+、Rust stable 与 Tauri 系统依赖。运行 `npm ci`、`npm run build:desktop-ui` 和变更相关检查。完整隔离集成/浏览器检查为 `./scripts/check.sh`。Android 使用 JDK 17、SDK 36。官网使用 `python3 scripts/build-site.py` 和 `node scripts/site-test.mjs` 验证。
+使用 Node.js 22+、Rust stable、Protocol Buffers 编译器（`protoc`）与 Tauri 系统依赖。运行 `npm ci`、`npm run build:desktop-ui` 和变更相关检查。完整隔离集成/浏览器检查为 `./scripts/check.sh`。Android 使用 JDK 17、SDK 36。官网使用 `python3 scripts/build-site.py` 和 `node scripts/site-test.mjs` 验证。
 
 Keep English and Chinese user-facing documentation in sync. Describe platform support based on actual tests. Preserve licenses and corresponding-source packaging. Contributions are distributed under this repository's AGPL-3.0-only license.
 
