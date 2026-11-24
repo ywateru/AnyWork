@@ -17,6 +17,22 @@ guard = importlib.import_module('check-release-version')
 updater = importlib.import_module('updater-artifacts')
 
 class ReleaseVersions(unittest.TestCase):
+    def test_every_release_workspace_package_is_versioned(self):
+        workspace = re.search(r'(?ms)^\[workspace\]\s*(.*?)(?=^\[)', (ROOT / 'Cargo.toml').read_text())
+        self.assertIsNotNone(workspace)
+        members = re.search(r'(?m)^members\s*=\s*\[(.*?)\]', workspace[1])
+        self.assertIsNotNone(members)
+        names = []
+        for member in re.findall(r'"([^"]+)"', members[1]):
+            manifest = (ROOT / member / 'Cargo.toml').read_text()
+            package = re.search(r'(?ms)^\[package\]\s*(.*?)(?=^\[|\Z)', manifest)
+            self.assertIsNotNone(package, member)
+            name = re.search(r'(?m)^name\s*=\s*"([^"]+)"', package[1])
+            self.assertIsNotNone(name, member)
+            if re.search(r'(?m)^version\.workspace\s*=\s*true', manifest):
+                names.append(name[1])
+        self.assertEqual(set(names), set(bump.WORKSPACE_PACKAGES))
+
     def test_bump_updates_all_embedded_versions_and_rejects_reuse(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
